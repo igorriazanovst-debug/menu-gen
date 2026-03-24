@@ -1,77 +1,87 @@
 # MenuGen — Резюме сессии
 
 **Дата:** Март 2026
-**Статус:** Этап 2 — Flutter мобильное приложение ✅
+**Статус:** Этап 2 — Flutter: code gen + SyncService + Семья + Покупки ✅
 
 ---
 
-## Все шаги Этапа 1 (бэкенд) выполнены ✅
+## Этап 1 (бэкенд) — ЗАВЕРШЁН ✅
+## Этап 2 (Flutter) — В РАБОТЕ
+
+### Шаг 1: Архитектура, BLoC, экраны ✅
+### Шаг 2: Code gen + SyncService + Семья + Покупки ✅
 
 ---
 
-## Этап 2 — Flutter мобильное приложение
+## Структура Flutter (`mobile/menugen_app/`) — 58 файлов
 
-### Структура проекта (`mobile/menugen_app/`)
 ```
 lib/
-├── main.dart                        # Точка входа, MultiBlocProvider
+├── main.dart                   # + SyncService.start()
 ├── core/
-│   ├── api/
-│   │   ├── api_client.dart          # Dio + JWT interceptor + auto-refresh
-│   │   ├── api_exception.dart       # Единый обработчик ошибок
-│   │   └── token_storage.dart       # FlutterSecureStorage (зашифрованное хранение)
-│   ├── db/
-│   │   ├── app_database.dart        # Drift (SQLite) + все CRUD операции
-│   │   └── tables.dart              # 5 таблиц + SyncQueue
-│   ├── models/                      # Freezed-модели (User, Recipe, Menu, FridgeItem, DiaryEntry)
-│   ├── router/app_router.dart       # GoRouter + redirect по AuthState
-│   ├── theme/app_theme.dart         # Цветовая схема по ТЗ (томатный/авокадо/лимонный)
-│   ├── connectivity/                # ConnectivityCubit (online/offline)
-│   └── widgets/                     # MainShell (Tab Bar), ConnectivityBanner
+│   ├── api/                    # ApiClient (Dio + JWT interceptor), TokenStorage
+│   ├── db/                     # AppDatabase (Drift), tables.dart, app_database.g.dart (stub)
+│   ├── models/                 # 5 Freezed-моделей + .g.dart + .freezed.dart (написаны вручную)
+│   ├── router/app_router.dart  # + /family + /shopping/:menuId маршруты
+│   ├── sync/sync_service.dart  # SyncService (push + pull + enqueue)
+│   ├── connectivity/           # ConnectivityCubit
+│   └── widgets/                # MainShell, ConnectivityBanner
 └── features/
-    ├── auth/     (BLoC + LoginScreen)
-    ├── menu/     (BLoC + MenuScreen + MenuDayCard + GenerateMenuBottomSheet)
-    ├── recipes/  (BLoC + RecipesScreen с поиском)
-    ├── fridge/   (BLoC + FridgeScreen)
-    ├── diary/    (BLoC + DiaryScreen с выбором даты)
-    └── profile/  (ProfileScreen)
+    ├── auth/     BLoC + LoginScreen
+    ├── menu/     BLoC + MenuScreen + DayCard + GenerateSheet
+    ├── recipes/  BLoC + RecipesScreen (поиск)
+    ├── fridge/   BLoC + FridgeScreen (add/delete/expiry)
+    ├── diary/    BLoC + DiaryScreen (выбор даты)
+    ├── family/   BLoC + FamilyScreen (список, приглашение, удаление)
+    ├── shopping/ ShoppingListScreen (группировка, progress bar, share)
+    └── profile/  ProfileScreen (→ /family, logout)
 ```
 
-### Ключевые решения
-- **Offline-First**: Drift (SQLite) как первичное хранилище + SyncQueue
-- **JWT auto-refresh**: в `_AuthInterceptor` при 401 автоматически обновляет токен
-- **API_BASE_URL** задаётся через `--dart-define` (не хардкод)
-- **Навигация**: GoRouter + ShellRoute + redirect по AuthState
-- **Офлайн-баннер**: ConnectivityCubit + ConnectivityBanner в shell
-- **Цвета**: строго по ТЗ — Primary #E63946, Secondary #588157, Accent #F4A261
+### SyncService (`core/sync/sync_service.dart`)
+- `start()` — подписка на connectivity, auto-sync при восстановлении сети
+- `_push()` — отправляет SyncQueue pending-записи на сервер
+- `_pull()` — загружает fridge + menus + recipes в локальную Drift БД
+- `enqueue()` — добавляет изменение в очередь (оффлайн-сценарий)
+- Конфликты: Last Write Wins (User vs User), специалист имеет приоритет
 
-### Зависимости (pubspec.yaml)
-flutter_bloc, go_router, dio, drift + drift_flutter, flutter_secure_storage,
-connectivity_plus, freezed, go_router, intl, cached_network_image, shimmer
+### Экраны семьи
+- Список участников с ролями (глава/участник)
+- Приглашение по email
+- Удаление с confirm-диалогом
+- Проверка лимита тарифа (403 → toast)
 
-### Тесты
-- `test/auth_bloc_test.dart` — BLoC-тесты через bloc_test + mocktail
+### Экран списка покупок
+- Группировка по категориям
+- Progress bar «куплено X/Y»
+- Checkbox → PATCH toggle к API
+- Share → текстовый формат для копирования / отправки
 
-### CI
-- `.github/workflows/flutter_ci.yml` — analyze + test при push в mobile/
+### Code generation
+Так как Flutter недоступен в контейнере, `.g.dart` и `.freezed.dart`
+написаны вручную. При наличии Flutter:
+```bash
+cd mobile/menugen_app
+flutter pub get
+flutter pub run build_runner build --delete-conflicting-outputs
+```
 
 ---
 
 ## Следующий шаг
 
-**Этап 2, шаг 2 — Drift миграции + code generation**
+**Этап 3 — React веб-приложение**
 
-```bash
-cd mobile/menugen_app
-flutter pub run build_runner build --delete-conflicting-outputs
-```
-
-Затем:
-- Реализовать SyncService (push локальных изменений → сервер)
-- Экраны: Семья, Список покупок, Настройки
-- VK OAuth экран
+Начать с:
+1. `npx create-react-app menugen-web --template typescript`
+2. Redux Toolkit + RTK Query
+3. Экраны: Dashboard, Каталог рецептов, Редактор меню, Профиль и Семья
 
 ---
 
 ## Репозиторий
 GitHub: (указать URL при пуше)
+
+## Стек
+- **Backend:** Python 3.11 + Django 4.2 + DRF (✅ завершён)
+- **Mobile:** Flutter 3.x + BLoC + Drift + Dio
+- **Web:** React 18 + TypeScript (следующий этап)
