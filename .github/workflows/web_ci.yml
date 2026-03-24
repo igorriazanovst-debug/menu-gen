@@ -1,0 +1,38 @@
+name: Web CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ['web/**']
+  pull_request:
+    branches: [main, develop]
+    paths: ['web/**']
+
+jobs:
+  web-ci:
+    name: TypeScript Check & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/menugen-web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/menugen-web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+        env:
+          REACT_APP_API_BASE_URL: http://localhost:8000/api/v1
+          CI: false
