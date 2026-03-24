@@ -31,6 +31,8 @@ class FridgeListCreateView(generics.ListCreateAPIView):
         return self._family
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return FridgeItem.objects.none()
         family = self.get_family()
         if not family:
             return FridgeItem.objects.none()

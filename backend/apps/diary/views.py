@@ -28,6 +28,8 @@ class DiaryListCreateView(generics.ListCreateAPIView):
         return self._member
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return DiaryEntry.objects.none()
         member = self.get_member()
         if not member:
             return DiaryEntry.objects.none()

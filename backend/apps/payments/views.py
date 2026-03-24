@@ -28,6 +28,8 @@ class PaymentHistoryView(generics.ListAPIView):
     serializer_class = PaymentSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Payment.objects.none()
         family = _get_family(self.request.user)
         if not family:
             return Payment.objects.none()

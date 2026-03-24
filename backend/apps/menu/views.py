@@ -113,6 +113,8 @@ class MenuListView(generics.ListAPIView):
     serializer_class = MenuListSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Menu.objects.none()
         family = _get_family(self.request.user)
         if not family:
             return Menu.objects.none()
@@ -124,6 +126,8 @@ class MenuDetailView(generics.RetrieveAPIView):
     serializer_class = MenuDetailSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Menu.objects.none()
         family = _get_family(self.request.user)
         if not family:
             return Menu.objects.none()

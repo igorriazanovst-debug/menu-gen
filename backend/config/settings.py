@@ -208,3 +208,28 @@ LOGGING = {
         },
     },
 }
+
+# ── Celery Beat Schedule ───────────────────────────────────────────────────────
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    "check-fridge-expiry": {
+        "task": "apps.notifications.tasks.check_fridge_expiry",
+        "schedule": crontab(hour=9, minute=0),  # ежедневно в 09:00
+    },
+    "expire-subscriptions": {
+        "task": "apps.notifications.tasks.expire_subscriptions",
+        "schedule": crontab(hour=0, minute=5),  # ежедневно в 00:05
+    },
+    "send-menu-reminder": {
+        "task": "apps.notifications.tasks.send_menu_reminder",
+        "schedule": crontab(day_of_week=1, hour=10, minute=0),  # каждый понедельник в 10:00
+    },
+}
+
+# drf-spectacular enum overrides
+SPECTACULAR_SETTINGS["ENUM_NAME_OVERRIDES"] = {
+    "SubscriptionStatusEnum": "apps.subscriptions.models.Subscription.Status",
+    "PaymentStatusEnum": "apps.payments.models.Payment.Status",
+    "MenuStatusEnum": "apps.menu.models.Menu.Status",
+}
