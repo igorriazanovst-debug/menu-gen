@@ -1,78 +1,60 @@
 # MenuGen — Резюме сессии
 
 **Дата:** Март 2026
-**Статус:** Этап 1 — Скаффолдинг бэкенда ✅
+**Статус:** Этап 1 — Модели и миграции ✅
 
 ---
 
 ## Что сделано
 
-### Структура проекта создана (`menugen/`)
+### Шаг 1: Скаффолдинг ✅
+- docker-compose, Makefile, CI, .env.example, README, структура папок
 
-```
-menugen/
-├── backend/
-│   ├── apps/               # 12 Django-приложений (заготовки)
-│   │   ├── users/          # urls/ разделён на auth.py и users.py
-│   │   ├── recipes/
-│   │   ├── family/
-│   │   ├── fridge/
-│   │   ├── menu/
-│   │   ├── diary/
-│   │   ├── specialists/
-│   │   ├── subscriptions/
-│   │   ├── payments/
-│   │   ├── notifications/
-│   │   ├── social/
-│   │   └── sync/
-│   ├── config/
-│   │   ├── settings.py     # Полный конфиг (PostgreSQL, Redis, JWT, Celery, DRF, Spectacular)
-│   │   ├── urls.py         # Все маршруты подключены
-│   │   ├── celery.py
-│   │   └── wsgi.py
-│   ├── manage.py
-│   ├── requirements.txt    # Django 4.2, DRF, JWT, Celery, drf-spectacular, psycopg2...
-│   ├── Dockerfile
-│   ├── pytest.ini
-│   ├── .flake8
-│   └── pyproject.toml      # black + isort config
-├── .github/workflows/ci.yml  # GitHub Actions: lint + test (PostgreSQL + Redis в сервисах)
-├── docker-compose.yml        # db, redis, backend, celery, celery-beat
-├── Makefile                  # up, down, build, migrate, test, lint, format, shell
-├── scripts/setup.sh          # Первичная настройка dev-окружения
-├── .env.example              # Все переменные без значений
-├── .gitignore
-└── README.md
-```
+### Шаг 2: Модели и миграции ✅
+
+Все модели написаны и миграции созданы (33 файла, `check` — 0 ошибок).
+
+| App | Модели |
+|---|---|
+| users | User (кастомный AbstractBaseUser), Profile |
+| family | Family, FamilyMember |
+| subscriptions | SubscriptionPlan, Subscription |
+| recipes | Recipe, RecipeAuthor |
+| fridge | Product, FridgeItem |
+| menu | Menu, MenuItem, ShoppingList, ShoppingItem |
+| diary | DiaryEntry, WaterLog |
+| specialists | Specialist, SpecialistAssignment, Recommendation, DocumentArchive, DocumentAccessLog |
+| payments | Payment |
+| notifications | Notification |
+| social | SocialLink |
+| sync | SyncLog, AuditLog |
 
 ### Ключевые решения
-- `AUTH_USER_MODEL = "users.User"` — кастомная модель (ещё не написана)
-- Все apps зарегистрированы в `INSTALLED_APPS`
-- JWT: access 15 мин, refresh 30 дней, ротация включена
-- Rate limiting: 100 req/min для user, 20 для anon
-- Логирование настроено (без ПДн)
+- AUTH_USER_MODEL = "users.User" — email/phone/vk_id, все уникальные nullable
+- allergies / disliked_products — JSONField на User
+- Recipe.legacy_id — для связи с recipes.db (SQLite → PostgreSQL)
+- DocumentArchive.encrypted_data — BinaryField
+- SyncLog — entity_type + entity_id + conflict_data
 
 ---
 
 ## Следующий шаг
 
-**Этап 1, шаг 2 — Модели и миграции**
+**Этап 1, шаг 3 — API авторизации**
 
-Порядок: `users` → `subscriptions` → `family` → `recipes` → `fridge` → `menu` → `diary` → `specialists` → `sync` → остальные
-
-Начать с `apps/users/models.py`:
-- Кастомный `User` (email/phone/vk_id, user_type, allergies, disliked_products)
-- `Profile` (birth_year, gender, height, weight, activity_level, goal)
+Реализовать в `apps/users/`:
+- `POST /api/v1/auth/email/register` — регистрация (создаёт User + Profile + Family + Subscription[Free])
+- `POST /api/v1/auth/login` — email+пароль → access+refresh JWT
+- `POST /api/v1/auth/refresh` — обновление токена
+- `POST /api/v1/auth/logout` — инвалидация refresh
+- `GET/PUT /api/v1/users/me` — профиль текущего пользователя
 
 ---
 
 ## Репозиторий
 GitHub: (указать URL при пуше)
-Ветка: `main` / `develop`
 
 ## Стек
-- Python 3.11 + Django 4.2 + DRF
-- PostgreSQL 15 + Redis 7
-- Celery + celery-beat
-- JWT (simplejwt) + drf-spectacular (Swagger)
+- Python 3.11 + Django 4.2 + DRF + JWT + drf-spectacular
+- PostgreSQL 15 + Redis 7 + Celery
 - Docker + GitHub Actions CI
