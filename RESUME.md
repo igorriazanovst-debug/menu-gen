@@ -1,53 +1,51 @@
 # MenuGen — Резюме сессии
 
 **Дата:** Март 2026
-**Статус:** Этап 1 — Модели и миграции ✅
+**Статус:** Этап 1 — API авторизации ✅
 
 ---
 
 ## Что сделано
 
 ### Шаг 1: Скаффолдинг ✅
-- docker-compose, Makefile, CI, .env.example, README, структура папок
-
 ### Шаг 2: Модели и миграции ✅
+### Шаг 3: API авторизации ✅
 
-Все модели написаны и миграции созданы (33 файла, `check` — 0 ошибок).
+**Файлы:**
+- `apps/users/serializers.py` — RegisterSerializer, LoginSerializer, UserMeSerializer, UserMeUpdateSerializer
+- `apps/users/views.py` — RegisterView, LoginView, LogoutView, UserMeView
+- `apps/users/urls/auth.py` — маршруты /auth/
+- `apps/users/urls/users.py` — маршруты /users/
+- `apps/users/tests/test_auth.py` — 12 тест-кейсов
 
-| App | Модели |
-|---|---|
-| users | User (кастомный AbstractBaseUser), Profile |
-| family | Family, FamilyMember |
-| subscriptions | SubscriptionPlan, Subscription |
-| recipes | Recipe, RecipeAuthor |
-| fridge | Product, FridgeItem |
-| menu | Menu, MenuItem, ShoppingList, ShoppingItem |
-| diary | DiaryEntry, WaterLog |
-| specialists | Specialist, SpecialistAssignment, Recommendation, DocumentArchive, DocumentAccessLog |
-| payments | Payment |
-| notifications | Notification |
-| social | SocialLink |
-| sync | SyncLog, AuditLog |
+**Эндпоинты:**
+| Метод | URL | Описание |
+|---|---|---|
+| POST | /api/v1/auth/email/register/ | Регистрация → access+refresh JWT |
+| POST | /api/v1/auth/login/ | Вход → access+refresh JWT |
+| POST | /api/v1/auth/refresh/ | Обновление access токена |
+| POST | /api/v1/auth/logout/ | Инвалидация refresh (blacklist) |
+| GET | /api/v1/users/me/ | Профиль текущего пользователя |
+| PUT/PATCH | /api/v1/users/me/ | Обновление профиля |
 
-### Ключевые решения
-- AUTH_USER_MODEL = "users.User" — email/phone/vk_id, все уникальные nullable
-- allergies / disliked_products — JSONField на User
-- Recipe.legacy_id — для связи с recipes.db (SQLite → PostgreSQL)
-- DocumentArchive.encrypted_data — BinaryField
-- SyncLog — entity_type + entity_id + conflict_data
+**Ключевые решения:**
+- При регистрации атомарно создаётся User + Profile + Family + FamilyMember(HEAD) + Subscription(free, если план существует)
+- Logout через simplejwt TokenBlacklist
+- `rest_framework_simplejwt.token_blacklist` добавлен в INSTALLED_APPS
 
 ---
 
 ## Следующий шаг
 
-**Этап 1, шаг 3 — API авторизации**
+**Этап 1, шаг 4 — API рецептов + скрипт миграции recipes.db**
 
-Реализовать в `apps/users/`:
-- `POST /api/v1/auth/email/register` — регистрация (создаёт User + Profile + Family + Subscription[Free])
-- `POST /api/v1/auth/login` — email+пароль → access+refresh JWT
-- `POST /api/v1/auth/refresh` — обновление токена
-- `POST /api/v1/auth/logout` — инвалидация refresh
-- `GET/PUT /api/v1/users/me` — профиль текущего пользователя
+- `GET /api/v1/recipes/` — список с фильтрацией/поиском/пагинацией
+- `GET /api/v1/recipes/{id}/` — детальная карточка
+- `POST /api/v1/recipes/` — создание (тариф Basic+)
+- `PUT/PATCH /api/v1/recipes/{id}/` — редактирование (автор/admin)
+- `DELETE /api/v1/recipes/{id}/` — удаление (автор/admin)
+- `POST /api/v1/recipes/{id}/favorite/` — добавить в избранное
+- `scripts/migrate_recipes_db.py` — SQLite recipes.db → PostgreSQL
 
 ---
 
