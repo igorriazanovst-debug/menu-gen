@@ -1,0 +1,38 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'mobile/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'mobile/**'
+
+jobs:
+  flutter-test:
+    name: Flutter Analyze & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: mobile/menugen_app
+
+      - name: Run dart analyze
+        run: flutter analyze --no-fatal-infos
+        working-directory: mobile/menugen_app
+
+      - name: Run tests
+        run: flutter test --coverage
+        working-directory: mobile/menugen_app

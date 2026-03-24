@@ -1,60 +1,77 @@
 # MenuGen — Резюме сессии
 
 **Дата:** Март 2026
-**Статус:** Этап 1 — БЭКЕНД ЗАВЕРШЁН ✅
+**Статус:** Этап 2 — Flutter мобильное приложение ✅
 
 ---
 
-## Все шаги Этапа 1 выполнены
-
-| # | Шаг | Статус |
-|---|---|---|
-| 1 | Скаффолдинг (Docker, CI/CD, Makefile) | ✅ |
-| 2 | Модели и миграции (12 приложений, 20+ моделей) | ✅ |
-| 3 | API авторизации (register/login/refresh/logout/me) | ✅ |
-| 4 | API рецептов + скрипт миграции recipes.db | ✅ |
-| 5 | API семьи + холодильника | ✅ |
-| 6 | Генератор меню + список покупок | ✅ |
-| 7 | Дневник питания + Подписки + Платежи (ЮKassa) | ✅ |
-| 8 | Django admin + Celery tasks + Swagger + тесты | ✅ |
+## Все шаги Этапа 1 (бэкенд) выполнены ✅
 
 ---
 
-## Итоговая статистика
+## Этап 2 — Flutter мобильное приложение
 
-- **Тестов:** 92 тест-кейса по 9 модулям
-- **Эндпоинтов:** ~40 (все задокументированы в Swagger)
-- **Celery tasks:** 3 задачи (fridge_expiry, expire_subscriptions, menu_reminder)
-- **Admin:** 15 зарегистрированных моделей с actions
-- **Swagger:** генерируется без ошибок (`python manage.py spectacular`)
+### Структура проекта (`mobile/menugen_app/`)
+```
+lib/
+├── main.dart                        # Точка входа, MultiBlocProvider
+├── core/
+│   ├── api/
+│   │   ├── api_client.dart          # Dio + JWT interceptor + auto-refresh
+│   │   ├── api_exception.dart       # Единый обработчик ошибок
+│   │   └── token_storage.dart       # FlutterSecureStorage (зашифрованное хранение)
+│   ├── db/
+│   │   ├── app_database.dart        # Drift (SQLite) + все CRUD операции
+│   │   └── tables.dart              # 5 таблиц + SyncQueue
+│   ├── models/                      # Freezed-модели (User, Recipe, Menu, FridgeItem, DiaryEntry)
+│   ├── router/app_router.dart       # GoRouter + redirect по AuthState
+│   ├── theme/app_theme.dart         # Цветовая схема по ТЗ (томатный/авокадо/лимонный)
+│   ├── connectivity/                # ConnectivityCubit (online/offline)
+│   └── widgets/                     # MainShell (Tab Bar), ConnectivityBanner
+└── features/
+    ├── auth/     (BLoC + LoginScreen)
+    ├── menu/     (BLoC + MenuScreen + MenuDayCard + GenerateMenuBottomSheet)
+    ├── recipes/  (BLoC + RecipesScreen с поиском)
+    ├── fridge/   (BLoC + FridgeScreen)
+    ├── diary/    (BLoC + DiaryScreen с выбором даты)
+    └── profile/  (ProfileScreen)
+```
 
-## Celery Beat расписание
-| Задача | Расписание |
-|---|---|
-| check_fridge_expiry | Ежедневно 09:00 |
-| expire_subscriptions | Ежедневно 00:05 |
-| send_menu_reminder | Каждый понедельник 10:00 |
+### Ключевые решения
+- **Offline-First**: Drift (SQLite) как первичное хранилище + SyncQueue
+- **JWT auto-refresh**: в `_AuthInterceptor` при 401 автоматически обновляет токен
+- **API_BASE_URL** задаётся через `--dart-define` (не хардкод)
+- **Навигация**: GoRouter + ShellRoute + redirect по AuthState
+- **Офлайн-баннер**: ConnectivityCubit + ConnectivityBanner в shell
+- **Цвета**: строго по ТЗ — Primary #E63946, Secondary #588157, Accent #F4A261
+
+### Зависимости (pubspec.yaml)
+flutter_bloc, go_router, dio, drift + drift_flutter, flutter_secure_storage,
+connectivity_plus, freezed, go_router, intl, cached_network_image, shimmer
+
+### Тесты
+- `test/auth_bloc_test.dart` — BLoC-тесты через bloc_test + mocktail
+
+### CI
+- `.github/workflows/flutter_ci.yml` — analyze + test при push в mobile/
 
 ---
 
-## Следующий этап
+## Следующий шаг
 
-**Этап 2 — Мобильное приложение (Flutter)**
+**Этап 2, шаг 2 — Drift миграции + code generation**
 
-Начать с:
-1. Создание Flutter-проекта (`flutter create menugen_app`)
-2. Настройка Drift (SQLite) + SQLCipher для офлайн-БД
-3. Настройка BLoC state management
-4. Сетевой слой (Dio + JWT interceptor)
-5. Экраны: Вход → Dashboard → Генератор меню
+```bash
+cd mobile/menugen_app
+flutter pub run build_runner build --delete-conflicting-outputs
+```
+
+Затем:
+- Реализовать SyncService (push локальных изменений → сервер)
+- Экраны: Семья, Список покупок, Настройки
+- VK OAuth экран
 
 ---
 
 ## Репозиторий
 GitHub: (указать URL при пуше)
-
-## Стек бэкенда
-- Python 3.11 + Django 4.2 + DRF + JWT + drf-spectacular
-- PostgreSQL 15 + Redis 7 + Celery + celery-beat
-- ЮKassa SDK
-- Docker + GitHub Actions CI
