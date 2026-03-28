@@ -18,9 +18,9 @@ log = logging.getLogger(__name__)
 def check_fridge_expiry(self):
     """Создаёт уведомление, если продукт истекает через <=3 дней."""
     try:
+        from apps.family.models import FamilyMember
         from apps.fridge.models import FridgeItem
         from apps.notifications.models import Notification
-        from apps.family.models import FamilyMember
 
         cutoff = timezone.now().date() + timedelta(days=3)
         expiring = FridgeItem.objects.filter(

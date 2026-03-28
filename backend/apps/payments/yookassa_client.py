@@ -4,9 +4,9 @@
 """
 
 import uuid
-from decouple import config
 
 import yookassa
+from decouple import config
 from yookassa import Payment as YKPayment
 from yookassa.domain.exceptions import ApiError
 

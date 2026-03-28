@@ -3,6 +3,7 @@ from datetime import date
 from rest_framework import serializers
 
 from apps.recipes.serializers import RecipeListSerializer
+
 from .models import Menu, MenuItem, ShoppingItem, ShoppingList
 
 

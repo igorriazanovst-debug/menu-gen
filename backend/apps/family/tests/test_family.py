@@ -80,9 +80,11 @@ class TestFamilyInvite:
 
     def test_invite_limit_exceeded(self, client, head, other):
         plan = SubscriptionPlan.objects.create(code="free_test", name="Бесплатный", price=0, max_family_members=1)
-        from apps.subscriptions.models import Subscription
-        from django.utils import timezone
         import datetime
+
+        from django.utils import timezone
+
+        from apps.subscriptions.models import Subscription
 
         family = Family.objects.get(owner=head)
         Subscription.objects.create(

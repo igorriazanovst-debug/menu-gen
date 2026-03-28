@@ -1,4 +1,5 @@
 from django.db import models
+
 from apps.family.models import FamilyMember
 from apps.recipes.models import Recipe
 

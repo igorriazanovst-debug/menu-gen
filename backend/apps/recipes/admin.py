@@ -1,4 +1,5 @@
 from django.contrib import admin
+
 from .models import Recipe, RecipeAuthor
 
 
@@ -30,6 +31,7 @@ class RecipeAuthorAdmin(admin.ModelAdmin):
     @admin.action(description="Одобрить заявки")
     def approve(self, request, queryset):
         from django.utils import timezone
+
         from apps.users.models import User
 
         now = timezone.now()

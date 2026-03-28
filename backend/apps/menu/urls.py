@@ -1,13 +1,13 @@
 from django.urls import path
 
 from .views import (
-    MenuGenerateView,
-    MenuListView,
-    MenuDetailView,
-    MenuItemSwapView,
     MenuArchiveView,
-    ShoppingListView,
+    MenuDetailView,
+    MenuGenerateView,
+    MenuItemSwapView,
+    MenuListView,
     ShoppingItemToggleView,
+    ShoppingListView,
 )
 
 urlpatterns = [

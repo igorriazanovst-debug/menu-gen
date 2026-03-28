@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
+
 from .models import FridgeItem, Product
 from .serializers import (
     BarcodeLookupSerializer,
@@ -43,8 +44,9 @@ class FridgeListCreateView(generics.ListCreateAPIView):
         )
         expiring = self.request.query_params.get("expiring_days")
         if expiring:
-            from django.utils import timezone
             import datetime
+
+            from django.utils import timezone
 
             cutoff = timezone.now().date() + datetime.timedelta(days=int(expiring))
             qs = qs.filter(expiry_date__lte=cutoff, expiry_date__isnull=False)

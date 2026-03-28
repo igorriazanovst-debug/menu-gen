@@ -86,10 +86,12 @@ class UserMeView(generics.RetrieveUpdateAPIView):
 
 def _bootstrap_user(user):
     """Создаёт Family + Free подписку при регистрации."""
+    import datetime
+
+    from django.utils import timezone
+
     from apps.family.models import Family, FamilyMember
     from apps.subscriptions.models import Subscription, SubscriptionPlan
-    from django.utils import timezone
-    import datetime
 
     family = Family.objects.create(owner=user, name=f"Семья {user.name}")
     FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)

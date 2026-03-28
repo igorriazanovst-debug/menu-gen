@@ -1,6 +1,7 @@
 from django.db import models
-from apps.users.models import User
+
 from apps.family.models import Family, FamilyMember
+from apps.users.models import User
 
 
 class Specialist(models.Model):
