@@ -1,59 +1,68 @@
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/api/api_client.dart';
-import '../../../core/api/api_exception.dart';
 import '../../../core/db/app_database.dart';
-import '../../../core/models/menu.dart';
 
-part 'menu_event.dart';
-part 'menu_state.dart';
+abstract class MenuEvent extends Equatable {
+  const MenuEvent();
+  @override List<Object?> get props => [];
+}
+class MenuLoadRequested extends MenuEvent {}
+class MenuGenerateRequested extends MenuEvent {
+  final String startDate;
+  const MenuGenerateRequested({required this.startDate});
+  @override List<Object?> get props => [startDate];
+}
+
+abstract class MenuState extends Equatable {
+  const MenuState();
+  @override List<Object?> get props => [];
+}
+class MenuLoading extends MenuState { const MenuLoading(); }
+class MenuLoaded extends MenuState {
+  final List<Map<String, dynamic>> menus;
+  const MenuLoaded({required this.menus});
+  @override List<Object?> get props => [menus];
+}
+class MenuGenerating extends MenuState { const MenuGenerating(); }
+class MenuGenerated extends MenuState {
+  final Map<String, dynamic> menu;
+  const MenuGenerated(this.menu);
+  @override List<Object?> get props => [menu];
+}
+class MenuError extends MenuState {
+  final String message;
+  const MenuError(this.message);
+  @override List<Object?> get props => [message];
+}
 
 class MenuBloc extends Bloc<MenuEvent, MenuState> {
   final ApiClient apiClient;
   final AppDatabase db;
-
-  MenuBloc({required this.apiClient, required this.db}) : super(const MenuInitial()) {
+  MenuBloc({required this.apiClient, required this.db}) : super(const MenuLoading()) {
     on<MenuLoadRequested>(_onLoad);
     on<MenuGenerateRequested>(_onGenerate);
-    on<MenuItemSwapRequested>(_onSwap);
   }
 
-  Future<void> _onLoad(MenuLoadRequested event, Emitter<MenuState> emit) async {
+  dynamic _data(dynamic r) { try { return r.data; } catch (_) { return r; } }
+
+  Future<void> _onLoad(MenuLoadRequested e, Emitter<MenuState> emit) async {
     emit(const MenuLoading());
     try {
-      final resp = await apiClient.get('/menu/');
-      final menus = (resp.data['results'] as List)
-          .map((j) => Menu.fromJson(j as Map<String, dynamic>)).toList();
-      emit(MenuLoaded(menus: menus));
-    } catch (e) {
-      emit(MenuError(message: ApiException.fromDio(e).message));
-    }
+      final r = await apiClient.get('/menu/');
+      final d = _data(r);
+      final results = d is Map
+          ? (d['results'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : <Map<String, dynamic>>[];
+      emit(MenuLoaded(menus: results));
+    } catch (e) { emit(MenuError(e.toString())); }
   }
 
-  Future<void> _onGenerate(MenuGenerateRequested event, Emitter<MenuState> emit) async {
+  Future<void> _onGenerate(MenuGenerateRequested e, Emitter<MenuState> emit) async {
     emit(const MenuGenerating());
     try {
-      final resp = await apiClient.post('/menu/generate/', data: {
-        'period_days': event.periodDays,
-        'start_date': event.startDate,
-        if (event.country != null) 'country': event.country,
-      });
-      final menu = Menu.fromJson(resp.data as Map<String, dynamic>);
-      emit(MenuGenerated(menu: menu));
-    } catch (e) {
-      emit(MenuError(message: ApiException.fromDio(e).message));
-    }
-  }
-
-  Future<void> _onSwap(MenuItemSwapRequested event, Emitter<MenuState> emit) async {
-    try {
-      await apiClient.patch(
-        '/menu/\${event.menuId}/items/\${event.itemId}/',
-        data: {'recipe_id': event.recipeId},
-      );
-      add(MenuLoadRequested());
-    } catch (e) {
-      emit(MenuError(message: ApiException.fromDio(e).message));
-    }
+      final r = await apiClient.post('/menu/generate/', data: {'start_date': e.startDate});
+      emit(MenuGenerated(Map<String, dynamic>.from(_data(r) as Map)));
+    } catch (e) { emit(MenuError(e.toString())); }
   }
 }
