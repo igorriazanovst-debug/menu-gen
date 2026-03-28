@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import { useAppDispatch, useAppSelector } from "../../hooks/useAppDispatch";
 import { swapMenuItemSpecialist } from "../../store/specialistSlice";
-import api from "../../api/axios";
+import api from "../../api/client";
 
 interface MenuDetail {
   id: number;

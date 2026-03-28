@@ -4,7 +4,8 @@ import { Provider } from 'react-redux';
 import { store } from './store';
 import { useAppDispatch, useAppSelector } from './hooks/useAppDispatch';
 import { initAuth } from './store/slices/authSlice';
-import { AppLayout }         from './components/layout/AppLayout';
+
+import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage }         from './pages/Auth/LoginPage';
 import { DashboardPage }     from './pages/Dashboard/DashboardPage';
 import { RecipesPage }       from './pages/Recipes/RecipesPage';
@@ -13,11 +14,6 @@ import { FamilyPage }        from './pages/Family/FamilyPage';
 import { DiaryPage }         from './pages/Diary/DiaryPage';
 import { SubscriptionsPage } from './pages/Subscriptions/SubscriptionsPage';
 import { ProfilePage }       from './pages/Profile/ProfilePage';
-import { SpecialistDashboardPage } from './pages/specialist/SpecialistDashboardPage';
-import { SpecialistRegisterPage }  from './pages/specialist/SpecialistRegisterPage';
-import { ClientDetailPage }        from './pages/specialist/ClientDetailPage';
-import { ClientMenuEditorPage }    from './pages/specialist/ClientMenuEditorPage';
-import { RecommendationFormPage }  from './pages/specialist/RecommendationFormPage';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, initialized } = useAppSelector((s) => s.auth);
@@ -32,6 +28,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 const AppRoutes: React.FC = () => {
   const dispatch = useAppDispatch();
   useEffect(() => { dispatch(initAuth()); }, [dispatch]);
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -44,11 +41,6 @@ const AppRoutes: React.FC = () => {
         <Route path="diary"         element={<DiaryPage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="profile"       element={<ProfilePage />} />
-        <Route path="specialist"                                          element={<SpecialistDashboardPage />} />
-        <Route path="specialist/register"                                 element={<SpecialistRegisterPage />} />
-        <Route path="specialist/clients/:familyId"                        element={<ClientDetailPage />} />
-        <Route path="specialist/clients/:familyId/menus/:menuId"          element={<ClientMenuEditorPage />} />
-        <Route path="specialist/clients/:familyId/recommendations/new"    element={<RecommendationFormPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

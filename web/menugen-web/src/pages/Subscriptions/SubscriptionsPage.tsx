@@ -15,8 +15,13 @@ export const SubscriptionsPage: React.FC = () => {
 
   useEffect(() => {
     Promise.allSettled([
-      subscriptionsApi.plans().then((r) => setPlans(r.data)),
-      subscriptionsApi.current().then((r) => setCurrent(r.data)),
+      subscriptionsApi.plans().then((r) => {
+        const d = r.data as any;
+        if (Array.isArray(d)) setPlans(d);
+        else if (d && Array.isArray(d.results)) setPlans(d.results);
+        else setPlans([]);
+      }),
+      subscriptionsApi.current().then((r) => setCurrent(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -51,47 +56,53 @@ export const SubscriptionsPage: React.FC = () => {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {plans.map((plan) => {
-          const isCurrent = current?.plan.code === plan.code;
-          return (
-            <Card key={plan.id}
-              className={['p-5 flex flex-col', isCurrent ? 'border-2 border-tomato' : ''].join(' ')}>
-              {isCurrent && (
-                <div className="text-xs text-tomato font-semibold mb-2">✓ ТЕКУЩИЙ ТАРИФ</div>
-              )}
-              <h3 className="font-bold text-chocolate text-lg">{plan.name}</h3>
-              <div className="mt-1 mb-4">
-                <span className="text-3xl font-bold text-tomato">
-                  {plan.price === '0.00' ? 'Free' : `${parseInt(plan.price)} ₽`}
-                </span>
-                {plan.price !== '0.00' && (
-                  <span className="text-gray-400 text-sm ml-1">/ {plan.period === 'month' ? 'мес' : 'год'}</span>
+      {plans.length === 0 ? (
+        <p className="text-gray-400 text-sm">Тарифы недоступны.</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {plans.map((plan) => {
+            const isCurrent = current?.plan.code === plan.code;
+            return (
+              <Card key={plan.id}
+                className={['p-5 flex flex-col', isCurrent ? 'border-2 border-tomato' : ''].join(' ')}>
+                {isCurrent && (
+                  <div className="text-xs text-tomato font-semibold mb-2">✓ ТЕКУЩИЙ ТАРИФ</div>
                 )}
-              </div>
-              <ul className="space-y-1 text-sm text-gray-600 flex-1">
-                <li>👥 До {plan.max_family_members} участника</li>
-                {(plan.features as any).country && <li>🌍 Фильтр по стране</li>}
-                {(plan.features as any).calories && <li>🔥 Учёт калорийности</li>}
-                {(plan.features as any).fridge && <li>🧊 Холодильник</li>}
-                {(plan.features as any).allergies_family && <li>⚕️ Аллергии семьи</li>}
-              </ul>
-              <div className="mt-4">
-                {isCurrent ? (
-                  <Button variant="ghost" className="w-full" disabled>Текущий</Button>
-                ) : plan.price === '0.00' ? (
-                  <Button variant="secondary" className="w-full" disabled>Бесплатно</Button>
-                ) : (
-                  <Button className="w-full" loading={subscribing === plan.code}
-                    onClick={() => handleSubscribe(plan)}>
-                    Подключить
-                  </Button>
-                )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+                <h3 className="font-bold text-chocolate text-lg">{plan.name}</h3>
+                <div className="mt-1 mb-4">
+                  <span className="text-3xl font-bold text-tomato">
+                    {plan.price === '0.00' ? 'Free' : `${parseInt(plan.price)} ₽`}
+                  </span>
+                  {plan.price !== '0.00' && (
+                    <span className="text-gray-400 text-sm ml-1">
+                      / {plan.period === 'month' ? 'мес' : 'год'}
+                    </span>
+                  )}
+                </div>
+                <ul className="space-y-1 text-sm text-gray-600 flex-1">
+                  <li>👥 До {plan.max_family_members} участника</li>
+                  {(plan.features as any)?.country && <li>🌍 Фильтр по стране</li>}
+                  {(plan.features as any)?.calories && <li>🔥 Учёт калорийности</li>}
+                  {(plan.features as any)?.fridge && <li>🧊 Холодильник</li>}
+                  {(plan.features as any)?.allergies_family && <li>⚕️ Аллергии семьи</li>}
+                </ul>
+                <div className="mt-4">
+                  {isCurrent ? (
+                    <Button variant="ghost" className="w-full" disabled>Текущий</Button>
+                  ) : plan.price === '0.00' ? (
+                    <Button variant="secondary" className="w-full" disabled>Бесплатно</Button>
+                  ) : (
+                    <Button className="w-full" loading={subscribing === plan.code}
+                      onClick={() => handleSubscribe(plan)}>
+                      Подключить
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

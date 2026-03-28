@@ -18,8 +18,8 @@ export const RecipesPage: React.FC = () => {
     setLoading(true);
     try {
       const { data } = await recipesApi.list({ search: q || undefined, page: p });
-      setRecipes(data.results ?? []);
-      setTotal(data.count ?? 0);
+      setRecipes(data.results);
+      setTotal(data.count);
     } finally { setLoading(false); }
   }, [search, page]);
 
@@ -59,6 +59,7 @@ export const RecipesPage: React.FC = () => {
         </div>
       )}
 
+      {/* Pagination */}
       {total > 20 && (
         <div className="flex justify-center gap-2 mt-4">
           {page > 1 && (
@@ -73,13 +74,14 @@ export const RecipesPage: React.FC = () => {
         </div>
       )}
 
+      {/* Recipe modal */}
       {selected && <RecipeModal recipe={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 };
 
 const RecipeCard: React.FC<{ recipe: Recipe; onClick: () => void }> = ({ recipe, onClick }) => (
-  <Card className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden">
+  <Card className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden" >
     <div onClick={onClick}>
       {recipe.image_url ? (
         <img src={recipe.image_url} alt={recipe.title}
@@ -100,8 +102,8 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: () => void }> = ({ recipe,
             </span>
           )}
         </div>
-        {(recipe.categories ?? []).slice(0, 2).map((c) => (
-          <Badge key={c} color="gray">{c}</Badge>
+        {recipe.categories.slice(0, 2).map((c) => (
+          <Badge key={c} color="gray" >{c}</Badge>
         ))}
       </div>
     </div>
@@ -136,11 +138,11 @@ const RecipeModal: React.FC<{ recipe: Recipe; onClose: () => void }> = ({ recipe
             ))}
           </div>
         )}
-        {(recipe.ingredients ?? []).length > 0 && (
+        {recipe.ingredients.length > 0 && (
           <div className="mt-4">
             <h3 className="font-semibold mb-2">Ингредиенты</h3>
             <ul className="space-y-1">
-              {(recipe.ingredients ?? []).map((ing, i) => (
+              {recipe.ingredients.map((ing, i) => (
                 <li key={i} className="text-sm flex gap-2">
                   <span className="text-tomato">•</span>
                   <span>{ing.name}</span>
@@ -150,11 +152,11 @@ const RecipeModal: React.FC<{ recipe: Recipe; onClose: () => void }> = ({ recipe
             </ul>
           </div>
         )}
-        {(recipe.steps ?? []).length > 0 && (
+        {recipe.steps.length > 0 && (
           <div className="mt-4">
             <h3 className="font-semibold mb-2">Приготовление</h3>
             <ol className="space-y-3">
-              {(recipe.steps ?? []).map((step, i) => (
+              {recipe.steps.map((step, i) => (
                 <li key={i} className="flex gap-3 text-sm">
                   <span className="shrink-0 w-6 h-6 rounded-full bg-tomato text-white text-xs flex items-center justify-center font-bold">
                     {i + 1}

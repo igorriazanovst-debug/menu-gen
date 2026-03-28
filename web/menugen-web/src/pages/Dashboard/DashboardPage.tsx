@@ -21,8 +21,13 @@ export const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     Promise.allSettled([
-      menuApi.list().then((r) => setMenus(r.data.results)),
-      subscriptionsApi.current().then((r) => setSub(r.data)),
+      menuApi.list().then((r) => {
+        const d = r.data as any;
+        if (Array.isArray(d)) setMenus(d);
+        else if (Array.isArray(d?.results)) setMenus(d.results);
+        else setMenus([]);
+      }),
+      subscriptionsApi.current().then((r) => setSub(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -33,11 +38,12 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-chocolate">Добро пожаловать, {user?.name}! 👋</h1>
+        <h1 className="text-2xl font-bold text-chocolate">
+          Добро пожаловать, {user?.name}! 👋
+        </h1>
         <p className="text-gray-500 text-sm mt-1">Планируйте питание легко и вкусно</p>
       </div>
 
-      {/* Quick stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="p-4">
           <p className="text-sm text-gray-500">Активное меню</p>
@@ -69,23 +75,15 @@ export const DashboardPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Quick actions */}
       <Card className="p-6">
         <h2 className="font-semibold text-chocolate mb-4">Быстрые действия</h2>
         <div className="flex flex-wrap gap-3">
-          <Link to="/menu">
-            <Button>📋 Перейти к меню</Button>
-          </Link>
-          <Link to="/recipes">
-            <Button variant="secondary">📖 Каталог рецептов</Button>
-          </Link>
-          <Link to="/family">
-            <Button variant="ghost">👨‍👩‍👧 Управление семьёй</Button>
-          </Link>
+          <Link to="/menu"><Button>📋 Перейти к меню</Button></Link>
+          <Link to="/recipes"><Button variant="secondary">📖 Каталог рецептов</Button></Link>
+          <Link to="/family"><Button variant="ghost">👨‍👩‍👧 Управление семьёй</Button></Link>
         </div>
       </Card>
 
-      {/* Active menu preview */}
       {activeMenu && (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
@@ -100,10 +98,11 @@ export const DashboardPage: React.FC = () => {
 };
 
 const TodayMeals: React.FC<{ menu: Menu }> = ({ menu }) => {
+  const items = menu.items ?? [];
   const today = new Date();
   const start = new Date(menu.start_date);
   const dayOffset = Math.floor((today.getTime() - start.getTime()) / 86400000);
-  const todayItems = menu.items.filter((i) => i.day_offset === dayOffset);
+  const todayItems = items.filter((i) => i.day_offset === dayOffset);
 
   if (!todayItems.length) return <p className="text-gray-400 text-sm">Нет блюд на сегодня</p>;
 

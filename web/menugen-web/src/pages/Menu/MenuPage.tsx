@@ -23,7 +23,10 @@ export const MenuPage: React.FC = () => {
     setLoading(true);
     try {
       const { data } = await menuApi.list();
-      setMenus(data.results);
+      const d = data as any;
+      if (Array.isArray(d)) setMenus(d);
+      else if (Array.isArray(d?.results)) setMenus(d.results);
+      else setMenus([]);
       if (data.results.length) setActiveMenuId(data.results[0].id);
     } finally { setLoading(false); }
   };
@@ -121,7 +124,7 @@ const MenuGrid: React.FC<{ menu: Menu; onRefresh: () => void }> = ({ menu, onRef
       {days.map((day) => {
         const date = new Date(menu.start_date);
         date.setDate(date.getDate() + day);
-        const dayItems = menu.items.filter((i) => i.day_offset === day);
+        const dayItems = (menu.items ?? []).filter((i) => i.day_offset === day);
         return (
           <Card key={day} className="p-4">
             <h3 className="font-semibold text-chocolate mb-3">
