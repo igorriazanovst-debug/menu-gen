@@ -32,6 +32,7 @@ from apps.recipes.models import Recipe  # noqa: E402 (after django.setup)
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+
 def _parse_json(value, fallback):
     if not value:
         return fallback
@@ -75,6 +76,7 @@ def _row_to_recipe(row: sqlite3.Row) -> dict:
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+
 def migrate(db_path: str, batch_size: int, dry_run: bool):
     if not os.path.exists(db_path):
         log.error("Файл не найден: %s", db_path)
@@ -83,9 +85,7 @@ def migrate(db_path: str, batch_size: int, dry_run: bool):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    rows = conn.execute(
-        "SELECT * FROM recipes WHERE level='details' AND title IS NOT NULL"
-    ).fetchall()
+    rows = conn.execute("SELECT * FROM recipes WHERE level='details' AND title IS NOT NULL").fetchall()
     conn.close()
 
     log.info("Найдено записей в SQLite: %d", len(rows))
@@ -98,9 +98,7 @@ def migrate(db_path: str, batch_size: int, dry_run: bool):
         return
 
     # Загружаем уже существующие legacy_id чтобы не дублировать
-    existing = set(
-        Recipe.objects.filter(legacy_id__isnull=False).values_list("legacy_id", flat=True)
-    )
+    existing = set(Recipe.objects.filter(legacy_id__isnull=False).values_list("legacy_id", flat=True))
     log.info("Уже в PostgreSQL: %d", len(existing))
 
     to_insert = [r for r in rows if r["id"] not in existing]
