@@ -144,11 +144,11 @@ class TestProductSearch:
         client.force_authenticate(user)
         resp = client.get(reverse("product-search"), {"q": "Творог"})
         assert resp.status_code == 200
-        assert len(resp.data) == 2
+        assert len(resp.data["results"]) == 2
 
     def test_search_too_short(self, client, user_with_family):
         user, _ = user_with_family
         client.force_authenticate(user)
         resp = client.get(reverse("product-search"), {"q": "М"})
         assert resp.status_code == 200
-        assert len(resp.data) == 0
+        assert len(resp.data["results"]) == 0

@@ -36,14 +36,14 @@ class TestPlanList:
     def test_list_public(self, client, setup):
         resp = client.get(reverse("subscription-plans"))
         assert resp.status_code == 200
-        assert len(resp.data) >= 1
+        assert resp.data["count"] >= 1
 
     def test_inactive_plan_hidden(self, client, setup):
         _, _, plan = setup
         plan.is_active = False
         plan.save()
         resp = client.get(reverse("subscription-plans"))
-        assert all(p["code"] != "basic" for p in resp.data)
+        assert all(p["code"] != "basic" for p in resp.data["results"])
 
 
 @pytest.mark.django_db
