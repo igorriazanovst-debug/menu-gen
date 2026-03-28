@@ -2,7 +2,7 @@
 
 **Проект:** Генератор меню (MenuGen)
 **Дата:** Март 2026
-**Репозиторий:** https://github.com/igorriazanovst-debug/menugen
+**Репозиторий:** https://github.com/igorriazanovst-debug/menu-gen
 
 ---
 
@@ -45,39 +45,58 @@ cd web\menugen-web
 npm start
 ```
 
-### Если порты заняты
-```powershell
-Stop-Service postgresql-x64-15
-Stop-Service redis*
-taskkill /F /IM redis-server.exe
-docker compose up -d
-```
-
 ### Сервисы
 | Сервис | URL |
 |---|---|
 | Swagger | http://localhost:8000/api/v1/docs/ |
 | Django Admin | http://localhost:8000/admin/ |
-| API | http://localhost:8000/api/v1/ |
 | React web | http://localhost:3000 |
-
-### Тестовый пользователь
-- Email: i.ryazanov78@yandex.ru
-- Семья создана (family id: 1, role: head)
 
 ---
 
 ## Этап 1: Бэкенд — ✅
 
-**Стек:** Python 3.11, Django 4.2, DRF, JWT, drf-spectacular, PostgreSQL 15, Redis 7, Celery
+**Стек:** Python 3.11, Django 4.2, DRF, JWT, PostgreSQL 15, Redis 7, Celery
 **Файлов:** 155 Python, 92 теста, 0 ошибок `manage.py check`
 
-### Важные особенности API
-- `GET /menu/` — возвращает список без пагинации
-- `GET /diary/` — возвращает список без пагинации
-- `GET /subscriptions/current/` — 404 если нет подписки (норм)
-- `GET /subscriptions/plans/` — возвращает список без пагинации
-- `Family.objects.create()` требует `owner=user` обязательно
+---
+
+## Этап 2: Flutter мобильное приложение — ✅
+
+**Стек:** Flutter 3.22, Dart, BLoC, Drift, flutter_secure_storage, go_router, dio
+
+### Важные особенности
+- `lib/` был в `.gitignore` (Python-правило) — исправлено добавлением `!mobile/menugen_app/lib/`
+- `.freezed.dart` и `.g.dart` файлы были с битыми `_\$` (экранирование Windows Git) — удалены, модели переписаны как plain Dart классы
+- `AppDatabase` — абстрактный интерфейс (`abstract class AppDatabase { Future<void> close(); }`) для мокирования в тестах
+- `ApiClient` — абстрактный интерфейс с `Future<dynamic>` (не `Future<Response<dynamic>>`) — иначе моки в тестах не работают
+- Bloc-файлы НЕ используют `ApiException.fromDio` — только `e.toString()`
+- `_data(dynamic r)` хелпер в каждом bloc: `try { return r.data; } catch (_) { return r; }` — для совместимости с MockResponse в тестах
+
+### Расположение файлов
+```
+lib/core/api/api_client.dart      — абстрактный ApiClient (Future<dynamic>)
+lib/core/api/token_storage.dart   — абстрактный TokenStorage
+lib/core/api/api_exception.dart   — простой ApiException (без .fromDio)
+lib/core/db/app_database.dart     — абстрактный AppDatabase
+lib/core/models/                  — plain Dart классы (без freezed/json_serializable)
+lib/features/auth/bloc/           — auth_bloc.dart (event+state+bloc в одном файле)
+lib/features/family/bloc/         — family_bloc.dart
+lib/features/fridge/bloc/         — fridge_bloc.dart
+lib/features/menu/bloc/           — menu_bloc.dart
+lib/features/diary/bloc/          — diary_bloc.dart
+lib/features/recipes/bloc/        — recipes_bloc.dart
+```
+
+### Flutter CI — ✅ (CI #18, commit 226fc05)
+```
+.github/workflows/flutter_ci.yml
+```
+
+### Важно для PowerShell скриптов
+- Всегда использовать абсолютный путь: `$r = "C:\Temp\2026\menu-gen\menu-gen\mobile\menugen_app\lib"`
+- Запись файлов: `[IO.File]::WriteAllText("$r\path\file.dart", $content, [Text.UTF8Encoding]::new($false))`
+- После записи: `git add -f mobile/menugen_app/lib` (нужен `-f` из-за `.gitignore`)
 
 ---
 
@@ -87,34 +106,23 @@ docker compose up -d
 
 ### Важные особенности
 - Tailwind **v3** (не v4!) — иначе ломается PostCSS
-- Хуки: `src/hooks/useAppDispatch.ts` (не `store/hooks`)
-- HTTP-клиент: `src/api/client.ts` (не `api/axios`)
+- Хуки: `src/hooks/useAppDispatch.ts`
+- HTTP-клиент: `src/api/client.ts`
 - `menu.items`, `recipe.ingredients`, `recipe.steps`, `recipe.categories` — везде `?? []`
-
-### Запуск
-```powershell
-cd web\menugen-web
-npm install --legacy-peer-deps
-npm start
-```
 
 ---
 
 ## Этап 5: Кабинет специалиста — ✅
 
-Бэкенд: `backend/apps/specialists/` — serializers.py, views.py, urls.py заполнены полностью.
-
-React: `src/store/specialistSlice.ts` + `src/pages/specialist/` (5 страниц S-01..S-05).
-
-Маршруты: `/specialist`, `/specialist/register`, `/specialist/clients/:familyId`, `/specialist/clients/:familyId/menus/:menuId`, `/specialist/clients/:familyId/recommendations/new`
+Бэкенд: `backend/apps/specialists/`
+React: `src/store/specialistSlice.ts` + `src/pages/specialist/` (5 страниц)
+Маршруты: `/specialist`, `/specialist/register`, `/specialist/clients/:familyId`, и др.
 
 ---
 
-## Этап 6: React Jest тесты — ✅ (47/47)
+## Этап 6: Тесты — 🔄
 
-### Конфигурация (package.json)
-CRA 5 + react-router-dom v7 + Windows — много подводных камней. Итоговая рабочая конфигурация:
-
+### React Jest тесты — ✅ (47/47)
 ```json
 "jest": {
   "transformIgnorePatterns": ["node_modules/(?!(react-router|react-router-dom)/)"],
@@ -126,48 +134,13 @@ CRA 5 + react-router-dom v7 + Windows — много подводных камн
   }
 }
 ```
+**ВАЖНО:** секцию `jest` в package.json писать только через `[System.IO.File]::WriteAllText`
 
-**ВАЖНО:** секцию `jest` в package.json писать только через `[System.IO.File]::WriteAllText` — PowerShell `ConvertTo-Json` экранирует `<` и `>` в Unicode что ломает `<rootDir>`.
+### Flutter тесты — ✅ CI зелёный (Flutter CI #18)
+Тесты: auth, family, fridge, menu, diary, recipes bloc tests
 
-### Файлы моков
-```
-src/api/__mocks__/auth.js    — мок authApi (CommonJS)
-src/api/__mocks__/client.js  — мок axios client (CommonJS)
-src/setupTests.js            — полифил TextEncoder/TextDecoder
-```
-
-### Расположение тестов
-```
-src/store/slices/authSlice.test.ts       — 16 тестов
-src/store/specialistSlice.test.ts        — 15 тестов
-src/pages/Auth/LoginPage.test.tsx        — 10 тестов
-src/components/layout/Sidebar.test.tsx   — 6 тестов
-```
-
-### Запуск тестов
-```powershell
-cd web\menugen-web
-npm test -- --watchAll=false
-npm test -- --watchAll=false --coverage
-```
-
-### Особенности компонентов (важно для тестов)
-- Кнопка при `loading=true` показывает "Загрузка..." (не "Войти")
-- Label поля пароля: `for="пароль"` — искать по точному тексту `'Пароль'`, не regex
-- Файлы тестов сохранять только через `[System.IO.File]::WriteAllText` с UTF-8 без BOM
-
----
-
-## Что осталось
-
-### Этап 4: Интеграции
-- VK OAuth (мобайл + веб)
-- Firebase Cloud Messaging
-- Публикация меню в VK
-- Ссылки на доставку (Яндекс/СберМаркет/ВкусВилл)
-
-### Этап 6: Продолжение
-- Flutter тесты (>50%)
+### Что осталось
+- Flutter тесты покрытие >50% (добавить больше тестов)
 - Production: nginx + SSL + Яндекс.Облако/Selectel
 - App Store / Google Play / RuStore
-- CI/CD pipeline (добавить React тесты в .github/workflows/ci.yml)
+- Этап 4: VK OAuth, Firebase Cloud Messaging, доставка
