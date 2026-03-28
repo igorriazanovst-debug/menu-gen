@@ -28,8 +28,16 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Show pubspec
+        run: cat pubspec.yaml
+        working-directory: mobile/menugen_app
+
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get -v
+        working-directory: mobile/menugen_app
+
+      - name: List lib
+        run: ls -la lib/core/api/ || echo "NOT FOUND"
         working-directory: mobile/menugen_app
 
       - name: Run tests
