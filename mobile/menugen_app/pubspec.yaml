@@ -1,5 +1,5 @@
 name: menugen_app
-description: Генератор меню — персонализированное планирование питания
+description: Р“РµРЅРµСЂР°С‚РѕСЂ РјРµРЅСЋ вЂ” РїРµСЂСЃРѕРЅР°Р»РёР·РёСЂРѕРІР°РЅРЅРѕРµ РїР»Р°РЅРёСЂРѕРІР°РЅРёРµ РїРёС‚Р°РЅРёСЏ
 
 publish_to: "none"
 version: 1.0.0+1
@@ -23,7 +23,6 @@ dependencies:
   drift: ^2.18.0
   drift_flutter: ^0.2.1
   sqlite3_flutter_libs: ^0.5.24
-  sqlcipher_flutter_libs: ^0.5.4
   path_provider: ^2.1.3
   path: ^1.9.0
 
