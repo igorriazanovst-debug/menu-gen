@@ -46,6 +46,7 @@ class YookassaWebhookView(APIView):
         # ЮKassa подписывает тело HMAC-SHA256
         signature = request.headers.get("X-Yookassa-Signature", "")
         from django.conf import settings as django_settings
+
         secret = getattr(django_settings, "YOOKASSA_SECRET_KEY", config("YOOKASSA_SECRET_KEY", default=""))
         body = request.body
 
