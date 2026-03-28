@@ -5,7 +5,6 @@ from typing import List, Optional
 from apps.fridge.models import FridgeItem
 from apps.recipes.models import Recipe
 
-
 MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"]
 
 # Тарифные флаги, влияющие на алгоритм

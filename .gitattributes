@@ -1,0 +1,2 @@
+﻿* text=auto eol=lf
+backend/**/*.py text eol=lf

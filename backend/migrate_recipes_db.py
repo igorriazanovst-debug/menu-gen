@@ -29,7 +29,6 @@ django.setup()
 
 from apps.recipes.models import Recipe  # noqa: E402 (after django.setup)
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
