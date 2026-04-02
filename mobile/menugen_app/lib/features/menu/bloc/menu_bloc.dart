@@ -10,8 +10,16 @@ abstract class MenuEvent extends Equatable {
 class MenuLoadRequested extends MenuEvent {}
 class MenuGenerateRequested extends MenuEvent {
   final String startDate;
-  const MenuGenerateRequested({required this.startDate});
-  @override List<Object?> get props => [startDate];
+  final int periodDays;
+  final String? country;
+  final int? maxCookTime;
+  const MenuGenerateRequested({
+    required this.startDate,
+    this.periodDays = 7,
+    this.country,
+    this.maxCookTime,
+  });
+  @override List<Object?> get props => [startDate, periodDays, country, maxCookTime];
 }
 
 abstract class MenuState extends Equatable {
@@ -43,7 +51,6 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
     on<MenuLoadRequested>(_onLoad);
     on<MenuGenerateRequested>(_onGenerate);
   }
-
   dynamic _data(dynamic r) { try { return r.data; } catch (_) { return r; } }
 
   Future<void> _onLoad(MenuLoadRequested e, Emitter<MenuState> emit) async {
@@ -51,17 +58,28 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
     try {
       final r = await apiClient.get('/menu/');
       final d = _data(r);
-      final results = d is Map
+      final list = d is Map
           ? (d['results'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList()
           : <Map<String, dynamic>>[];
-      emit(MenuLoaded(menus: results));
+      if (list.isEmpty) { emit(MenuLoaded(menus: [])); return; }
+      // Загружаем детали первого (последнего) меню
+      final firstId = list.first['id'];
+      final detail = await apiClient.get('/menu/$firstId/');
+      final detailMap = Map<String, dynamic>.from(_data(detail) as Map);
+      emit(MenuLoaded(menus: [detailMap]));
     } catch (e) { emit(MenuError(e.toString())); }
   }
 
   Future<void> _onGenerate(MenuGenerateRequested e, Emitter<MenuState> emit) async {
     emit(const MenuGenerating());
     try {
-      final r = await apiClient.post('/menu/generate/', data: {'start_date': e.startDate});
+      final data = <String, dynamic>{
+        'start_date': e.startDate,
+        'period_days': e.periodDays,
+      };
+      if (e.country != null) data['country'] = e.country;
+      if (e.maxCookTime != null) data['max_cook_time'] = e.maxCookTime;
+      final r = await apiClient.post('/menu/generate/', data: data);
       emit(MenuGenerated(Map<String, dynamic>.from(_data(r) as Map)));
     } catch (e) { emit(MenuError(e.toString())); }
   }

@@ -1,3 +1,3 @@
-abstract class AppDatabase {
-  Future<void> close();
+class AppDatabase {
+  Future<void> close() async {}
 }

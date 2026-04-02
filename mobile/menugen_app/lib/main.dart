@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'core/api/api_client.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'core/api/dio_api_client.dart';
 import 'core/api/token_storage.dart';
 import 'core/connectivity/connectivity_cubit.dart';
 import 'core/db/app_database.dart';
@@ -15,41 +17,29 @@ import 'features/diary/bloc/diary_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('ru', null);
   final tokenStorage = TokenStorage();
   final db = AppDatabase();
-  final apiClient = ApiClient(tokenStorage: tokenStorage);
+  final apiClient = DioApiClient(tokenStorage: tokenStorage);
   final syncService = SyncService(apiClient: apiClient, db: db);
   syncService.start();
-
-  runApp(MenuGenApp(
-    tokenStorage: tokenStorage,
-    db: db,
-    apiClient: apiClient,
-    syncService: syncService,
-  ));
+  runApp(MenuGenApp(tokenStorage: tokenStorage, db: db, apiClient: apiClient, syncService: syncService));
 }
 
 class MenuGenApp extends StatelessWidget {
   final TokenStorage tokenStorage;
   final AppDatabase db;
-  final ApiClient apiClient;
+  final DioApiClient apiClient;
   final SyncService syncService;
 
-  const MenuGenApp({
-    super.key,
-    required this.tokenStorage,
-    required this.db,
-    required this.apiClient,
-    required this.syncService,
-  });
+  const MenuGenApp({super.key, required this.tokenStorage, required this.db, required this.apiClient, required this.syncService});
 
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
         BlocProvider(create: (_) => ConnectivityCubit()),
-        BlocProvider(create: (_) => AuthBloc(apiClient: apiClient, tokenStorage: tokenStorage)
-          ..add(const AuthCheckRequested())),
+        BlocProvider(create: (_) => AuthBloc(apiClient: apiClient, tokenStorage: tokenStorage)..add(const AuthCheckRequested())),
         BlocProvider(create: (_) => MenuBloc(apiClient: apiClient, db: db)),
         BlocProvider(create: (_) => RecipesBloc(apiClient: apiClient, db: db)),
         BlocProvider(create: (_) => FridgeBloc(apiClient: apiClient, db: db)),
@@ -57,10 +47,7 @@ class MenuGenApp extends StatelessWidget {
       ],
       child: BlocBuilder<AuthBloc, AuthState>(
         builder: (context, authState) {
-          final router = AppRouter.create(
-            authState: authState,
-            apiClient: apiClient,
-          );
+          final router = AppRouter.create(authState: authState, apiClient: apiClient);
           return MaterialApp.router(
             title: 'MenuGen',
             theme: AppTheme.light(),
@@ -68,6 +55,13 @@ class MenuGenApp extends StatelessWidget {
             themeMode: ThemeMode.system,
             routerConfig: router,
             debugShowCheckedModeBanner: false,
+            locale: const Locale('ru'),
+            supportedLocales: const [Locale('ru'), Locale('en')],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
           );
         },
       ),

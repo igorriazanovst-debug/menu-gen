@@ -94,10 +94,19 @@ class MenuGenerator:
 
         max_time = self.filters.get("max_cook_time")
         if max_time:
-            # cook_time хранится как строка, фильтруем по содержанию числа
+            # cook_time хранится как строка "X мин", фильтруем в Python после загрузки
             qs = qs.exclude(cook_time="")
 
-        return list(qs.order_by("?")[:500])  # случайная выборка 500
+        recipes = list(qs.order_by("?")[:1000])
+        max_time = self.filters.get("max_cook_time")
+        if max_time:
+            def _minutes(ct):
+                try:
+                    return int(str(ct).split()[0])
+                except Exception:
+                    return 9999
+            recipes = [r for r in recipes if _minutes(r.cook_time) <= int(max_time)]
+        return recipes[:500]
 
     def _get_fridge_ingredient_names(self) -> set:
         if not self.features.get("fridge"):
