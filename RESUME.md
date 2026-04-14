@@ -56,32 +56,33 @@ npm start
 После каждого рестарта нужно:
 1. Узнать новый IP: `ipconfig | findstr "192.168"`
 2. Обновить `.env`: `ALLOWED_HOSTS=localhost,127.0.0.1,<новый_IP>`
-3. Перезапустить бэкенд: `docker compose restart backend`
+3. Перезапустить **полностью**: `docker compose down && docker compose up -d` (НЕ просто restart!)
 4. Пересобрать APK: `flutter build apk --debug --dart-define=API_BASE_URL=http://<новый_IP>:8000/api/v1`
+
+### ⚠️ ALLOWED_HOSTS — важно
+`docker compose restart backend` НЕ подхватывает изменения `.env`.
+Всегда использовать `docker compose down && docker compose up -d`.
 
 ---
 
 ## Сборка APK
 
-### Быстрая сборка (из папки android)
-```powershell
-cd C:\Temp\2026\menu-gen\menu-gen\mobile\menugen_app\android
-.\gradlew assembleDebug -PAPI_BASE_URL=http://<IP>:8000/api/v1
-```
-APK: `mobile\menugen_app\build\app\outputs\flutter-apk\app-debug.apk`
-
-### Через скрипт (медленнее, но передаёт dart-define правильно)
 ```powershell
 cd C:\Temp\2026\menu-gen\menu-gen\mobile\menugen_app
 flutter build apk --debug --dart-define=API_BASE_URL=http://<IP>:8000/api/v1
 ```
+APK: `mobile\menugen_app\build\app\outputs\flutter-apk\app-debug.apk`
 
 ### Конфиг URL в Flutter
 `lib/core/config/app_config.dart` — читает `API_BASE_URL` из `dart-define`
 
+### ⚠️ PowerShell и кодировка
+PS-скрипты с кириллицей в строках портят кодировку dart-файлов.
+Dart-файлы с кириллицей создавать напрямую как файл-артефакт и копировать вручную.
+
 ---
 
-## Android конфигурация (после фиксов)
+## Android конфигурация
 
 | Файл | Значение |
 |---|---|
@@ -93,7 +94,7 @@ flutter build apk --debug --dart-define=API_BASE_URL=http://<IP>:8000/api/v1
 | `pubspec.yaml` | `dependency_overrides: sqlite3_flutter_libs: 0.5.20` |
 | `gradle.properties` | `android.jetifier.enabled=true` |
 
-**Java:** Android Studio JBR 21 (`C:\Program Files\Android\Android Studio\jbr`)
+**Java:** Android Studio JBR 21
 ```powershell
 flutter config --jdk-dir "C:\Program Files\Android\Android Studio\jbr"
 ```
@@ -116,3 +117,19 @@ flutter config --jdk-dir "C:\Program Files\Android\Android Studio\jbr"
 - `AppDatabase` — абстрактный интерфейс для мокирования в тестах
 - `ApiClient` — абстрактный интерфейс с `Future<dynamic>`
 - Bloc-файлы НЕ используют `ApiException.fromDio` — только `e.toString()`
+
+### Архитектура роутера (app_router.dart)
+- `FamilyBloc` НЕ в `MultiBlocProvider` в `main.dart`
+- `FamilyBloc` создаётся прямо в роутере через `BlocProvider` с `..add(FamilyLoadRequested())`
+- `FamilyScreen` — `StatelessWidget` без `initState`, загрузка через `BlocProvider.create` в роутере
+- Аналогично нужно поступать с любым экраном вне `ShellRoute`, которому нужен свой Bloc
+
+```dart
+GoRoute(
+  path: '/family',
+  builder: (_, __) => BlocProvider(
+    create: (_) => FamilyBloc(apiClient: apiClient)..add(const FamilyLoadRequested()),
+    child: const FamilyScreen(),
+  ),
+),
+```

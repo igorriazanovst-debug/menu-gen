@@ -1,21 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/family_bloc.dart';
-import '../../../core/api/api_client.dart';
 
-class FamilyScreen extends StatefulWidget {
-  final ApiClient apiClient;
-  const FamilyScreen({super.key, required this.apiClient});
-  @override
-  State<FamilyScreen> createState() => _FamilyScreenState();
-}
-
-class _FamilyScreenState extends State<FamilyScreen> {
-  @override
-  void initState() {
-    super.initState();
-    context.read<FamilyBloc>().add(FamilyLoadRequested());
-  }
+class FamilyScreen extends StatelessWidget {
+  const FamilyScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

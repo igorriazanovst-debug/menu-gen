@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
@@ -8,6 +9,7 @@ import '../../features/fridge/screens/fridge_screen.dart';
 import '../../features/diary/screens/diary_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/family/screens/family_screen.dart';
+import '../../features/family/bloc/family_bloc.dart';
 import '../../features/shopping/screens/shopping_list_screen.dart';
 import '../api/api_client.dart';
 import '../widgets/main_shell.dart';
@@ -35,10 +37,12 @@ class AppRouter {
             GoRoute(path: '/profile', builder: (_, state) => ProfileScreen(apiClient: apiClient)),
           ],
         ),
-        // Full-screen routes (outside shell)
         GoRoute(
           path: '/family',
-          builder: (_, __) => FamilyScreen(apiClient: apiClient),
+          builder: (_, __) => BlocProvider(
+            create: (_) => FamilyBloc(apiClient: apiClient)..add(const FamilyLoadRequested()),
+            child: const FamilyScreen(),
+          ),
         ),
         GoRoute(
           path: '/shopping/:menuId',
