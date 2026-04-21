@@ -162,7 +162,7 @@ const RecipeModal: React.FC<{
   <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
     <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
       {recipe.image_url && (
-        <img src={recipe.image_url} alt={recipe.title} className="w-full h-56 object-cover rounded-t-2xl" />
+        <img src={recipe.image_url} alt={recipe.title} className="w-full object-contain rounded-t-2xl bg-gray-50" />
       )}
       <div className="p-6">
         <div className="flex items-start justify-between gap-4">
