@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from .filters import RecipeFilter
-from .models import Recipe, RecipeAuthor
+from .models import DeletedRecipe, Recipe, RecipeAuthor
 from .permissions import IsAuthorOrAdmin, IsRecipeAuthorRole
 from .serializers import (
     RecipeAuthorSerializer,
@@ -55,6 +55,38 @@ class RecipeViewSet(ModelViewSet):
     @extend_schema(responses={200: RecipeDetailSerializer})
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+
+    def destroy(self, request, *args, **kwargs):
+        recipe = self.get_object()
+        import json
+        from django.forms.models import model_to_dict
+        snapshot = {
+            "id":          recipe.id,
+            "title":       recipe.title,
+            "cook_time":   recipe.cook_time,
+            "servings":    recipe.servings,
+            "ingredients": recipe.ingredients,
+            "steps":       recipe.steps,
+            "nutrition":   recipe.nutrition,
+            "categories":  recipe.categories,
+            "image_url":   recipe.image_url,
+            "video_url":   recipe.video_url,
+            "source_url":  recipe.source_url,
+            "country":     recipe.country,
+            "is_custom":   recipe.is_custom,
+            "is_published":recipe.is_published,
+            "created_at":  str(recipe.created_at),
+            "updated_at":  str(recipe.updated_at),
+        }
+        DeletedRecipe.objects.create(
+            original_id=recipe.id,
+            title=recipe.title,
+            data=snapshot,
+            deleted_by=request.user if request.user.is_authenticated else None,
+        )
+        recipe.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
         request=RecipeWriteSerializer,

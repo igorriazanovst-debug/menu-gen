@@ -55,3 +55,21 @@ class RecipeAuthor(models.Model):
 
     def __str__(self):
         return f"Author({self.user}, {self.status})"
+
+
+class DeletedRecipe(models.Model):
+    """Рецепты, удалённые администратором. Используются для аудита и восстановления."""
+    original_id   = models.IntegerField(db_index=True)
+    title         = models.CharField(max_length=512)
+    data          = models.JSONField()           # полный снапшот Recipe
+    deleted_by    = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    deleted_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "deleted_recipes"
+        ordering = ["-deleted_at"]
+
+    def __str__(self):
+        return f"Deleted({self.original_id}, {self.title[:40]})"
