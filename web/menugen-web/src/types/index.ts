@@ -14,6 +14,7 @@ export interface NutritionValue { value: string; unit: string; }
 export interface Nutrition {
   calories?: NutritionValue; proteins?: NutritionValue;
   fats?: NutritionValue; carbs?: NutritionValue;
+  fiber?: NutritionValue; weight?: NutritionValue;
 }
 export interface Recipe {
   id: number; title: string; cook_time?: string; servings?: number;

@@ -13,4 +13,13 @@ export const recipesApi = {
     client.patch<Recipe>(`/recipes/${id}/`, data),
 
   delete: (id: number) => client.delete(`/recipes/${id}/`),
+
+  uploadMedia: (file: File, mediaType: 'image' | 'video') => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('media_type', mediaType);
+    return client.post<{ url: string }>('/recipes/upload-media/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };

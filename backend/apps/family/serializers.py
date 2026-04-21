@@ -6,16 +6,47 @@ from .models import Family, FamilyMember
 User = get_user_model()
 
 
+class ProfileSerializer(serializers.Serializer):
+    birth_year = serializers.IntegerField(read_only=True)
+    gender = serializers.CharField(read_only=True)
+    height_cm = serializers.IntegerField(read_only=True)
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=1, read_only=True)
+    activity_level = serializers.CharField(read_only=True)
+    goal = serializers.CharField(read_only=True)
+    calorie_target = serializers.IntegerField(read_only=True)
+
+
 class FamilyMemberSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
     name = serializers.CharField(source="user.name", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
     avatar_url = serializers.URLField(source="user.avatar_url", read_only=True)
+    allergies = serializers.ListField(source="user.allergies", read_only=True)
+    disliked_products = serializers.ListField(source="user.disliked_products", read_only=True)
+    profile = serializers.SerializerMethodField()
 
     class Meta:
         model = FamilyMember
-        fields = ("id", "user_id", "name", "email", "avatar_url", "role", "joined_at")
+        fields = (
+            "id",
+            "user_id",
+            "name",
+            "email",
+            "avatar_url",
+            "allergies",
+            "disliked_products",
+            "profile",
+            "role",
+            "joined_at",
+        )
         read_only_fields = ("id", "joined_at")
+
+    def get_profile(self, obj):
+        try:
+            p = obj.user.profile
+            return ProfileSerializer(p).data
+        except Exception:
+            return None
 
 
 class FamilySerializer(serializers.ModelSerializer):
@@ -40,3 +71,47 @@ class InviteMemberSerializer(serializers.Serializer):
 
 class RemoveMemberSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
+
+
+class ProfileUpdateSerializer(serializers.Serializer):
+    birth_year = serializers.IntegerField(required=False, allow_null=True)
+    gender = serializers.ChoiceField(
+        choices=["male", "female", "other"], required=False, allow_null=True
+    )
+    height_cm = serializers.IntegerField(required=False, allow_null=True)
+    weight_kg = serializers.DecimalField(
+        max_digits=5, decimal_places=1, required=False, allow_null=True
+    )
+    activity_level = serializers.ChoiceField(
+        choices=["sedentary", "light", "moderate", "active", "very_active"],
+        required=False,
+    )
+    goal = serializers.ChoiceField(
+        choices=["lose_weight", "maintain", "gain_weight", "healthy"],
+        required=False,
+    )
+    calorie_target = serializers.IntegerField(required=False, allow_null=True)
+
+
+class FamilyMemberUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(required=False, max_length=255)
+    allergies = serializers.ListField(child=serializers.CharField(), required=False)
+    disliked_products = serializers.ListField(child=serializers.CharField(), required=False)
+    profile = ProfileUpdateSerializer(required=False)
+
+    def update(self, instance, validated_data):
+        user = instance.user
+        profile_data = validated_data.pop("profile", None)
+
+        for attr in ("name", "allergies", "disliked_products"):
+            if attr in validated_data:
+                setattr(user, attr, validated_data[attr])
+        user.save()
+
+        if profile_data:
+            profile = user.profile
+            for attr, value in profile_data.items():
+                setattr(profile, attr, value)
+            profile.save()
+
+        return instance

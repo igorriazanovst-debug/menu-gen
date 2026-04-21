@@ -4,15 +4,21 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { RecipeEditModal } from '../../components/recipes/RecipeEditModal';
+import { useAppSelector } from '../../hooks/useAppDispatch';
 import type { Recipe } from '../../types';
 
 export const RecipesPage: React.FC = () => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [total, setTotal]     = useState(0);
-  const [page, setPage]       = useState(1);
-  const [search, setSearch]   = useState('');
+  const [total,   setTotal]   = useState(0);
+  const [page,    setPage]    = useState(1);
+  const [search,  setSearch]  = useState('');
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Recipe | null>(null);
+  const [selected,  setSelected]  = useState<Recipe | null>(null);
+  const [editing,   setEditing]   = useState<Recipe | null>(null);
+
+  const user = useAppSelector((s) => s.auth.user);
+  const isAdmin = (user as any)?.user_type === 'admin';
 
   const load = useCallback(async (q = search, p = page) => {
     setLoading(true);
@@ -29,6 +35,11 @@ export const RecipesPage: React.FC = () => {
     e.preventDefault();
     setPage(1);
     load(search, 1);
+  };
+
+  const handleSaved = (updated: Recipe) => {
+    setRecipes(prev => prev.map(r => r.id === updated.id ? updated : r));
+    if (selected?.id === updated.id) setSelected(updated);
   };
 
   return (
@@ -54,7 +65,13 @@ export const RecipesPage: React.FC = () => {
       {loading ? <PageSpinner /> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {recipes.map((r) => (
-            <RecipeCard key={r.id} recipe={r} onClick={() => setSelected(r)} />
+            <RecipeCard
+              key={r.id}
+              recipe={r}
+              isAdmin={isAdmin}
+              onClick={() => setSelected(r)}
+              onEdit={() => setEditing(r)}
+            />
           ))}
         </div>
       )}
@@ -73,13 +90,33 @@ export const RecipesPage: React.FC = () => {
         </div>
       )}
 
-      {selected && <RecipeModal recipe={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <RecipeModal
+          recipe={selected}
+          isAdmin={isAdmin}
+          onClose={() => setSelected(null)}
+          onEdit={() => { setEditing(selected); setSelected(null); }}
+        />
+      )}
+
+      {editing && (
+        <RecipeEditModal
+          recipe={editing}
+          onClose={() => setEditing(null)}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 };
 
-const RecipeCard: React.FC<{ recipe: Recipe; onClick: () => void }> = ({ recipe, onClick }) => (
-  <Card className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden">
+const RecipeCard: React.FC<{
+  recipe: Recipe;
+  isAdmin: boolean;
+  onClick: () => void;
+  onEdit: () => void;
+}> = ({ recipe, isAdmin, onClick, onEdit }) => (
+  <Card className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden relative group">
     <div onClick={onClick}>
       {recipe.image_url ? (
         <img src={recipe.image_url} alt={recipe.title}
@@ -105,27 +142,52 @@ const RecipeCard: React.FC<{ recipe: Recipe; onClick: () => void }> = ({ recipe,
         ))}
       </div>
     </div>
+    {isAdmin && (
+      <button
+        onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm text-gray-600 hover:text-tomato hover:bg-white rounded-lg px-2 py-1 text-xs font-medium shadow opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        ✏️ Изменить
+      </button>
+    )}
   </Card>
 );
 
-const RecipeModal: React.FC<{ recipe: Recipe; onClose: () => void }> = ({ recipe, onClose }) => (
-  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+const RecipeModal: React.FC<{
+  recipe: Recipe;
+  isAdmin: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+}> = ({ recipe, isAdmin, onClose, onEdit }) => (
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
       {recipe.image_url && (
         <img src={recipe.image_url} alt={recipe.title} className="w-full h-56 object-cover rounded-t-2xl" />
       )}
       <div className="p-6">
         <div className="flex items-start justify-between gap-4">
           <h2 className="text-xl font-bold text-chocolate">{recipe.title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl shrink-0">✕</button>
+          <div className="flex items-center gap-2 shrink-0">
+            {isAdmin && (
+              <button
+                onClick={onEdit}
+                className="px-3 py-1 rounded-lg bg-tomato/10 text-tomato text-sm font-medium hover:bg-tomato/20 transition"
+              >
+                ✏️ Изменить
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          </div>
         </div>
         {recipe.nutrition && (
-          <div className="flex gap-4 mt-3 p-3 bg-rice rounded-xl">
+          <div className="flex gap-4 mt-3 p-3 bg-rice rounded-xl flex-wrap">
             {[
               ['Калории', recipe.nutrition.calories],
-              ['Белки', recipe.nutrition.proteins],
-              ['Жиры', recipe.nutrition.fats],
-              ['Углеводы', recipe.nutrition.carbs],
+              ['Белки',   recipe.nutrition.proteins],
+              ['Жиры',    recipe.nutrition.fats],
+              ['Углеводы',recipe.nutrition.carbs],
+              ['Клетчатка',recipe.nutrition.fiber],
+              ['Вес',     recipe.nutrition.weight],
             ].map(([label, val]) => val && (
               <div key={String(label)} className="text-center">
                 <p className="text-xs text-gray-500">{String(label)}</p>

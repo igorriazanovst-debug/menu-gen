@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:povar.ru)",
+      "Bash(mkdir -p C:/Temp/2026/menu-gen/menu-gen/backend/scripts)",
+      "Bash(mkdir -p C:/Temp/2026/menu-gen/menu-gen/backend/apps/recipes/management/commands)",
+      "Bash(touch C:/Temp/2026/menu-gen/menu-gen/backend/apps/recipes/management/__init__.py)",
+      "Bash(touch C:/Temp/2026/menu-gen/menu-gen/backend/apps/recipes/management/commands/__init__.py)",
+      "Bash(docker compose *)",
+      "Bash([ -f \"$OUTPUT\" ])",
+      "Bash(echo \"PID=$!\")"
+    ]
+  }
+}

@@ -5,7 +5,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Family, FamilyMember
-from .serializers import FamilyMemberSerializer, FamilySerializer, InviteMemberSerializer
+from .serializers import (
+    FamilyMemberSerializer,
+    FamilyMemberUpdateSerializer,
+    FamilySerializer,
+    InviteMemberSerializer,
+)
 
 User = get_user_model()
 
@@ -116,6 +121,41 @@ class FamilyRemoveMemberView(APIView):
 
         member.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class FamilyMemberUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        request=FamilyMemberUpdateSerializer,
+        responses={200: FamilyMemberSerializer},
+    )
+    def patch(self, request, member_id):
+        family = _get_user_family(request.user)
+        if not family:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        is_head = family.owner_id == request.user.id or request.user.user_type == "admin"
+        is_self = FamilyMember.objects.filter(
+            family=family, user=request.user, id=member_id
+        ).exists()
+
+        if not is_head and not is_self:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            member = FamilyMember.objects.select_related("user__profile").get(
+                id=member_id, family=family
+            )
+        except FamilyMember.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        serializer = FamilyMemberUpdateSerializer(member, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        member.refresh_from_db()
+        return Response(FamilyMemberSerializer(member).data, status=status.HTTP_200_OK)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+from django.db.models import Case, IntegerField, Value, When
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
@@ -15,11 +16,27 @@ from .serializers import (
 
 
 class RecipeViewSet(ModelViewSet):
-    queryset = Recipe.objects.filter(is_published=True).select_related("author")
+    queryset = Recipe.objects.none()
     filterset_class = RecipeFilter
     search_fields = ["title", "categories", "country"]
-    ordering_fields = ["created_at", "title"]
-    ordering = ["-created_at"]
+    filter_backends = [
+        __import__("django_filters").rest_framework.DjangoFilterBackend,
+        __import__("rest_framework").filters.SearchFilter,
+    ]
+
+    def get_queryset(self):
+        return (
+            Recipe.objects.filter(is_published=True)
+            .select_related("author")
+            .annotate(
+                has_image=Case(
+                    When(image_url__isnull=False, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by("-has_image", "-created_at")
+        )
 
     def get_permissions(self):
         if self.action in ("create",):
