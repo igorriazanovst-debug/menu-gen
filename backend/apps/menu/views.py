@@ -147,6 +147,8 @@ class MenuGenerateView(APIView):
             filters["calorie_min"] = data["calorie_min"]
         if data.get("calorie_max"):
             filters["calorie_max"] = data["calorie_max"]
+        if data.get("meal_plan_type"):
+            filters["meal_plan_type"] = data["meal_plan_type"]
 
         generator = MenuGenerator(
             family=family,
@@ -175,6 +177,7 @@ class MenuGenerateView(APIView):
                     member=item["member"],
                     meal_type=item["meal_type"],
                     day_offset=item["day_offset"],
+                    is_salad=item.get("is_salad", False),
                 )
                 for item in generated
             ])
@@ -289,6 +292,7 @@ class MenuRestoreView(APIView):
                         member=member,
                         meal_type=item["meal_type"],
                         day_offset=item["day_offset"],
+                    is_salad=item.get("is_salad", False),
                     )
                 except Recipe.DoesNotExist:
                     pass

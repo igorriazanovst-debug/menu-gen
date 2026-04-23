@@ -5,9 +5,21 @@ from typing import List, Optional
 from apps.fridge.models import FridgeItem
 from apps.recipes.models import Recipe
 
-MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"]
+MEAL_PLAN_3 = ["breakfast", "lunch", "dinner"]
+MEAL_PLAN_5 = ["breakfast", "snack1", "lunch", "snack2", "dinner"]
 
-# Тарифные флаги, влияющие на алгоритм
+# При сохранении в DB snack1/snack2 → "snack"
+MEAL_TYPE_DB = {
+    "breakfast": "breakfast",
+    "lunch": "lunch",
+    "dinner": "dinner",
+    "snack1": "snack",
+    "snack2": "snack",
+}
+
+# Категории, которые считаются "салатом / клетчаткой"
+SALAD_CATEGORIES = {"салат", "salad", "овощное", "vegetables", "овощи", "клетчатка", "fiber", "зелень"}
+
 TIER_FEATURES = {
     "free": {"country": True},
     "lite": {"country": True, "disliked": True},
@@ -22,13 +34,8 @@ class MenuGenerator:
     """
     Генерирует MenuItem-объекты для заданных членов семьи и набора дней.
 
-    Приоритеты (жёсткие → мягкие):
-      1. Аллергии (жёстко)
-      2. Нелюбимые продукты (жёстко)
-      3. Продукты в холодильнике (мягко, бонус при отборе)
-      4. Калорийность (мягко, целевой коридор ±200 ккал)
-      5. Разнообразие (не повторять рецепт в пределах периода)
-      6. Страна (фильтр)
+    meal_plan_type: "3" (завтрак/обед/ужин) или "5" (завтрак/перекус/обед/перекус/ужин)
+    Правило: каждый приём пищи сопровождается салатом/клетчаткой (отдельный recipe item).
     """
 
     def __init__(
@@ -47,12 +54,15 @@ class MenuGenerator:
         self.plan_code = plan_code
         self.features = TIER_FEATURES.get(plan_code, TIER_FEATURES["free"])
         self.filters = filters or {}
+        meal_plan = self.filters.get("meal_plan_type", "3")
+        self.meal_types = MEAL_PLAN_5 if str(meal_plan) == "5" else MEAL_PLAN_3
 
     # ── public ────────────────────────────────────────────────────────────────
 
     def generate(self) -> List[dict]:
-        """Возвращает список dict с полями: member, meal_type, day_offset, recipe."""
+        """Возвращает список dict: member, meal_type, day_offset, recipe, is_salad."""
         pool = self._build_recipe_pool()
+        salad_pool = self._build_salad_pool()
         fridge_ids = self._get_fridge_ingredient_names()
         items = []
         used_per_member: dict = {m.id: set() for m in self.members}
@@ -62,43 +72,60 @@ class MenuGenerator:
                 target_cal = self._get_calorie_target(member)
                 hard_exclude = self._get_hard_exclude(member)
 
-                for meal_type in MEAL_TYPES:
+                for meal_slot in self.meal_types:
+                    db_meal_type = MEAL_TYPE_DB[meal_slot]
+
+                    # основное блюдо
                     recipe = self._pick_recipe(
                         pool=pool,
                         used=used_per_member[member.id],
                         hard_exclude=hard_exclude,
                         fridge_ids=fridge_ids,
                         target_cal=target_cal,
-                        meal_type=meal_type,
+                        meal_type=db_meal_type,
+                        exclude_salad=True,
                     )
                     if recipe:
                         used_per_member[member.id].add(recipe.id)
-                        items.append(
-                            {
-                                "member": member,
-                                "meal_type": meal_type,
-                                "day_offset": day,
-                                "recipe": recipe,
-                            }
-                        )
+                        items.append({
+                            "member": member,
+                            "meal_type": db_meal_type,
+                            "meal_slot": meal_slot,
+                            "day_offset": day,
+                            "recipe": recipe,
+                            "is_salad": False,
+                        })
+
+                    # салат / клетчатка
+                    salad = self._pick_salad(
+                        pool=salad_pool,
+                        used=used_per_member[member.id],
+                        hard_exclude=hard_exclude,
+                    )
+                    if salad:
+                        used_per_member[member.id].add(salad.id)
+                        items.append({
+                            "member": member,
+                            "meal_type": db_meal_type,
+                            "meal_slot": meal_slot,
+                            "day_offset": day,
+                            "recipe": salad,
+                            "is_salad": True,
+                        })
+
         return items
 
     # ── private ───────────────────────────────────────────────────────────────
 
     def _build_recipe_pool(self) -> List[Recipe]:
         qs = Recipe.objects.filter(is_published=True)
-
         country = self.filters.get("country")
         if country and self.features.get("country"):
             qs = qs.filter(country__iexact=country)
-
         max_time = self.filters.get("max_cook_time")
         if max_time:
-            # cook_time хранится как строка "X мин", фильтруем в Python после загрузки
             qs = qs.exclude(cook_time="")
-
         recipes = list(qs.order_by("?")[:1000])
-        max_time = self.filters.get("max_cook_time")
         if max_time:
             def _minutes(ct):
                 try:
@@ -108,6 +135,25 @@ class MenuGenerator:
             recipes = [r for r in recipes if _minutes(r.cook_time) <= int(max_time)]
         return recipes[:500]
 
+    def _build_salad_pool(self) -> List[Recipe]:
+        """Пул салатов/клетчатки из всех опубликованных рецептов."""
+        qs = Recipe.objects.filter(is_published=True)
+        country = self.filters.get("country")
+        if country and self.features.get("country"):
+            qs = qs.filter(country__iexact=country)
+        all_recipes = list(qs.order_by("?")[:1000])
+        salads = [r for r in all_recipes if self._is_salad(r)]
+        return salads if salads else []
+
+    def _is_salad(self, recipe: Recipe) -> bool:
+        cats = {c.lower() for c in (recipe.categories or [])}
+        title_lower = recipe.title.lower()
+        if cats & SALAD_CATEGORIES:
+            return True
+        if any(kw in title_lower for kw in ("салат", "salad", "овощной", "зелёный", "греческий", "цезарь")):
+            return True
+        return False
+
     def _get_fridge_ingredient_names(self) -> set:
         if not self.features.get("fridge"):
             return set()
@@ -115,24 +161,16 @@ class MenuGenerator:
         return {i.name.lower() for i in items}
 
     def _get_hard_exclude(self, member) -> set:
-        """Собирает запрещённые ингредиенты для участника."""
         exclude = set()
         user = member.user
-
-        # Аллергии
         if isinstance(user.allergies, list):
             exclude.update(a.lower() for a in user.allergies)
-
-        # Нелюбимые (если тариф позволяет)
         if self.features.get("disliked") and isinstance(user.disliked_products, list):
             exclude.update(d.lower() for d in user.disliked_products)
-
-        # Аллергии всей семьи (Premium)
         if self.features.get("allergies_family"):
             for m in self.members:
                 if isinstance(m.user.allergies, list):
                     exclude.update(a.lower() for a in m.user.allergies)
-
         return exclude
 
     def _get_calorie_target(self, member) -> Optional[int]:
@@ -159,14 +197,9 @@ class MenuGenerator:
             return None
 
     def _fridge_score(self, recipe: Recipe, fridge_ids: set) -> int:
-        """Количество ингредиентов рецепта, присутствующих в холодильнике."""
         if not fridge_ids:
             return 0
-        score = 0
-        for ing in recipe.ingredients:
-            if ing.get("name", "").lower() in fridge_ids:
-                score += 1
-        return score
+        return sum(1 for ing in recipe.ingredients if ing.get("name", "").lower() in fridge_ids)
 
     def _pick_recipe(
         self,
@@ -176,27 +209,43 @@ class MenuGenerator:
         fridge_ids: set,
         target_cal: Optional[int],
         meal_type: str,
+        exclude_salad: bool = False,
     ) -> Optional[Recipe]:
-        candidates = [r for r in pool if r.id not in used and self._recipe_passes_hard(r, hard_exclude)]
-
+        candidates = [
+            r for r in pool
+            if r.id not in used and self._recipe_passes_hard(r, hard_exclude)
+            and (not exclude_salad or not self._is_salad(r))
+        ]
         if not candidates:
-            # Смягчаем ограничение на повторы
-            candidates = [r for r in pool if self._recipe_passes_hard(r, hard_exclude)]
-
+            candidates = [
+                r for r in pool
+                if self._recipe_passes_hard(r, hard_exclude)
+                and (not exclude_salad or not self._is_salad(r))
+            ]
         if not candidates:
             return None
-
-        # Калорийный коридор ±200 ккал (мягкое)
         if target_cal:
-            per_meal = target_cal / len(MEAL_TYPES)
+            per_meal = target_cal / len(self.meal_types)
             cal_ok = [r for r in candidates if (c := self._recipe_cal(r)) and abs(c - per_meal) <= 200]
             if cal_ok:
                 candidates = cal_ok
-
-        # Бонус за холодильник — сортируем по убыванию совпадений
         if fridge_ids:
             candidates.sort(key=lambda r: self._fridge_score(r, fridge_ids), reverse=True)
-            # берём топ-10 и выбираем случайно из них
             candidates = candidates[:10]
+        return random.choice(candidates)
 
+    def _pick_salad(
+        self,
+        pool: List[Recipe],
+        used: set,
+        hard_exclude: set,
+    ) -> Optional[Recipe]:
+        candidates = [
+            r for r in pool
+            if r.id not in used and self._recipe_passes_hard(r, hard_exclude)
+        ]
+        if not candidates:
+            candidates = [r for r in pool if self._recipe_passes_hard(r, hard_exclude)]
+        if not candidates:
+            return None
         return random.choice(candidates)

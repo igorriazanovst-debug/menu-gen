@@ -50,10 +50,11 @@ class MenuItem(models.Model):
     meal_type = models.CharField(max_length=20, choices=MealType.choices)
     day_offset = models.PositiveSmallIntegerField()
     quantity = models.DecimalField(max_digits=6, decimal_places=2, default=1)
+    is_salad = models.BooleanField(default=False)
 
     class Meta:
         db_table = "menu_items"
-        unique_together = [("menu", "member", "day_offset", "meal_type")]
+        unique_together = [("menu", "member", "day_offset", "meal_type", "is_salad")]
         indexes = [
             models.Index(fields=["menu_id"]),
             models.Index(fields=["recipe_id"]),
