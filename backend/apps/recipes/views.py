@@ -4,6 +4,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from django.db.models import Count
 from .filters import RecipeFilter
 from .models import DeletedRecipe, Recipe, RecipeAuthor
 from .permissions import IsAuthorOrAdmin, IsRecipeAuthorRole
@@ -13,6 +14,23 @@ from .serializers import (
     RecipeListSerializer,
     RecipeWriteSerializer,
 )
+
+
+class RecipeCountryListView(generics.ListAPIView):
+    """GET /recipes/countries/ — список стран из БД."""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        countries = (
+            Recipe.objects
+            .filter(is_published=True)
+            .exclude(country__isnull=True)
+            .exclude(country='')
+            .values_list('country', flat=True)
+            .distinct()
+            .order_by('country')
+        )
+        return Response(sorted(set(c.strip() for c in countries if c and c.strip())))
 
 
 class RecipeViewSet(ModelViewSet):

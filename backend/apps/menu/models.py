@@ -89,3 +89,19 @@ class ShoppingItem(models.Model):
             models.Index(fields=["shopping_list_id", "is_purchased"]),
             models.Index(fields=["category"]),
         ]
+
+
+class DeletedMenu(models.Model):
+    menu_id     = models.IntegerField(db_index=True)
+    family      = models.ForeignKey("family.Family", on_delete=models.CASCADE, related_name="deleted_menus")
+    deleted_by  = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True)
+    data        = models.JSONField()
+    deleted_at  = models.DateTimeField(auto_now_add=True)
+    purge_after = models.DateTimeField()
+
+    class Meta:
+        db_table = "deleted_menus"
+        ordering = ["-deleted_at"]
+
+    def __str__(self):
+        return f"DeletedMenu(menu_id={self.menu_id}, family={self.family_id})"

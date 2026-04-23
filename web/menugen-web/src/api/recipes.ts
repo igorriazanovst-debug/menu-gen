@@ -22,4 +22,5 @@ export const recipesApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  countries: () => client.get<string[]>('/recipes/countries/'),
 };

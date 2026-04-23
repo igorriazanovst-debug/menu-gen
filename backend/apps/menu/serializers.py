@@ -13,6 +13,8 @@ class GenerateMenuSerializer(serializers.Serializer):
     country = serializers.CharField(required=False, allow_blank=True)
     max_cook_time = serializers.IntegerField(required=False, min_value=1)
     member_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_empty=True)
+    calorie_min = serializers.IntegerField(required=False, min_value=0)
+    calorie_max = serializers.IntegerField(required=False, min_value=0)
 
 
 class MenuItemSerializer(serializers.ModelSerializer):
@@ -64,3 +66,17 @@ class ShoppingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShoppingList
         fields = ("id", "items", "created_at")
+
+
+class DeletedMenuSerializer(serializers.ModelSerializer):
+    deleted_by_name = serializers.CharField(source="deleted_by.name", read_only=True, default=None)
+    can_purge = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import DeletedMenu
+        model = DeletedMenu
+        fields = ("id", "menu_id", "data", "deleted_by_name", "deleted_at", "purge_after", "can_purge")
+
+    def get_can_purge(self, obj):
+        from django.utils import timezone
+        return timezone.now() >= obj.purge_after
