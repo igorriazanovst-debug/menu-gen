@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.postgres.indexes import GinIndex
 
 from apps.users.models import User
 
@@ -22,6 +23,32 @@ class Recipe(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+
+    class FoodGroup(models.TextChoices):
+        GRAIN     = "grain",     "Зерновые"
+        PROTEIN   = "protein",   "Белки"
+        VEGETABLE = "vegetable", "Овощи"
+        FRUIT     = "fruit",     "Фрукты"
+        DAIRY     = "dairy",     "Молочные"
+        OIL       = "oil",       "Масла/жиры"
+        OTHER     = "other",     "Прочее"
+
+    class ProteinType(models.TextChoices):
+        ANIMAL = "animal", "Животный"
+        PLANT  = "plant",  "Растительный"
+        MIXED  = "mixed",  "Смешанный"
+
+    class GrainType(models.TextChoices):
+        WHOLE   = "whole",   "Цельнозерновые"
+        REFINED = "refined", "Рафинированные"
+
+    food_group    = models.CharField(max_length=16, choices=FoodGroup.choices, null=True, blank=True)
+    suitable_for  = models.JSONField(default=list, blank=True)
+    protein_type  = models.CharField(max_length=8, choices=ProteinType.choices, null=True, blank=True)
+    grain_type    = models.CharField(max_length=8, choices=GrainType.choices, null=True, blank=True)
+    is_fatty_fish = models.BooleanField(default=False)
+    is_red_meat   = models.BooleanField(default=False)
+
     class Meta:
         db_table = "recipes"
         indexes = [
@@ -30,6 +57,12 @@ class Recipe(models.Model):
             models.Index(fields=["author_id"]),
             models.Index(fields=["is_custom"]),
             models.Index(fields=["is_published"]),
+            models.Index(fields=["food_group"]),
+            models.Index(fields=["protein_type"]),
+            models.Index(fields=["grain_type"]),
+            models.Index(fields=["is_fatty_fish"]),
+            models.Index(fields=["is_red_meat"]),
+            GinIndex(fields=["suitable_for"], name="recipe_suitable_for_gin"),
         ]
 
     def __str__(self):

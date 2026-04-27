@@ -84,6 +84,8 @@ class TokenPairSerializer(serializers.Serializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    targets_calculated = serializers.SerializerMethodField()
+
     class Meta:
         model = Profile
         fields = (
@@ -94,7 +96,26 @@ class ProfileSerializer(serializers.ModelSerializer):
             "activity_level",
             "goal",
             "calorie_target",
+            "protein_target_g",
+            "fat_target_g",
+            "carbs_target_g",
+            "fiber_target_g",
+            "meal_plan",
+            "targets_calculated",
         )
+
+    def get_targets_calculated(self, obj):
+        from .nutrition import calculate_targets
+        result = calculate_targets(obj)
+        if not result:
+            return None
+        return {
+            "calorie_target":   result["calorie_target"],
+            "protein_target_g": str(result["protein_target_g"]),
+            "fat_target_g":     str(result["fat_target_g"]),
+            "carbs_target_g":   str(result["carbs_target_g"]),
+            "fiber_target_g":   str(result["fiber_target_g"]),
+        }
 
 
 class UserMeSerializer(serializers.ModelSerializer):

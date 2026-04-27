@@ -6,6 +6,16 @@ from .models import Recipe, RecipeAuthor
 User = get_user_model()
 
 
+CLASSIFICATION_FIELDS = (
+    "food_group",
+    "suitable_for",
+    "protein_type",
+    "grain_type",
+    "is_fatty_fish",
+    "is_red_meat",
+)
+
+
 class RecipeListSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
 
@@ -23,7 +33,7 @@ class RecipeListSerializer(serializers.ModelSerializer):
             "is_custom",
             "author_name",
             "created_at",
-        )
+        ) + CLASSIFICATION_FIELDS
 
 
 class RecipeDetailSerializer(serializers.ModelSerializer):
@@ -50,7 +60,7 @@ class RecipeDetailSerializer(serializers.ModelSerializer):
             "author_name",
             "created_at",
             "updated_at",
-        )
+        ) + CLASSIFICATION_FIELDS
 
 
 class RecipeWriteSerializer(serializers.ModelSerializer):
@@ -67,7 +77,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
             "image_url",
             "video_url",
             "country",
-        )
+        ) + CLASSIFICATION_FIELDS
 
     def validate_ingredients(self, value):
         if not isinstance(value, list):
@@ -84,6 +94,37 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
             if not isinstance(item, dict) or "text" not in item:
                 raise serializers.ValidationError("Каждый шаг должен содержать поле text.")
         return value
+
+    def validate_suitable_for(self, value):
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Ожидается массив.")
+        allowed = {"breakfast", "lunch", "dinner", "snack"}
+        for item in value:
+            if item not in allowed:
+                raise serializers.ValidationError(
+                    f"Недопустимое значение '{item}'. Допустимы: {sorted(allowed)}."
+                )
+        return value
+
+    def validate(self, attrs):
+        # на partial_update в attrs может не быть полей — берём из instance
+        def get_val(name):
+            if name in attrs:
+                return attrs[name]
+            return getattr(self.instance, name, None) if self.instance else None
+
+        food_group = get_val("food_group")
+        if food_group == Recipe.FoodGroup.GRAIN and not get_val("grain_type"):
+            raise serializers.ValidationError(
+                {"grain_type": "Обязательно при food_group=grain (whole / refined)."}
+            )
+        if food_group == Recipe.FoodGroup.PROTEIN and not get_val("protein_type"):
+            raise serializers.ValidationError(
+                {"protein_type": "Обязательно при food_group=protein (animal / plant / mixed)."}
+            )
+        return attrs
 
     def create(self, validated_data):
         validated_data["author"] = self.context["request"].user

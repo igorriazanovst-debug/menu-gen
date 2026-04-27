@@ -16,11 +16,21 @@ export interface Nutrition {
   fats?: NutritionValue; carbs?: NutritionValue;
   fiber?: NutritionValue; weight?: NutritionValue;
 }
+export type FoodGroup    = 'grain' | 'protein' | 'vegetable' | 'fruit' | 'dairy' | 'oil' | 'other';
+export type ProteinType  = 'animal' | 'plant' | 'mixed';
+export type GrainType    = 'whole' | 'refined';
+export type SuitableMeal = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export interface Recipe {
   id: number; title: string; cook_time?: string; servings?: number;
   ingredients: Ingredient[]; steps: RecipeStep[]; nutrition: Nutrition;
   categories: string[]; image_url?: string; video_url?: string;
   country?: string; is_custom: boolean; author_name?: string; created_at: string;
+  food_group?: FoodGroup | null;
+  suitable_for?: SuitableMeal[];
+  protein_type?: ProteinType | null;
+  grain_type?: GrainType | null;
+  is_fatty_fish?: boolean;
+  is_red_meat?: boolean;
 }
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export const MEAL_LABELS: Record<MealType, string> = {

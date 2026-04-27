@@ -3,7 +3,7 @@ import { recipesApi } from '../../api/recipes';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { getErrorMessage } from '../../utils/api';
-import type { Recipe } from '../../types';
+import type { Recipe, FoodGroup, ProteinType, GrainType, SuitableMeal } from '../../types';
 
 interface Props {
   recipe: Recipe;
@@ -20,6 +20,34 @@ const NUTRITION_LABELS: { key: NutritionKey; label: string; unit: string }[] = [
   { key: 'carbs',    label: 'Углеводы',   unit: 'г' },
   { key: 'fiber',    label: 'Клетчатка',  unit: 'г' },
   { key: 'weight',   label: 'Вес порции', unit: 'г' },
+];
+
+const FOOD_GROUP_OPTIONS: { value: FoodGroup; label: string }[] = [
+  { value: 'grain',     label: 'Зерновые / крупы' },
+  { value: 'protein',   label: 'Белки (мясо/рыба/яйца/бобовые)' },
+  { value: 'vegetable', label: 'Овощи' },
+  { value: 'fruit',     label: 'Фрукты' },
+  { value: 'dairy',     label: 'Молочные' },
+  { value: 'oil',       label: 'Масла / жиры' },
+  { value: 'other',     label: 'Прочее' },
+];
+
+const PROTEIN_TYPE_OPTIONS: { value: ProteinType; label: string }[] = [
+  { value: 'animal', label: 'Животный' },
+  { value: 'plant',  label: 'Растительный' },
+  { value: 'mixed',  label: 'Смешанный' },
+];
+
+const GRAIN_TYPE_OPTIONS: { value: GrainType; label: string }[] = [
+  { value: 'whole',   label: 'Цельнозерновые' },
+  { value: 'refined', label: 'Рафинированные' },
+];
+
+const SUITABLE_FOR_OPTIONS: { value: SuitableMeal; label: string }[] = [
+  { value: 'breakfast', label: 'Завтрак' },
+  { value: 'lunch',     label: 'Обед' },
+  { value: 'dinner',    label: 'Ужин' },
+  { value: 'snack',     label: 'Перекус' },
 ];
 
 export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) => {
@@ -40,25 +68,38 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
   });
   const [ingredients,  setIngredients]  = useState(JSON.stringify(recipe.ingredients ?? [], null, 2));
   const [steps,        setSteps]        = useState(JSON.stringify(recipe.steps ?? [], null, 2));
+
+  // Классификация
+  const [foodGroup,    setFoodGroup]    = useState<FoodGroup | ''>((recipe.food_group ?? '') as FoodGroup | '');
+  const [proteinType,  setProteinType]  = useState<ProteinType | ''>((recipe.protein_type ?? '') as ProteinType | '');
+  const [grainType,    setGrainType]    = useState<GrainType | ''>((recipe.grain_type ?? '') as GrainType | '');
+  const [suitableFor,  setSuitableFor]  = useState<SuitableMeal[]>(recipe.suitable_for ?? []);
+  const [isFattyFish,  setIsFattyFish]  = useState<boolean>(recipe.is_fatty_fish ?? false);
+  const [isRedMeat,    setIsRedMeat]    = useState<boolean>(recipe.is_red_meat ?? false);
+
   const [saving,       setSaving]       = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
   const [uploadingVid, setUploadingVid] = useState(false);
   const [error,        setError]        = useState('');
-  const [tab,          setTab]          = useState<'basic' | 'nutrition' | 'ingredients' | 'steps'>('basic');
+  const [tab,          setTab]          = useState<'basic' | 'nutrition' | 'classification' | 'ingredients' | 'steps'>('basic');
 
   const imgInputRef = useRef<HTMLInputElement>(null);
   const vidInputRef = useRef<HTMLInputElement>(null);
+
+  const toggleSuitable = (v: SuitableMeal) => {
+    setSuitableFor(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  };
 
   const handleUpload = async (file: File, type: 'image' | 'video') => {
     const setUploading = type === 'image' ? setUploadingImg : setUploadingVid;
     setUploading(true);
     setError('');
     try {
-      const { data } = await recipesApi.uploadMedia(file, type);
+      const { data } = await recipesApi.uploadMedia(file, 'image');
       if (type === 'image') setImageUrl(data.url);
-      else setVideoUrl(data.url);
+      else                  setVideoUrl(data.url);
     } catch (e) {
-      setError(getErrorMessage(e));
+      setError(getErrorMessage(e) || String(e));
     } finally {
       setUploading(false);
     }
@@ -68,20 +109,23 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
     setSaving(true);
     setError('');
     try {
-      let parsedIngredients = recipe.ingredients;
-      let parsedSteps = recipe.steps;
-      try { parsedIngredients = JSON.parse(ingredients); } catch { throw new Error('Ошибка JSON в ингредиентах'); }
-      try { parsedSteps = JSON.parse(steps); } catch { throw new Error('Ошибка JSON в шагах'); }
+      let parsedIngredients: any;
+      let parsedSteps: any;
+      try { parsedIngredients = JSON.parse(ingredients); }
+      catch { throw new Error('Ингредиенты — некорректный JSON'); }
+      try { parsedSteps = JSON.parse(steps); }
+      catch { throw new Error('Шаги — некорректный JSON'); }
 
       const nutritionPayload: Record<string, { value: string; unit: string }> = {};
       NUTRITION_LABELS.forEach(({ key, unit }) => {
-        if (nutrition[key]) nutritionPayload[key] = { value: nutrition[key], unit };
+        const v = (nutrition[key] ?? '').trim();
+        if (v !== '') nutritionPayload[key] = { value: v, unit: key === 'calories' ? 'ккал' : unit };
       });
 
-      const payload: Partial<Recipe> = {
-        title,
+      const payload: any = {
+        title:       title.trim(),
         cook_time:   cookTime  || undefined,
-        servings:    servings  ? Number(servings) : undefined,
+        servings:    servings ? Number(servings) : undefined,
         country:     country   || undefined,
         image_url:   imageUrl  || undefined,
         video_url:   videoUrl  || undefined,
@@ -89,6 +133,12 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
         nutrition:   nutritionPayload as any,
         ingredients: parsedIngredients,
         steps:       parsedSteps,
+        food_group:    foodGroup    || null,
+        protein_type:  proteinType  || null,
+        grain_type:    grainType    || null,
+        suitable_for:  suitableFor,
+        is_fatty_fish: isFattyFish,
+        is_red_meat:   isRedMeat,
       };
 
       const { data } = await recipesApi.update(recipe.id, payload);
@@ -102,10 +152,11 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
   };
 
   const tabs = [
-    { id: 'basic',       label: 'Основное' },
-    { id: 'nutrition',   label: 'КБЖУ' },
-    { id: 'ingredients', label: 'Ингредиенты' },
-    { id: 'steps',       label: 'Шаги' },
+    { id: 'basic',          label: 'Основное' },
+    { id: 'nutrition',      label: 'КБЖУ' },
+    { id: 'classification', label: 'Классификация' },
+    { id: 'ingredients',    label: 'Ингредиенты' },
+    { id: 'steps',          label: 'Шаги' },
   ] as const;
 
   return (
@@ -117,79 +168,59 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">x</button>
         </div>
 
-        <div className="flex border-b px-6">
+        <div className="flex border-b px-6 overflow-x-auto">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition ${tab === t.id ? 'border-tomato text-tomato' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${tab === t.id ? 'border-tomato text-tomato' : 'border-transparent text-gray-500 hover:text-chocolate'}`}>
               {t.label}
             </button>
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {tab === 'basic' && (
             <>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Изображение</label>
-                {imageUrl && (
-                  <div className="relative mb-2">
-                    <img src={imageUrl} alt="" className="w-full h-44 object-cover rounded-xl"
-                      onError={e => { e.currentTarget.style.display = 'none'; }} />
-                    <button onClick={() => setImageUrl('')}
-                      className="absolute top-2 right-2 bg-white/90 rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-red-500 shadow text-sm">x</button>
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Input className="flex-1" value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://... или загрузите файл" />
-                  <button type="button" onClick={() => imgInputRef.current?.click()} disabled={uploadingImg}
-                    className="shrink-0 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">
-                    {uploadingImg ? 'Загрузка...' : 'Файл'}
-                  </button>
-                  <input ref={imgInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f, 'image'); e.target.value = ''; }} />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">JPEG, PNG, WebP, GIF — до 10 МБ</p>
-              </div>
-
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Название *</label>
                 <Input value={title} onChange={e => setTitle(e.target.value)} />
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Время приготовления</label>
-                  <Input value={cookTime} onChange={e => setCookTime(e.target.value)} placeholder="30 мин" />
+                  <label className="text-xs text-gray-500 mb-1 block">Время готовки</label>
+                  <Input value={cookTime} onChange={e => setCookTime(e.target.value)} placeholder="напр. 30 мин" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Порций</label>
                   <Input type="number" value={servings} onChange={e => setServings(e.target.value)} />
                 </div>
               </div>
-
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Страна / Кухня</label>
-                <Input value={country} onChange={e => setCountry(e.target.value)} placeholder="RU" />
+                <label className="text-xs text-gray-500 mb-1 block">Кухня</label>
+                <Input value={country} onChange={e => setCountry(e.target.value)} placeholder="Русская / Итальянская / ..." />
               </div>
-
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Категории (через запятую)</label>
-                <Input value={categories} onChange={e => setCategories(e.target.value)} placeholder="Завтрак, Русская" />
+                <Input value={categories} onChange={e => setCategories(e.target.value)} />
               </div>
-
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Видео</label>
-                {videoUrl && (
-                  <div className="relative mb-2">
-                    <video src={videoUrl} controls className="w-full rounded-xl max-h-40" />
-                    <button onClick={() => setVideoUrl('')}
-                      className="absolute top-2 right-2 bg-white/90 rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-red-500 shadow text-sm">x</button>
-                  </div>
-                )}
+                <label className="text-xs text-gray-500 mb-1 block">Изображение (URL)</label>
                 <div className="flex gap-2">
-                  <Input className="flex-1" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="https://... или загрузите файл" />
+                  <Input value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="flex-1" />
+                  <button type="button" onClick={() => imgInputRef.current?.click()} disabled={uploadingImg}
+                    className="px-3 py-2 text-sm rounded-xl bg-gray-100 hover:bg-gray-200 disabled:opacity-50">
+                    {uploadingImg ? 'Загрузка...' : 'Файл'}
+                  </button>
+                  <input ref={imgInputRef} type="file" accept="image/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f, 'image'); e.target.value = ''; }} />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">JPEG/PNG/WebP/GIF — до 10 МБ</p>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Видео (URL)</label>
+                <div className="flex gap-2">
+                  <Input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} className="flex-1" />
                   <button type="button" onClick={() => vidInputRef.current?.click()} disabled={uploadingVid}
-                    className="shrink-0 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">
+                    className="px-3 py-2 text-sm rounded-xl bg-gray-100 hover:bg-gray-200 disabled:opacity-50">
                     {uploadingVid ? 'Загрузка...' : 'Файл'}
                   </button>
                   <input ref={vidInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden"
@@ -209,6 +240,71 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
                     onChange={e => setNutrition(prev => ({ ...prev, [key]: e.target.value }))} />
                 </div>
               ))}
+            </div>
+          )}
+
+          {tab === 'classification' && (
+            <div className="space-y-5">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Группа продукта (метод тарелки)</label>
+                <select value={foodGroup} onChange={e => setFoodGroup(e.target.value as FoodGroup | '')}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-tomato/40">
+                  <option value="">— не указано —</option>
+                  {FOOD_GROUP_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {foodGroup === 'protein' && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Тип белка *</label>
+                  <select value={proteinType} onChange={e => setProteinType(e.target.value as ProteinType | '')}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-tomato/40">
+                    <option value="">— не указано —</option>
+                    {PROTEIN_TYPE_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {foodGroup === 'grain' && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Тип зерна *</label>
+                  <select value={grainType} onChange={e => setGrainType(e.target.value as GrainType | '')}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-tomato/40">
+                    <option value="">— не указано —</option>
+                    {GRAIN_TYPE_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs text-gray-500 mb-2 block">Подходит для приёмов пищи</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {SUITABLE_FOR_OPTIONS.map(o => (
+                    <label key={o.value} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+                      <input type="checkbox" checked={suitableFor.includes(o.value)}
+                        onChange={() => toggleSuitable(o.value)} />
+                      <span className="text-sm">{o.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+                  <input type="checkbox" checked={isFattyFish} onChange={e => setIsFattyFish(e.target.checked)} />
+                  <span className="text-sm">Жирная рыба (лосось, скумбрия, сельдь, форель)</span>
+                </label>
+                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+                  <input type="checkbox" checked={isRedMeat} onChange={e => setIsRedMeat(e.target.checked)} />
+                  <span className="text-sm">Красное мясо (говядина, баранина, свинина, утка)</span>
+                </label>
+              </div>
             </div>
           )}
 

@@ -77,6 +77,10 @@ class Profile(models.Model):
         GAIN_WEIGHT = "gain_weight", "Набор массы"
         HEALTHY = "healthy", "Здоровое питание"
 
+    class MealPlan(models.TextChoices):
+        THREE = "3", "3 приёма пищи"
+        FIVE = "5", "5 приёмов пищи"
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     birth_year = models.PositiveSmallIntegerField(null=True, blank=True)
     gender = models.CharField(max_length=10, choices=Gender.choices, null=True, blank=True)
@@ -85,6 +89,11 @@ class Profile(models.Model):
     activity_level = models.CharField(max_length=20, choices=ActivityLevel.choices, default=ActivityLevel.MODERATE)
     goal = models.CharField(max_length=20, choices=Goal.choices, default=Goal.HEALTHY)
     calorie_target = models.PositiveSmallIntegerField(null=True, blank=True)
+    protein_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    fat_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    carbs_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    fiber_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    meal_plan = models.CharField(max_length=2, choices=MealPlan.choices, default=MealPlan.THREE)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
