@@ -44,7 +44,7 @@ services:
       - ./backend:/app
       - media_files:/app/media
     ports:
-      - "8000:8000"
+      - 8003:8000
     networks:
       - menugen_network
     depends_on:

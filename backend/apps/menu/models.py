@@ -48,13 +48,16 @@ class MenuItem(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
     member = models.ForeignKey(FamilyMember, on_delete=models.CASCADE, null=True, blank=True)
     meal_type = models.CharField(max_length=20, choices=MealType.choices)
+    # meal_slot хранит точный слот: breakfast/lunch/dinner/snack1/snack2
+    # нужен для различения двух перекусов при 5-разовом питании
+    meal_slot = models.CharField(max_length=20, default="")
     day_offset = models.PositiveSmallIntegerField()
     quantity = models.DecimalField(max_digits=6, decimal_places=2, default=1)
     is_salad = models.BooleanField(default=False)
 
     class Meta:
         db_table = "menu_items"
-        unique_together = [("menu", "member", "day_offset", "meal_type", "is_salad")]
+        unique_together = [("menu", "member", "day_offset", "meal_slot", "is_salad")]
         indexes = [
             models.Index(fields=["menu_id"]),
             models.Index(fields=["recipe_id"]),
