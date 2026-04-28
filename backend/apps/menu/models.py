@@ -44,20 +44,33 @@ class MenuItem(models.Model):
         DINNER = "dinner", "Ужин"
         SNACK = "snack", "Перекус"
 
+    class ComponentRole(models.TextChoices):
+        PROTEIN   = "protein",   "Белок"
+        GRAIN     = "grain",     "Крупа/гарнир"
+        VEGETABLE = "vegetable", "Овощи"
+        FRUIT     = "fruit",     "Фрукт"
+        DAIRY     = "dairy",     "Молочное"
+        OIL       = "oil",       "Масло"
+        OTHER     = "other",     "Прочее"
+
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name="items")
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
     member = models.ForeignKey(FamilyMember, on_delete=models.CASCADE, null=True, blank=True)
     meal_type = models.CharField(max_length=20, choices=MealType.choices)
     # meal_slot хранит точный слот: breakfast/lunch/dinner/snack1/snack2
-    # нужен для различения двух перекусов при 5-разовом питании
     meal_slot = models.CharField(max_length=20, default="")
     day_offset = models.PositiveSmallIntegerField()
     quantity = models.DecimalField(max_digits=6, decimal_places=2, default=1)
-    is_salad = models.BooleanField(default=False)
+    # роль рецепта в приёме пищи (метод тарелки)
+    component_role = models.CharField(
+        max_length=20,
+        choices=ComponentRole.choices,
+        default=ComponentRole.OTHER,
+    )
 
     class Meta:
         db_table = "menu_items"
-        unique_together = [("menu", "member", "day_offset", "meal_slot", "is_salad")]
+        unique_together = [("menu", "member", "day_offset", "meal_slot", "component_role")]
         indexes = [
             models.Index(fields=["menu_id"]),
             models.Index(fields=["recipe_id"]),

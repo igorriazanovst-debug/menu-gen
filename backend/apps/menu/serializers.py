@@ -24,7 +24,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MenuItem
-        fields = ("id", "day_offset", "meal_type", "recipe", "member_name", "quantity")
+        fields = ("id", "day_offset", "meal_type", "meal_slot", "component_role", "recipe", "member_name", "quantity")
 
 
 class MenuItemSwapSerializer(serializers.Serializer):

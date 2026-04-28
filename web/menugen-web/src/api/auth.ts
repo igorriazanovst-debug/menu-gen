@@ -1,5 +1,5 @@
 import client from './client';
-import type { AuthTokens, User } from '../types';
+import type { AuthTokens, User, UserProfile } from '../types';
 
 export const authApi = {
   login: (email: string, password: string) =>
@@ -13,6 +13,6 @@ export const authApi = {
 
   me: () => client.get<User>('/users/me/'),
 
-  updateMe: (data: Partial<User> & { profile?: Partial<User['profile']> }) =>
+  updateMe: (data: Partial<Omit<User, 'profile'>> & { profile?: Partial<UserProfile> }) =>
     client.patch<User>('/users/me/', data),
 };

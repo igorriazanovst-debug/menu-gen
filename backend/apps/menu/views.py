@@ -178,7 +178,7 @@ class MenuGenerateView(APIView):
                     meal_type=item["meal_type"],
                     meal_slot=item.get("meal_slot", item["meal_type"]),
                     day_offset=item["day_offset"],
-                    is_salad=item.get("is_salad", False),
+                    component_role=item.get("component_role", "other"),
                 )
                 for item in generated
             ])

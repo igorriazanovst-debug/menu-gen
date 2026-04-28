@@ -1,6 +1,23 @@
+export type MealPlan = 'three' | 'five';
+
+export interface NutritionTargets {
+  calorie_target: number;
+  protein_target_g: string;
+  fat_target_g:     string;
+  carbs_target_g:   string;
+  fiber_target_g:   string;
+}
+
 export interface UserProfile {
   birth_year?: number; gender?: string; height_cm?: number; weight_kg?: number;
-  activity_level: string; goal: string; calorie_target?: number;
+  activity_level: string; goal: string;
+  calorie_target?: number;
+  protein_target_g?: string | null;
+  fat_target_g?:     string | null;
+  carbs_target_g?:   string | null;
+  fiber_target_g?:   string | null;
+  meal_plan?: MealPlan;
+  targets_calculated?: NutritionTargets | null;
 }
 export interface User {
   id: number; name: string; email?: string; phone?: string;
@@ -36,8 +53,36 @@ export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export const MEAL_LABELS: Record<MealType, string> = {
   breakfast: 'Завтрак', lunch: 'Обед', dinner: 'Ужин', snack: 'Перекус',
 };
+export type ComponentRole =
+  | 'protein' | 'grain' | 'vegetable' | 'fruit' | 'dairy' | 'oil' | 'other';
+
+export type MealSlot =
+  | 'breakfast' | 'lunch' | 'dinner' | 'snack1' | 'snack2';
+
+export const COMPONENT_ROLE_LABELS: Record<ComponentRole, string> = {
+  protein:   'Белок',
+  grain:     'Крупа/гарнир',
+  vegetable: 'Овощи',
+  fruit:     'Фрукт',
+  dairy:     'Молочное',
+  oil:       'Масло',
+  other:     'Прочее',
+};
+
+export const COMPONENT_ROLE_ICONS: Record<ComponentRole, string> = {
+  protein:   '🍗',
+  grain:     '🌾',
+  vegetable: '🥗',
+  fruit:     '🍎',
+  dairy:     '🥛',
+  oil:       '🫒',
+  other:     '🍽',
+};
+
 export interface MenuItem {
   id: number; day_offset: number; meal_type: MealType;
+  meal_slot?: MealSlot | string;
+  component_role?: ComponentRole;
   recipe: Recipe; member_name?: string; quantity: number;
 }
 export interface Menu {
