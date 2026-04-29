@@ -60,3 +60,4 @@ coverage.xml
 
 # Flutter source (not Python lib/)
 !mobile/menugen_app/lib/
+backend/scripts/data/synonyms.yaml.bak.*
