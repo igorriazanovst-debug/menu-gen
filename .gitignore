@@ -61,3 +61,8 @@ coverage.xml
 # Flutter source (not Python lib/)
 !mobile/menugen_app/lib/
 backend/scripts/data/synonyms.yaml.bak.*
+
+# MG-104d artefacts (large/local-only)
+/data/
+/inventory/
+/tmp/menugen/
