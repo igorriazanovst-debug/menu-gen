@@ -1,0 +1,105 @@
+# === тяжёлые данные ===
+data/
+backups/
+inventory/
+backend/media/
+*.parquet
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.sql
+
+# === артефакты сборки ===
+web-dist/
+web/menugen-web/build/
+web/menugen-web/public/
+mobile/menugen_app/build/
+mobile/menugen_app/.dart_tool/
+mobile/menugen_app/android/
+mobile/menugen_app/ios/
+mobile/menugen_app/assets/
+backend/staticfiles/
+dist/
+build/
+*.egg-info/
+
+# === зависимости ===
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.lock
+package-lock.json
+yarn.lock
+poetry.lock
+Pipfile.lock
+pubspec.lock
+
+# === медиа и бинари ===
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico
+*.svg
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.pdf
+*.zip
+*.tar
+*.tar.gz
+*.gz
+*.7z
+*.rar
+*.exe
+*.dll
+*.so
+*.dylib
+*.jar
+*.apk
+*.aab
+*.ipa
+
+# === миграции (опционально, раскомментируй если их много) ===
+# backend/apps/*/migrations/0*.py
+
+# === IDE / ОС ===
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# === секреты ===
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+
+# === логи и временные ===
+*.log
+logs/
+tmp/
+.tmp/
+
+# === git и claude ===
+.git/
+.claude/
+
+# === скриптовые данные MG-104 ===
+backend/scripts/data/*.parquet
+backend/scripts/data/*.jsonl

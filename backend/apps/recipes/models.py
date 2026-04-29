@@ -44,6 +44,7 @@ class Recipe(models.Model):
 
     food_group    = models.CharField(max_length=16, choices=FoodGroup.choices, null=True, blank=True)
     suitable_for  = models.JSONField(default=list, blank=True)
+    povar_raw     = models.JSONField(blank=True, null=True)
     protein_type  = models.CharField(max_length=8, choices=ProteinType.choices, null=True, blank=True)
     grain_type    = models.CharField(max_length=8, choices=GrainType.choices, null=True, blank=True)
     is_fatty_fish = models.BooleanField(default=False)

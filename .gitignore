@@ -66,3 +66,42 @@ backend/scripts/data/synonyms.yaml.bak.*
 /data/
 /inventory/
 /tmp/menugen/
+
+# === дампы БД ===
+backups/
+*.sql
+*.dump
+
+# === бэкапы кода ===
+*.bak
+*.swp
+*.swo
+
+# === данные MG-104 ===
+data/
+backend/scripts/data/*.parquet
+backend/scripts/data/*.jsonl
+
+# === дубликаты в корне ===
+/RecipesPage.tsx
+
+# === билды фронта (генерируются) ===
+web-dist/
+web/menugen-web/build/
+web/menugen-web/dist/
+
+# === lock-файлы (опционально, по желанию команды) ===
+package-lock.json
+pubspec.lock
+
+# === временные патч-скрипты в корне ===
+/apply_*.py
+/patch_*.py
+/fix_*.py
+/cleanup_*.py
+/db_dump_and_*.py
+/deploy_*.ps1
+
+# === xlsx/docx в корне ===
+/*.xlsx
+/*.docx

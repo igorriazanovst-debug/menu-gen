@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { menuApi } from '../../api/menu';
 import type { DeletedMenu, SwapResult } from '../../api/menu';
 import { recipesApi } from '../../api/recipes';
+import { swapMenuItem } from '../../api/menu'; // MG-402
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -58,6 +59,96 @@ function sortByRole(items: MenuItem[]): MenuItem[] {
   });
 }
 
+
+// ── MG-402: inline swap по food_group ───────────────────────────────────────
+
+interface SwapInlineProps {
+  itemId: number;
+  menuId: number;
+  foodGroup?: string | null;
+  currentRecipeId: number;
+  onSwapped: () => void;
+}
+
+const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, currentRecipeId, onSwapped }) => {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [items, setItems] = useState<{ id: number; title: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancel = false;
+    setLoading(true); setErr(null);
+    const params: any = { page_size: 25 };
+    if (search) params.search = search;
+    if (foodGroup) params.food_group = foodGroup;
+    recipesApi.list(params)
+      .then(res => {
+        if (cancel) return;
+        const list = (res.data.results || []).filter((r: any) => r.id !== currentRecipeId);
+        setItems(list);
+      })
+      .catch(() => { if (!cancel) setErr('Не удалось загрузить рецепты'); })
+      .finally(() => { if (!cancel) setLoading(false); });
+    return () => { cancel = true; };
+  }, [open, search, foodGroup, currentRecipeId]);
+
+  const handlePick = async (recipeId: number) => {
+    setErr(null);
+    try {
+      await swapMenuItem(menuId, itemId, recipeId);
+      setOpen(false);
+      onSwapped();
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Ошибка замены');
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="text-xs text-tomato hover:underline"
+        title={foodGroup ? `Заменить (группа: ${foodGroup})` : 'Заменить'}
+      >
+        ✏️ Заменить
+      </button>
+      {open && (
+        <div className="mt-2 border border-gray-200 rounded-lg p-2 bg-gray-50">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Поиск рецепта..."
+            className="w-full px-2 py-1 text-sm rounded-md border border-gray-200 focus:outline-none focus:border-tomato"
+          />
+          {loading && <p className="text-xs text-gray-400 mt-2">Загрузка...</p>}
+          {err && <p className="text-xs text-red-600 mt-2">{err}</p>}
+          {!loading && !err && items.length === 0 && (
+            <p className="text-xs text-gray-400 mt-2">Ничего не найдено</p>
+          )}
+          {items.length > 0 && (
+            <ul className="mt-2 max-h-48 overflow-y-auto divide-y divide-gray-200 bg-white rounded-md">
+              {items.map(r => (
+                <li
+                  key={r.id}
+                  onClick={() => handlePick(r.id)}
+                  className="px-2 py-1.5 text-xs cursor-pointer hover:bg-rice"
+                >
+                  {r.title}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── MealDetailModal ─────────────────────────────────────────────────────────
 
 interface MealDetailModalProps {
@@ -65,9 +156,11 @@ interface MealDetailModalProps {
   mealLabel: string;
   dayLabel: string;
   onClose: () => void;
+  menuId: number; // MG-402
+  onSwapped: () => void; // MG-402
 }
 
-const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, dayLabel, onClose }) => {
+const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, dayLabel, onClose, menuId, onSwapped }) => {
   const sorted = useMemo(() => sortByRole(items), [items]);
 
   const handlePrintRecipes = () => {
@@ -146,6 +239,13 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
                       {item.recipe.nutrition?.calories &&
                         <span>🔥 {item.recipe.nutrition.calories.value} {item.recipe.nutrition.calories.unit}</span>}
                     </div>
+                    <SwapInline
+                      itemId={item.id}
+                      menuId={menuId}
+                      foodGroup={(item.recipe as any).food_group ?? null}
+                      currentRecipeId={item.recipe.id}
+                      onSwapped={onSwapped}
+                    />
                   </div>
                 </div>
               </Card>
@@ -454,6 +554,8 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
           mealLabel={mealModal.label}
           dayLabel={mealModal.dayLabel}
           onClose={() => setMealModal(null)}
+          menuId={menu.id}
+          onSwapped={() => { setMealModal(null); onRefresh(); }}
         />
       )}
     </div>

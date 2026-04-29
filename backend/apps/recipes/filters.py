@@ -7,6 +7,7 @@ class RecipeFilter(filters.FilterSet):
     category    = filters.CharFilter(method="filter_category")
     country     = filters.CharFilter(lookup_expr="icontains")
     is_custom   = filters.BooleanFilter()
+    food_group  = filters.CharFilter(field_name="food_group", lookup_expr="exact")
     author      = filters.NumberFilter(field_name="author_id")
     meal_type   = filters.CharFilter(method="filter_meal_type")
     calories_min = filters.NumberFilter(method="filter_calories_min")
@@ -15,7 +16,7 @@ class RecipeFilter(filters.FilterSet):
     class Meta:
         model  = Recipe
         fields = ["category", "country", "is_custom", "author", "meal_type",
-                  "calories_min", "calories_max"]
+                  "calories_min", "calories_max", "food_group"]
 
     def filter_category(self, queryset, name, value):
         return queryset.filter(categories__icontains=value)

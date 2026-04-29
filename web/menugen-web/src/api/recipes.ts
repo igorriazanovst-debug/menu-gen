@@ -2,7 +2,7 @@ import client from './client';
 import type { PaginatedResponse, Recipe } from '../types';
 
 export const recipesApi = {
-  list: (params?: { search?: string; category?: string; country?: string; page?: number }) =>
+  list: (params?: { search?: string; category?: string; country?: string; food_group?: string; page?: number; page_size?: number }) =>
     client.get<PaginatedResponse<Recipe>>('/recipes/', { params }),
 
   get: (id: number) => client.get<Recipe>(`/recipes/${id}/`),

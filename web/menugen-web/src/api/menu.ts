@@ -49,3 +49,11 @@ export const menuApi = {
   toggleShoppingItem: (menuId: number, itemId: number) =>
     client.patch(`/menu/${menuId}/shopping-list/items/${itemId}/toggle/`),
 };
+
+// MG-402
+export async function swapMenuItem(menuId: number, itemId: number, recipeId: number) {
+  const { data } = await client.patch(
+    `/menu/${menuId}/items/${itemId}/`, { recipe_id: recipeId }
+  );
+  return data;
+}

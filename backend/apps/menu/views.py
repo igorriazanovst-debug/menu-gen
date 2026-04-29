@@ -329,6 +329,15 @@ class MenuItemSwapView(APIView):
         except Recipe.DoesNotExist:
             return Response({"detail": "Рецепт не найден."}, status=status.HTTP_404_NOT_FOUND)
 
+        # MG-402: запрещаем swap на рецепт другой food_group
+        original_fg = getattr(item.recipe, "food_group", None)
+        new_fg = getattr(recipe, "food_group", None)
+        if original_fg and new_fg and original_fg != new_fg:
+            return Response(
+                {"detail": f"Рецепт другой группы ({new_fg}), ожидается {original_fg}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         item.recipe = recipe
         item.save(update_fields=["recipe"])
         menu.modified_by = Menu.ModifiedBy.USER
