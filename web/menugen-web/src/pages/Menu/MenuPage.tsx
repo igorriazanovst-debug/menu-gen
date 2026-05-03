@@ -354,7 +354,7 @@ export const MenuPage: React.FC = () => {
   const [periodDays, setPeriodDays] = useState(7);
   const [startDate, setStartDate] = useState(today());
   const [mealPlanType, setMealPlanType] = useState<'3' | '5'>(
-    ((user?.profile as any)?.meal_plan === 'five') ? '5' : '3'
+    (user?.profile?.meal_plan_type ?? '3')
   );
   const [showGenerateForm, setShowGenerateForm] = useState(false);
 

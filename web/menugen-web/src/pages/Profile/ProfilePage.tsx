@@ -9,8 +9,8 @@ import { getErrorMessage } from '../../utils/api';
 import type { MealPlan, NutritionTargets, UserProfile } from '../../types';
 
 const MEAL_PLAN_OPTIONS: { value: MealPlan; label: string; hint: string }[] = [
-  { value: 'three', label: '3 приёма', hint: 'завтрак / обед / ужин' },
-  { value: 'five',  label: '5 приёмов', hint: '+ перекусы между ними' },
+  { value: '3', label: '3 приёма', hint: 'завтрак / обед / ужин' },
+  { value: '5', label: '5 приёмов', hint: '+ перекусы между ними' },
 ];
 
 const num = (v: string | number | null | undefined): string => {
@@ -39,15 +39,15 @@ export const ProfilePage: React.FC = () => {
   const user = useAppSelector((s) => s.auth.user);
 
   const [name, setName]   = useState(user?.name ?? '');
-  const [mealPlan, setMealPlan] = useState<MealPlan>(user?.profile?.meal_plan ?? 'three');
+  const [mealPlan, setMealPlan] = useState<MealPlan>(user?.profile?.meal_plan_type ?? '3');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError]     = useState('');
 
   useEffect(() => {
     setName(user?.name ?? '');
-    setMealPlan(user?.profile?.meal_plan ?? 'three');
-  }, [user?.id, user?.name, user?.profile?.meal_plan]);
+    setMealPlan(user?.profile?.meal_plan_type ?? '3');
+  }, [user?.id, user?.name, user?.profile?.meal_plan_type]);
 
   const targets: NutritionTargets | null = useMemo(() => {
     const p = user?.profile;
@@ -57,7 +57,7 @@ export const ProfilePage: React.FC = () => {
         calorie_target:   p.calorie_target,
         protein_target_g: String(p.protein_target_g),
         fat_target_g:     String(p.fat_target_g ?? ''),
-        carbs_target_g:   String(p.carbs_target_g ?? ''),
+        carb_target_g:    String(p.carb_target_g ?? ''),
         fiber_target_g:   String(p.fiber_target_g ?? ''),
       };
     }
@@ -70,7 +70,7 @@ export const ProfilePage: React.FC = () => {
     e.preventDefault();
     setSaving(true); setSuccess(''); setError('');
     try {
-      const payload: Partial<UserProfile> = { meal_plan: mealPlan };
+      const payload: Partial<UserProfile> = { meal_plan_type: mealPlan };
       const { data } = await authApi.updateMe({ name, profile: payload });
       dispatch(setUser(data));
       setSuccess('Профиль обновлён!');
@@ -103,7 +103,7 @@ export const ProfilePage: React.FC = () => {
           <Input label="Имя" value={name} onChange={(e) => setName(e.target.value)} error={error} />
           <Input label="Email" value={user?.email ?? ''} disabled />
 
-          {/* meal_plan — план приёмов пищи */}
+          {/* meal_plan_type — план приёмов пищи */}
           <div>
             <label className="block text-sm font-medium text-chocolate mb-2">
               План приёмов пищи
@@ -153,7 +153,7 @@ export const ProfilePage: React.FC = () => {
             <MacroPill label="Ккал"  value={num(targets.calorie_target)}    unit="ккал" color="bg-tomato/10 text-tomato" />
             <MacroPill label="Белок" value={num(targets.protein_target_g)}  unit="г"    color="bg-blue-50 text-blue-700" />
             <MacroPill label="Жиры"  value={num(targets.fat_target_g)}      unit="г"    color="bg-amber-50 text-amber-700" />
-            <MacroPill label="Углев" value={num(targets.carbs_target_g)}    unit="г"    color="bg-emerald-50 text-emerald-700" />
+            <MacroPill label="Углев" value={num(targets.carb_target_g)}     unit="г"    color="bg-emerald-50 text-emerald-700" />
             <MacroPill label="Клетч" value={num(targets.fiber_target_g)}    unit="г"    color="bg-purple-50 text-purple-700" />
           </div>
         )}

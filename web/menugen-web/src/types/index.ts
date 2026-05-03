@@ -1,10 +1,10 @@
-export type MealPlan = 'three' | 'five';
+export type MealPlan = '3' | '5';
 
 export interface NutritionTargets {
   calorie_target: number;
   protein_target_g: string;
   fat_target_g:     string;
-  carbs_target_g:   string;
+  carb_target_g:    string;
   fiber_target_g:   string;
 }
 
@@ -14,9 +14,9 @@ export interface UserProfile {
   calorie_target?: number;
   protein_target_g?: string | null;
   fat_target_g?:     string | null;
-  carbs_target_g?:   string | null;
+  carb_target_g?:    string | null;
   fiber_target_g?:   string | null;
-  meal_plan?: MealPlan;
+  meal_plan_type?: MealPlan;
   targets_calculated?: NutritionTargets | null;
 }
 export interface User {
