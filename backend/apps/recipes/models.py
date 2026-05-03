@@ -9,6 +9,7 @@ class Recipe(models.Model):
     title = models.CharField(max_length=512)
     cook_time = models.CharField(max_length=64, null=True, blank=True)
     servings = models.PositiveSmallIntegerField(null=True, blank=True)
+    servings_normalized = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Нормализованное число порций (MG-104d-5)")
     ingredients = models.JSONField(default=list)
     steps = models.JSONField(default=list)
     nutrition = models.JSONField(default=dict)
@@ -49,6 +50,10 @@ class Recipe(models.Model):
     grain_type    = models.CharField(max_length=8, choices=GrainType.choices, null=True, blank=True)
     is_fatty_fish = models.BooleanField(default=False)
     is_red_meat   = models.BooleanField(default=False)
+    kcal     = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True, help_text='Калорийность на 1 порцию, ккал (MG-104d-4).')
+    proteins = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Белки на 1 порцию, г.')
+    fats     = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Жиры на 1 порцию, г.')
+    carbs    = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Углеводы на 1 порцию, г.')
 
     class Meta:
         db_table = "recipes"
