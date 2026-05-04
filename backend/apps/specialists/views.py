@@ -25,10 +25,8 @@ def _get_specialist(user):
         return None
 
 
-class IsVerifiedSpecialist(permissions.BasePermission):
-    def has_permission(self, request, view):
-        specialist = _get_specialist(request.user)
-        return specialist is not None and specialist.is_verified
+# MG_205_V = 1: класс перемещён в apps/specialists/permissions.py
+from .permissions import IsVerifiedSpecialist  # noqa: F401  re-export для обратной совместимости
 
 
 # ── Профиль специалиста ──────────────────────────────────────────────────────

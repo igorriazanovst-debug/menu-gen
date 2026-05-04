@@ -22,6 +22,7 @@ from datetime import date
 from decimal import Decimal
 
 MG_202_V = 1   # маркер версии формулы (для идемпотентности apply-скрипта)
+MG_205_V = 1   # учёт источника правок (auto/user/specialist)
 
 ACTIVITY_FACTOR = {
     "sedentary":   1.2,
@@ -113,20 +114,50 @@ def calculate_targets(profile) -> dict | None:
     }
 
 
-def fill_profile_targets(profile, force: bool = False) -> bool:
+def fill_profile_targets(profile, force: bool = False, actor=None) -> bool:
     """
-    Заполняет цели в профиле. Не перезаписывает заданные пользователем
-    значения (если force=False).
+    Заполняет цели в профиле по формуле Mifflin-St Jeor.
+
+    MG-205: учитывает источник последней правки (ProfileTargetAudit).
+      - force=False: НЕ перетирает поля, у которых last source in {'user','specialist'}
+      - force=True : перетирает всегда; ставит source='auto'
+    Каждое реальное изменение пишется в ProfileTargetAudit (+AuditLog) через audit.record_target_change.
+
+    actor — User, инициатор force-сброса (например, диетолог через "Сбросить к авто").
+    Для обычного авторасчёта actor=None.
+
     Возвращает True если что-то изменилось.
     """
+    from .audit import record_target_change, is_locked
+
     targets = calculate_targets(profile)
     if not targets:
         return False
+
     changed = False
+    # Если профиль ещё не сохранён (pk is None) — записывать аудит нельзя (FK requires pk).
+    # В этом случае просто проставляем поля; аудит запишем после save() через post_save-хук
+    # (см. apps/users/models.Profile.save).
+    has_pk = profile.pk is not None
+
     for field, value in targets.items():
         current = getattr(profile, field, None)
+        # MG-205: проверяем lock для существующего профиля
+        if has_pk and not force and is_locked(profile, field):
+            continue
+        # Для нового профиля (без pk) lock проверять негде — записей ещё нет.
         if force or current is None:
             if current != value:
                 setattr(profile, field, value)
                 changed = True
+                if has_pk:
+                    record_target_change(
+                        profile=profile,
+                        field=field,
+                        new_value=value,
+                        source="auto",
+                        by_user=actor,
+                        old_value=current,
+                        reason="auto-recalc (force)" if force else "auto-fill (was empty)",
+                    )
     return changed

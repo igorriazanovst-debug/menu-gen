@@ -116,6 +116,16 @@ class ProfileUpdateSerializer(serializers.Serializer):
     )
 
 
+# MG_205_V_family_ser = 1
+TARGET_FIELDS_MG205 = (
+    "calorie_target",
+    "protein_target_g",
+    "fat_target_g",
+    "carb_target_g",
+    "fiber_target_g",
+)
+
+
 class FamilyMemberUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False, max_length=255)
     allergies = serializers.ListField(child=serializers.CharField(), required=False)
@@ -123,7 +133,23 @@ class FamilyMemberUpdateSerializer(serializers.Serializer):
     profile = ProfileUpdateSerializer(required=False)
 
     def update(self, instance, validated_data):
+        from apps.users.audit import record_target_change
+        from apps.specialists.permissions import is_verified_specialist_for_user
+
         user = instance.user
+        request = self.context.get("request")
+        actor = getattr(request, "user", None) if request else None
+
+        # MG-205: определяем источник правки
+        if actor and actor.id == user.id:
+            source = "user"
+        elif actor and is_verified_specialist_for_user(actor, user):
+            source = "specialist"
+        else:
+            # Глава семьи правит члена семьи → считаем source='user'
+            # (правки головы семьи приравниваются к ручным правкам пользователя)
+            source = "user"
+
         profile_data = validated_data.pop("profile", None)
 
         for attr in ("name", "allergies", "disliked_products"):
@@ -133,8 +159,22 @@ class FamilyMemberUpdateSerializer(serializers.Serializer):
 
         if profile_data:
             profile = user.profile
+            old_values = {f: getattr(profile, f, None) for f in TARGET_FIELDS_MG205}
+
             for attr, value in profile_data.items():
                 setattr(profile, attr, value)
             profile.save()
+
+            for f in TARGET_FIELDS_MG205:
+                if f in profile_data:
+                    record_target_change(
+                        profile=profile,
+                        field=f,
+                        new_value=profile_data[f],
+                        source=source,
+                        by_user=actor,
+                        old_value=old_values[f],
+                        reason=f"family PATCH (source={source})",
+                    )
 
         return instance

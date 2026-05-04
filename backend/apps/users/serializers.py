@@ -139,6 +139,16 @@ class UserMeSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "vk_id", "user_type", "created_at")
 
 
+# MG_205_V_serializers = 1
+TARGET_FIELDS_MG205 = (
+    "calorie_target",
+    "protein_target_g",
+    "fat_target_g",
+    "carb_target_g",
+    "fiber_target_g",
+)
+
+
 class UserMeUpdateSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(required=False)
 
@@ -147,13 +157,37 @@ class UserMeUpdateSerializer(serializers.ModelSerializer):
         fields = ("name", "avatar_url", "allergies", "disliked_products", "profile")
 
     def update(self, instance, validated_data):
+        from .audit import record_target_change
+
+        request = self.context.get("request")
+        actor = getattr(request, "user", None) if request else None
+
         profile_data = validated_data.pop("profile", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
         if profile_data:
             profile = instance.profile
+            # Сохраним old-значения для аудита ДО изменения
+            old_values = {f: getattr(profile, f, None) for f in TARGET_FIELDS_MG205}
+
             for attr, value in profile_data.items():
                 setattr(profile, attr, value)
             profile.save()
+
+            # MG-205: для каждого пришедшего target-поля пишем аудит source='user'
+            # (UserMeUpdateSerializer — это всегда сам пользователь правит свой профиль)
+            for f in TARGET_FIELDS_MG205:
+                if f in profile_data:
+                    new_val = profile_data[f]
+                    record_target_change(
+                        profile=profile,
+                        field=f,
+                        new_value=new_val,
+                        source="user",
+                        by_user=actor,
+                        old_value=old_values[f],
+                        reason="user PATCH /users/me",
+                    )
         return instance

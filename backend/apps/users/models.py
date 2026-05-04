@@ -104,7 +104,96 @@ class Profile(models.Model):
 
     # MG-202: auto-fill targets on save
     def save(self, *args, **kwargs):
+        # MG-205: actor может быть проброшен через kwargs из view
+        actor = kwargs.pop('_mg205_actor', None)
         from .nutrition import fill_profile_targets
-        # заполняем цели только если не заполнены вручную (force=False)
-        fill_profile_targets(self, force=False)
+
+        is_new = self.pk is None
+        # Авторасчёт ДО сохранения. Для нового профиля аудит
+        # запишется ниже (после первичного save), т.к. требуется pk.
+        fill_profile_targets(self, force=False, actor=actor)
         super().save(*args, **kwargs)
+
+        # MG-205: post-save audit pass — для новых профилей,
+        # когда pk появился только что.
+        if is_new:
+            from .audit import record_target_change
+            for f in (
+                'calorie_target',
+                'protein_target_g',
+                'fat_target_g',
+                'carb_target_g',
+                'fiber_target_g',
+            ):
+                v = getattr(self, f, None)
+                if v is None:
+                    continue
+                # идемпотентность: проверяем что записи ещё нет
+                if not self.target_audits.filter(field=f).exists():
+                    record_target_change(
+                        profile=self,
+                        field=f,
+                        new_value=v,
+                        source='auto',
+                        by_user=actor,
+                        old_value=None,
+                        reason='auto-fill on profile create',
+                    )
+
+
+# ============================================================
+# MG-205: аудит источника правок целей КБЖУ
+# ============================================================
+MG_205_V = 1
+
+
+class ProfileTargetAudit(models.Model):
+    """История правок полей КБЖУ профиля.
+
+    Источник изменения: 'auto' (рассчитал fill_profile_targets),
+    'user' (поставил сам пользователь), 'specialist' (диетолог/тренер).
+    Текущий источник для поля = source последней записи (по at desc).
+    """
+
+    class Field(models.TextChoices):
+        CALORIE = "calorie_target", "calorie_target"
+        PROTEIN = "protein_target_g", "protein_target_g"
+        FAT = "fat_target_g", "fat_target_g"
+        CARB = "carb_target_g", "carb_target_g"
+        FIBER = "fiber_target_g", "fiber_target_g"
+
+    class Source(models.TextChoices):
+        AUTO = "auto", "auto"
+        USER = "user", "user"
+        SPECIALIST = "specialist", "specialist"
+
+    profile = models.ForeignKey(
+        "Profile", on_delete=models.CASCADE, related_name="target_audits"
+    )
+    field = models.CharField(max_length=32, choices=Field.choices)
+    source = models.CharField(max_length=16, choices=Source.choices)
+    by_user = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="profile_target_edits",
+    )
+    old_value = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True
+    )
+    new_value = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True
+    )
+    reason = models.TextField(blank=True, default="")
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "profile_target_audit"
+        indexes = [
+            models.Index(fields=["profile", "field", "-at"]),
+        ]
+        ordering = ["-at"]
+
+    def __str__(self):
+        return f"PTA(pid={self.profile_id}, {self.field}={self.new_value}, src={self.source})"

@@ -135,12 +135,28 @@ class FamilyMemberUpdateView(APIView):
         if not family:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
+        # MG_205_V_family_view = 1: добавлен путь для verified specialist'а
         is_head = family.owner_id == request.user.id or request.user.user_type == "admin"
         is_self = FamilyMember.objects.filter(
             family=family, user=request.user, id=member_id
         ).exists()
 
-        if not is_head and not is_self:
+        # Specialist допускается, если у него есть активный assignment на эту семью
+        is_specialist = False
+        try:
+            from apps.specialists.permissions import _get_specialist
+            from apps.specialists.models import SpecialistAssignment
+            spec = _get_specialist(request.user)
+            if spec and spec.is_verified:
+                is_specialist = SpecialistAssignment.objects.filter(
+                    specialist=spec,
+                    family=family,
+                    status=SpecialistAssignment.Status.ACTIVE,
+                ).exists()
+        except Exception:
+            is_specialist = False
+
+        if not (is_head or is_self or is_specialist):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -150,7 +166,9 @@ class FamilyMemberUpdateView(APIView):
         except FamilyMember.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        serializer = FamilyMemberUpdateSerializer(member, data=request.data, partial=True)
+        serializer = FamilyMemberUpdateSerializer(
+            member, data=request.data, partial=True, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
