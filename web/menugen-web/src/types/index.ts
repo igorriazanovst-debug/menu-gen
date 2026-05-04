@@ -95,9 +95,13 @@ export interface ShoppingItem {
   category?: string; is_purchased: boolean;
 }
 export interface ShoppingList { id: number; items: ShoppingItem[]; created_at: string; }
+// MG_204_V_types = 1
 export interface FamilyMember {
   id: number; user_id: number; name: string; email?: string;
-  avatar_url?: string; role: 'head' | 'member'; joined_at: string;
+  avatar_url?: string; role: 'head' | 'member' | 'owner'; joined_at: string;
+  allergies?: string[];
+  disliked_products?: string[];
+  profile?: UserProfile | null;
 }
 export interface Family {
   id: number; name: string; owner_name: string;

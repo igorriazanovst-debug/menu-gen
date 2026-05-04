@@ -1,3 +1,4 @@
+// MG_204_V_family = 1
 import React, { useEffect, useState } from 'react';
 import { familyApi } from '../../api/family';
 import { Card } from '../../components/ui/Card';
@@ -6,7 +7,8 @@ import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { getErrorMessage } from '../../utils/api';
-import type { Family } from '../../types';
+import type { Family, FamilyMember } from '../../types';
+import { FamilyMemberEditModal } from '../../components/family/FamilyMemberEditModal';
 
 export const FamilyPage: React.FC = () => {
   const [family, setFamily] = useState<Family | null>(null);
@@ -16,6 +18,7 @@ export const FamilyPage: React.FC = () => {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
+  const [editing, setEditing] = useState<FamilyMember | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -47,6 +50,11 @@ export const FamilyPage: React.FC = () => {
       await familyApi.removeMember(memberId);
       load();
     } catch (e) { alert(getErrorMessage(e)); }
+  };
+
+  const onMemberSaved = () => {
+    // перезагружаем семью, чтобы получить обновлённый профиль
+    load();
   };
 
   if (loading) return <PageSpinner />;
@@ -85,14 +93,28 @@ export const FamilyPage: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-chocolate">{m.name}</p>
-                      {m.email && <p className="text-xs text-gray-400">{m.email}</p>}
+                      <div className="flex items-center gap-2">
+                        {m.email && <p className="text-xs text-gray-400">{m.email}</p>}
+                        {m.profile?.calorie_target && (
+                          <span className="text-xs text-gray-400">
+                            · {m.profile.calorie_target} ккал · {m.profile.meal_plan_type ?? '3'} прм
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge color={m.role === 'head' ? 'red' : 'gray'}>
-                      {m.role === 'head' ? 'Глава' : 'Участник'}
+                    <Badge color={(m.role === 'head' || m.role === 'owner') ? 'red' : 'gray'}>
+                      {(m.role === 'head' || m.role === 'owner') ? 'Глава' : 'Участник'}
                     </Badge>
-                    {m.role !== 'head' && (
+                    <button
+                      onClick={() => setEditing(m)}
+                      className="text-xs text-gray-500 hover:text-tomato transition px-2 py-1 rounded hover:bg-white"
+                      title="Редактировать"
+                    >
+                      ✎
+                    </button>
+                    {(m.role !== 'head' && m.role !== 'owner') && (
                       <button onClick={() => handleRemove(m.id, m.name)}
                         className="text-xs text-red-400 hover:text-red-600 transition">
                         ✕
@@ -125,6 +147,14 @@ export const FamilyPage: React.FC = () => {
             </form>
           </Card>
         </>
+      )}
+
+      {editing && (
+        <FamilyMemberEditModal
+          member={editing}
+          onClose={() => setEditing(null)}
+          onSaved={onMemberSaved}
+        />
       )}
     </div>
   );

@@ -9,6 +9,8 @@ import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
 import type { Menu, MenuItem, MealType, ComponentRole } from '../../types';
 import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../types';
+import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
+import { DayNutritionSummary } from '../../components/menu/DayNutritionSummary';
 
 const MEAL_ICONS: Record<string, string> = {
   breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎',
@@ -495,6 +497,19 @@ interface MenuGridProps {
 }
 
 const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
+  // MG_204_V_menu_inner
+  const userProfile = useAppSelector(state => state.auth.user?.profile);
+  const targets: NutritionTargets | null = (
+    userProfile && userProfile.calorie_target
+      ? {
+          calorie_target:   userProfile.calorie_target,
+          protein_target_g: String(userProfile.protein_target_g ?? ''),
+          fat_target_g:     String(userProfile.fat_target_g ?? ''),
+          carb_target_g:    String(userProfile.carb_target_g ?? ''),
+          fiber_target_g:   String(userProfile.fiber_target_g ?? ''),
+        }
+      : (userProfile?.targets_calculated ?? null)
+  );
   const [warnings] = useState<Record<number, SwapResult>>({});
   const [mealModal, setMealModal] = useState<{ items: MenuItem[]; label: string; dayLabel: string } | null>(null);
 
@@ -528,6 +543,8 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
         return (
           <Card key={day} className="p-4">
             <h3 className="font-semibold text-chocolate mb-3 capitalize">{dayLabel}</h3>
+            {/* MG-204: дневная сводка КБЖУ */}
+            <DayNutritionSummary items={dayItems} targets={targets} />
             <div className={`grid gap-2 ${slots.length === 5 ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-3'}`}>
               {slots.map(slot => {
                 const slotItems = dayItems.filter(i => getSlotKey(i) === slot);
