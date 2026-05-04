@@ -1,20 +1,27 @@
 """
-Расчёт целевых КБЖУ по формулам Mifflin-St Jeor.
+Расчёт целевых КБЖУ по формулам Mifflin-St Jeor (MG-202).
 
 Алгоритм:
   1) BMR (базовый метаболизм) = Mifflin-St Jeor
+        male:   10*w + 6.25*h - 5*age + 5
+        female: 10*w + 6.25*h - 5*age - 161
+        other:  10*w + 6.25*h - 5*age - 78  (среднее)
   2) TDEE = BMR * activity_factor
-  3) Целевые калории = TDEE +/- корректировка по цели
+  3) Целевые калории по цели:
+        lose_weight: TDEE - 500
+        gain_weight: TDEE + 300
+        maintain / healthy: TDEE
   4) Макросы:
-     - белок: 1.6 г/кг при похудении/наборе, 1.2 г/кг при поддержании
-     - жир:   0.8-1.0 г/кг (минимум 25% от калорий)
-     - углеводы = остаток калорий
-     - клетчатка: 14 г на 1000 ккал
+        белок:    1.5 г/кг веса
+        жир:      30% калорий / 9
+        углеводы: (calories - белки*4 - жиры*9) / 4
+        клетчатка: 14 г / 1000 ккал
 """
 from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+MG_202_V = 1   # маркер версии формулы (для идемпотентности apply-скрипта)
 
 ACTIVITY_FACTOR = {
     "sedentary":   1.2,
@@ -24,68 +31,45 @@ ACTIVITY_FACTOR = {
     "very_active": 1.9,
 }
 
-# поправка к TDEE для цели (доля от TDEE)
-GOAL_ADJUSTMENT = {
-    "lose_weight": -0.20,   # дефицит 20%
-    "maintain":     0.00,
-    "gain_weight": +0.15,   # профицит 15%
-    "healthy":      0.00,
+GOAL_DELTA_KCAL = {
+    "lose_weight": -500,
+    "gain_weight": +300,
+    "maintain":       0,
+    "healthy":        0,
 }
 
-# белок г/кг по цели
-PROTEIN_PER_KG = {
-    "lose_weight": 1.8,
-    "maintain":    1.4,
-    "gain_weight": 1.8,
-    "healthy":     1.2,
-}
-
-# жир г/кг
-FAT_PER_KG = {
-    "lose_weight": 0.8,
-    "maintain":    0.9,
-    "gain_weight": 1.0,
-    "healthy":     0.9,
-}
+PROTEIN_PER_KG = 1.5
+FAT_PCT_OF_CAL = 0.30
+FIBER_PER_1000_KCAL = 14
 
 
 def mifflin_st_jeor(weight_kg: float, height_cm: float, age: int, gender: str) -> float:
-    """Базовый метаболизм (BMR) в ккал/день."""
     base = 10 * weight_kg + 6.25 * height_cm - 5 * age
     if gender == "male":
         return base + 5
-    elif gender == "female":
+    if gender == "female":
         return base - 161
-    # other -> среднее
     return base - 78
 
 
 def tdee(bmr: float, activity_level: str) -> float:
-    factor = ACTIVITY_FACTOR.get(activity_level, 1.55)
-    return bmr * factor
+    return bmr * ACTIVITY_FACTOR.get(activity_level, 1.55)
 
 
 def calorie_target_for_goal(tdee_value: float, goal: str) -> int:
-    adj = GOAL_ADJUSTMENT.get(goal, 0.0)
-    return int(round(tdee_value * (1 + adj)))
+    delta = GOAL_DELTA_KCAL.get(goal, 0)
+    return int(round(tdee_value + delta))
 
 
-def macro_targets(calories: int, weight_kg: float, goal: str) -> dict:
-    """Возвращает {protein_g, fat_g, carbs_g, fiber_g} в граммах."""
-    protein_g = round(weight_kg * PROTEIN_PER_KG.get(goal, 1.4), 1)
-    fat_g     = round(weight_kg * FAT_PER_KG.get(goal, 0.9), 1)
-
-    # минимум жира: 20% от калорий
-    fat_min_by_cal = round(calories * 0.20 / 9, 1)
-    fat_g = max(fat_g, fat_min_by_cal)
-
+def macro_targets(calories: int, weight_kg: float) -> dict:
+    """{protein_g, fat_g, carbs_g, fiber_g} по формуле MG-202."""
+    protein_g = round(weight_kg * PROTEIN_PER_KG, 1)
+    fat_g     = round((calories * FAT_PCT_OF_CAL) / 9, 1)
     cal_protein = protein_g * 4
     cal_fat     = fat_g * 9
     cal_carbs   = max(0, calories - cal_protein - cal_fat)
     carbs_g     = round(cal_carbs / 4, 1)
-
-    fiber_g = round(calories / 1000 * 14, 1)
-
+    fiber_g     = round(calories / 1000 * FIBER_PER_1000_KCAL, 1)
     return {
         "protein_g": protein_g,
         "fat_g":     fat_g,
@@ -104,35 +88,27 @@ def calculate_targets(profile) -> dict | None:
     """
     На вход — Profile instance. Возвращает dict с целями или None,
     если данных недостаточно.
-
-    {
-      "calorie_target":   1850,
-      "protein_target_g": 110.0,
-      "fat_target_g":     65.0,
-      "carbs_target_g":   180.0,
-      "fiber_target_g":   25.0,
-    }
     """
     if not profile.weight_kg or not profile.height_cm:
         return None
     age = _age_from_birth_year(profile.birth_year)
     if age is None:
         return None
-    gender = profile.gender or "other"
+    gender = (profile.gender or "other").lower()
 
     weight = float(profile.weight_kg)
     height = float(profile.height_cm)
 
-    bmr = mifflin_st_jeor(weight, height, age, gender)
-    tdee_val = tdee(bmr, profile.activity_level)
-    cals = calorie_target_for_goal(tdee_val, profile.goal)
-    macros = macro_targets(cals, weight, profile.goal)
+    bmr      = mifflin_st_jeor(weight, height, age, gender)
+    tdee_val = tdee(bmr, (profile.activity_level or "moderate"))
+    cals     = calorie_target_for_goal(tdee_val, (profile.goal or "maintain"))
+    macros   = macro_targets(cals, weight)
 
     return {
         "calorie_target":   cals,
         "protein_target_g": Decimal(str(macros["protein_g"])),
         "fat_target_g":     Decimal(str(macros["fat_g"])),
-        "carbs_target_g":   Decimal(str(macros["carbs_g"])),
+        "carb_target_g":    Decimal(str(macros["carbs_g"])),
         "fiber_target_g":   Decimal(str(macros["fiber_g"])),
     }
 
@@ -141,13 +117,11 @@ def fill_profile_targets(profile, force: bool = False) -> bool:
     """
     Заполняет цели в профиле. Не перезаписывает заданные пользователем
     значения (если force=False).
-
     Возвращает True если что-то изменилось.
     """
     targets = calculate_targets(profile)
     if not targets:
         return False
-
     changed = False
     for field, value in targets.items():
         current = getattr(profile, field, None)

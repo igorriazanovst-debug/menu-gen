@@ -14,4 +14,5 @@ def auto_fill_targets(sender, instance: Profile, **kwargs):
     Автозаполняет calorie_target/protein/fat/carbs/fiber_target_g
     если они пустые. Если пользователь задал значение вручную — не трогаем.
     """
-    fill_profile_targets(instance, force=False)
+    # MG-202: handled in Profile.save() now
+    # fill_profile_targets(instance, force=False)

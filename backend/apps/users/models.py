@@ -91,9 +91,9 @@ class Profile(models.Model):
     calorie_target = models.PositiveSmallIntegerField(null=True, blank=True)
     protein_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
     fat_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
-    carbs_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
+    carb_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
     fiber_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
-    meal_plan = models.CharField(max_length=2, choices=MealPlan.choices, default=MealPlan.THREE)
+    meal_plan_type = models.CharField(max_length=2, choices=MealPlan.choices, default=MealPlan.THREE)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -101,3 +101,10 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"Profile({self.user})"
+
+    # MG-202: auto-fill targets on save
+    def save(self, *args, **kwargs):
+        from .nutrition import fill_profile_targets
+        # заполняем цели только если не заполнены вручную (force=False)
+        fill_profile_targets(self, force=False)
+        super().save(*args, **kwargs)
