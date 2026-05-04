@@ -97,8 +97,8 @@ class MenuGenerator:
         self.plan_code = plan_code
         self.features = TIER_FEATURES.get(plan_code, TIER_FEATURES["free"])
         self.filters = filters or {}
-        meal_plan = self.filters.get("meal_plan_type", "3")
-        self.meal_types = MEAL_PLAN_5 if str(meal_plan) == "5" else MEAL_PLAN_3
+        meal_count = self.filters.get("meal_plan_type", "3")
+        self.meal_types = MEAL_PLAN_5 if str(meal_count) == "5" else MEAL_PLAN_3
         self.tracker = _WeeklyTracker()
 
     # ── public ────────────────────────────────────────────────────────────────

@@ -98,9 +98,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             "calorie_target",
             "protein_target_g",
             "fat_target_g",
-            "carbs_target_g",
+            "carb_target_g",
             "fiber_target_g",
-            "meal_plan",
+            "meal_plan_type",
             "targets_calculated",
         )
 
@@ -113,7 +113,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "calorie_target":   result["calorie_target"],
             "protein_target_g": str(result["protein_target_g"]),
             "fat_target_g":     str(result["fat_target_g"]),
-            "carbs_target_g":   str(result["carbs_target_g"]),
+            "carb_target_g":   str(result["carb_target_g"]),
             "fiber_target_g":   str(result["fiber_target_g"]),
         }
 
