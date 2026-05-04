@@ -7,6 +7,7 @@ User = get_user_model()
 
 
 class ProfileSerializer(serializers.Serializer):
+    # MG_203_V = 1
     birth_year = serializers.IntegerField(read_only=True)
     gender = serializers.CharField(read_only=True)
     height_cm = serializers.IntegerField(read_only=True)
@@ -14,6 +15,12 @@ class ProfileSerializer(serializers.Serializer):
     activity_level = serializers.CharField(read_only=True)
     goal = serializers.CharField(read_only=True)
     calorie_target = serializers.IntegerField(read_only=True)
+    # MG-203: targets + meal plan
+    protein_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
+    fat_target_g     = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
+    carb_target_g    = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
+    fiber_target_g   = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
+    meal_plan_type   = serializers.CharField(read_only=True)
 
 
 class FamilyMemberSerializer(serializers.ModelSerializer):
@@ -91,6 +98,22 @@ class ProfileUpdateSerializer(serializers.Serializer):
         required=False,
     )
     calorie_target = serializers.IntegerField(required=False, allow_null=True)
+    # MG-203: targets + meal plan (write)
+    protein_target_g = serializers.DecimalField(
+        max_digits=6, decimal_places=1, required=False, allow_null=True
+    )
+    fat_target_g = serializers.DecimalField(
+        max_digits=6, decimal_places=1, required=False, allow_null=True
+    )
+    carb_target_g = serializers.DecimalField(
+        max_digits=6, decimal_places=1, required=False, allow_null=True
+    )
+    fiber_target_g = serializers.DecimalField(
+        max_digits=6, decimal_places=1, required=False, allow_null=True
+    )
+    meal_plan_type = serializers.ChoiceField(
+        choices=["3", "5"], required=False, allow_null=True
+    )
 
 
 class FamilyMemberUpdateSerializer(serializers.Serializer):
