@@ -288,36 +288,57 @@ curl -s -X PATCH "http://31.192.110.121:8081/api/v1/family/members/3/update/" \
 
 ---
 
-## Git состояние
+## Git состояние ✅ всё закоммичено
 
-Не закоммичено в этом чате. К коммиту готовы:
+### Финальные коммиты этого чата
+```
+60ab174 MG-205: track source of nutrition target edits (auto/user/specialist)
+        ↑ late-commit: 25 файлов, которые остались висеть после чата 13
+f2b851d MG-204: track MenuGen_Backlog.xlsx in git; close MG-204 (web)
+        ↑ снят '/*.xlsx' из .gitignore + явный '!MenuGen_Backlog.xlsx'
+1b3244f MG-204: web — show targets + meal_plan_type select (Profile + Family + Menu)
+be81ea6 MG-201 (backend): Profile fields rename + meal_plan_type
+```
+
+### Что вошло в `60ab174` (MG-205 late-commit)
+backend: `family/serializers.py`, `family/views.py`, `specialists/views.py`,
+`specialists/permissions.py` (новый), `users/{models,nutrition,serializers}.py`,
+`users/audit.py` (новый), миграция `0004_profiletargetaudit.py`,
+`tests/test_mg_205.py`, 12 шт скриптов `backend/scripts/mg_205_*`,
+2 скрипта `mg_204_fix_gitignore*.sh`.
+
+### Что вошло в `1b3244f` (MG-204 web)
 - `web/menugen-web/src/types/index.ts`
 - `web/menugen-web/src/api/family.ts`
 - `web/menugen-web/src/components/family/FamilyMemberEditModal.tsx` (новый)
 - `web/menugen-web/src/components/menu/DayNutritionSummary.tsx` (новый)
 - `web/menugen-web/src/pages/Family/FamilyPage.tsx`
 - `web/menugen-web/src/pages/Menu/MenuPage.tsx`
-- `web-dist/` (собранный артефакт; обычно git-ignore, но если хранится — обновить)
-- `MenuGen_Backlog.xlsx` (закрыть MG-204 как ✅ web)
 - `DEPLOY_web.md` (новый)
 - скрипты `backend/scripts/mg_204_*` (12 шт)
 
-Предлагаемое сообщение коммита:
+`web-dist/` НЕ в git (собирается локально из `web/menugen-web/build`, см. `DEPLOY_web.md`).
+
+### ⚠️ УРОК ПРО .gitignore (на постоянку)
+
+Правило `/*.xlsx` в `.gitignore` исключало `MenuGen_Backlog.xlsx` из репо —
+это значит, что **в чате 13 закрытие MG-205 в бэклоге НЕ попало на github**,
+и в проекте знали только устаревшую версию из последнего обновления.
+
+Сейчас исправлено:
+- закомментировано правило `/*.xlsx`
+- добавлен явный `!MenuGen_Backlog.xlsx`
+- xlsx теперь под версионным контролем
+
+**На будущее:** в начале каждого чата перед `apply` — обязательно
+`git status --short` и спросить пользователя про висящие изменения.
+Если есть — коммитить ДО старта новой задачи.
+
+### Push на github
+```bash
+cd /opt/menugen && git push
 ```
-MG-204: web — show targets + meal_plan_type select (Profile + Family + Menu)
-
-- types/index.ts: FamilyMember.profile + allergies + role 'owner'
-- api/family.ts: updateMember (PATCH /family/members/{id}/update/)
-- components/family/FamilyMemberEditModal: name + read-only macros + 3/5 toggle
-- components/menu/DayNutritionSummary: per-day totals vs targets, color-coded bars
-- FamilyPage: ✎ button + modal integration; show calorie/meal_plan in row
-- MenuPage: DayNutritionSummary above each day, targets from auth.user.profile
-
-+ DEPLOY_web.md: critical note about /opt/menugen/web-dist (nginx root)
-+ MenuGen_Backlog.xlsx: MG-204 closed (web), mobile deferred
-
-Smoke: PATCH meal_plan_type & calorie_target → 200, audit recorded source=user.
-```
+(в этом чате не выполнено — пользователь делает вручную)
 
 ---
 
@@ -326,7 +347,9 @@ Smoke: PATCH meal_plan_type & calorie_target → 200, audit recorded source=user
 1. Прочитать этот файл (`RESUME_next_chat-14.md`).
 2. Прочитать `DEPLOY_web.md` (приложен к Project Knowledge).
 3. Прочитать `MenuGen_Backlog.xlsx`.
-4. Спросить пользователя что дальше:
+4. **`git status --short` в `/opt/menugen/`** — убедиться что нет висящих изменений
+   из прошлых чатов. Если есть — спросить пользователя коммитить ли.
+5. Спросить пользователя что дальше:
    - MG-204 mobile (Flutter)?
    - MG-205-UI (бейджи + история)?
    - Старт Спринта 3 (MG-301..)?
