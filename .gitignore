@@ -103,5 +103,8 @@ pubspec.lock
 /deploy_*.ps1
 
 # === xlsx/docx в корне ===
-/*.xlsx
+# [MG-204] disabled to track MenuGen_Backlog.xlsx: /*.xlsx
 /*.docx
+
+# [MG-204] explicit allow for MenuGen_Backlog.xlsx
+!MenuGen_Backlog.xlsx
