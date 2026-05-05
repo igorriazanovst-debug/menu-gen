@@ -23,6 +23,35 @@ class ProfileSerializer(serializers.Serializer):
     meal_plan_type   = serializers.CharField(read_only=True)
 
 
+
+    # MG_205UI_V_family_ser = 1
+    targets_meta = serializers.SerializerMethodField()
+
+    def get_targets_meta(self, obj):
+        from apps.users.models import ProfileTargetAudit
+        from apps.users.serializers import TARGET_FIELDS_MG205UI
+        if not obj or not getattr(obj, "pk", None):
+            return {}
+        out = {}
+        for f in TARGET_FIELDS_MG205UI:
+            last = (
+                ProfileTargetAudit.objects.filter(profile=obj, field=f)
+                .order_by("-at")
+                .first()
+            )
+            if last is None:
+                out[f] = {"source": "auto", "by_user": None, "at": None}
+            else:
+                out[f] = {
+                    "source": last.source,
+                    "by_user": (
+                        {"id": last.by_user.id, "name": last.by_user.name}
+                        if last.by_user_id else None
+                    ),
+                    "at": last.at.isoformat() if last.at else None,
+                }
+        return out
+
 class FamilyMemberSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
     name = serializers.CharField(source="user.name", read_only=True)

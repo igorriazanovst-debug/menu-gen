@@ -189,3 +189,137 @@ def _get_active_plan(family):
         .first()
     )
     return sub.plan if sub else None
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MG_205UI_V_family_views = 1
+# История + reset для одного поля КБЖУ участника семьи.
+# ─────────────────────────────────────────────────────────────────────────────
+
+TARGET_FIELD_CHOICES = (
+    "calorie_target",
+    "protein_target_g",
+    "fat_target_g",
+    "carb_target_g",
+    "fiber_target_g",
+)
+
+
+def _validate_target_field(field: str):
+    if field not in TARGET_FIELD_CHOICES:
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({"field": f"Допустимые значения: {list(TARGET_FIELD_CHOICES)}"})
+
+
+def _resolve_member_with_perm(request, member_id):
+    """Проверка прав (head / self / verified specialist с активным assignment).
+    Возвращает (member, source_for_actions) или Response с ошибкой."""
+    family = _get_user_family(request.user)
+    if not family:
+        return None, Response(status=status.HTTP_404_NOT_FOUND)
+
+    is_head = family.owner_id == request.user.id or request.user.user_type == "admin"
+    is_self = FamilyMember.objects.filter(
+        family=family, user=request.user, id=member_id
+    ).exists()
+
+    is_specialist = False
+    try:
+        from apps.specialists.permissions import _get_specialist
+        from apps.specialists.models import SpecialistAssignment
+        spec = _get_specialist(request.user)
+        if spec and spec.is_verified:
+            is_specialist = SpecialistAssignment.objects.filter(
+                specialist=spec,
+                family=family,
+                status=SpecialistAssignment.Status.ACTIVE,
+            ).exists()
+    except Exception:
+        is_specialist = False
+
+    if not (is_head or is_self or is_specialist):
+        return None, Response(status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        member = FamilyMember.objects.select_related("user__profile").get(
+            id=member_id, family=family
+        )
+    except FamilyMember.DoesNotExist:
+        return None, Response(status=status.HTTP_404_NOT_FOUND)
+
+    # Источник для аудита при правках через этот endpoint
+    if is_self:
+        src = "user"
+    elif is_specialist and not is_self:
+        src = "specialist"
+    else:
+        src = "user"  # head правит члена семьи — приравниваем к user
+    return (member, src), None
+
+
+class FamilyMemberTargetHistoryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, member_id, field):
+        _validate_target_field(field)
+        result, err = _resolve_member_with_perm(request, member_id)
+        if err is not None:
+            return err
+        member, _ = result
+        from apps.users.models import ProfileTargetAudit
+        from apps.users.serializers import ProfileTargetAuditSerializer
+        try:
+            profile = member.user.profile
+        except Exception:
+            return Response([], status=status.HTTP_200_OK)
+        qs = (
+            ProfileTargetAudit.objects.filter(profile=profile, field=field)
+            .select_related("by_user")
+            .order_by("-at")[:100]
+        )
+        return Response(ProfileTargetAuditSerializer(qs, many=True).data)
+
+
+class FamilyMemberTargetResetView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, member_id, field):
+        _validate_target_field(field)
+        result, err = _resolve_member_with_perm(request, member_id)
+        if err is not None:
+            return err
+        member, _ = result
+
+        from apps.users.audit import record_target_change
+        from apps.users.nutrition import calculate_targets
+
+        try:
+            profile = member.user.profile
+        except Exception:
+            return Response({"detail": "Профиль не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+        targets = calculate_targets(profile)
+        if not targets:
+            return Response(
+                {"detail": "Недостаточно данных для расчёта (рост/вес/год рождения)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_value = getattr(profile, field, None)
+        new_value = targets.get(field)
+        setattr(profile, field, new_value)
+        profile.save()
+
+        record_target_change(
+            profile=profile,
+            field=field,
+            new_value=new_value,
+            source="auto",
+            by_user=request.user,
+            old_value=old_value,
+            reason=f"family reset to auto by user {request.user.id}",
+        )
+
+        member.refresh_from_db()
+        return Response(FamilyMemberSerializer(member).data, status=status.HTTP_200_OK)

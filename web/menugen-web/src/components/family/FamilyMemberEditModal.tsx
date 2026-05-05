@@ -1,10 +1,11 @@
-// MG_204_V_family = 1
-import React, { useState } from 'react';
-import type { FamilyMember, MealPlan } from '../../types';
+// MG_205UI_V_family_modal = 1
+import React, { useState, useMemo, useCallback } from 'react';
+import type { FamilyMember, MealPlan, TargetField as TF, TargetsMeta } from '../../types';
 import { familyApi } from '../../api/family';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { TargetField, type TargetLoader } from '../profile/TargetField';
 import { getErrorMessage } from '../../utils/api';
 
 interface Props {
@@ -12,23 +13,6 @@ interface Props {
   onClose: () => void;
   onSaved: (updated: FamilyMember) => void;
 }
-
-const num = (v: string | number | null | undefined) =>
-  v === null || v === undefined || v === '' ? '—' : String(v);
-
-const MacroPill: React.FC<{
-  label: string;
-  value: string;
-  unit: string;
-  color: string;
-}> = ({ label, value, unit, color }) => (
-  <div className={`px-3 py-2 rounded-xl ${color}`}>
-    <div className="text-xs opacity-70">{label}</div>
-    <div className="font-semibold text-sm">
-      {value} <span className="text-xs font-normal">{unit}</span>
-    </div>
-  </div>
-);
 
 export const FamilyMemberEditModal: React.FC<Props> = ({
   member, onClose, onSaved,
@@ -39,8 +23,10 @@ export const FamilyMemberEditModal: React.FC<Props> = ({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [currentMember, setCurrentMember] = useState<FamilyMember>(member);
 
-  const profile = member.profile;
+  const profile = currentMember.profile;
+  const meta: TargetsMeta = profile?.targets_meta ?? {};
 
   const handleSave = async () => {
     setSaving(true); setError('');
@@ -59,19 +45,30 @@ export const FamilyMemberEditModal: React.FC<Props> = ({
     }
   };
 
+  const memberLoader: TargetLoader = useMemo(() => ({
+    getHistory: async (f: TF) => (await familyApi.getMemberTargetHistory(member.id, f)).data,
+    reset:      async (f: TF) => {
+      const { data } = await familyApi.resetMemberTarget(member.id, f);
+      setCurrentMember(data);
+      onSaved(data);
+    },
+  }), [member.id, onSaved]);
+
+  const reloadFromParent = useCallback(() => {
+    // меняем целиком в родителе через onSaved (см. FamilyPage.onMemberSaved → load())
+    // здесь ничего; reload произошёл внутри memberLoader.reset
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 overflow-y-auto"
       onClick={onClose}
     >
-      <div
-        className="w-full max-w-lg my-8"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="w-full max-w-lg my-8" onClick={(e) => e.stopPropagation()}>
         <Card className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-chocolate">
-              Редактировать: {member.name}
+              Редактировать: {currentMember.name}
             </h2>
             <button
               onClick={onClose}
@@ -81,7 +78,6 @@ export const FamilyMemberEditModal: React.FC<Props> = ({
             </button>
           </div>
 
-          {/* имя */}
           <div>
             <label className="block text-sm text-gray-600 mb-1">Имя</label>
             <Input
@@ -91,33 +87,27 @@ export const FamilyMemberEditModal: React.FC<Props> = ({
             />
           </div>
 
-          {/* КБЖУ — read only */}
           {profile && (
             <div>
               <label className="block text-sm text-gray-600 mb-1">
                 Дневные цели
-                <span className="ml-2 text-xs text-gray-400">
-                  рассчитано автоматически
-                </span>
+                <span className="ml-2 text-xs text-gray-400">бейдж = источник; нажмите для истории</span>
               </label>
               <div className="grid grid-cols-5 gap-2">
-                <MacroPill label="Ккал"  value={num(profile.calorie_target)}    unit="ккал" color="bg-tomato/10 text-tomato" />
-                <MacroPill label="Белок" value={num(profile.protein_target_g)}  unit="г"    color="bg-blue-50 text-blue-700" />
-                <MacroPill label="Жиры"  value={num(profile.fat_target_g)}      unit="г"    color="bg-amber-50 text-amber-700" />
-                <MacroPill label="Углев" value={num(profile.carb_target_g)}     unit="г"    color="bg-emerald-50 text-emerald-700" />
-                <MacroPill label="Клетч" value={num(profile.fiber_target_g)}    unit="г"    color="bg-purple-50 text-purple-700" />
+                <TargetField label="Ккал"  unit="ккал" value={profile.calorie_target}    field="calorie_target"    meta={meta.calorie_target}    bgClass="bg-tomato/10 text-tomato"       loader={memberLoader} onResetDone={reloadFromParent} />
+                <TargetField label="Белок" unit="г"    value={profile.protein_target_g}  field="protein_target_g"  meta={meta.protein_target_g}  bgClass="bg-blue-50 text-blue-700"       loader={memberLoader} onResetDone={reloadFromParent} />
+                <TargetField label="Жиры"  unit="г"    value={profile.fat_target_g}      field="fat_target_g"      meta={meta.fat_target_g}      bgClass="bg-amber-50 text-amber-700"     loader={memberLoader} onResetDone={reloadFromParent} />
+                <TargetField label="Углев" unit="г"    value={profile.carb_target_g}     field="carb_target_g"     meta={meta.carb_target_g}     bgClass="bg-emerald-50 text-emerald-700" loader={memberLoader} onResetDone={reloadFromParent} />
+                <TargetField label="Клетч" unit="г"    value={profile.fiber_target_g}    field="fiber_target_g"    meta={meta.fiber_target_g}    bgClass="bg-purple-50 text-purple-700"   loader={memberLoader} onResetDone={reloadFromParent} />
               </div>
               <p className="text-xs text-gray-400 mt-2">
-                На основе пола, роста, веса, активности и цели. Изменить можно в профиле участника.
+                Изменения сохраняются автоматически; история показывает кто и когда менял.
               </p>
             </div>
           )}
 
-          {/* meal_plan_type */}
           <div>
-            <label className="block text-sm text-gray-600 mb-2">
-              Приёмов пищи в день
-            </label>
+            <label className="block text-sm text-gray-600 mb-2">Приёмов пищи в день</label>
             <div className="flex gap-2">
               {(['3', '5'] as const).map((v) => (
                 <button
@@ -143,12 +133,8 @@ export const FamilyMemberEditModal: React.FC<Props> = ({
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={onClose} disabled={saving}>
-              Отмена
-            </Button>
-            <Button onClick={handleSave} loading={saving}>
-              Сохранить
-            </Button>
+            <Button variant="ghost" onClick={onClose} disabled={saving}>Отмена</Button>
+            <Button onClick={handleSave} loading={saving}>Сохранить</Button>
           </div>
         </Card>
       </div>

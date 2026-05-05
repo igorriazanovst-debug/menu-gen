@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/family_bloc.dart';
 import '../../../core/widgets/macro_pill.dart';
+import '../../../core/widgets/target_field.dart';
 // MG_204m_V_family = 1
+// MG_205UI_V_family = 1
 
 class FamilyScreen extends StatelessWidget {
   const FamilyScreen({super.key});
@@ -498,7 +500,17 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
                             ),
                           ),
                         ),
-                        MacroPillsRow(targets: targets),
+                        TargetFieldsRow(
+                          targets: targets,
+                          meta: extractTargetsMeta(profile),
+                          loader: FamilyMemberTargetLoader(
+                            apiClient: context.read<FamilyBloc>().apiClient,
+                            memberId: widget.member['id'] as int,
+                            onChanged: () => context
+                                .read<FamilyBloc>()
+                                .add(const FamilyLoadRequested()),
+                          ),
+                        ),
                         const SizedBox(height: 16),
                       ],
                     );

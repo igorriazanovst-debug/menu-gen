@@ -83,8 +83,41 @@ class TokenPairSerializer(serializers.Serializer):
         }
 
 
+
+# MG_205UI_V_serializers = 1
+TARGET_FIELDS_MG205UI = (
+    "calorie_target",
+    "protein_target_g",
+    "fat_target_g",
+    "carb_target_g",
+    "fiber_target_g",
+)
+
+
+class ProfileTargetAuditSerializer(serializers.Serializer):
+    """Запись истории правок одного поля КБЖУ."""
+    id = serializers.IntegerField(read_only=True)
+    field = serializers.CharField(read_only=True)
+    source = serializers.CharField(read_only=True)
+    old_value = serializers.DecimalField(
+        max_digits=8, decimal_places=2, read_only=True, allow_null=True
+    )
+    new_value = serializers.DecimalField(
+        max_digits=8, decimal_places=2, read_only=True, allow_null=True
+    )
+    reason = serializers.CharField(read_only=True, allow_blank=True)
+    at = serializers.DateTimeField(read_only=True)
+    by_user = serializers.SerializerMethodField()
+
+    def get_by_user(self, obj):
+        if obj.by_user_id is None:
+            return None
+        return {"id": obj.by_user.id, "name": obj.by_user.name}
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     targets_calculated = serializers.SerializerMethodField()
+    targets_meta = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -102,6 +135,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "fiber_target_g",
             "meal_plan_type",
             "targets_calculated",
+            "targets_meta",
         )
 
     def get_targets_calculated(self, obj):
@@ -117,6 +151,32 @@ class ProfileSerializer(serializers.ModelSerializer):
             "fiber_target_g":   str(result["fiber_target_g"]),
         }
 
+
+
+    def get_targets_meta(self, obj):
+        """MG-205-UI: для каждого target-поля — последняя запись аудита."""
+        from .models import ProfileTargetAudit
+        if not getattr(obj, "pk", None):
+            return {}
+        out = {}
+        for f in TARGET_FIELDS_MG205UI:
+            last = (
+                ProfileTargetAudit.objects.filter(profile=obj, field=f)
+                .order_by("-at")
+                .first()
+            )
+            if last is None:
+                out[f] = {"source": "auto", "by_user": None, "at": None}
+            else:
+                out[f] = {
+                    "source": last.source,
+                    "by_user": (
+                        {"id": last.by_user.id, "name": last.by_user.name}
+                        if last.by_user_id else None
+                    ),
+                    "at": last.at.isoformat() if last.at else None,
+                }
+        return out
 
 class UserMeSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(read_only=True)

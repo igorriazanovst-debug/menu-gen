@@ -18,6 +18,7 @@ export interface UserProfile {
   fiber_target_g?:   string | null;
   meal_plan_type?: MealPlan;
   targets_calculated?: NutritionTargets | null;
+  targets_meta?: TargetsMeta;
 }
 export interface User {
   id: number; name: string; email?: string; phone?: string;
@@ -120,3 +121,33 @@ export interface PaginatedResponse<T> {
   count: number; next?: string; previous?: string; results: T[];
 }
 export interface AuthTokens { access: string; refresh: string; }
+
+// MG_205UI_V_types = 1
+export type TargetSource = 'auto' | 'user' | 'specialist';
+
+export interface TargetMeta {
+  source: TargetSource;
+  by_user: { id: number; name: string } | null;
+  at: string | null;
+}
+
+export type TargetField =
+  | 'calorie_target'
+  | 'protein_target_g'
+  | 'fat_target_g'
+  | 'carb_target_g'
+  | 'fiber_target_g';
+
+export type TargetsMeta = Partial<Record<TargetField, TargetMeta>>;
+
+export interface TargetAuditEntry {
+  id: number;
+  field: TargetField;
+  source: TargetSource;
+  old_value: string | null;
+  new_value: string | null;
+  reason: string;
+  at: string;
+  by_user: { id: number; name: string } | null;
+}
+

@@ -108,3 +108,85 @@ def _bootstrap_user(user):
         )
     except SubscriptionPlan.DoesNotExist:
         pass
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MG_205UI_V_views = 1
+# История правок целевых КБЖУ + сброс одного поля к авторасчёту.
+# ─────────────────────────────────────────────────────────────────────────────
+
+TARGET_FIELD_CHOICES = (
+    "calorie_target",
+    "protein_target_g",
+    "fat_target_g",
+    "carb_target_g",
+    "fiber_target_g",
+)
+
+
+def _validate_target_field(field: str):
+    if field not in TARGET_FIELD_CHOICES:
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({"field": f"Допустимые значения: {list(TARGET_FIELD_CHOICES)}"})
+
+
+class TargetHistoryView(APIView):
+    """GET /users/me/targets/{field}/history/ — история правок одного поля."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, field: str):
+        _validate_target_field(field)
+        from apps.users.models import ProfileTargetAudit
+        from apps.users.serializers import ProfileTargetAuditSerializer
+
+        profile = getattr(request.user, "profile", None)
+        if profile is None:
+            return Response([], status=status.HTTP_200_OK)
+
+        qs = (
+            ProfileTargetAudit.objects.filter(profile=profile, field=field)
+            .select_related("by_user")
+            .order_by("-at")[:100]
+        )
+        return Response(ProfileTargetAuditSerializer(qs, many=True).data)
+
+
+class TargetResetView(APIView):
+    """POST /users/me/targets/{field}/reset/ — пересчитать одно поле и снять lock."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, field: str):
+        _validate_target_field(field)
+        from apps.users.audit import record_target_change
+        from apps.users.nutrition import calculate_targets
+
+        profile = getattr(request.user, "profile", None)
+        if profile is None:
+            return Response({"detail": "Профиль не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+        targets = calculate_targets(profile)
+        if not targets:
+            return Response(
+                {"detail": "Недостаточно данных для расчёта (рост/вес/год рождения)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_value = getattr(profile, field, None)
+        new_value = targets.get(field)
+        setattr(profile, field, new_value)
+        profile.save()
+
+        # запись аудита: source='auto', by_user=request.user (инициатор reset)
+        record_target_change(
+            profile=profile,
+            field=field,
+            new_value=new_value,
+            source="auto",
+            by_user=request.user,
+            old_value=old_value,
+            reason=f"reset to auto by user {request.user.id}",
+        )
+
+        # Возвращаем обновлённого юзера (как и UserMeView)
+        return Response(UserMeSerializer(request.user).data)

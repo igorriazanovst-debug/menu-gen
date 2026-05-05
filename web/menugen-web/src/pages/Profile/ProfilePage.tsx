@@ -1,38 +1,20 @@
-import React, { useEffect, useMemo, useState } from 'react';
+// MG_205UI_V_profile_page = 1
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAppSelector, useAppDispatch } from '../../hooks/useAppDispatch';
 import { setUser } from '../../store/slices/authSlice';
 import { authApi } from '../../api/auth';
+import { usersApi } from '../../api/users';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { TargetField, type TargetLoader } from '../../components/profile/TargetField';
 import { getErrorMessage } from '../../utils/api';
-import type { MealPlan, NutritionTargets, UserProfile } from '../../types';
+import type { MealPlan, NutritionTargets, UserProfile, TargetField as TF, TargetsMeta } from '../../types';
 
 const MEAL_PLAN_OPTIONS: { value: MealPlan; label: string; hint: string }[] = [
   { value: '3', label: '3 приёма', hint: 'завтрак / обед / ужин' },
   { value: '5', label: '5 приёмов', hint: '+ перекусы между ними' },
 ];
-
-const num = (v: string | number | null | undefined): string => {
-  if (v === null || v === undefined || v === '') return '—';
-  const n = typeof v === 'number' ? v : parseFloat(v);
-  if (Number.isNaN(n)) return '—';
-  return n.toFixed(0);
-};
-
-interface MacroPillProps {
-  label: string;
-  value: string;
-  unit: string;
-  color: string;
-}
-const MacroPill: React.FC<MacroPillProps> = ({ label, value, unit, color }) => (
-  <div className={`flex flex-col items-center justify-center px-3 py-2 rounded-xl ${color}`}>
-    <span className="text-xs uppercase tracking-wide opacity-70">{label}</span>
-    <span className="text-lg font-bold">{value}</span>
-    <span className="text-[10px] opacity-60">{unit}</span>
-  </div>
-);
 
 export const ProfilePage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -64,6 +46,8 @@ export const ProfilePage: React.FC = () => {
     return p.targets_calculated ?? null;
   }, [user?.profile]);
 
+  const meta: TargetsMeta = user?.profile?.targets_meta ?? {};
+
   const profileFilled = !!(user?.profile?.birth_year && user?.profile?.height_cm && user?.profile?.weight_kg);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -77,6 +61,19 @@ export const ProfilePage: React.FC = () => {
     } catch (e) { setError(getErrorMessage(e)); }
     finally { setSaving(false); }
   };
+
+  const reloadMe = useCallback(async () => {
+    try {
+      const { data } = await authApi.me();
+      dispatch(setUser(data));
+    } catch { /* ignore */ }
+  }, [dispatch]);
+
+  // TargetLoader для текущего пользователя
+  const meLoader: TargetLoader = useMemo(() => ({
+    getHistory: async (f: TF) => (await usersApi.getTargetHistory(f)).data,
+    reset:      async (f: TF) => { await usersApi.resetTarget(f); await reloadMe(); },
+  }), [reloadMe]);
 
   return (
     <div className="space-y-6 max-w-xl">
@@ -103,7 +100,6 @@ export const ProfilePage: React.FC = () => {
           <Input label="Имя" value={name} onChange={(e) => setName(e.target.value)} error={error} />
           <Input label="Email" value={user?.email ?? ''} disabled />
 
-          {/* meal_plan_type — план приёмов пищи */}
           <div>
             <label className="block text-sm font-medium text-chocolate mb-2">
               План приёмов пищи
@@ -135,11 +131,13 @@ export const ProfilePage: React.FC = () => {
         </form>
       </Card>
 
-      {/* Целевые КБЖУ */}
       <Card className="p-6">
         <h2 className="text-lg font-bold text-chocolate mb-1">Целевые КБЖУ</h2>
         <p className="text-xs text-gray-500 mb-4">
-          Рассчитываются автоматически по формуле Mifflin-St Jeor на основе ваших параметров.
+          Бейдж показывает источник правки: <span className="font-medium">auto</span> — рассчитано формулой,
+          {' '}<span className="font-medium">вручную</span> — вы изменили сами,
+          {' '}<span className="font-medium">специалист</span> — поставил ваш диетолог.
+          Нажмите на бейдж, чтобы увидеть историю и сбросить к авто.
         </p>
 
         {!profileFilled && (
@@ -150,11 +148,11 @@ export const ProfilePage: React.FC = () => {
 
         {profileFilled && targets && (
           <div className="grid grid-cols-5 gap-2">
-            <MacroPill label="Ккал"  value={num(targets.calorie_target)}    unit="ккал" color="bg-tomato/10 text-tomato" />
-            <MacroPill label="Белок" value={num(targets.protein_target_g)}  unit="г"    color="bg-blue-50 text-blue-700" />
-            <MacroPill label="Жиры"  value={num(targets.fat_target_g)}      unit="г"    color="bg-amber-50 text-amber-700" />
-            <MacroPill label="Углев" value={num(targets.carb_target_g)}     unit="г"    color="bg-emerald-50 text-emerald-700" />
-            <MacroPill label="Клетч" value={num(targets.fiber_target_g)}    unit="г"    color="bg-purple-50 text-purple-700" />
+            <TargetField label="Ккал"  unit="ккал" value={targets.calorie_target}    field="calorie_target"    meta={meta.calorie_target}    bgClass="bg-tomato/10 text-tomato"           loader={meLoader} onResetDone={reloadMe} />
+            <TargetField label="Белок" unit="г"    value={targets.protein_target_g}  field="protein_target_g"  meta={meta.protein_target_g}  bgClass="bg-blue-50 text-blue-700"           loader={meLoader} onResetDone={reloadMe} />
+            <TargetField label="Жиры"  unit="г"    value={targets.fat_target_g}      field="fat_target_g"      meta={meta.fat_target_g}      bgClass="bg-amber-50 text-amber-700"         loader={meLoader} onResetDone={reloadMe} />
+            <TargetField label="Углев" unit="г"    value={targets.carb_target_g}     field="carb_target_g"     meta={meta.carb_target_g}     bgClass="bg-emerald-50 text-emerald-700"     loader={meLoader} onResetDone={reloadMe} />
+            <TargetField label="Клетч" unit="г"    value={targets.fiber_target_g}    field="fiber_target_g"    meta={meta.fiber_target_g}    bgClass="bg-purple-50 text-purple-700"       loader={meLoader} onResetDone={reloadMe} />
           </div>
         )}
 

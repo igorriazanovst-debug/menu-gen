@@ -1,4 +1,5 @@
 // MG_204m_V_profile = 1
+// MG_205UI_V_profile = 1
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,7 @@ import '../../../features/auth/bloc/auth_bloc.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/macro_pill.dart';
+import '../../../core/widgets/target_field.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiClient apiClient;
@@ -167,7 +169,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           )
                         else if (targets != null)
-                          MacroPillsRow(targets: targets)
+                          TargetFieldsRow(
+                            targets: targets,
+                            meta: extractTargetsMeta(profile),
+                            loader: MeTargetLoader(
+                              apiClient: widget.apiClient,
+                              onChanged: _load,
+                            ),
+                          )
                         else
                           const Text(
                             'Не удалось рассчитать цели — проверьте параметры профиля.',
