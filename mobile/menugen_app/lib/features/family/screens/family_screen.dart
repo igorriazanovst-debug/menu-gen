@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/family_bloc.dart';
+import '../../../core/widgets/macro_pill.dart';
+// MG_204m_V_family = 1
 
 class FamilyScreen extends StatelessWidget {
   const FamilyScreen({super.key});
@@ -295,6 +297,7 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
   String? _gender;
   String? _activityLevel;
   String? _goal;
+  String _mealPlanType = '3';
 
   static const _genders = [
     ('male', 'Мужской'),
@@ -347,6 +350,7 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
     _gender = profile['gender'] as String?;
     _activityLevel = profile['activity_level'] as String?;
     _goal = profile['goal'] as String?;
+    _mealPlanType = (profile['meal_plan_type'] as String?) ?? '3';
   }
 
   @override
@@ -386,7 +390,7 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
       profile['activity_level'] = _activityLevel;
     }
     if (_goal != null) profile['goal'] = _goal;
-
+      profile['meal_plan_type'] = _mealPlanType;
     final data = <String, dynamic>{
       'name': _nameCtrl.text.trim(),
       'allergies': _parseList(_allergiesCtrl.text),
@@ -474,6 +478,52 @@ class _EditMemberSheetState extends State<_EditMemberSheet> {
                   const SizedBox(height: 12),
                   _field(_calorieCtrl, 'Целевые калории',
                       type: TextInputType.number),
+                  const SizedBox(height: 16),
+                  // MG_204m_V_family targets pills
+                  Builder(builder: (_) {
+                    final profile = (widget.member['profile'] as Map<String, dynamic>?) ?? {};
+                    final targets = extractTargets(profile);
+                    if (targets == null) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            'Целевые КБЖУ (рассчитано автоматически)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        MacroPillsRow(targets: targets),
+                        const SizedBox(height: 16),
+                      ],
+                    );
+                  }),
+                  // MG_204m_V_family meal_plan toggle
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      'План приёмов пищи',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: '3', label: Text('3 приёма')),
+                      ButtonSegment(value: '5', label: Text('5 приёмов')),
+                    ],
+                    selected: {_mealPlanType},
+                    onSelectionChanged: (v) =>
+                        setState(() => _mealPlanType = v.first),
+                  ),
                   const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: _save,

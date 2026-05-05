@@ -1,3 +1,145 @@
+#!/usr/bin/env bash
+# MG-204 mobile fix1: повторно применить патч family_screen с робастными regex
+# Использует найденные ранее бэкапы.
+set -euo pipefail
+
+ROOT="/opt/menugen"
+MOB="${ROOT}/mobile/menugen_app"
+LIB="${MOB}/lib"
+BACKUPS="${ROOT}/backups"
+
+FAMILY_SCREEN="${LIB}/features/family/screens/family_screen.dart"
+PROFILE_SCREEN="${LIB}/features/profile/screens/profile_screen.dart"
+MACRO_PILL="${LIB}/core/widgets/macro_pill.dart"
+
+# 1) Откатываем family_screen к последнему бэкапу (если есть)
+LAST_FAM=$(ls -1t "${BACKUPS}"/family_screen.dart.bak_mg204m_* 2>/dev/null | head -1 || true)
+LAST_PRO=$(ls -1t "${BACKUPS}"/profile_screen.dart.bak_mg204m_* 2>/dev/null | head -1 || true)
+
+if [ -n "${LAST_FAM}" ]; then
+  cp "${LAST_FAM}" "${FAMILY_SCREEN}"
+  echo "↻ family_screen восстановлен из ${LAST_FAM}"
+fi
+if [ -n "${LAST_PRO}" ]; then
+  cp "${LAST_PRO}" "${PROFILE_SCREEN}"
+  echo "↻ profile_screen восстановлен из ${LAST_PRO}"
+fi
+
+# 2) Чиним family_screen — используем regex
+python3 <<'PYEOF'
+import re
+from pathlib import Path
+
+p = Path("/opt/menugen/mobile/menugen_app/lib/features/family/screens/family_screen.dart")
+src = p.read_text(encoding="utf-8")
+
+if "MG_204m_V_family" in src:
+    print("⚠ family_screen уже патчен — пропускаю")
+    raise SystemExit(0)
+
+# 2.1 импорт
+imp_old = "import '../bloc/family_bloc.dart';"
+imp_new = ("import '../bloc/family_bloc.dart';\n"
+           "import '../../../core/widgets/macro_pill.dart';\n"
+           "// MG_204m_V_family = 1")
+assert imp_old in src, "import bloc не найден"
+src = src.replace(imp_old, imp_new, 1)
+
+# 2.2 декларации полей
+decls_old = "  String? _gender;\n  String? _activityLevel;\n  String? _goal;"
+decls_new = "  String? _gender;\n  String? _activityLevel;\n  String? _goal;\n  String _mealPlanType = '3';"
+assert decls_old in src, "декларации полей не найдены"
+src = src.replace(decls_old, decls_new, 1)
+
+# 2.3 initState — добавить парсинг meal_plan_type перед закрывающей `}` метода
+init_old = "    _goal = profile['goal'] as String?;\n  }"
+init_new = ("    _goal = profile['goal'] as String?;\n"
+            "    _mealPlanType = (profile['meal_plan_type'] as String?) ?? '3';\n"
+            "  }")
+assert init_old in src, "конец initState не найден"
+src = src.replace(init_old, init_new, 1)
+
+# 2.4 _save() — добавить meal_plan_type. Ищем строку про goal в _save
+# Используем regex, нечувствительный к пробелам и пустым строкам.
+save_pat = re.compile(
+    r"(if \(_goal != null\) profile\['goal'\] = _goal;)\s*\n",
+    re.MULTILINE
+)
+m = save_pat.search(src)
+assert m, "_save: блок про _goal не найден"
+src = save_pat.sub(
+    r"\1\n      profile['meal_plan_type'] = _mealPlanType;\n",
+    src,
+    count=1,
+)
+
+# 2.5 UI — после _calorieCtrl _field вставить пилюли + meal_plan toggle.
+# Ищем _field(_calorieCtrl, ...). Регексом — устойчиво к пробелам.
+ui_pat = re.compile(
+    r"(_field\(_calorieCtrl,\s*'Целевые калории',\s*\n\s*type:\s*TextInputType\.number\),)\s*\n"
+)
+m = ui_pat.search(src)
+assert m, "UI: _field(_calorieCtrl) не найден"
+
+ui_inject = r"""\1
+                  const SizedBox(height: 16),
+                  // MG_204m_V_family targets pills
+                  Builder(builder: (_) {
+                    final profile = (widget.member['profile'] as Map<String, dynamic>?) ?? {};
+                    final targets = extractTargets(profile);
+                    if (targets == null) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            'Целевые КБЖУ (рассчитано автоматически)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        MacroPillsRow(targets: targets),
+                        const SizedBox(height: 16),
+                      ],
+                    );
+                  }),
+                  // MG_204m_V_family meal_plan toggle
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      'План приёмов пищи',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: '3', label: Text('3 приёма')),
+                      ButtonSegment(value: '5', label: Text('5 приёмов')),
+                    ],
+                    selected: {_mealPlanType},
+                    onSelectionChanged: (v) =>
+                        setState(() => _mealPlanType = v.first),
+                  ),
+"""
+src = ui_pat.sub(ui_inject, src, count=1)
+
+p.write_text(src, encoding="utf-8")
+print("✓ family_screen.dart пропатчен")
+PYEOF
+
+# 3) profile_screen — переписываем (как в основном apply, идемпотентно)
+if grep -q "MG_204m_V_profile" "${PROFILE_SCREEN}" 2>/dev/null; then
+  echo "⚠ profile_screen уже патчен"
+else
+cat > "${PROFILE_SCREEN}" <<'DARTEOF'
 // MG_204m_V_profile = 1
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -255,3 +397,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
+DARTEOF
+echo "✓ profile_screen.dart переписан"
+fi
+
+# 4) проверка корректности Dart-синтаксиса (базовая — балансы скобок)
+echo
+echo "── Проверка балансов скобок ──"
+for f in "${FAMILY_SCREEN}" "${PROFILE_SCREEN}" "${MACRO_PILL}"; do
+  if [ -f "$f" ]; then
+    awk -v f="$f" '
+      { for (i=1;i<=length($0);i++){c=substr($0,i,1); if(c=="{")o++; else if(c=="}")cl++; if(c=="(")po++; else if(c==")")pc++} }
+      END { printf "  %s: { %d/%d  ( %d/%d\n", f, o, cl, po, pc }
+    ' "$f"
+  fi
+done
+
+# 5) dart analyze (если есть)
+if command -v dart >/dev/null 2>&1; then
+  cd "${MOB}"
+  echo
+  echo "── dart analyze (ключевые файлы) ──"
+  dart analyze "${FAMILY_SCREEN}" "${PROFILE_SCREEN}" "${MACRO_PILL}" 2>&1 | head -80 || true
+elif command -v flutter >/dev/null 2>&1; then
+  cd "${MOB}"
+  echo
+  echo "── flutter analyze ──"
+  flutter analyze --no-pub 2>&1 | head -80 || true
+else
+  echo
+  echo "⚠ dart/flutter не в PATH — статический анализ пропущен"
+fi
+
+echo
+echo "DONE"
