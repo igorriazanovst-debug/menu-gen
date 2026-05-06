@@ -20,6 +20,13 @@ from typing import Dict, List, Optional, Tuple
 from apps.fridge.models import FridgeItem
 from apps.recipes.models import Recipe
 
+# MG_301_V_generator: жёсткая ошибка при пустом пуле роли + audit
+from .exceptions import EmptyRolePoolError
+from .portions import daily_target_grams, recipe_portion_grams  # MG_304_V_generator
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 MEAL_PLAN_3 = ["breakfast", "lunch", "dinner"]
 MEAL_PLAN_5 = ["breakfast", "snack1", "lunch", "snack2", "dinner"]
@@ -133,8 +140,20 @@ class MenuGenerator:
                             member_id=member.id,
                             day_offset=day,
                         )
-                        if not recipe:
-                            continue
+                        if recipe is None:
+                            # MG_301_V_generator: не молча — поднимаем ошибку
+                            err = EmptyRolePoolError(
+                                role=role,
+                                meal_slot=meal_slot,
+                                day_offset=day,
+                                member_name=self._member_display_name(member),
+                            )
+                            self._audit_empty_pool(err, member)
+                            logger.warning(
+                                "MG-301 empty role pool: role=%s slot=%s day=%s member=%s",
+                                role, meal_slot, day, member.id,
+                            )
+                            raise err
                         used_per_member[member.id].add(recipe.id)
                         self.tracker.add(member.id, day, recipe)
                         items.append({
@@ -146,7 +165,90 @@ class MenuGenerator:
                             "component_role": role,
                         })
 
+        # MG_304_V_generator: 5 порций овощей/фруктов в день (per member)
+        warnings = self._ensure_veg_fruit_servings(
+            items=items,
+            pools=pools,
+            used_per_member=used_per_member,
+            fridge_ids=fridge_ids,
+        )
+        self.last_warnings = warnings
         return items
+
+    # ── MG-304: добор порций овощей/фруктов ──────────────────────────────────
+    def _ensure_veg_fruit_servings(self, items, pools, used_per_member, fridge_ids):
+        """
+        Гарантирует целевой суточный объём овощей+фруктов per member (в граммах).
+        При недоборе добавляет виртуальные snack-слоты с рецептами из пулов
+        vegetable/fruit. Возвращает список warnings (объекты при остаточном недоборе).
+        """
+        warnings: list = []
+        grams: dict = {}
+        for it in items:
+            if it.get("component_role") in ("vegetable", "fruit"):
+                key = (it["member"].id, it["day_offset"])
+                grams[key] = grams.get(key, 0.0) + recipe_portion_grams(it["recipe"])
+
+        veg_fruit_pool = list(pools.get("vegetable", [])) + list(pools.get("fruit", []))
+
+        existing_snack_slots = {}
+        for it in items:
+            slot = it.get("meal_slot", "") or ""
+            if slot.startswith("snack"):
+                key = (it["member"].id, it["day_offset"])
+                existing_snack_slots[key] = existing_snack_slots.get(key, 0) + 1
+
+        for member in self.members:
+            target = daily_target_grams(member, ref_date=self.start_date)
+            for day in range(self.period_days):
+                key = (member.id, day)
+                have = grams.get(key, 0.0)
+                if have >= target:
+                    continue
+
+                hard_exclude = self._get_hard_exclude(member)
+                added = 0
+                MAX_ADD = 5
+                while have < target and added < MAX_ADD:
+                    candidate = None
+                    for r in veg_fruit_pool:
+                        if r.id in used_per_member[member.id]:
+                            continue
+                        if not self._recipe_passes_hard(r, hard_exclude):
+                            continue
+                        candidate = r
+                        break
+
+                    if candidate is None:
+                        break
+
+                    used_per_member[member.id].add(candidate.id)
+                    base_idx = existing_snack_slots.get(key, 0)
+                    slot_n = base_idx + added + 1
+                    role = candidate.food_group if candidate.food_group in ("vegetable", "fruit") else "vegetable"
+                    items.append({
+                        "member":         member,
+                        "meal_type":      "snack",
+                        "meal_slot":      f"snack{slot_n}",
+                        "day_offset":     day,
+                        "recipe":         candidate,
+                        "component_role": role,
+                        "is_virtual":     True,  # MG_304_V_generator
+                    })
+                    have += recipe_portion_grams(candidate)
+                    added += 1
+
+                if have < target:
+                    warnings.append({
+                        "code":           "veg_fruit_shortfall",
+                        "member_id":      member.id,
+                        "member_name":    self._member_display_name(member),
+                        "day_offset":     day,
+                        "target_grams":   round(target, 1),
+                        "actual_grams":   round(have, 1),
+                        "missing_grams":  round(target - have, 1),
+                    })
+        return warnings
 
     # ── pools ────────────────────────────────────────────────────────────────
 
@@ -293,3 +395,46 @@ class MenuGenerator:
         if not fridge_ids:
             return 0
         return sum(1 for ing in recipe.ingredients if ing.get("name", "").lower() in fridge_ids)
+
+    # ── MG-301: helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _member_display_name(member) -> str:
+        """Имя члена семьи для понятного сообщения об ошибке."""
+        try:
+            user = member.user
+            name = (getattr(user, "name", "") or "").strip()
+            if name:
+                return name
+            email = (getattr(user, "email", "") or "").strip()
+            if email:
+                return email.split("@", 1)[0]
+        except Exception:
+            pass
+        return ""
+
+    def _audit_empty_pool(self, err, member) -> None:
+        """Best-effort запись в общий AuditLog. Не должна падать сама по себе."""
+        try:
+            from apps.sync.models import AuditLog
+            AuditLog.objects.create(
+                user=getattr(member, "user", None),
+                action="menu.generate.empty_role_pool",
+                entity_type="menu_generation",
+                entity_id=f"family:{self.family.id}",
+                old_values=None,
+                new_values={
+                    "role":        err.role,
+                    "meal_slot":   err.meal_slot,
+                    "day_offset":  err.day_offset,
+                    "member_id":   getattr(member, "id", None),
+                    "member_name": err.member_name,
+                    "plan_code":   self.plan_code,
+                    "filters":     self.filters,
+                    "period_days": self.period_days,
+                    "message":     str(err),
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("MG-301: audit log write failed (non-fatal)")
+

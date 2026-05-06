@@ -52,6 +52,7 @@ class MenuDetailSerializer(serializers.ModelSerializer):
             "generated_at",
             "updated_at",
             "items",
+            "warnings",  # MG_304_V_serializers
         )
 
 

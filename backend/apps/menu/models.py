@@ -22,6 +22,7 @@ class Menu(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     modified_by = models.CharField(max_length=20, choices=ModifiedBy.choices, default=ModifiedBy.USER)
     filters_used = models.JSONField(default=dict)
+    warnings = models.JSONField(blank=True, default=list)  # MG_304_V_models
     generated_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

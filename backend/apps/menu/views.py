@@ -14,6 +14,7 @@ from apps.recipes.models import Recipe
 from apps.subscriptions.models import Subscription
 
 from .generator import MenuGenerator
+from .exceptions import MenuGeneratorError  # MG_301_V_views
 from .models import DeletedMenu, Menu, MenuItem, ShoppingItem, ShoppingList
 from .serializers import (
     DeletedMenuSerializer,
@@ -158,7 +159,10 @@ class MenuGenerateView(APIView):
             plan_code=plan_code,
             filters=filters,
         )
-        generated = generator.generate()
+        try:
+            generated = generator.generate()
+        except MenuGeneratorError as exc:  # MG_301_V_views
+            return Response(exc.to_response(), status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             menu = Menu.objects.create(
