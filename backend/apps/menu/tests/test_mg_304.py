@@ -135,4 +135,6 @@ def test_mg_304_top_up_when_shortfall(monkeypatch):
     assert total_g >= 750.0 - 0.01
 
     # warnings должно быть пусто, поскольку добили
-    assert getattr(gen, "last_warnings", []) == []
+    # MG_302_V_tests: теперь last_warnings может содержать fatty_fish/plant shortfall — здесь проверяем только veg_fruit_shortfall
+    veg_warns = [w for w in getattr(gen, "last_warnings", []) if w.get("code") == "veg_fruit_shortfall"]
+    assert veg_warns == []

@@ -1,5 +1,9 @@
 """
-Генератор меню — метод тарелки + недельные ограничения (MG-301, MG-302).
+Генератор меню — метод тарелки + недельные/дневные ограничения.
+
+MG-301: жёсткая ошибка при пустом пуле роли + audit
+MG-302: недельные ограничения (red_meat ≤500г/нед, fatty_fish ≥2/нед, plant ≥1/день)
+MG-304: 5 порций овощей/фруктов в день (per member)
 
 Состав ролей по meal_slot:
   breakfast      -> grain + protein + fruit
@@ -7,9 +11,11 @@
   snack1         -> fruit + dairy
   snack2         -> protein + vegetable
 
-Недельные лимиты (per member, скользящее окно 7 дней от start_date):
-  - red_meat   ≤ 2 раза/неделю   (мягкий)
-  - fatty_fish ≥ 2 раза/неделю   (мягкий бонус)
+Недельные/дневные лимиты (per member, скользящее окно 7 дней от start_date):
+  - red_meat   ≤ 500 г/нед   (мягкий, считается через recipe_portion_grams)
+  - fatty_fish ≥ 2  раз/нед  (мягкий бонус: пока <2, candidates ужимаются до fish)
+  - plant      ≥ 1  раз/день (мягкий бонус: пока за день =0, candidates ужимаются до plant)
+Все нарушения уходят в self.last_warnings и далее в Menu.warnings.
 """
 from __future__ import annotations
 import random
@@ -20,7 +26,6 @@ from typing import Dict, List, Optional, Tuple
 from apps.fridge.models import FridgeItem
 from apps.recipes.models import Recipe
 
-# MG_301_V_generator: жёсткая ошибка при пустом пуле роли + audit
 from .exceptions import EmptyRolePoolError
 from .portions import daily_target_grams, recipe_portion_grams  # MG_304_V_generator
 import logging
@@ -47,9 +52,10 @@ MEAL_COMPONENTS: Dict[str, Tuple[str, ...]] = {
     "snack2":    ("protein", "vegetable"),
 }
 
-# Недельные лимиты
-RED_MEAT_MAX_PER_WEEK   = 2  # не больше
-FATTY_FISH_MIN_PER_WEEK = 2  # желательно не меньше
+# MG_302_V_generator: недельные/дневные лимиты
+RED_MEAT_MAX_GRAMS_PER_WEEK = 500   # ≤ 500 г/нед на члена семьи
+FATTY_FISH_MIN_PER_WEEK     = 2     # ≥ 2 раза/нед
+PLANT_PROTEIN_MIN_PER_DAY   = 1     # ≥ 1 раз/день
 
 TIER_FEATURES = {
     "free":       {"country": True},
@@ -62,31 +68,60 @@ TIER_FEATURES = {
 
 
 class _WeeklyTracker:
-    """Счётчики использований per (member_id, week_index)."""
+    """
+    Счётчики использований per (member_id).
+    MG_302_V_generator:
+      - red_meat_grams — суммарные граммы за скользящую неделю
+      - fatty_fish     — раз в неделю
+      - plant_per_day  — раз в день (для PLANT_PROTEIN_MIN_PER_DAY)
+    """
 
     def __init__(self):
-        # week_index -> member_id -> {"red_meat": int, "fatty_fish": int}
-        self._counters: Dict[int, Dict[int, Dict[str, int]]] = defaultdict(
-            lambda: defaultdict(lambda: {"red_meat": 0, "fatty_fish": 0})
+        # week_index -> member_id -> {"red_meat_grams": float, "fatty_fish": int}
+        self._weekly: Dict[int, Dict[int, Dict[str, float]]] = defaultdict(
+            lambda: defaultdict(lambda: {"red_meat_grams": 0.0, "fatty_fish": 0})
+        )
+        # day_offset -> member_id -> {"plant": int, "animal": int, "mixed": int}
+        self._daily: Dict[int, Dict[int, Dict[str, int]]] = defaultdict(
+            lambda: defaultdict(lambda: {"plant": 0, "animal": 0, "mixed": 0})
         )
 
     @staticmethod
     def week_of(day_offset: int) -> int:
         return day_offset // 7
 
-    def get(self, member_id: int, day_offset: int) -> Dict[str, int]:
-        return self._counters[self.week_of(day_offset)][member_id]
+    def get_week(self, member_id: int, day_offset: int) -> Dict[str, float]:
+        return self._weekly[self.week_of(day_offset)][member_id]
+
+    def get_day(self, member_id: int, day_offset: int) -> Dict[str, int]:
+        return self._daily[day_offset][member_id]
 
     def add(self, member_id: int, day_offset: int, recipe: Recipe) -> None:
-        c = self.get(member_id, day_offset)
+        w = self.get_week(member_id, day_offset)
+        d = self.get_day(member_id, day_offset)
+
         if getattr(recipe, "is_red_meat", False):
-            c["red_meat"] += 1
+            try:
+                w["red_meat_grams"] += float(recipe_portion_grams(recipe) or 0.0)
+            except Exception:
+                pass
         if getattr(recipe, "is_fatty_fish", False):
-            c["fatty_fish"] += 1
+            w["fatty_fish"] += 1
+
+        ptype = getattr(recipe, "protein_type", None)
+        if ptype in ("plant", "animal", "mixed"):
+            d[ptype] += 1
+
+    # для итоговых warning'ов
+    def all_weeks(self) -> Dict[int, Dict[int, Dict[str, float]]]:
+        return self._weekly
+
+    def all_days(self) -> Dict[int, Dict[int, Dict[str, int]]]:
+        return self._daily
 
 
 class MenuGenerator:
-    """Генератор меню по методу тарелки с учётом недельных ограничений."""
+    """Генератор меню по методу тарелки с учётом недельных/дневных ограничений."""
 
     def __init__(
         self,
@@ -107,6 +142,7 @@ class MenuGenerator:
         meal_count = self.filters.get("meal_plan_type", "3")
         self.meal_types = MEAL_PLAN_5 if str(meal_count) == "5" else MEAL_PLAN_3
         self.tracker = _WeeklyTracker()
+        self.last_warnings: list = []
 
     # ── public ────────────────────────────────────────────────────────────────
 
@@ -141,7 +177,6 @@ class MenuGenerator:
                             day_offset=day,
                         )
                         if recipe is None:
-                            # MG_301_V_generator: не молча — поднимаем ошибку
                             err = EmptyRolePoolError(
                                 role=role,
                                 meal_slot=meal_slot,
@@ -165,23 +200,72 @@ class MenuGenerator:
                             "component_role": role,
                         })
 
-        # MG_304_V_generator: 5 порций овощей/фруктов в день (per member)
-        warnings = self._ensure_veg_fruit_servings(
+        # MG_304_V_generator: добор овощей/фруктов
+        warnings: list = []
+        warnings.extend(self._ensure_veg_fruit_servings(
             items=items,
             pools=pools,
             used_per_member=used_per_member,
             fridge_ids=fridge_ids,
-        )
+        ))
+
+        # MG_302_V_generator: warnings по недельным/дневным лимитам
+        warnings.extend(self._collect_weekly_warnings())
+        warnings.extend(self._collect_daily_plant_warnings())
+
         self.last_warnings = warnings
         return items
 
+    # ── MG-302: warnings collectors ──────────────────────────────────────────
+    def _collect_weekly_warnings(self) -> list:
+        out: list = []
+        weeks_total = max(1, (self.period_days + 6) // 7)
+        for w_idx in range(weeks_total):
+            for member in self.members:
+                # MG_302_V_generator: счётчик может отсутствовать, считаем 0-default
+                c = self.tracker.all_weeks().get(w_idx, {}).get(member.id) or {}
+                red_g = float(c.get("red_meat_grams", 0.0) or 0.0)
+                fish  = int(c.get("fatty_fish", 0) or 0)
+                if red_g > RED_MEAT_MAX_GRAMS_PER_WEEK:
+                    out.append({
+                        "code":          "red_meat_overlimit",
+                        "member_id":     member.id,
+                        "member_name":   self._member_display_name(member),
+                        "week_index":    w_idx,
+                        "limit_grams":   RED_MEAT_MAX_GRAMS_PER_WEEK,
+                        "actual_grams":  round(red_g, 1),
+                    })
+                if fish < FATTY_FISH_MIN_PER_WEEK:
+                    out.append({
+                        "code":          "fatty_fish_shortfall",
+                        "member_id":     member.id,
+                        "member_name":   self._member_display_name(member),
+                        "week_index":    w_idx,
+                        "min_count":     FATTY_FISH_MIN_PER_WEEK,
+                        "actual_count":  fish,
+                    })
+        return out
+
+    def _collect_daily_plant_warnings(self) -> list:
+        out: list = []
+        for day in range(self.period_days):
+            for member in self.members:
+                # MG_302_V_generator: счётчик может отсутствовать, считаем 0-default
+                d = self.tracker.all_days().get(day, {}).get(member.id) or {}
+                plant = int(d.get("plant", 0) or 0)
+                if plant < PLANT_PROTEIN_MIN_PER_DAY:
+                    out.append({
+                        "code":          "plant_protein_shortfall",
+                        "member_id":     member.id,
+                        "member_name":   self._member_display_name(member),
+                        "day_offset":    day,
+                        "min_count":     PLANT_PROTEIN_MIN_PER_DAY,
+                        "actual_count":  plant,
+                    })
+        return out
+
     # ── MG-304: добор порций овощей/фруктов ──────────────────────────────────
     def _ensure_veg_fruit_servings(self, items, pools, used_per_member, fridge_ids):
-        """
-        Гарантирует целевой суточный объём овощей+фруктов per member (в граммах).
-        При недоборе добавляет виртуальные snack-слоты с рецептами из пулов
-        vegetable/fruit. Возвращает список warnings (объекты при остаточном недоборе).
-        """
         warnings: list = []
         grams: dict = {}
         for it in items:
@@ -326,19 +410,36 @@ class MenuGenerator:
             if cal_ok:
                 candidates = cal_ok
 
-        # Недельные лимиты — применяем только для protein
+        # MG_302_V_generator: недельные/дневные лимиты — только для protein
         if role == "protein":
-            counters = self.tracker.get(member_id, day_offset)
-            # 1) красное мясо: hard-cap внутри candidates, но с фолбэком
-            if counters["red_meat"] >= RED_MEAT_MAX_PER_WEEK:
+            week = self.tracker.get_week(member_id, day_offset)
+            day  = self.tracker.get_day(member_id, day_offset)
+
+            # 1) red_meat по граммам: если уже ≥ лимит — режем red_meat (с фолбэком)
+            if week.get("red_meat_grams", 0.0) >= RED_MEAT_MAX_GRAMS_PER_WEEK:
                 no_red = [r for r in candidates if not getattr(r, "is_red_meat", False)]
                 if no_red:
                     candidates = no_red
-            # 2) жирная рыба: бонус-приоритет, пока счётчик ниже минимума
-            if counters["fatty_fish"] < FATTY_FISH_MIN_PER_WEEK:
-                fish = [r for r in candidates if getattr(r, "is_fatty_fish", False)]
-                if fish:
-                    candidates = fish
+
+            # 2) plant/день — приоритетнее, чем недельный fish-boost (правило ежедневное)
+            if day.get("plant", 0) < PLANT_PROTEIN_MIN_PER_DAY:
+                plant = [r for r in candidates if getattr(r, "protein_type", None) == "plant"]
+                if plant:
+                    candidates = plant
+                    # plant найден — fish-boost ниже не применяем,
+                    # чтобы не пересекать два правила в одном выборе
+                else:
+                    # plant нет в candidates — попробуем fish-boost
+                    if week.get("fatty_fish", 0) < FATTY_FISH_MIN_PER_WEEK:
+                        fish = [r for r in candidates if getattr(r, "is_fatty_fish", False)]
+                        if fish:
+                            candidates = fish
+            else:
+                # plant за день уже есть — обычный fish-boost
+                if week.get("fatty_fish", 0) < FATTY_FISH_MIN_PER_WEEK:
+                    fish = [r for r in candidates if getattr(r, "is_fatty_fish", False)]
+                    if fish:
+                        candidates = fish
 
         # Бонус по холодильнику
         if fridge_ids:
@@ -400,7 +501,6 @@ class MenuGenerator:
 
     @staticmethod
     def _member_display_name(member) -> str:
-        """Имя члена семьи для понятного сообщения об ошибке."""
         try:
             user = member.user
             name = (getattr(user, "name", "") or "").strip()
@@ -414,7 +514,6 @@ class MenuGenerator:
         return ""
 
     def _audit_empty_pool(self, err, member) -> None:
-        """Best-effort запись в общий AuditLog. Не должна падать сама по себе."""
         try:
             from apps.sync.models import AuditLog
             AuditLog.objects.create(
@@ -437,4 +536,3 @@ class MenuGenerator:
             )
         except Exception:  # noqa: BLE001
             logger.exception("MG-301: audit log write failed (non-fatal)")
-
