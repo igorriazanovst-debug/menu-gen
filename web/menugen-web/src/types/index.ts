@@ -37,6 +37,7 @@ export interface Nutrition {
 export type FoodGroup    = 'grain' | 'protein' | 'vegetable' | 'fruit' | 'dairy' | 'oil' | 'other';
 export type ProteinType  = 'animal' | 'plant' | 'mixed';
 export type GrainType    = 'whole' | 'refined';
+export type CookingMethod = 'boiled' | 'baked' | 'fried' | 'grilled' | 'raw' | 'stewed' | 'steamed';  // MG_501_V_types
 export type SuitableMeal = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export interface Recipe {
   id: number; title: string; cook_time?: string; servings?: number;
@@ -49,6 +50,10 @@ export interface Recipe {
   grain_type?: GrainType | null;
   is_fatty_fish?: boolean;
   is_red_meat?: boolean;
+  cooking_method?:     CookingMethod | null;  // MG_501_V_types
+  has_added_sugar?:    boolean;
+  oil_tsp?:            string | number | null;
+  serving_size_label?: string | null;
 }
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export const MEAL_LABELS: Record<MealType, string> = {

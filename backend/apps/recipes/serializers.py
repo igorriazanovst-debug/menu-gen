@@ -15,6 +15,13 @@ CLASSIFICATION_FIELDS = (
     "is_red_meat",
 )
 
+MG501_FIELDS = (  # MG_501_V_serializers
+    "cooking_method",
+    "has_added_sugar",
+    "oil_tsp",
+    "serving_size_label",
+)
+
 
 class RecipeListSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
@@ -33,7 +40,7 @@ class RecipeListSerializer(serializers.ModelSerializer):
             "is_custom",
             "author_name",
             "created_at",
-        ) + CLASSIFICATION_FIELDS
+        ) + CLASSIFICATION_FIELDS + MG501_FIELDS
 
 
 class RecipeDetailSerializer(serializers.ModelSerializer):
@@ -60,7 +67,7 @@ class RecipeDetailSerializer(serializers.ModelSerializer):
             "author_name",
             "created_at",
             "updated_at",
-        ) + CLASSIFICATION_FIELDS
+        ) + CLASSIFICATION_FIELDS + MG501_FIELDS
 
 
 class RecipeWriteSerializer(serializers.ModelSerializer):
@@ -77,7 +84,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
             "image_url",
             "video_url",
             "country",
-        ) + CLASSIFICATION_FIELDS
+        ) + CLASSIFICATION_FIELDS + MG501_FIELDS
 
     def validate_ingredients(self, value):
         if not isinstance(value, list):

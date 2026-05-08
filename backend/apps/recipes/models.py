@@ -43,6 +43,15 @@ class Recipe(models.Model):
         WHOLE   = "whole",   "Цельнозерновые"
         REFINED = "refined", "Рафинированные"
 
+    class CookingMethod(models.TextChoices):  # MG_501_V_model
+        BOILED     = "boiled",     "Варёное"
+        BAKED      = "baked",      "Запечённое"
+        FRIED      = "fried",      "Жареное"
+        GRILLED    = "grilled",    "Гриль"
+        RAW        = "raw",        "Сырое"
+        STEWED     = "stewed",     "Тушёное"
+        STEAMED    = "steamed",    "На пару"
+
     food_group    = models.CharField(max_length=16, choices=FoodGroup.choices, null=True, blank=True)
     suitable_for  = models.JSONField(default=list, blank=True)
     povar_raw     = models.JSONField(blank=True, null=True)
@@ -54,6 +63,19 @@ class Recipe(models.Model):
     proteins = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Белки на 1 порцию, г.')
     fats     = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Жиры на 1 порцию, г.')
     carbs    = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Углеводы на 1 порцию, г.')
+    cooking_method      = models.CharField(  # MG_501_V_model
+        max_length=16, choices=CookingMethod.choices, null=True, blank=True,
+        help_text='Метод приготовления (MG-501).',
+    )
+    has_added_sugar     = models.BooleanField(default=False, help_text='Содержит добавленный сахар (MG-501).')
+    oil_tsp             = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Расход масла в чайных ложках (MG-501).',
+    )
+    serving_size_label  = models.CharField(
+        max_length=64, null=True, blank=True,
+        help_text='Подпись размера порции, напр. "1 тарелка / 200 г" (MG-501).',
+    )
 
     class Meta:
         db_table = "recipes"
@@ -68,6 +90,8 @@ class Recipe(models.Model):
             models.Index(fields=["grain_type"]),
             models.Index(fields=["is_fatty_fish"]),
             models.Index(fields=["is_red_meat"]),
+            models.Index(fields=["cooking_method"]),  # MG_501_V_model
+            models.Index(fields=["has_added_sugar"]),
             GinIndex(fields=["suitable_for"], name="recipe_suitable_for_gin"),
         ]
 

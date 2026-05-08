@@ -3,7 +3,7 @@ import { recipesApi } from '../../api/recipes';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { getErrorMessage } from '../../utils/api';
-import type { Recipe, FoodGroup, ProteinType, GrainType, SuitableMeal } from '../../types';
+import type { Recipe, FoodGroup, ProteinType, GrainType, SuitableMeal, CookingMethod } from '../../types';  // MG_501_V_modal
 
 interface Props {
   recipe: Recipe;
@@ -43,6 +43,16 @@ const GRAIN_TYPE_OPTIONS: { value: GrainType; label: string }[] = [
   { value: 'refined', label: 'Рафинированные' },
 ];
 
+const COOKING_METHOD_OPTIONS: { value: CookingMethod; label: string }[] = [  // MG_501_V_modal
+  { value: 'boiled',  label: 'Варёное' },
+  { value: 'baked',   label: 'Запечённое' },
+  { value: 'fried',   label: 'Жареное' },
+  { value: 'grilled', label: 'Гриль' },
+  { value: 'raw',     label: 'Сырое' },
+  { value: 'stewed',  label: 'Тушёное' },
+  { value: 'steamed', label: 'На пару' },
+];
+
 const SUITABLE_FOR_OPTIONS: { value: SuitableMeal; label: string }[] = [
   { value: 'breakfast', label: 'Завтрак' },
   { value: 'lunch',     label: 'Обед' },
@@ -76,6 +86,10 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
   const [suitableFor,  setSuitableFor]  = useState<SuitableMeal[]>(recipe.suitable_for ?? []);
   const [isFattyFish,  setIsFattyFish]  = useState<boolean>(recipe.is_fatty_fish ?? false);
   const [isRedMeat,    setIsRedMeat]    = useState<boolean>(recipe.is_red_meat ?? false);
+  const [cookingMethod,    setCookingMethod]    = useState<CookingMethod | ''>(recipe.cooking_method ?? '');  // MG_501_V_modal
+  const [hasAddedSugar,    setHasAddedSugar]    = useState<boolean>(recipe.has_added_sugar ?? false);
+  const [oilTsp,           setOilTsp]           = useState<string>(recipe.oil_tsp != null ? String(recipe.oil_tsp) : '');
+  const [servingSizeLabel, setServingSizeLabel] = useState<string>(recipe.serving_size_label ?? '');
 
   const [saving,       setSaving]       = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -139,6 +153,10 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
         suitable_for:  suitableFor,
         is_fatty_fish: isFattyFish,
         is_red_meat:   isRedMeat,
+        cooking_method:      cookingMethod || null,  // MG_501_V_modal
+        has_added_sugar:     hasAddedSugar,
+        oil_tsp:             oilTsp.trim() === '' ? null : oilTsp.trim(),
+        serving_size_label:  servingSizeLabel.trim() || null,
       };
 
       const { data } = await recipesApi.update(recipe.id, payload);
@@ -305,6 +323,38 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
                   <span className="text-sm">Красное мясо (говядина, баранина, свинина, утка)</span>
                 </label>
               </div>
+
+              {/* MG-501: метод готовки, сахар, масло, порция */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Метод приготовления</label>
+                <select value={cookingMethod} onChange={e => setCookingMethod(e.target.value as CookingMethod | '')}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-tomato/40">
+                  <option value="">— не указано —</option>
+                  {COOKING_METHOD_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+                <input type="checkbox" checked={hasAddedSugar} onChange={e => setHasAddedSugar(e.target.checked)} />
+                <span className="text-sm">Содержит добавленный сахар</span>
+              </label>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Масло (ч.л.)</label>
+                  <Input type="number" step="0.1" min="0" value={oilTsp}
+                    onChange={e => setOilTsp(e.target.value)} placeholder="напр. 1.5" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Размер порции</label>
+                  <Input value={servingSizeLabel}
+                    onChange={e => setServingSizeLabel(e.target.value)}
+                    placeholder='напр. "1 тарелка / 200 г"' />
+                </div>
+              </div>
+
             </div>
           )}
 
