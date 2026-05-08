@@ -3,6 +3,7 @@
 
 MG-301: жёсткая ошибка при пустом пуле роли + audit
 MG-302: недельные ограничения (red_meat ≤500г/нед, fatty_fish ≥2/нед, plant ≥1/день)
+MG-303: распределение КБЖУ по приёмам (веса 0.25/0.40/0.35 или 0.30/0.05/0.35/0.05/0.25)
 MG-304: 5 порций овощей/фруктов в день (per member)
 
 Состав ролей по meal_slot:
@@ -56,6 +57,22 @@ MEAL_COMPONENTS: Dict[str, Tuple[str, ...]] = {
 RED_MEAT_MAX_GRAMS_PER_WEEK = 500   # ≤ 500 г/нед на члена семьи
 FATTY_FISH_MIN_PER_WEEK     = 2     # ≥ 2 раза/нед
 PLANT_PROTEIN_MIN_PER_DAY   = 1     # ≥ 1 раз/день
+
+# MG_303_V_generator: распределение КБЖУ по приёмам пищи
+MEAL_CALORIE_WEIGHTS_3 = {
+    "breakfast": 0.25,
+    "lunch":     0.40,
+    "dinner":    0.35,
+}
+MEAL_CALORIE_WEIGHTS_5 = {
+    "breakfast": 0.30,
+    "snack1":    0.05,
+    "lunch":     0.35,
+    "snack2":    0.05,
+    "dinner":    0.25,
+}
+# Окна эскалации (±доля от per-role target)
+MEAL_CAL_WINDOW_TIERS = (0.15, 0.30, 0.50)
 
 TIER_FEATURES = {
     "free":       {"country": True},
@@ -143,6 +160,10 @@ class MenuGenerator:
         self.meal_types = MEAL_PLAN_5 if str(meal_count) == "5" else MEAL_PLAN_3
         self.tracker = _WeeklyTracker()
         self.last_warnings: list = []
+        # MG_303_V_generator: фактические ккал по (member_id, day_offset, meal_slot)
+        self._meal_cal_actual: Dict[Tuple[int, int, str], float] = defaultdict(float)
+        # MG_303_V_generator: целевые ккал по (member_id, day_offset, meal_slot) — для сборки warnings
+        self._meal_cal_target: Dict[Tuple[int, int, str], Optional[float]] = {}
 
     # ── public ────────────────────────────────────────────────────────────────
 
@@ -159,10 +180,18 @@ class MenuGenerator:
                 hard_exclude = self._get_hard_exclude(member)
 
                 for meal_slot in self.meal_types:
+
                     db_meal_type = MEAL_TYPE_DB[meal_slot]
+
                     roles = MEAL_COMPONENTS.get(meal_slot, ("other",))
-                    per_meal_cal = (target_cal / len(self.meal_types)) if target_cal else None
+
+                    # MG_303_V_generator: вес приёма из таблицы вместо равных долей
+
+                    per_meal_cal = self._meal_target_cal(target_cal, meal_slot)
+
                     per_role_cal = (per_meal_cal / len(roles)) if per_meal_cal else None
+
+                    self._meal_cal_target[(member.id, day, meal_slot)] = per_meal_cal
 
                     for role in roles:
                         recipe = self._pick_for_role(
@@ -191,6 +220,10 @@ class MenuGenerator:
                             raise err
                         used_per_member[member.id].add(recipe.id)
                         self.tracker.add(member.id, day, recipe)
+                        # MG_303_V_generator: суммируем ккал приёма
+                        rcal = self._recipe_cal(recipe)
+                        if rcal is not None:
+                            self._meal_cal_actual[(member.id, day, meal_slot)] += float(rcal)
                         items.append({
                             "member":         member,
                             "meal_type":      db_meal_type,
@@ -212,6 +245,9 @@ class MenuGenerator:
         # MG_302_V_generator: warnings по недельным/дневным лимитам
         warnings.extend(self._collect_weekly_warnings())
         warnings.extend(self._collect_daily_plant_warnings())
+
+        # MG_303_V_generator: warnings по отклонению ккал приёма от target
+        warnings.extend(self._collect_meal_calorie_warnings())
 
         self.last_warnings = warnings
         return items
@@ -404,11 +440,22 @@ class MenuGenerator:
         if not candidates:
             return None
 
-        # Калорийный таргет
-        if target_cal:
-            cal_ok = [r for r in candidates if (c := self._recipe_cal(r)) and abs(c - target_cal) <= 200]
-            if cal_ok:
-                candidates = cal_ok
+        # MG_303_V_generator: эскалирующий калорийный фильтр ±15% → ±30% → ±50%
+        if target_cal and target_cal > 0:
+            tier_used = None
+            for tier in MEAL_CAL_WINDOW_TIERS:
+                tol = float(target_cal) * float(tier)
+                cal_ok = [
+                    r for r in candidates
+                    if (c := self._recipe_cal(r)) is not None
+                    and abs(float(c) - float(target_cal)) <= tol
+                ]
+                if cal_ok:
+                    candidates = cal_ok
+                    tier_used = tier
+                    break
+            # Если ни одно окно не дало кандидатов — оставляем как есть (fallback random)
+            # warning будет сгенерирован после факта в _collect_meal_calorie_warnings
 
         # MG_302_V_generator: недельные/дневные лимиты — только для protein
         if role == "protein":
@@ -447,6 +494,44 @@ class MenuGenerator:
             candidates = candidates[:10]
 
         return random.choice(candidates)
+
+    # ── MG-303: meal calorie target / warnings ───────────────────────────────
+    def _meal_target_cal(self, target_cal: Optional[int], meal_slot: str) -> Optional[float]:
+        """MG_303_V_generator: возвращает целевые ккал на приём по таблице весов."""
+        if not target_cal:
+            return None
+        weights = MEAL_CALORIE_WEIGHTS_5 if str(self.filters.get("meal_plan_type", "3")) == "5" else MEAL_CALORIE_WEIGHTS_3
+        w = weights.get(meal_slot)
+        if w is None:
+            # fallback на равные доли
+            return float(target_cal) / max(1, len(self.meal_types))
+        return float(target_cal) * float(w)
+
+    def _collect_meal_calorie_warnings(self) -> list:
+        """MG_303_V_generator: warnings по отклонению фактических ккал приёма от целевых."""
+        out: list = []
+        max_tol = MEAL_CAL_WINDOW_TIERS[-1]  # 0.50
+        for (member_id, day, meal_slot), target in self._meal_cal_target.items():
+            if not target or target <= 0:
+                continue
+            actual = float(self._meal_cal_actual.get((member_id, day, meal_slot), 0.0) or 0.0)
+            if actual <= 0:
+                continue
+            delta = actual - float(target)
+            if abs(delta) > float(target) * max_tol:
+                member = next((m for m in self.members if m.id == member_id), None)
+                out.append({
+                    "code":         "meal_calorie_mismatch",
+                    "member_id":    member_id,
+                    "member_name":  self._member_display_name(member) if member else "",
+                    "day_offset":   day,
+                    "meal_slot":    meal_slot,
+                    "target_cal":   round(float(target), 1),
+                    "actual_cal":   round(actual, 1),
+                    "delta_cal":    round(delta, 1),
+                    "delta_pct":    round(delta / float(target) * 100.0, 1),
+                })
+        return out
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
