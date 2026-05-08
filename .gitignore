@@ -108,3 +108,11 @@ pubspec.lock
 
 # [MG-204] explicit allow for MenuGen_Backlog.xlsx
 !MenuGen_Backlog.xlsx
+
+# MG_cleanup_V_gitignore
+*.bak
+*.bak_*
+*.bak_mg*
+.bak_mg*
+/tmp/mg_*
+backend/apps/*/migrations/*.bak*
