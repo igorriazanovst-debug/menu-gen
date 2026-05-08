@@ -74,6 +74,12 @@ MEAL_CALORIE_WEIGHTS_5 = {
 # Окна эскалации (±доля от per-role target)
 MEAL_CAL_WINDOW_TIERS = (0.15, 0.30, 0.50)
 
+# MG_502_503_V_generator: контроль масла и сахара
+DAILY_OIL_TSP_LIMIT     = 5.0   # ≤ 5 ч.л. масла в сутки на члена семьи
+OIL_TSP_HEAVY_THRESHOLD = 0.5   # рецепт считается «маслянистым» при oil_tsp > 0.5
+SWEET_PER_DAY_LIMIT     = 1     # ≤ 1 сладкого перекуса в день
+MAIN_MEAL_TYPES         = ("breakfast", "lunch", "dinner")  # сладкое запрещено
+
 TIER_FEATURES = {
     "free":       {"country": True},
     "lite":       {"country": True, "disliked": True},
@@ -99,8 +105,10 @@ class _WeeklyTracker:
             lambda: defaultdict(lambda: {"red_meat_grams": 0.0, "fatty_fish": 0})
         )
         # day_offset -> member_id -> {"plant": int, "animal": int, "mixed": int}
-        self._daily: Dict[int, Dict[int, Dict[str, int]]] = defaultdict(
-            lambda: defaultdict(lambda: {"plant": 0, "animal": 0, "mixed": 0})
+        # MG_502_503_V_generator: добавлены oil_tsp (float) и sweet_count (int)
+        self._daily: Dict[int, Dict[int, Dict[str, float]]] = defaultdict(
+            lambda: defaultdict(lambda: {"plant": 0, "animal": 0, "mixed": 0,
+                                          "oil_tsp": 0.0, "sweet_count": 0})
         )
 
     @staticmethod
@@ -128,6 +136,16 @@ class _WeeklyTracker:
         ptype = getattr(recipe, "protein_type", None)
         if ptype in ("plant", "animal", "mixed"):
             d[ptype] += 1
+
+        # MG_502_503_V_generator: oil_tsp и sweet_count
+        oil = getattr(recipe, "oil_tsp", None)
+        if oil is not None:
+            try:
+                d["oil_tsp"] = float(d.get("oil_tsp", 0.0)) + float(oil)
+            except (TypeError, ValueError):
+                pass
+        if getattr(recipe, "has_added_sugar", False):
+            d["sweet_count"] = int(d.get("sweet_count", 0)) + 1
 
     # для итоговых warning'ов
     def all_weeks(self) -> Dict[int, Dict[int, Dict[str, float]]]:
@@ -248,6 +266,10 @@ class MenuGenerator:
 
         # MG_303_V_generator: warnings по отклонению ккал приёма от target
         warnings.extend(self._collect_meal_calorie_warnings())
+
+        # MG_502_503_V_generator: warnings по маслу и сладкому
+        warnings.extend(self._collect_daily_oil_warnings())
+        warnings.extend(self._collect_daily_sweet_warnings())
 
         self.last_warnings = warnings
         return items
@@ -488,6 +510,32 @@ class MenuGenerator:
                     if fish:
                         candidates = fish
 
+        # MG_502_503_V_generator: контроль масла (≤5 ч.л./день)
+        day_t = self.tracker.get_day(member_id, day_offset)
+        if float(day_t.get("oil_tsp", 0.0)) > DAILY_OIL_TSP_LIMIT:
+            light = [
+                r for r in candidates
+                if (getattr(r, "oil_tsp", None) or 0) <= OIL_TSP_HEAVY_THRESHOLD
+            ]
+            if light:
+                candidates = light
+            # если все кандидаты — «маслянистые», оставляем как есть, warning соберём после факта
+
+        # MG_502_503_V_generator: исключение сахара
+        # 1) основные приёмы: has_added_sugar=True вообще запрещено
+        if meal_type in MAIN_MEAL_TYPES:
+            no_sugar = [r for r in candidates if not getattr(r, "has_added_sugar", False)]
+            if no_sugar:
+                candidates = no_sugar
+            # если все candidates сладкие (маловероятно для основных) — fallback random,
+            # warning будет в _collect_daily_sweet_warnings
+        # 2) snack: ≤ SWEET_PER_DAY_LIMIT сладких в день
+        elif meal_type == "snack":
+            if int(day_t.get("sweet_count", 0)) >= SWEET_PER_DAY_LIMIT:
+                no_sugar = [r for r in candidates if not getattr(r, "has_added_sugar", False)]
+                if no_sugar:
+                    candidates = no_sugar
+
         # Бонус по холодильнику
         if fridge_ids:
             candidates.sort(key=lambda r: self._fridge_score(r, fridge_ids), reverse=True)
@@ -534,6 +582,55 @@ class MenuGenerator:
         return out
 
     # ── helpers ──────────────────────────────────────────────────────────────
+
+    # ── MG-502/503: oil & sugar warnings ──────────────────────────────────────
+    def _collect_daily_oil_warnings(self) -> list:
+        """MG_502_503_V_generator: warning oil_overlimit если суммарно за день >5 ч.л."""
+        out: list = []
+        days = sorted(self.tracker._daily.keys())
+        for day in days:
+            if day >= self.period_days:
+                continue
+            for member in self.members:
+                d = self.tracker._daily[day].get(member.id)
+                if not d:
+                    continue
+                actual = float(d.get("oil_tsp", 0.0))
+                if actual > DAILY_OIL_TSP_LIMIT:
+                    out.append({
+                        "code":         "oil_overlimit",
+                        "member_id":    member.id,
+                        "member_name":  self._member_display_name(member),
+                        "day_offset":   day,
+                        "actual_tsp":   round(actual, 1),
+                        "limit_tsp":    DAILY_OIL_TSP_LIMIT,
+                        "delta_tsp":    round(actual - DAILY_OIL_TSP_LIMIT, 1),
+                    })
+        return out
+
+    def _collect_daily_sweet_warnings(self) -> list:
+        """MG_502_503_V_generator: warning sweet_overlimit если за день >SWEET_PER_DAY_LIMIT сладких."""
+        out: list = []
+        days = sorted(self.tracker._daily.keys())
+        for day in days:
+            if day >= self.period_days:
+                continue
+            for member in self.members:
+                d = self.tracker._daily[day].get(member.id)
+                if not d:
+                    continue
+                cnt = int(d.get("sweet_count", 0))
+                if cnt > SWEET_PER_DAY_LIMIT:
+                    out.append({
+                        "code":         "sweet_overlimit",
+                        "member_id":    member.id,
+                        "member_name":  self._member_display_name(member),
+                        "day_offset":   day,
+                        "sweet_count":  cnt,
+                        "limit":        SWEET_PER_DAY_LIMIT,
+                    })
+        return out
+
 
     def _get_fridge_ingredient_names(self) -> set:
         if not self.features.get("fridge"):
