@@ -1,3 +1,4 @@
+# MG_504_V_family
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
@@ -21,6 +22,11 @@ class ProfileSerializer(serializers.Serializer):
     carb_target_g    = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
     fiber_target_g   = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
     meal_plan_type   = serializers.CharField(read_only=True)
+
+    # MG_504_V_family_profile
+    bedtime_hour = serializers.IntegerField(read_only=True, allow_null=True)
+    cheat_meal_interval = serializers.IntegerField(read_only=True)
+    last_cheat_meal_date = serializers.DateField(read_only=True, allow_null=True)
 
 
 
@@ -142,6 +148,17 @@ class ProfileUpdateSerializer(serializers.Serializer):
     )
     meal_plan_type = serializers.ChoiceField(
         choices=["3", "5"], required=False, allow_null=True
+    )
+
+    # MG_504_V_family_update
+    bedtime_hour = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0, max_value=23
+    )
+    cheat_meal_interval = serializers.IntegerField(
+        required=False, min_value=1
+    )
+    last_cheat_meal_date = serializers.DateField(
+        required=False, allow_null=True
     )
 
 

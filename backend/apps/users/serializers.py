@@ -4,6 +4,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import Profile
 
+
+# MG_504_V_serializers
+MG504_FIELDS = ("bedtime_hour", "cheat_meal_interval", "last_cheat_meal_date")
+
 User = get_user_model()
 
 
@@ -136,7 +140,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "meal_plan_type",
             "targets_calculated",
             "targets_meta",
-        )
+        ) + MG504_FIELDS
 
     def get_targets_calculated(self, obj):
         from .nutrition import calculate_targets

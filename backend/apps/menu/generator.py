@@ -196,6 +196,10 @@ class MenuGenerator:
             for member in self.members:
                 target_cal = self._get_calorie_target(member)
                 hard_exclude = self._get_hard_exclude(member)
+                # MG_505_V_generate_loop: cheat-day detection
+                _mg505_current_date = self.start_date + _mg505_timedelta(days=day)
+                _mg505_is_cheat = _mg505_is_cheat_day(member, _mg505_current_date)
+                _mg505_cheat_slot = _mg505_pick_cheat_slot(member.id, day) if _mg505_is_cheat else None
 
                 for meal_slot in self.meal_types:
 
@@ -222,6 +226,7 @@ class MenuGenerator:
                             target_cal=per_role_cal,
                             member_id=member.id,
                             day_offset=day,
+                            is_cheat=(_mg505_is_cheat and meal_slot == _mg505_cheat_slot and role == "protein"),  # MG_505_V_generate_loop
                         )
                         if recipe is None:
                             err = EmptyRolePoolError(
@@ -249,6 +254,7 @@ class MenuGenerator:
                             "day_offset":     day,
                             "recipe":         recipe,
                             "component_role": role,
+                            "is_cheat_meal":  bool(_mg505_is_cheat and meal_slot == _mg505_cheat_slot),  # MG_505_V_generate_loop
                         })
 
         # MG_304_V_generator: добор овощей/фруктов
@@ -433,6 +439,7 @@ class MenuGenerator:
         target_cal: Optional[float],
         member_id: int,
         day_offset: int,
+        is_cheat: bool = False,  # MG_505_V_pick_bypass
     ) -> Optional[Recipe]:
         primary = pools.get(role, [])
 
@@ -463,7 +470,8 @@ class MenuGenerator:
             return None
 
         # MG_303_V_generator: эскалирующий калорийный фильтр ±15% → ±30% → ±50%
-        if target_cal and target_cal > 0:
+        # MG_505_V_pick_bypass: в cheat-meal не фильтруем по калориям
+        if not is_cheat and target_cal and target_cal > 0:
             tier_used = None
             for tier in MEAL_CAL_WINDOW_TIERS:
                 tol = float(target_cal) * float(tier)
@@ -480,7 +488,8 @@ class MenuGenerator:
             # warning будет сгенерирован после факта в _collect_meal_calorie_warnings
 
         # MG_302_V_generator: недельные/дневные лимиты — только для protein
-        if role == "protein":
+        # MG_505_V_pick_bypass: в cheat-meal не применяем MG-302 для protein
+        if role == "protein" and not is_cheat:
             week = self.tracker.get_week(member_id, day_offset)
             day  = self.tracker.get_day(member_id, day_offset)
 
@@ -511,8 +520,9 @@ class MenuGenerator:
                         candidates = fish
 
         # MG_502_503_V_generator: контроль масла (≤5 ч.л./день)
+        # MG_505_V_pick_bypass: в cheat-meal не режем масляные
         day_t = self.tracker.get_day(member_id, day_offset)
-        if float(day_t.get("oil_tsp", 0.0)) > DAILY_OIL_TSP_LIMIT:
+        if not is_cheat and float(day_t.get("oil_tsp", 0.0)) > DAILY_OIL_TSP_LIMIT:
             light = [
                 r for r in candidates
                 if (getattr(r, "oil_tsp", None) or 0) <= OIL_TSP_HEAVY_THRESHOLD
@@ -522,15 +532,16 @@ class MenuGenerator:
             # если все кандидаты — «маслянистые», оставляем как есть, warning соберём после факта
 
         # MG_502_503_V_generator: исключение сахара
+        # MG_505_V_pick_bypass: в cheat-meal сахар разрешён
         # 1) основные приёмы: has_added_sugar=True вообще запрещено
-        if meal_type in MAIN_MEAL_TYPES:
+        if not is_cheat and meal_type in MAIN_MEAL_TYPES:
             no_sugar = [r for r in candidates if not getattr(r, "has_added_sugar", False)]
             if no_sugar:
                 candidates = no_sugar
             # если все candidates сладкие (маловероятно для основных) — fallback random,
             # warning будет в _collect_daily_sweet_warnings
         # 2) snack: ≤ SWEET_PER_DAY_LIMIT сладких в день
-        elif meal_type == "snack":
+        elif not is_cheat and meal_type == "snack":
             if int(day_t.get("sweet_count", 0)) >= SWEET_PER_DAY_LIMIT:
                 no_sugar = [r for r in candidates if not getattr(r, "has_added_sugar", False)]
                 if no_sugar:
@@ -694,7 +705,6 @@ class MenuGenerator:
         except Exception:
             pass
         return ""
-
     def _audit_empty_pool(self, err, member) -> None:
         try:
             from apps.sync.models import AuditLog
@@ -718,3 +728,42 @@ class MenuGenerator:
             )
         except Exception:  # noqa: BLE001
             logger.exception("MG-301: audit log write failed (non-fatal)")
+
+
+# MG_505_V_generator: cheat-meal слот
+from datetime import date as _mg505_date, timedelta as _mg505_timedelta
+
+CHEAT_MEAL_DEFAULT_INTERVAL = 10
+CHEAT_MEAL_SLOTS = ("lunch", "dinner")  # cheat-meal случается в одном из этих слотов
+
+
+def _mg505_is_cheat_day(member, current_date):
+    """True если сегодня день cheat-meal по правилам профиля."""
+    profile = getattr(getattr(member, "user", None), "profile", None)
+    if profile is None:
+        return False
+    _interval = getattr(profile, "cheat_meal_interval", None)
+    interval = _interval if _interval is not None else CHEAT_MEAL_DEFAULT_INTERVAL
+    if interval <= 0:
+        return False
+    if not isinstance(current_date, _mg505_date):
+        return False
+    last = getattr(profile, "last_cheat_meal_date", None)
+    if last is None:
+        # первый раз — начинаем отсчёт от сегодня, cheat случится через interval дней
+        return False
+    return (current_date - last).days >= interval
+
+
+def _mg505_pick_cheat_slot(member_id, day_offset):
+    """Детерминированный выбор lunch/dinner для cheat-meal."""
+    return CHEAT_MEAL_SLOTS[(int(member_id) + int(day_offset)) % len(CHEAT_MEAL_SLOTS)]
+
+
+def _mg505_mark_cheat_meal_used(member, current_date):
+    """Обновляет last_cheat_meal_date в профиле."""
+    profile = getattr(getattr(member, "user", None), "profile", None)
+    if profile is None:
+        return
+    profile.last_cheat_meal_date = current_date
+    profile.save(update_fields=["last_cheat_meal_date"])

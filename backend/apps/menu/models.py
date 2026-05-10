@@ -69,6 +69,9 @@ class MenuItem(models.Model):
         default=ComponentRole.OTHER,
     )
 
+    # MG_505_V_model
+    is_cheat_meal = models.BooleanField(default=False)
+
     class Meta:
         db_table = "menu_items"
         unique_together = [("menu", "member", "day_offset", "meal_slot", "component_role")]

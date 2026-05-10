@@ -19,6 +19,11 @@ export interface UserProfile {
   meal_plan_type?: MealPlan;
   targets_calculated?: NutritionTargets | null;
   targets_meta?: TargetsMeta;
+  // MG_504_V_types
+  bedtime_hour?: number | null;
+  cheat_meal_interval?: number;
+  last_cheat_meal_date?: string | null;
+
 }
 export interface User {
   id: number; name: string; email?: string; phone?: string;
@@ -90,6 +95,7 @@ export interface MenuItem {
   meal_slot?: MealSlot | string;
   component_role?: ComponentRole;
   recipe: Recipe; member_name?: string; quantity: number;
+  is_cheat_meal?: boolean; // MG_505_V_types
 }
 export interface Menu {
   id: number; start_date: string; end_date: string; period_days: number;

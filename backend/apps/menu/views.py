@@ -183,9 +183,25 @@ class MenuGenerateView(APIView):
                     meal_slot=item.get("meal_slot", item["meal_type"]),
                     day_offset=item["day_offset"],
                     component_role=item.get("component_role", "other"),
+                    is_cheat_meal=item.get("is_cheat_meal", False),  # MG_505_V_views
                 )
                 for item in generated
             ])
+
+            # MG_505_V_views: обновить last_cheat_meal_date для членов, у которых в этом меню был cheat
+            from collections import defaultdict
+            from apps.menu.generator import _mg505_mark_cheat_meal_used
+            _mg505_seen = defaultdict(list)  # member_id -> list of (day_offset)
+            for it in generated:
+                if it.get("is_cheat_meal"):
+                    m = it.get("member")
+                    if m is not None:
+                        _mg505_seen[m.id].append(it.get("day_offset", 0))
+            for m in members:
+                if m.id in _mg505_seen:
+                    last_day = max(_mg505_seen[m.id])
+                    from datetime import timedelta as _mg505_td
+                    _mg505_mark_cheat_meal_used(m, start_date + _mg505_td(days=last_day))
 
         menu_full = Menu.objects.prefetch_related("items__recipe", "items__member__user").get(id=menu.id)
         return Response(MenuDetailSerializer(menu_full).data, status=status.HTTP_201_CREATED)

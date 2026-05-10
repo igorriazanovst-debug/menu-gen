@@ -94,6 +94,19 @@ class Profile(models.Model):
     carb_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
     fiber_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
     meal_plan_type = models.CharField(max_length=2, choices=MealPlan.choices, default=MealPlan.THREE)
+    # MG_504_V_model
+    bedtime_hour = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Час отхода ко сну (0-23) для правила «не есть за 3ч до сна»",
+    )
+    cheat_meal_interval = models.PositiveSmallIntegerField(
+        default=10,
+        help_text="Интервал в днях между cheat-meal приёмами",
+    )
+    last_cheat_meal_date = models.DateField(
+        null=True, blank=True,
+        help_text="Дата последнего cheat-meal — обновляется генератором",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
