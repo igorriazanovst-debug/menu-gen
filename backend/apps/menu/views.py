@@ -45,13 +45,13 @@ def _get_plan_code(family) -> str:
 
 
 def _can_edit_menu(user, family):
-    """Может редактировать: head семьи, admin, или член с can_edit_menu=True."""
+    """MG_602_V_views: может редактировать: head семьи или admin (поле can_edit_menu удалено в family.0004)."""
     if user.user_type == "admin":
         return True
     m = FamilyMember.objects.filter(family=family, user=user).first()
     if not m:
         return False
-    return m.role == FamilyMember.Role.HEAD or m.can_edit_menu
+    return m.role == FamilyMember.Role.HEAD
 
 
 def _can_delete_menu(user, family, menu):
@@ -87,19 +87,24 @@ def _check_allergens(recipe, allergens):
 
 
 def _recipe_calories(recipe):
+    # MG_602_V_views: добавлен AttributeError для случая, когда nutrition['calories'] не dict
     try:
         return float(recipe.nutrition.get("calories", {}).get("value", 0) or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, AttributeError):
         return 0.0
 
 
 def _menu_snapshot(menu):
+    # MG_602_V_views: добавлены meal_slot, component_role, is_cheat_meal для корректного restore
     items = []
     for item in MenuItem.objects.filter(menu=menu).select_related("recipe", "member__user"):
         items.append({
             "id": item.id,
             "day_offset": item.day_offset,
             "meal_type": item.meal_type,
+            "meal_slot": item.meal_slot,
+            "component_role": item.component_role,
+            "is_cheat_meal": item.is_cheat_meal,
             "recipe_id": item.recipe_id,
             "recipe_title": item.recipe.title,
             "member_id": item.member_id,
@@ -312,9 +317,11 @@ class MenuRestoreView(APIView):
                         recipe=recipe,
                         member=member,
                         meal_type=item["meal_type"],
+                        meal_slot=item.get("meal_slot", item["meal_type"]),
+                        component_role=item.get("component_role", "other"),
+                        is_cheat_meal=item.get("is_cheat_meal", False),
                         day_offset=item["day_offset"],
-                    is_salad=item.get("is_salad", False),
-                    )
+                    )  # MG_602_V_views: убран is_salad (поле удалено), добавлены meal_slot/component_role/is_cheat_meal
                 except Recipe.DoesNotExist:
                     pass
             deleted.delete()
