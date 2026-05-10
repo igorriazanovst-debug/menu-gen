@@ -1,0 +1,30 @@
+# MG_601_V_coveragerc
+[run]
+branch = False
+source =
+    apps/menu
+    apps/recipes
+omit =
+    */migrations/*
+    */tests/*
+    */management/*
+    */__pycache__/*
+    apps/*/admin.py
+    apps/*/apps.py
+    apps/recipes/media_upload.py
+    apps/recipes/filters.py
+    manage.py
+
+[report]
+fail_under = 70
+show_missing = True
+skip_empty = True
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    def __repr__
+    def __str__
+
+[html]
+directory = htmlcov
