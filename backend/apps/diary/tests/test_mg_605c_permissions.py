@@ -315,7 +315,8 @@ class TestStatsMemberId:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
-        assert data[0]["calories"] == 500.0
+        # MG-605.D: вложенная структура; запись без planned_menu_item → actual
+        assert data[0]["actual"]["calories"] == 500.0
 
     def test_member_stats_other_403(self, db):
         family, head, head_m = _make_family_with_premium()

@@ -50,12 +50,37 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
         return DiaryEntry.objects.create(member=member, **validated_data)
 
 
-class DiaryStatsSerializer(serializers.Serializer):
-    date = serializers.DateField()
+# MG_605D_V_serializers: вложенная структура план/факт.
+class _NutritionBucketSerializer(serializers.Serializer):
     calories = serializers.FloatField()
     proteins = serializers.FloatField()
     fats = serializers.FloatField()
     carbs = serializers.FloatField()
+
+
+class DiaryStatsDaySerializer(serializers.Serializer):
+    """MG-605.D: возвращает {date, planned, actual, total}.
+
+    - planned: суммы по записям с planned_menu_item IS NOT NULL
+    - actual:  суммы по записям, считающимся «съеденными»:
+               is_eaten = True ИЛИ planned_menu_item IS NULL
+               (вручную добавленное считаем фактом сразу; плановое — только после галочки)
+    - total:   синоним actual (для UI прогресс-бара)
+    """
+    date = serializers.DateField()
+    planned = _NutritionBucketSerializer()
+    actual = _NutritionBucketSerializer()
+    total = _NutritionBucketSerializer()
+
+
+# Обратная совместимость на случай внешних импортов.
+DiaryStatsSerializer = DiaryStatsDaySerializer
+
+
+class DiaryImportSerializer(serializers.Serializer):
+    """MG-605.D: query-params для POST /diary/import-from-menu/."""
+    menu_id = serializers.IntegerField()
+    date = serializers.DateField()
 
 
 class WaterLogSerializer(serializers.ModelSerializer):

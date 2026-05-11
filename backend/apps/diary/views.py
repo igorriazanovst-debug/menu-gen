@@ -1,5 +1,6 @@
 from datetime import date
 
+from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -7,6 +8,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
+# MG_605D_V_views: импорт MenuItem для import-from-menu
+from apps.menu.models import Menu, MenuItem
 from apps.subscriptions.permissions import IsFamilyPremium
 
 from .models import DiaryEntry, WaterLog
@@ -14,7 +17,8 @@ from .permissions import IsDiaryEntryOwner
 from .serializers import (
     DiaryEntrySerializer,
     DiaryEntryWriteSerializer,
-    DiaryStatsSerializer,
+    DiaryImportSerializer,
+    DiaryStatsDaySerializer,
     WaterLogSerializer,
 )
 
@@ -166,7 +170,41 @@ class DiaryEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().update(request, *args, **kwargs)
 
 
+# MG_605D_V_views: helper для вычисления КБЖУ одной записи
+_NUTRITION_KEYS = ("calories", "proteins", "fats", "carbs")
+
+
+def _entry_nutrition(entry):
+    """Вернуть dict {calories, proteins, fats, carbs} для записи DiaryEntry,
+    учитывая quantity. Безопасно к битым/частичным nutrition."""
+    nutr = entry.nutrition or {}
+    qty = float(entry.quantity or 1)
+    out = {}
+    for key in _NUTRITION_KEYS:
+        try:
+            out[key] = float(nutr.get(key, {}).get("value", 0)) * qty
+        except (TypeError, ValueError, AttributeError):
+            out[key] = 0.0
+    return out
+
+
+def _empty_bucket():
+    return {k: 0.0 for k in _NUTRITION_KEYS}
+
+
+def _add_bucket(dst, src):
+    for k in _NUTRITION_KEYS:
+        dst[k] += src[k]
+
+
 class DiaryStatsView(APIView):
+    """MG-605.D: возвращает за каждый день {date, planned, actual, total}.
+
+    - planned: записи с planned_menu_item IS NOT NULL (что было запланировано)
+    - actual:  is_eaten=True ИЛИ planned_menu_item IS NULL
+               (вручную добавленное всегда учитывается в факте; плановое — только после галочки)
+    - total:   синоним actual (для UI прогресс-бара)
+    """
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
 
     @extend_schema(
@@ -175,7 +213,7 @@ class DiaryStatsView(APIView):
             OpenApiParameter("to", str, description="Дата до YYYY-MM-DD"),
             OpenApiParameter("member_id", int, description="MG-605.C: статистика по члену семьи (только HEAD)"),
         ],
-        responses={200: DiaryStatsSerializer(many=True)},
+        responses={200: DiaryStatsDaySerializer(many=True)},
     )
     def get(self, request):
         current = _get_member(request.user)
@@ -187,23 +225,120 @@ class DiaryStatsView(APIView):
         date_from = request.query_params.get("from", str(date.today()))
         date_to = request.query_params.get("to", str(date.today()))
 
-        entries = DiaryEntry.objects.filter(member=target, date__gte=date_from, date__lte=date_to)
+        entries = DiaryEntry.objects.filter(
+            member=target, date__gte=date_from, date__lte=date_to
+        )
 
         stats: dict = {}
         for entry in entries:
             d = str(entry.date)
             if d not in stats:
-                stats[d] = {"date": d, "calories": 0.0, "proteins": 0.0, "fats": 0.0, "carbs": 0.0}
-            nutr = entry.nutrition or {}
-            qty = float(entry.quantity or 1)
-            for key in ("calories", "proteins", "fats", "carbs"):
-                try:
-                    val = float(nutr.get(key, {}).get("value", 0)) * qty
-                except (TypeError, ValueError):
-                    val = 0
-                stats[d][key] += val
+                stats[d] = {
+                    "date": d,
+                    "planned": _empty_bucket(),
+                    "actual": _empty_bucket(),
+                    "total": _empty_bucket(),
+                }
+            nutr = _entry_nutrition(entry)
+
+            is_planned = entry.planned_menu_item_id is not None
+            # actual: is_eaten=True ИЛИ запись без плана (manual)
+            is_actual = entry.is_eaten or (not is_planned)
+
+            if is_planned:
+                _add_bucket(stats[d]["planned"], nutr)
+            if is_actual:
+                _add_bucket(stats[d]["actual"], nutr)
+                _add_bucket(stats[d]["total"], nutr)
 
         return Response(sorted(stats.values(), key=lambda x: x["date"]))
+
+
+class DiaryImportFromMenuView(APIView):
+    """MG-605.D: POST /api/v1/diary/import-from-menu/?menu_id=&date=
+
+    Импортирует все MenuItem указанного меню как плановые записи DiaryEntry
+    на указанную дату для target-члена семьи.
+
+    Правила:
+    - target_member определяется через _resolve_target_member (?member_id=),
+      по умолчанию = текущий FamilyMember; MEMBER не может импортировать чужим.
+    - Импортируются только MenuItem с (member == target ИЛИ member IS NULL).
+    - Идемпотентно: записи с уже существующим planned_menu_item пропускаются (no-op).
+    - Меню должно принадлежать семье target-члена; иначе 404.
+    - Ответ 200: {created: N, skipped: M, entries: [...]} (полный список DiaryEntry
+      для этого меню+target, включая ранее существующие, чтобы UI мог сразу отрисовать).
+    """
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("menu_id", int, description="ID меню для импорта"),
+            OpenApiParameter("date", str, description="Дата плана YYYY-MM-DD"),
+            OpenApiParameter("member_id", int, description="Импорт за члена семьи (только HEAD)"),
+        ],
+        responses={200: DiaryEntrySerializer(many=True)},
+    )
+    def post(self, request):
+        current = _get_member(request.user)
+        if not current:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+        target = _resolve_target_member(request, current)
+
+        # Валидация query-параметров через сериализатор.
+        params_serializer = DiaryImportSerializer(data=request.query_params)
+        params_serializer.is_valid(raise_exception=True)
+        menu_id = params_serializer.validated_data["menu_id"]
+        plan_date = params_serializer.validated_data["date"]
+
+        # Меню должно принадлежать семье target-члена.
+        menu = Menu.objects.filter(pk=menu_id, family=target.family).first()
+        if menu is None:
+            return Response({"detail": "Меню не найдено."}, status=status.HTTP_404_NOT_FOUND)
+
+        # MenuItem'ы: только те, что для target (или общие — member IS NULL).
+        items_qs = MenuItem.objects.filter(menu=menu).filter(
+            member__in=[target]
+        ).select_related("recipe") | MenuItem.objects.filter(
+            menu=menu, member__isnull=True
+        ).select_related("recipe")
+        items_qs = items_qs.distinct()
+
+        created_count = 0
+        skipped_count = 0
+        created_or_existing = []
+
+        with transaction.atomic():
+            for mi in items_qs:
+                # Идемпотентность через UNIQUE на planned_menu_item.
+                entry, was_created = DiaryEntry.objects.get_or_create(
+                    planned_menu_item=mi,
+                    defaults={
+                        "member": target,
+                        "date": plan_date,
+                        "meal_type": mi.meal_type,
+                        "recipe": mi.recipe,
+                        "custom_name": "",
+                        "nutrition": getattr(mi.recipe, "nutrition", {}) or {},
+                        "quantity": mi.quantity,
+                        "is_eaten": False,
+                    },
+                )
+                if was_created:
+                    created_count += 1
+                else:
+                    skipped_count += 1
+                created_or_existing.append(entry)
+
+        return Response(
+            {
+                "created": created_count,
+                "skipped": skipped_count,
+                "entries": DiaryEntrySerializer(created_or_existing, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class WaterLogView(APIView):

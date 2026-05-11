@@ -133,7 +133,10 @@ class TestDiaryStats:
         resp = client.get(reverse("diary-stats"), {"from": str(today), "to": str(today)})
         assert resp.status_code == 200
         assert len(resp.data) == 1
-        assert resp.data[0]["calories"] == 300.0
+        # MG-605.D: вложенная структура; запись без planned_menu_item → actual
+        assert resp.data[0]["actual"]["calories"] == 300.0
+        assert resp.data[0]["total"]["calories"] == 300.0
+        assert resp.data[0]["planned"]["calories"] == 0.0
 
 
 @pytest.mark.django_db
