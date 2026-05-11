@@ -176,6 +176,10 @@ class MenuGenerator:
         self.filters = filters or {}
         meal_count = self.filters.get("meal_plan_type", "3")
         self.meal_types = MEAL_PLAN_5 if str(meal_count) == "5" else MEAL_PLAN_3
+        # MG_605A_V_generator: режим мульти-член
+        self.mode = str(self.filters.get("mode", "family"))
+        if self.mode not in ("per_member", "family"):
+            self.mode = "family"
         self.tracker = _WeeklyTracker()
         self.last_warnings: list = []
         # MG_303_V_generator: фактические ккал по (member_id, day_offset, meal_slot)
@@ -186,6 +190,9 @@ class MenuGenerator:
     # ── public ────────────────────────────────────────────────────────────────
 
     def generate(self) -> List[dict]:
+        # MG_605A_V_generator: режим family — один прогон, дублирование под членов
+        if self.mode == "family" and len(self.members) > 1:
+            return self._generate_family()
         all_recipes = self._build_recipe_pool()
         pools = self._build_pools_by_role(all_recipes)
         fridge_ids = self._get_fridge_ingredient_names()
@@ -648,6 +655,108 @@ class MenuGenerator:
             return set()
         items = FridgeItem.objects.filter(family=self.family, is_deleted=False)
         return {i.name.lower() for i in items}
+
+    # MG_605A_V_generator: family-режим — один прогон, дублирование под членов
+    def _generate_family(self) -> List[dict]:
+        from .portions import member_quantity_for_recipe
+
+        all_recipes = self._build_recipe_pool()
+        pools = self._build_pools_by_role(all_recipes)
+        fridge_ids = self._get_fridge_ingredient_names()
+        items: List[dict] = []
+
+        virt = self._family_virtual_member()
+        used: set = set()
+
+        for day in range(self.period_days):
+            target_cal = virt["calorie_target"]
+            hard_exclude = virt["hard_exclude"]
+            for meal_slot in self.meal_types:
+                db_meal_type = MEAL_TYPE_DB[meal_slot]
+                roles = MEAL_COMPONENTS.get(meal_slot, ("other",))
+                per_meal_cal = self._meal_target_cal(target_cal, meal_slot)
+                per_role_cal = (per_meal_cal / len(roles)) if per_meal_cal else None
+
+                for m in self.members:
+                    self._meal_cal_target[(m.id, day, meal_slot)] = per_meal_cal
+
+                for role in roles:
+                    recipe = self._pick_for_role(
+                        role=role,
+                        meal_type=db_meal_type,
+                        pools=pools,
+                        used=used,
+                        hard_exclude=hard_exclude,
+                        fridge_ids=fridge_ids,
+                        target_cal=per_role_cal,
+                        member_id=0,
+                        day_offset=day,
+                        is_cheat=False,
+                    )
+                    if recipe is None:
+                        err = EmptyRolePoolError(
+                            role=role,
+                            meal_slot=meal_slot,
+                            day_offset=day,
+                            member_name="family",
+                        )
+                        logger.warning(
+                            "MG-605A family empty role pool: role=%s slot=%s day=%s",
+                            role, meal_slot, day,
+                        )
+                        raise err
+
+                    used.add(recipe.id)
+                    rcal = self._recipe_cal(recipe)
+
+                    for member in self.members:
+                        self.tracker.add(member.id, day, recipe)
+                        if rcal is not None:
+                            self._meal_cal_actual[(member.id, day, meal_slot)] += float(rcal)
+                        items.append({
+                            "member":         member,
+                            "meal_type":      db_meal_type,
+                            "meal_slot":      meal_slot,
+                            "day_offset":     day,
+                            "recipe":         recipe,
+                            "component_role": role,
+                            "is_cheat_meal":  False,
+                            "quantity":       round(member_quantity_for_recipe(
+                                                  member, recipe, ref_date=self.start_date
+                                              ), 2),
+                        })
+
+        used_per_member = {m.id: set(used) for m in self.members}
+        warnings: list = []
+        warnings.extend(self._ensure_veg_fruit_servings(
+            items=items, pools=pools,
+            used_per_member=used_per_member, fridge_ids=fridge_ids,
+        ))
+        warnings.extend(self._collect_weekly_warnings())
+        warnings.extend(self._collect_daily_plant_warnings())
+        warnings.extend(self._collect_meal_calorie_warnings())
+        self.last_warnings = warnings
+        return items
+
+    # MG_605A_V_generator: «виртуальный представитель семьи»
+    def _family_virtual_member(self) -> dict:
+        exclude = set()
+        cals = []
+        for m in self.members:
+            user = m.user
+            if isinstance(user.allergies, list):
+                exclude.update(a.lower() for a in user.allergies)
+            if self.features.get("disliked") and isinstance(user.disliked_products, list):
+                exclude.update(d.lower() for d in user.disliked_products)
+            if self.features.get("calories"):
+                try:
+                    c = user.profile.calorie_target
+                    if c:
+                        cals.append(int(c))
+                except Exception:
+                    pass
+        avg_cal = int(sum(cals) / len(cals)) if cals else None
+        return {"hard_exclude": exclude, "calorie_target": avg_cal}
 
     def _get_hard_exclude(self, member) -> set:
         exclude = set()

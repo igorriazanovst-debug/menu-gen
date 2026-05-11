@@ -17,6 +17,10 @@ class GenerateMenuSerializer(serializers.Serializer):
     calorie_min = serializers.IntegerField(required=False, min_value=0)
     calorie_max = serializers.IntegerField(required=False, min_value=0)
     meal_plan_type = serializers.ChoiceField(choices=['3', '5'], default='3', required=False)
+    # MG_605A_V_serializers: mode мульти-член (per_member | family)
+    mode = serializers.ChoiceField(
+        choices=['per_member', 'family'], default='family', required=False
+    )
 
 
 class MenuItemSerializer(serializers.ModelSerializer):

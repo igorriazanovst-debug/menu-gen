@@ -94,3 +94,19 @@ def recipe_portion_grams(recipe) -> float:
         pass
 
     return DEFAULT_PORTION_G_FALLBACK
+
+
+# MG_605A_V_portions
+def member_quantity_for_recipe(member, recipe, ref_date=None) -> float:
+    """
+    605.A: вес порции одного члена семьи в рецепте, нормированный к взрослой норме.
+
+    Возвращает коэффициент quantity для MenuItem.quantity в режиме mode=family
+    (когда все члены едят одни и те же рецепты, но порции разные).
+
+    Базовая логика: quantity = age_multiplier(member) — то есть взрослый = 1.0,
+    подросток 11-13 = 0.85, ребёнок 7-10 = 0.70 и т.д.
+    Это согласуется с возрастной кривой daily_target_grams.
+    """
+    age = _member_age(member, ref_date)
+    return _age_multiplier(age)

@@ -155,6 +155,8 @@ class MenuGenerateView(APIView):
             filters["calorie_max"] = data["calorie_max"]
         if data.get("meal_plan_type"):
             filters["meal_plan_type"] = data["meal_plan_type"]
+        # MG_605A_V_views: проброс mode (per_member | family)
+        filters["mode"] = data.get("mode", "family")
 
         generator = MenuGenerator(
             family=family,
@@ -189,6 +191,7 @@ class MenuGenerateView(APIView):
                     day_offset=item["day_offset"],
                     component_role=item.get("component_role", "other"),
                     is_cheat_meal=item.get("is_cheat_meal", False),  # MG_505_V_views
+                    quantity=item.get("quantity", 1),  # MG_605A_V_views
                 )
                 for item in generated
             ])
