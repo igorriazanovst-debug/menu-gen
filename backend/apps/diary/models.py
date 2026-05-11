@@ -2,6 +2,8 @@ from django.db import models
 
 from apps.family.models import FamilyMember
 from apps.recipes.models import Recipe
+# MG_605B_V_models: связь дневник→меню (план-факт)
+from apps.menu.models import MenuItem
 
 
 class DiaryEntry(models.Model):
@@ -18,6 +20,15 @@ class DiaryEntry(models.Model):
     custom_name = models.CharField(max_length=255, blank=True)
     nutrition = models.JSONField(default=dict)
     quantity = models.DecimalField(max_digits=6, decimal_places=2, default=1)
+    # MG_605B_V_models: план-факт (OneToOne — один план → один факт)
+    planned_menu_item = models.OneToOneField(
+        MenuItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="diary_entry",
+    )
+    is_eaten = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

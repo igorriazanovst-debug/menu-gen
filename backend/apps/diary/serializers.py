@@ -17,6 +17,8 @@ class DiaryEntrySerializer(serializers.ModelSerializer):
             "custom_name",
             "nutrition",
             "quantity",
+            "planned_menu_item",  # MG_605B_V_serializers
+            "is_eaten",  # MG_605B_V_serializers
             "created_at",
         )
         read_only_fields = ("id", "created_at")
@@ -25,7 +27,11 @@ class DiaryEntrySerializer(serializers.ModelSerializer):
 class DiaryEntryWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = DiaryEntry
-        fields = ("date", "meal_type", "recipe", "custom_name", "nutrition", "quantity")
+        # MG_605B_V_serializers: план-факт
+        fields = (
+            "date", "meal_type", "recipe", "custom_name",
+            "nutrition", "quantity", "planned_menu_item", "is_eaten",
+        )
 
     def validate(self, attrs):
         if not attrs.get("recipe") and not attrs.get("custom_name"):
