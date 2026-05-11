@@ -2,12 +2,15 @@ from datetime import date
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
+from apps.subscriptions.permissions import IsFamilyPremium
 
 from .models import DiaryEntry, WaterLog
+from .permissions import IsDiaryEntryOwner
 from .serializers import (
     DiaryEntrySerializer,
     DiaryEntryWriteSerializer,
@@ -20,21 +23,67 @@ def _get_member(user):
     return FamilyMember.objects.filter(user=user).select_related("family").first()
 
 
+def _resolve_target_member(request, current_member):
+    """MG-605.C: разрешаем `?member_id=` с учётом ролей.
+
+    - Без `?member_id=` → возвращает current_member
+    - С `?member_id=` равным current_member.id → возвращает current_member
+    - С `?member_id=` другого члена своей семьи:
+        * если current_member.role == HEAD → разрешаем
+        * иначе → PermissionDenied (403)
+    - С `?member_id=` чужой семьи / несуществующего → NotFound (404)
+    """
+    raw = request.query_params.get("member_id")
+    if not raw:
+        return current_member
+    try:
+        target_id = int(raw)
+    except (TypeError, ValueError):
+        raise NotFound("Участник не найден.")
+    if target_id == current_member.id:
+        return current_member
+    target = (
+        FamilyMember.objects.select_related("family")
+        .filter(pk=target_id, family=current_member.family)
+        .first()
+    )
+    if target is None:
+        # Вне области видимости — не светим существование
+        raise NotFound("Участник не найден.")
+    if current_member.role != FamilyMember.Role.HEAD:
+        raise PermissionDenied("Просмотр чужого дневника доступен только главе семьи.")
+    return target
+
+
 class DiaryListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
 
     def get_member(self):
         if not hasattr(self, "_member"):
             self._member = _get_member(self.request.user)
         return self._member
 
+    def _target_member(self):
+        if not hasattr(self, "_target_member_cache"):
+            current = self.get_member()
+            if current is None:
+                self._target_member_cache = None
+            else:
+                self._target_member_cache = _resolve_target_member(self.request, current)
+        return self._target_member_cache
+
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return DiaryEntry.objects.none()
-        member = self.get_member()
-        if not member:
+        current = self.get_member()
+        if not current:
             return DiaryEntry.objects.none()
-        qs = DiaryEntry.objects.filter(member=member).select_related("recipe").order_by("date", "meal_type")
+        target = self._target_member()
+        qs = (
+            DiaryEntry.objects.filter(member=target)
+            .select_related("recipe")
+            .order_by("date", "meal_type")
+        )
         day = self.request.query_params.get("date")
         if day:
             qs = qs.filter(date=day)
@@ -49,7 +98,10 @@ class DiaryListCreateView(generics.ListCreateAPIView):
         return ctx
 
     @extend_schema(
-        parameters=[OpenApiParameter("date", str, description="Фильтр по дате YYYY-MM-DD")],
+        parameters=[
+            OpenApiParameter("date", str, description="Фильтр по дате YYYY-MM-DD"),
+            OpenApiParameter("member_id", int, description="MG-605.C: просмотр дневника члена семьи (только HEAD)"),
+        ],
         responses={200: DiaryEntrySerializer(many=True)},
     )
     def get(self, request, *args, **kwargs):
@@ -62,42 +114,80 @@ class DiaryListCreateView(generics.ListCreateAPIView):
         member = self.get_member()
         if not member:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        # POST всегда создаёт запись для самого пользователя — игнорим ?member_id=
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entry = serializer.save()
         return Response(DiaryEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
 
 
-class DiaryEntryDetailView(generics.RetrieveDestroyAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+class DiaryEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """MG-605.C: добавлен PATCH (PUT тоже разрешён, но обычно используется PATCH).
+
+    Видеть чужие записи: HEAD — все в своей семье, MEMBER — только свои.
+    Редактировать/удалять может только владелец записи.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium, IsDiaryEntryOwner]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
     serializer_class = DiaryEntrySerializer
 
+    def get_member(self):
+        if not hasattr(self, "_member"):
+            self._member = _get_member(self.request.user)
+        return self._member
+
+    def get_serializer_class(self):
+        if self.request.method == "PATCH":
+            return DiaryEntryWriteSerializer
+        return DiaryEntrySerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["member"] = self.get_member()
+        return ctx
+
     def get_queryset(self):
-        member = _get_member(self.request.user)
-        if not member:
+        if getattr(self, "swagger_fake_view", False):
             return DiaryEntry.objects.none()
-        return DiaryEntry.objects.filter(member=member)
+        current = self.get_member()
+        if not current:
+            return DiaryEntry.objects.none()
+        # HEAD видит все записи своей семьи; MEMBER — только свои.
+        if current.role == FamilyMember.Role.HEAD:
+            return DiaryEntry.objects.filter(member__family=current.family)
+        return DiaryEntry.objects.filter(member=current)
+
+    def patch(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        # MG-605.C: редактировать `member` запрещено
+        request.data.pop("member", None)
+        return super().update(request, *args, **kwargs)
 
 
 class DiaryStatsView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
 
     @extend_schema(
         parameters=[
             OpenApiParameter("from", str, description="Дата от YYYY-MM-DD"),
             OpenApiParameter("to", str, description="Дата до YYYY-MM-DD"),
+            OpenApiParameter("member_id", int, description="MG-605.C: статистика по члену семьи (только HEAD)"),
         ],
         responses={200: DiaryStatsSerializer(many=True)},
     )
     def get(self, request):
-        member = _get_member(request.user)
-        if not member:
+        current = _get_member(request.user)
+        if not current:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+        target = _resolve_target_member(request, current)
 
         date_from = request.query_params.get("from", str(date.today()))
         date_to = request.query_params.get("to", str(date.today()))
 
-        entries = DiaryEntry.objects.filter(member=member, date__gte=date_from, date__lte=date_to)
+        entries = DiaryEntry.objects.filter(member=target, date__gte=date_from, date__lte=date_to)
 
         stats: dict = {}
         for entry in entries:
@@ -117,7 +207,7 @@ class DiaryStatsView(APIView):
 
 
 class WaterLogView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
 
     @extend_schema(
         parameters=[OpenApiParameter("date", str, description="Дата YYYY-MM-DD (default: today)")],

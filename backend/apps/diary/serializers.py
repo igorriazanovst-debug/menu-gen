@@ -28,13 +28,18 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = DiaryEntry
         # MG_605B_V_serializers: план-факт
+        # MG-605.C: используется и для POST, и для PATCH (через partial=True)
         fields = (
             "date", "meal_type", "recipe", "custom_name",
             "nutrition", "quantity", "planned_menu_item", "is_eaten",
         )
 
     def validate(self, attrs):
-        if not attrs.get("recipe") and not attrs.get("custom_name"):
+        # MG-605.C: на PATCH (partial) валидируем «recipe или custom_name»
+        # с учётом instance — иначе любой PATCH без recipe ронял бы запись.
+        recipe = attrs.get("recipe", getattr(self.instance, "recipe", None))
+        custom_name = attrs.get("custom_name", getattr(self.instance, "custom_name", ""))
+        if not recipe and not custom_name:
             raise serializers.ValidationError("Укажите рецепт или название блюда.")
         return attrs
 

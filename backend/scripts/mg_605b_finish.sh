@@ -1,3 +1,73 @@
+#!/usr/bin/env bash
+# MG-605.B finish: OneToOne для planned_menu_item + тесты
+set -euo pipefail
+
+ROOT="/opt/menugen"
+BACKEND="$ROOT/backend"
+COMPOSE="docker compose -f $ROOT/docker-compose.yml"
+DIARY="$BACKEND/apps/diary"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [1] Заменить ForeignKey(unique=True) → OneToOneField
+# ─────────────────────────────────────────────────────────────────────────────
+echo "[1] models.py: ForeignKey(unique=True) → OneToOneField"
+
+python3 <<'PYEOF'
+from pathlib import Path
+p = Path("/opt/menugen/backend/apps/diary/models.py")
+src = p.read_text(encoding="utf-8")
+
+old = (
+    '    # MG_605B_V_models: план-факт\n'
+    '    planned_menu_item = models.ForeignKey(\n'
+    '        MenuItem,\n'
+    '        on_delete=models.SET_NULL,\n'
+    '        null=True,\n'
+    '        blank=True,\n'
+    '        unique=True,\n'
+    '        related_name="diary_entries",\n'
+    '    )\n'
+)
+new = (
+    '    # MG_605B_V_models: план-факт (OneToOne — один план → один факт)\n'
+    '    planned_menu_item = models.OneToOneField(\n'
+    '        MenuItem,\n'
+    '        on_delete=models.SET_NULL,\n'
+    '        null=True,\n'
+    '        blank=True,\n'
+    '        related_name="diary_entry",\n'
+    '    )\n'
+)
+assert old in src, "ОШИБКА: не нашёл блок planned_menu_item"
+src = src.replace(old, new, 1)
+p.write_text(src, encoding="utf-8")
+print("  models.py: пропатчен")
+PYEOF
+
+echo
+echo "[2] makemigrations diary (новая миграция 0005)"
+$COMPOSE exec -T backend python manage.py makemigrations diary --name planned_menu_item_o2o 2>&1 | tail -8
+echo
+
+echo "  Содержимое новой миграции:"
+$COMPOSE exec -T backend bash -c 'cat apps/diary/migrations/0005*.py 2>/dev/null'
+echo
+
+echo "[3] migrate diary"
+$COMPOSE exec -T backend python manage.py migrate diary 2>&1 | tail -8
+echo
+
+echo "[4] django check (без W342)"
+$COMPOSE exec -T backend python manage.py check 2>&1 | tail -5
+echo
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [5] Тесты MG-605.B
+# ─────────────────────────────────────────────────────────────────────────────
+echo "[5] Создаю тесты test_mg_605b_planned_eaten.py"
+
+TEST="$DIARY/tests/test_mg_605b_planned_eaten.py"
+cat > "$TEST" <<'PYEOF'
 """
 MG-605.B: тесты планового FK + is_eaten в DiaryEntry.
 
@@ -34,22 +104,6 @@ def setup(db):
     user = User.objects.create_user(email="d605b@example.com", name="Юзер", password="pass1234")
     family = Family.objects.create(owner=user, name="Семья")
     member = FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
-    # MG-605.C: активная Premium-подписка, требуется новым gate
-    from datetime import timedelta as _td
-    from decimal import Decimal as _D
-    from django.utils import timezone as _tz
-    from apps.subscriptions.models import Subscription as _Sub, SubscriptionPlan as _Plan
-    _plan, _ = _Plan.objects.get_or_create(
-        code="premium",
-        defaults={"name": "Premium", "price": _D("0")},
-    )
-    _Sub.objects.create(
-        family=family,
-        plan=_plan,
-        status=_Sub.Status.ACTIVE,
-        started_at=_tz.now() - _td(days=1),
-        expires_at=_tz.now() + _td(days=30),
-    )
     recipe = Recipe.objects.create(
         title="Овсянка",
         ingredients=[],
@@ -218,3 +272,21 @@ class TestSerializerExposesFields:
         )
         assert resp.status_code == 201
         assert resp.data["is_eaten"] is False
+PYEOF
+
+echo "  $TEST создан"
+echo
+
+echo "[6] py_compile + прогон новых тестов"
+$COMPOSE exec -T backend python -m py_compile apps/diary/tests/test_mg_605b_planned_eaten.py && echo "  OK"
+echo
+
+echo "[7] pytest apps/diary/tests/test_mg_605b_planned_eaten.py -v"
+$COMPOSE exec -T backend pytest apps/diary/tests/test_mg_605b_planned_eaten.py -v --tb=short 2>&1 | tail -25
+echo
+
+echo "[8] Полный регресс apps/diary"
+$COMPOSE exec -T backend pytest apps/diary/ -q --tb=short 2>&1 | tail -10
+echo
+
+echo "=== 605.B finish done ==="

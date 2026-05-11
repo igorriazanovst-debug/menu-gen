@@ -20,6 +20,22 @@ def setup(db):
     user = User.objects.create_user(email="diary@example.com", name="Юзер", password="pass1234")
     family = Family.objects.create(owner=user)
     member = FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
+    # MG-605.C: активная Premium-подписка, требуется новым gate
+    from datetime import timedelta as _td
+    from decimal import Decimal as _D
+    from django.utils import timezone as _tz
+    from apps.subscriptions.models import Subscription as _Sub, SubscriptionPlan as _Plan
+    _plan, _ = _Plan.objects.get_or_create(
+        code="premium",
+        defaults={"name": "Premium", "price": _D("0")},
+    )
+    _Sub.objects.create(
+        family=family,
+        plan=_plan,
+        status=_Sub.Status.ACTIVE,
+        started_at=_tz.now() - _td(days=1),
+        expires_at=_tz.now() + _td(days=30),
+    )
     recipe = Recipe.objects.create(
         title="Овсянка",
         ingredients=[],
