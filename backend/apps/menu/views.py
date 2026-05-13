@@ -12,6 +12,7 @@ from apps.family.models import Family, FamilyMember
 from apps.fridge.models import FridgeItem
 from apps.recipes.models import Recipe
 from apps.subscriptions.models import Subscription
+from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
 from .generator import MenuGenerator
 from .exceptions import MenuGeneratorError  # MG_301_V_views
@@ -124,7 +125,7 @@ def _menu_snapshot(menu):
 # ── views ─────────────────────────────────────────────────────────────────────
 
 class MenuGenerateView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(request=GenerateMenuSerializer, responses={201: MenuDetailSerializer})
     def post(self, request):
@@ -216,7 +217,7 @@ class MenuGenerateView(APIView):
 
 
 class MenuListView(generics.ListAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
     serializer_class = MenuListSerializer
 
     def get_queryset(self):
@@ -232,7 +233,7 @@ class MenuListView(generics.ListAPIView):
 
 
 class MenuDetailView(generics.RetrieveAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
     serializer_class = MenuDetailSerializer
 
     def get_queryset(self):
@@ -246,7 +247,7 @@ class MenuDetailView(generics.RetrieveAPIView):
 
 class MenuDeleteView(APIView):
     """Мягкое удаление — перемещение в карантин на 24ч."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def delete(self, request, menu_id):
         family = _get_family(request.user)
@@ -274,7 +275,7 @@ class MenuDeleteView(APIView):
 
 class DeletedMenuListView(APIView):
     """Список меню в карантине для текущей семьи."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get(self, request):
         family = _get_family(request.user)
@@ -286,7 +287,7 @@ class DeletedMenuListView(APIView):
 
 class MenuRestoreView(APIView):
     """Восстановление меню из карантина (до истечения 24ч)."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def post(self, request, deleted_id):
         family = _get_family(request.user)
@@ -334,7 +335,7 @@ class MenuRestoreView(APIView):
 
 
 class MenuItemSwapView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(request=MenuItemSwapSerializer, responses={200: None})
     def patch(self, request, menu_id, item_id):
@@ -395,7 +396,7 @@ class MenuItemSwapView(APIView):
 
 
 class MenuArchiveView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(responses={200: None})
     def post(self, request, menu_id):
@@ -410,7 +411,7 @@ class MenuArchiveView(APIView):
 
 
 class ShoppingListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(responses={200: ShoppingListSerializer})
     def get(self, request, menu_id):
@@ -431,7 +432,7 @@ class ShoppingListView(APIView):
 
 
 class ShoppingItemToggleView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(responses={200: ShoppingItemSerializer})
     def patch(self, request, menu_id, item_id):

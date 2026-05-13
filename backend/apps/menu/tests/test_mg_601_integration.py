@@ -53,6 +53,7 @@ def _mk_user_with_profile(email, name, **profile_kwargs):
 
 def _mk_family(user):
     family = Family.objects.create(owner=user, name=f"Семья {user.name}")
+    _attach_premium(family)
     member = FamilyMember.objects.create(
         family=family, user=user, role=FamilyMember.Role.HEAD
     )
@@ -409,3 +410,26 @@ class TestMG601MainMealComposition:
             if slot in ("lunch", "dinner"):
                 assert {"protein", "grain", "vegetable"}.issubset(roles), \
                     f"Слот {slot} день {day} не содержит 3 компонентов: {roles}"
+
+
+# MG-606.C: автоматический Premium для тестовых семей
+from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
+from decimal import Decimal as _MG606_D
+from django.utils import timezone as _MG606_tz
+from datetime import timedelta as _MG606_td
+
+
+def _attach_premium(family):
+    plan, _ = _MG606_Plan.objects.get_or_create(
+        code="premium",
+        defaults={"name": "Premium", "price": _MG606_D("0")},
+    )
+    if _MG606_Sub.objects.filter(family=family, plan=plan).exists():
+        return
+    _MG606_Sub.objects.create(
+        family=family,
+        plan=plan,
+        status=_MG606_Sub.Status.ACTIVE,
+        started_at=_MG606_tz.now() - _MG606_td(days=1),
+        expires_at=_MG606_tz.now() + _MG606_td(days=365),
+    )

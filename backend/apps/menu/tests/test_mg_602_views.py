@@ -51,6 +51,7 @@ def _mk_user(email="u@example.com", name="Юзер", user_type="user", **extra):
 
 def _mk_family(user, role=None):
     fam = Family.objects.create(owner=user, name=f"Семья {user.name}")
+    _attach_premium(fam)
     member = FamilyMember.objects.create(
         family=fam, user=user, role=role or FamilyMember.Role.HEAD
     )
@@ -89,6 +90,7 @@ class TestHelpers:
         admin = _mk_user(email="a@x.com", name="A", user_type="admin")
         # admin не обязан быть в семье
         fam = Family.objects.create(owner=admin, name="X")
+        _attach_premium(fam)
         assert menu_views._can_edit_menu(admin, fam) is True
 
     def test_can_edit_menu_head(self, db):
@@ -106,6 +108,7 @@ class TestHelpers:
         u = _mk_user(email="nm@x.com", name="NM")
         other = _mk_user(email="o@x.com", name="O")
         fam = Family.objects.create(owner=other, name="O")
+        _attach_premium(fam)
         assert menu_views._can_edit_menu(u, fam) is False
 
     def test_can_delete_menu_admin(self, db):
@@ -214,13 +217,14 @@ class TestHelpers:
 # ╚═════════════════════════════════════════════════════════════════════════╝
 @pytest.mark.django_db
 class TestMenuGenerateNegative:
-    def test_no_family_returns_404(self, client, db):
+    def test_no_family_returns_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → нет Premium → 403 от gate (раньше: 404 из view).
         u = _mk_user(email="nf@x.com", name="NF")
         client.force_authenticate(u)
         resp = client.post(reverse("menu-generate"),
                            {"period_days": 1, "start_date": str(datetime.date.today())},
                            format="json")
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     def test_with_max_cook_time_filter(self, client, setup):
         user, _, _ = setup
@@ -245,18 +249,19 @@ class TestMenuGenerateNegative:
 # ╚═════════════════════════════════════════════════════════════════════════╝
 @pytest.mark.django_db
 class TestMenuListDetail:
-    def test_list_no_family_returns_empty(self, client, db):
+    def test_list_no_family_returns_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → нет Premium → 403 от gate (раньше: 200 + пустой список).
         u = _mk_user(email="nfl@x.com", name="NFL")
         client.force_authenticate(u)
         resp = client.get(reverse("menu-list"))
-        assert resp.status_code == 200
-        assert resp.data == [] or resp.data.get("results", []) == []
+        assert resp.status_code == 403
 
-    def test_detail_no_family_returns_404(self, client, db):
+    def test_detail_no_family_returns_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="nfd@x.com", name="NFD")
         client.force_authenticate(u)
         resp = client.get(reverse("menu-detail", args=[1]))
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     def test_list_get_queryset_swagger_fake(self, db):
         view = menu_views.MenuListView()
@@ -286,11 +291,12 @@ class TestMenuDelete:
         assert not Menu.objects.filter(id=menu_id).exists()
         assert DeletedMenu.objects.filter(family=fam).count() == 1
 
-    def test_delete_no_family_404(self, client, db):
+    def test_delete_no_family_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="dnf@x.com", name="DNF")
         client.force_authenticate(u)
         resp = client.delete(reverse("menu-delete", args=[999]))
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     def test_delete_menu_not_found(self, client, setup):
         user, _, _ = setup
@@ -317,11 +323,12 @@ class TestMenuDelete:
 # ╚═════════════════════════════════════════════════════════════════════════╝
 @pytest.mark.django_db
 class TestDeletedAndRestore:
-    def test_quarantine_list_no_family_404(self, client, db):
+    def test_quarantine_list_no_family_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="qnf@x.com", name="QNF")
         client.force_authenticate(u)
         resp = client.get(reverse("menu-quarantine"))
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     def test_quarantine_list_success(self, client, setup):
         user, _, _ = setup
@@ -332,11 +339,12 @@ class TestDeletedAndRestore:
         assert resp.status_code == 200
         assert len(resp.data) == 1
 
-    def test_restore_no_family_404(self, client, db):
+    def test_restore_no_family_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="rnf@x.com", name="RNF")
         client.force_authenticate(u)
         resp = client.post(reverse("menu-restore", args=[999]))
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     def test_restore_deleted_not_found(self, client, setup):
         user, _, _ = setup
@@ -408,12 +416,13 @@ class TestDeletedAndRestore:
 # ╚═════════════════════════════════════════════════════════════════════════╝
 @pytest.mark.django_db
 class TestMenuItemSwap:
-    def test_swap_no_family_404(self, client, db):
+    def test_swap_no_family_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="snf@x.com", name="SNF")
         client.force_authenticate(u)
         resp = client.patch(reverse("menu-item-swap", args=[1, 1]),
                             {"recipe_id": 1}, format="json")
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     def test_swap_no_permission_403(self, client, db):
         head = _mk_user(email="shd@x.com", name="SHD")
@@ -547,11 +556,12 @@ class TestMenuArchive:
 # ╚═════════════════════════════════════════════════════════════════════════╝
 @pytest.mark.django_db
 class TestShopping:
-    def test_shopping_no_family_404(self, client, db):
+    def test_shopping_no_family_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="snf2@x.com", name="SNF2")
         client.force_authenticate(u)
         resp = client.get(reverse("menu-shopping-list", args=[1]))
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     def test_shopping_menu_not_found(self, client, setup):
         user, _, _ = setup
@@ -605,11 +615,12 @@ class TestShopping:
         resp = client.get(reverse("menu-shopping-list", args=[menu.id]))
         assert resp.status_code == 200
 
-    def test_toggle_item_no_family_404(self, client, db):
+    def test_toggle_item_no_family_403_premium_gate(self, client, db):
+        # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="tnf@x.com", name="TNF")
         client.force_authenticate(u)
         resp = client.patch(reverse("shopping-item-toggle", args=[1, 1]))
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     def test_toggle_item_not_found(self, client, setup):
         user, _, _ = setup
@@ -633,3 +644,26 @@ class TestShopping:
         r2 = client.patch(reverse("shopping-item-toggle", args=[menu_id, item_id]))
         assert r2.status_code == 200
         assert r2.data["is_purchased"] is False
+
+
+# MG-606.C: автоматический Premium для тестовых семей
+from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
+from decimal import Decimal as _MG606_D
+from django.utils import timezone as _MG606_tz
+from datetime import timedelta as _MG606_td
+
+
+def _attach_premium(family):
+    plan, _ = _MG606_Plan.objects.get_or_create(
+        code="premium",
+        defaults={"name": "Premium", "price": _MG606_D("0")},
+    )
+    if _MG606_Sub.objects.filter(family=family, plan=plan).exists():
+        return
+    _MG606_Sub.objects.create(
+        family=family,
+        plan=plan,
+        status=_MG606_Sub.Status.ACTIVE,
+        started_at=_MG606_tz.now() - _MG606_td(days=1),
+        expires_at=_MG606_tz.now() + _MG606_td(days=365),
+    )

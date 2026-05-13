@@ -19,6 +19,7 @@ def client():
 def setup(db):
     user = User.objects.create_user(email="menu@example.com", name="Юзер", password="pass1234")
     family = Family.objects.create(owner=user, name="Семья")
+    _attach_premium(family)
     member = FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
 
     for i in range(30):
@@ -178,3 +179,26 @@ class TestShoppingList:
             assert resp.status_code == 200
             item.refresh_from_db()
             assert item.is_purchased is True
+
+
+# MG-606.C: автоматический Premium для тестовых семей
+from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
+from decimal import Decimal as _MG606_D
+from django.utils import timezone as _MG606_tz
+from datetime import timedelta as _MG606_td
+
+
+def _attach_premium(family):
+    plan, _ = _MG606_Plan.objects.get_or_create(
+        code="premium",
+        defaults={"name": "Premium", "price": _MG606_D("0")},
+    )
+    if _MG606_Sub.objects.filter(family=family, plan=plan).exists():
+        return
+    _MG606_Sub.objects.create(
+        family=family,
+        plan=plan,
+        status=_MG606_Sub.Status.ACTIVE,
+        started_at=_MG606_tz.now() - _MG606_td(days=1),
+        expires_at=_MG606_tz.now() + _MG606_td(days=365),
+    )

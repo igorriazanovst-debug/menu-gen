@@ -67,6 +67,7 @@ def family_with_three(db):
     Profile.objects.create(user=kid, birth_year=2016, calorie_target=1500)
 
     family = Family.objects.create(owner=head_user, name="Семья")
+    _attach_premium(family)
     head_m = FamilyMember.objects.create(family=family, user=head_user, role=FamilyMember.Role.HEAD)
     mem_m = FamilyMember.objects.create(family=family, user=mem1, role=FamilyMember.Role.MEMBER)
     kid_m = FamilyMember.objects.create(family=family, user=kid, role=FamilyMember.Role.MEMBER)
@@ -80,6 +81,7 @@ def family_solo(db):
     user = User.objects.create_user(email="solo605@example.com", name="Один", password="pass1234")
     Profile.objects.create(user=user, birth_year=1985, calorie_target=2200)
     family = Family.objects.create(owner=user, name="Сам")
+    _attach_premium(family)
     head = FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
     _seed_recipes()
     return family, [head]
@@ -294,3 +296,26 @@ class TestModeAPI:
         )
         expected = {m.id for m in members}
         assert expected.issubset(member_ids_in_db)
+
+
+# MG-606.C: автоматический Premium для тестовых семей
+from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
+from decimal import Decimal as _MG606_D
+from django.utils import timezone as _MG606_tz
+from datetime import timedelta as _MG606_td
+
+
+def _attach_premium(family):
+    plan, _ = _MG606_Plan.objects.get_or_create(
+        code="premium",
+        defaults={"name": "Premium", "price": _MG606_D("0")},
+    )
+    if _MG606_Sub.objects.filter(family=family, plan=plan).exists():
+        return
+    _MG606_Sub.objects.create(
+        family=family,
+        plan=plan,
+        status=_MG606_Sub.Status.ACTIVE,
+        started_at=_MG606_tz.now() - _MG606_td(days=1),
+        expires_at=_MG606_tz.now() + _MG606_td(days=365),
+    )

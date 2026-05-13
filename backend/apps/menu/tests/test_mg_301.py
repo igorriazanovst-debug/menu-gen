@@ -44,6 +44,7 @@ def setup_full(db):
     """Все 4 роли есть: protein/grain/vegetable/fruit/dairy."""
     user = User.objects.create_user(email="mg301@example.com", name="Тестер301", password="pass1234")
     family = Family.objects.create(owner=user, name="Семья 301")
+    _attach_premium(family)
     member = FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
     for i in range(5):
         _mk_recipe(f"Курица {i}",   "protein")
@@ -128,6 +129,7 @@ class TestEmptyRolePool:
         """Если нет рецептов с food_group=vegetable — 400 с понятным сообщением."""
         user = User.objects.create_user(email="empty@example.com", name="Пустой", password="pass1234")
         family = Family.objects.create(owner=user, name="Без овощей")
+        _attach_premium(family)
         FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
         # есть protein, grain, fruit — но НЕТ vegetable
         for i in range(3):
@@ -148,6 +150,7 @@ class TestEmptyRolePool:
     def test_empty_pool_writes_audit_log(self, client, db):
         user = User.objects.create_user(email="audit@example.com", name="Аудит", password="pass1234")
         family = Family.objects.create(owner=user, name="Аудит-семья")
+        _attach_premium(family)
         FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
         for i in range(3):
             _mk_recipe(f"Курица {i}", "protein")
@@ -165,6 +168,7 @@ class TestEmptyRolePool:
         from apps.menu.models import Menu
         user = User.objects.create_user(email="rollback@example.com", name="Ролл", password="pass1234")
         family = Family.objects.create(owner=user, name="Ролл-семья")
+        _attach_premium(family)
         FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
         for i in range(3):
             _mk_recipe(f"Курица {i}", "protein")
@@ -177,3 +181,26 @@ class TestEmptyRolePool:
         assert resp.status_code == 400
         after = Menu.objects.filter(family=family).count()
         assert after == before
+
+
+# MG-606.C: автоматический Premium для тестовых семей
+from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
+from decimal import Decimal as _MG606_D
+from django.utils import timezone as _MG606_tz
+from datetime import timedelta as _MG606_td
+
+
+def _attach_premium(family):
+    plan, _ = _MG606_Plan.objects.get_or_create(
+        code="premium",
+        defaults={"name": "Premium", "price": _MG606_D("0")},
+    )
+    if _MG606_Sub.objects.filter(family=family, plan=plan).exists():
+        return
+    _MG606_Sub.objects.create(
+        family=family,
+        plan=plan,
+        status=_MG606_Sub.Status.ACTIVE,
+        started_at=_MG606_tz.now() - _MG606_td(days=1),
+        expires_at=_MG606_tz.now() + _MG606_td(days=365),
+    )

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
+from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
 from .models import FridgeItem, Product
 from .serializers import (
@@ -21,7 +22,7 @@ def _get_family(user):
 
 
 class FridgeListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
     filter_backends = [filters.DjangoFilterBackend]
     filterset_fields = ["unit"]
     search_fields = ["name"]
@@ -82,7 +83,7 @@ class FridgeListCreateView(generics.ListCreateAPIView):
 
 
 class FridgeItemDetailView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get_queryset(self):
         family = _get_family(self.request.user)
@@ -109,7 +110,7 @@ class FridgeItemDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class BarcodeLookupView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(request=BarcodeLookupSerializer, responses={200: ProductSerializer})
     def post(self, request):
@@ -124,7 +125,7 @@ class BarcodeLookupView(APIView):
 
 
 class ProductSearchView(generics.ListAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
     serializer_class = ProductSerializer
     search_fields = ["name"]
 

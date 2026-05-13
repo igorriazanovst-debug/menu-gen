@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Notification
+from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
 
 class NotificationSerializer(drf_serializers.ModelSerializer):
@@ -15,7 +16,7 @@ class NotificationSerializer(drf_serializers.ModelSerializer):
 
 
 class NotificationListView(generics.ListAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
     serializer_class = NotificationSerializer
 
     def get_queryset(self):
@@ -25,7 +26,7 @@ class NotificationListView(generics.ListAPIView):
 
 
 class NotificationMarkReadView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(request=None, responses={200: None})
     def post(self, request, pk):
