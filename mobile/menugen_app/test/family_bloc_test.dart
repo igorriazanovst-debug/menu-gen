@@ -43,7 +43,7 @@ void main() {
             .thenThrow(Exception('err'));
         return FamilyBloc(apiClient: api);
       },
-      act: (b) => b.add(FamilyInviteMemberRequested('x@x.com')),
+      act: (b) => b.add(FamilyInviteMemberRequested(email: 'x@x.com')),
       expect: () => [isA<FamilyError>()],
     );
 

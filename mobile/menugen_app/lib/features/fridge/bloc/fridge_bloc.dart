@@ -16,12 +16,14 @@ class FridgeLoadRequested extends FridgeEvent {
   const FridgeLoadRequested();
 }
 
-class FridgeAddRequested extends FridgeEvent {
+/// Add a new fridge item. Name preserved from pre-patch API for screen
+/// compatibility.
+class FridgeItemAdded extends FridgeEvent {
   final String name;
   final double? quantity;
   final String? unit;
   final String? expiryDate;
-  const FridgeAddRequested({
+  const FridgeItemAdded({
     required this.name,
     this.quantity,
     this.unit,
@@ -31,9 +33,10 @@ class FridgeAddRequested extends FridgeEvent {
   List<Object?> get props => [name, quantity, unit, expiryDate];
 }
 
-class FridgeDeleteRequested extends FridgeEvent {
+/// Delete a fridge item. Name preserved from pre-patch API.
+class FridgeItemDeleted extends FridgeEvent {
   final int id;
-  const FridgeDeleteRequested(this.id);
+  const FridgeItemDeleted(this.id);
   @override
   List<Object?> get props => [id];
 }
@@ -55,6 +58,7 @@ class FridgeLoaded extends FridgeState {
   List<Object?> get props => [items];
 }
 
+/// MG-606: 403 from IsFamilyPremiumOrReadOnly.
 class FridgePremiumLocked extends FridgeState {
   final String message;
   final bool isWrite;
@@ -81,8 +85,8 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
     this.premiumGate,
   }) : super(const FridgeLoading()) {
     on<FridgeLoadRequested>(_onLoad);
-    on<FridgeAddRequested>(_onAdd);
-    on<FridgeDeleteRequested>(_onDelete);
+    on<FridgeItemAdded>(_onAdd);
+    on<FridgeItemDeleted>(_onDelete);
   }
 
   FridgeState _toErrorState(Object err, {required bool isWrite}) {
@@ -113,7 +117,7 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
     }
   }
 
-  Future<void> _onAdd(FridgeAddRequested e, Emitter<FridgeState> emit) async {
+  Future<void> _onAdd(FridgeItemAdded e, Emitter<FridgeState> emit) async {
     try {
       final body = <String, dynamic>{'name': e.name};
       if (e.quantity != null) body['quantity'] = e.quantity;
@@ -126,7 +130,7 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
     }
   }
 
-  Future<void> _onDelete(FridgeDeleteRequested e, Emitter<FridgeState> emit) async {
+  Future<void> _onDelete(FridgeItemDeleted e, Emitter<FridgeState> emit) async {
     try {
       await apiClient.delete('/fridge/${e.id}/');
       add(const FridgeLoadRequested());

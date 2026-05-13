@@ -7,6 +7,7 @@ import 'package:menugen_app/core/api/api_exception.dart';
 import 'package:menugen_app/core/db/app_database.dart';
 import 'package:menugen_app/features/diary/bloc/diary_bloc.dart';
 import 'package:menugen_app/features/diary/models/diary_entry.dart';
+import 'package:menugen_app/features/diary/models/diary_stats.dart';
 
 class _MockApi extends Mock implements ApiClient {}
 class _MockDb extends Mock implements AppDatabase {}
@@ -96,7 +97,7 @@ void main() {
 
   group('DiaryBloc.markEaten', () {
     blocTest<DiaryBloc, DiaryState>(
-      'optimistically flips is_eaten and reloads on success',
+      'patches /diary/{id}/ with is_eaten payload',
       build: () {
         when(() => api.get('/diary/', params: any(named: 'params'))).thenAnswer(
           (_) async => {
@@ -122,11 +123,11 @@ void main() {
             .thenAnswer((_) async => {});
         return DiaryBloc(apiClient: api, db: db);
       },
-      seed: () => const DiaryLoaded(
+      seed: () => DiaryLoaded(
         date: '2026-05-13',
         memberId: null,
-        entries: [],
-        stats: DiaryDayStats(
+        entries: const [],
+        stats: const DiaryDayStats(
           date: '2026-05-13',
           planned: NutritionBucket.zero(),
           actual: NutritionBucket.zero(),
@@ -134,10 +135,10 @@ void main() {
         ),
       ),
       act: (b) async {
-        // Prime entries via load first.
         b.add(const DiaryLoadRequested(date: '2026-05-13'));
         await Future<void>.delayed(const Duration(milliseconds: 50));
         b.add(const DiaryMarkEatenRequested(entryId: 1, isEaten: true));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
       },
       verify: (_) {
         verify(() => api.patch('/diary/1/', data: {'is_eaten': true})).called(1);
