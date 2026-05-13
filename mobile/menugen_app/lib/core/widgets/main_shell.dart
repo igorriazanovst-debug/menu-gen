@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import '../connectivity/connectivity_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+
+import '../connectivity/connectivity_cubit.dart';
+import '../premium/paywall_banner.dart';
 import 'connectivity_banner.dart';
 
 class MainShell extends StatelessWidget {
@@ -28,6 +30,7 @@ class MainShell extends StatelessWidget {
       body: Column(
         children: [
           const ConnectivityBanner(),
+          const PaywallBanner(),
           Expanded(child: child),
         ],
       ),

@@ -1,86 +1,82 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import '../../../core/api/api_client.dart';
+import '../../../core/api/api_exception.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/premium/premium_gate_cubit.dart';
 
-abstract class MenuEvent extends Equatable {
-  const MenuEvent();
-  @override List<Object?> get props => [];
-}
-class MenuLoadRequested extends MenuEvent {}
-class MenuGenerateRequested extends MenuEvent {
-  final String startDate;
-  final int periodDays;
-  final String? country;
-  final int? maxCookTime;
-  const MenuGenerateRequested({
-    required this.startDate,
-    this.periodDays = 7,
-    this.country,
-    this.maxCookTime,
-  });
-  @override List<Object?> get props => [startDate, periodDays, country, maxCookTime];
-}
+part 'menu_event.dart';
+part 'menu_state.dart';
 
-abstract class MenuState extends Equatable {
-  const MenuState();
-  @override List<Object?> get props => [];
-}
-class MenuLoading extends MenuState { const MenuLoading(); }
-class MenuLoaded extends MenuState {
-  final List<Map<String, dynamic>> menus;
-  const MenuLoaded({required this.menus});
-  @override List<Object?> get props => [menus];
-}
-class MenuGenerating extends MenuState { const MenuGenerating(); }
-class MenuGenerated extends MenuState {
-  final Map<String, dynamic> menu;
-  const MenuGenerated(this.menu);
-  @override List<Object?> get props => [menu];
-}
-class MenuError extends MenuState {
-  final String message;
-  const MenuError(this.message);
-  @override List<Object?> get props => [message];
-}
-
+/// MenuBloc — loads existing menu, generates new one.
+///
+/// MG-606: menu endpoints are protected by IsFamilyPremiumOrReadOnly.
+/// We map 403 → [MenuPremiumLocked] and report to [PremiumGateCubit].
 class MenuBloc extends Bloc<MenuEvent, MenuState> {
   final ApiClient apiClient;
   final AppDatabase db;
-  MenuBloc({required this.apiClient, required this.db}) : super(const MenuLoading()) {
+  final PremiumGateCubit? premiumGate;
+
+  MenuBloc({
+    required this.apiClient,
+    required this.db,
+    this.premiumGate,
+  }) : super(const MenuLoading()) {
     on<MenuLoadRequested>(_onLoad);
     on<MenuGenerateRequested>(_onGenerate);
   }
-  dynamic _data(dynamic r) { try { return r.data; } catch (_) { return r; } }
+
+  Map<String, dynamic> _asMap(dynamic d) =>
+      d is Map ? Map<String, dynamic>.from(d) : <String, dynamic>{};
+
+  MenuState _toErrorState(Object err, {required bool isWrite}) {
+    if (err is ApiException && err.isPremiumLocked) {
+      premiumGate?.reportLock(
+        feature: 'menu',
+        isWrite: isWrite,
+        message: err.message,
+      );
+      return MenuPremiumLocked(message: err.message, isWrite: isWrite);
+    }
+    final msg = err is ApiException ? err.message : err.toString();
+    return MenuError(msg);
+  }
 
   Future<void> _onLoad(MenuLoadRequested e, Emitter<MenuState> emit) async {
     emit(const MenuLoading());
     try {
-      final r = await apiClient.get('/menu/');
-      final d = _data(r);
-      final list = d is Map
-          ? (d['results'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList()
-          : <Map<String, dynamic>>[];
-      if (list.isEmpty) { emit(MenuLoaded(menus: [])); return; }
-      // Загружаем детали первого (последнего) меню
+      final listResp = await apiClient.get('/menu/');
+      final list = (listResp is Map ? (listResp['results'] as List? ?? []) : [])
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+      if (list.isEmpty) {
+        emit(const MenuLoaded(menus: <Map<String, dynamic>>[]));
+        return;
+      }
       final firstId = list.first['id'];
       final detail = await apiClient.get('/menu/$firstId/');
-      final detailMap = Map<String, dynamic>.from(_data(detail) as Map);
-      emit(MenuLoaded(menus: [detailMap]));
-    } catch (e) { emit(MenuError(e.toString())); }
+      premiumGate?.reportReadSuccess();
+      emit(MenuLoaded(menus: <Map<String, dynamic>>[_asMap(detail)]));
+    } catch (err) {
+      emit(_toErrorState(err, isWrite: false));
+    }
   }
 
   Future<void> _onGenerate(MenuGenerateRequested e, Emitter<MenuState> emit) async {
     emit(const MenuGenerating());
     try {
-      final data = <String, dynamic>{
+      final body = <String, dynamic>{
         'start_date': e.startDate,
         'period_days': e.periodDays,
       };
-      if (e.country != null) data['country'] = e.country;
-      if (e.maxCookTime != null) data['max_cook_time'] = e.maxCookTime;
-      final r = await apiClient.post('/menu/generate/', data: data);
-      emit(MenuGenerated(Map<String, dynamic>.from(_data(r) as Map)));
-    } catch (e) { emit(MenuError(e.toString())); }
+      if (e.country != null) body['country'] = e.country;
+      if (e.maxCookTime != null) body['max_cook_time'] = e.maxCookTime;
+      final r = await apiClient.post('/menu/generate/', data: body);
+      emit(MenuGenerated(_asMap(r)));
+    } catch (err) {
+      emit(_toErrorState(err, isWrite: true));
+    }
   }
 }

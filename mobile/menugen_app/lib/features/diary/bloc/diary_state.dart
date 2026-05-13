@@ -1,18 +1,73 @@
 part of 'diary_bloc.dart';
+
 abstract class DiaryState extends Equatable {
   const DiaryState();
-  @override List<Object?> get props => [];
+  @override
+  List<Object?> get props => [];
 }
-class DiaryInitial extends DiaryState { const DiaryInitial(); }
-class DiaryLoading extends DiaryState { const DiaryLoading(); }
+
+class DiaryInitial extends DiaryState {
+  const DiaryInitial();
+}
+
+class DiaryLoading extends DiaryState {
+  const DiaryLoading();
+}
+
 class DiaryLoaded extends DiaryState {
-  final List<DiaryEntry> entries;
   final String date;
-  const DiaryLoaded({required this.entries, required this.date});
-  @override List<Object?> get props => [entries, date];
+  final int? memberId;
+  final List<DiaryEntry> entries;
+  final DiaryDayStats stats;
+
+  const DiaryLoaded({
+    required this.date,
+    required this.memberId,
+    required this.entries,
+    required this.stats,
+  });
+
+  /// Planned entries (came from menu import, may or may not be eaten yet).
+  List<DiaryEntry> get plannedEntries =>
+      entries.where((e) => e.isPlanned).toList();
+
+  /// Manual / actual-only entries (no plan attached).
+  List<DiaryEntry> get manualEntries =>
+      entries.where((e) => !e.isPlanned).toList();
+
+  DiaryLoaded copyWith({
+    String? date,
+    int? memberId,
+    List<DiaryEntry>? entries,
+    DiaryDayStats? stats,
+  }) {
+    return DiaryLoaded(
+      date: date ?? this.date,
+      memberId: memberId ?? this.memberId,
+      entries: entries ?? this.entries,
+      stats: stats ?? this.stats,
+    );
+  }
+
+  @override
+  List<Object?> get props => [date, memberId, entries, stats];
 }
+
+/// MG-606: backend denied access with 403 from IsFamilyPremiumOrReadOnly.
+///
+/// `isWrite=false` → user has no premium history at all (full lock).
+/// `isWrite=true`  → user is in read-only-after-expiry mode (writes blocked).
+class DiaryPremiumLocked extends DiaryState {
+  final String message;
+  final bool isWrite;
+  const DiaryPremiumLocked({required this.message, required this.isWrite});
+  @override
+  List<Object?> get props => [message, isWrite];
+}
+
 class DiaryError extends DiaryState {
   final String message;
   const DiaryError({required this.message});
-  @override List<Object?> get props => [message];
+  @override
+  List<Object?> get props => [message];
 }
