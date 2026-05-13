@@ -103,7 +103,8 @@ class TestPremiumGate:
         resp = client.get("/api/v1/diary/water/")
         assert resp.status_code == 403
 
-    def test_expired_premium_403(self, db):
+    def test_expired_premium_read_ok_write_forbidden(self, db):
+        # MG-606.B: после истечения подписки чтение остаётся, запись — нет.
         family, head, _ = _make_family_with_premium(with_premium=False)
         plan, _ = SubscriptionPlan.objects.get_or_create(
             code="premium",
@@ -117,7 +118,21 @@ class TestPremiumGate:
             expires_at=timezone.now() - timedelta(days=1),
         )
         client = _auth(APIClient(), head)
-        assert client.get("/api/v1/diary/").status_code == 403
+        # MG-606.B: GET доступен после истечения (статус ACTIVE в истории).
+        assert client.get("/api/v1/diary/").status_code == 200
+        # запись — 403
+        resp = client.post(
+            "/api/v1/diary/",
+            {
+                "date": str(date.today()),
+                "meal_type": "breakfast",
+                "custom_name": "X",
+                "quantity": 1,
+                "nutrition": {"calories": {"value": 100}},
+            },
+            format="json",
+        )
+        assert resp.status_code == 403
 
     def test_cancelled_premium_403(self, db):
         family, head, _ = _make_family_with_premium(with_premium=False)
@@ -135,7 +150,9 @@ class TestPremiumGate:
         client = _auth(APIClient(), head)
         assert client.get("/api/v1/diary/").status_code == 403
 
-    def test_trial_premium_200(self, db):
+    def test_trial_premium_write_ok_read_forbidden(self, db):
+        # MG-606.B: одинокий trial (без active в истории) НЕ даёт «реального опыта».
+        # GET — 403, POST — 201 (фича активна, пока триал идёт).
         family, head, _ = _make_family_with_premium(with_premium=False)
         plan, _ = SubscriptionPlan.objects.get_or_create(
             code="premium",
@@ -149,7 +166,19 @@ class TestPremiumGate:
             expires_at=timezone.now() + timedelta(days=7),
         )
         client = _auth(APIClient(), head)
-        assert client.get("/api/v1/diary/").status_code == 200
+        assert client.get("/api/v1/diary/").status_code == 403
+        resp = client.post(
+            "/api/v1/diary/",
+            {
+                "date": str(date.today()),
+                "meal_type": "breakfast",
+                "custom_name": "X",
+                "quantity": 1,
+                "nutrition": {"calories": {"value": 100}},
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
 
     def test_active_premium_200(self, db):
         family, head, _ = _make_family_with_premium()

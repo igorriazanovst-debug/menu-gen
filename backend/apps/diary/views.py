@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from apps.family.models import FamilyMember
 # MG_605D_V_views: импорт MenuItem для import-from-menu
 from apps.menu.models import Menu, MenuItem
-from apps.subscriptions.permissions import IsFamilyPremium
+from apps.subscriptions.permissions import IsFamilyPremium, IsFamilyPremiumOrReadOnly
 
 from .models import DiaryEntry, WaterLog
 from .permissions import IsDiaryEntryOwner
@@ -60,7 +60,7 @@ def _resolve_target_member(request, current_member):
 
 
 class DiaryListCreateView(generics.ListCreateAPIView):
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get_member(self):
         if not hasattr(self, "_member"):
@@ -131,7 +131,7 @@ class DiaryEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
     Видеть чужие записи: HEAD — все в своей семье, MEMBER — только свои.
     Редактировать/удалять может только владелец записи.
     """
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium, IsDiaryEntryOwner]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly, IsDiaryEntryOwner]
     http_method_names = ["get", "patch", "delete", "head", "options"]
     serializer_class = DiaryEntrySerializer
 
@@ -205,7 +205,7 @@ class DiaryStatsView(APIView):
                (вручную добавленное всегда учитывается в факте; плановое — только после галочки)
     - total:   синоним actual (для UI прогресс-бара)
     """
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(
         parameters=[
@@ -269,7 +269,7 @@ class DiaryImportFromMenuView(APIView):
     - Ответ 200: {created: N, skipped: M, entries: [...]} (полный список DiaryEntry
       для этого меню+target, включая ранее существующие, чтобы UI мог сразу отрисовать).
     """
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(
         parameters=[
@@ -342,7 +342,7 @@ class DiaryImportFromMenuView(APIView):
 
 
 class WaterLogView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremium]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(
         parameters=[OpenApiParameter("date", str, description="Дата YYYY-MM-DD (default: today)")],
