@@ -1,11 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.utils import timezone  # noqa: F401  # MG-profile-premium
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
-from drf_spectacular.utils import extend_schema_field
 
 from .models import Profile
-
 
 # MG_504_V_serializers
 MG504_FIELDS = ("bedtime_hour", "cheat_meal_interval", "last_cheat_meal_date")
@@ -89,7 +88,6 @@ class TokenPairSerializer(serializers.Serializer):
         }
 
 
-
 # MG_205UI_V_serializers = 1
 TARGET_FIELDS_MG205UI = (
     "calorie_target",
@@ -102,15 +100,12 @@ TARGET_FIELDS_MG205UI = (
 
 class ProfileTargetAuditSerializer(serializers.Serializer):
     """Запись истории правок одного поля КБЖУ."""
+
     id = serializers.IntegerField(read_only=True)
     field = serializers.CharField(read_only=True)
     source = serializers.CharField(read_only=True)
-    old_value = serializers.DecimalField(
-        max_digits=8, decimal_places=2, read_only=True, allow_null=True
-    )
-    new_value = serializers.DecimalField(
-        max_digits=8, decimal_places=2, read_only=True, allow_null=True
-    )
+    old_value = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True, allow_null=True)
+    new_value = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True, allow_null=True)
     reason = serializers.CharField(read_only=True, allow_blank=True)
     at = serializers.DateTimeField(read_only=True)
     by_user = serializers.SerializerMethodField()
@@ -146,43 +141,37 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_targets_calculated(self, obj):
         from .nutrition import calculate_targets
+
         result = calculate_targets(obj)
         if not result:
             return None
         return {
-            "calorie_target":   result["calorie_target"],
+            "calorie_target": result["calorie_target"],
             "protein_target_g": str(result["protein_target_g"]),
-            "fat_target_g":     str(result["fat_target_g"]),
-            "carb_target_g":   str(result["carb_target_g"]),
-            "fiber_target_g":   str(result["fiber_target_g"]),
+            "fat_target_g": str(result["fat_target_g"]),
+            "carb_target_g": str(result["carb_target_g"]),
+            "fiber_target_g": str(result["fiber_target_g"]),
         }
-
-
 
     def get_targets_meta(self, obj):
         """MG-205-UI: для каждого target-поля — последняя запись аудита."""
         from .models import ProfileTargetAudit
+
         if not getattr(obj, "pk", None):
             return {}
         out = {}
         for f in TARGET_FIELDS_MG205UI:
-            last = (
-                ProfileTargetAudit.objects.filter(profile=obj, field=f)
-                .order_by("-at")
-                .first()
-            )
+            last = ProfileTargetAudit.objects.filter(profile=obj, field=f).order_by("-at").first()
             if last is None:
                 out[f] = {"source": "auto", "by_user": None, "at": None}
             else:
                 out[f] = {
                     "source": last.source,
-                    "by_user": (
-                        {"id": last.by_user.id, "name": last.by_user.name}
-                        if last.by_user_id else None
-                    ),
+                    "by_user": ({"id": last.by_user.id, "name": last.by_user.name} if last.by_user_id else None),
                     "at": last.at.isoformat() if last.at else None,
                 }
         return out
+
 
 class UserMeSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(read_only=True)
@@ -207,45 +196,40 @@ class UserMeSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "vk_id", "user_type", "created_at")
 
-    @extend_schema_field({
-        "type": "object",
-        "nullable": True,
-        "properties": {
-            "is_active_premium": {"type": "boolean"},
-            "has_ever_premium":  {"type": "boolean"},
-            "plan_code":         {"type": "string", "nullable": True},
-            "status":            {"type": "string", "nullable": True,
-                                  "enum": ["active", "trial", "expired", "cancelled", None]},
-            "expires_at":        {"type": "string", "format": "date-time", "nullable": True},
-        },
-    })
+    @extend_schema_field(
+        {
+            "type": "object",
+            "nullable": True,
+            "properties": {
+                "is_active_premium": {"type": "boolean"},
+                "has_ever_premium": {"type": "boolean"},
+                "plan_code": {"type": "string", "nullable": True},
+                "status": {
+                    "type": "string",
+                    "nullable": True,
+                    "enum": ["active", "trial", "expired", "cancelled", None],
+                },
+                "expires_at": {"type": "string", "format": "date-time", "nullable": True},
+            },
+        }
+    )
     def get_subscription_status(self, obj):
         # Local import — avoid app-loading order issues.
-        from apps.subscriptions.permissions import (
-            get_user_family,
-            has_active_premium,
-            has_ever_had_premium,
-        )
         from apps.subscriptions.models import Subscription
+        from apps.subscriptions.permissions import get_user_family, has_active_premium, has_ever_had_premium
 
         family = get_user_family(obj)
         if family is None:
             return None
 
-        latest = (
-            Subscription.objects
-            .filter(family=family)
-            .select_related("plan")
-            .order_by("-started_at")
-            .first()
-        )
+        latest = Subscription.objects.filter(family=family).select_related("plan").order_by("-started_at").first()
 
         return {
             "is_active_premium": has_active_premium(family),
-            "has_ever_premium":  has_ever_had_premium(family),
-            "plan_code":         latest.plan.code if latest else None,
-            "status":            latest.status if latest else None,
-            "expires_at":        latest.expires_at.isoformat() if latest else None,
+            "has_ever_premium": has_ever_had_premium(family),
+            "plan_code": latest.plan.code if latest else None,
+            "status": latest.status if latest else None,
+            "expires_at": latest.expires_at.isoformat() if latest else None,
         }
 
 
