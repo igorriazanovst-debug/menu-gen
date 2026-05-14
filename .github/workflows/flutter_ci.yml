@@ -5,16 +5,27 @@ on:
     branches: [main, develop]
     paths:
       - 'mobile/**'
+      - '.github/workflows/flutter_ci.yml'
   pull_request:
     branches: [main, develop]
     paths:
       - 'mobile/**'
+      - '.github/workflows/flutter_ci.yml'
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'API base URL (override default)'
+        required: false
+        default: 'http://31.192.110.121:8081/api/v1'
+
+env:
+  FLUTTER_VERSION: '3.22.0'
+  DEFAULT_API_BASE_URL: 'http://31.192.110.121:8081/api/v1'
 
 jobs:
   flutter-test:
     name: Flutter Test
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -24,22 +35,71 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
           cache: true
 
-      - name: Show pubspec
-        run: cat pubspec.yaml
-        working-directory: mobile/menugen_app
-
       - name: Install dependencies
-        run: flutter pub get -v
-        working-directory: mobile/menugen_app
-
-      - name: List lib
-        run: ls -la lib/core/api/ || echo "NOT FOUND"
+        run: flutter pub get
         working-directory: mobile/menugen_app
 
       - name: Run tests
         run: flutter test --coverage
         working-directory: mobile/menugen_app
+
+  build-apk:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    needs: flutter-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Resolve API_BASE_URL
+        id: api
+        run: |
+          URL="${{ github.event.inputs.api_base_url }}"
+          if [ -z "$URL" ]; then URL="${{ env.DEFAULT_API_BASE_URL }}"; fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Using API_BASE_URL=$URL"
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: mobile/menugen_app
+
+      - name: Build debug APK
+        env:
+          API_BASE_URL: ${{ steps.api.outputs.url }}
+        run: |
+          flutter build apk --debug \
+            --dart-define=API_BASE_URL=$API_BASE_URL \
+            --build-number=${{ github.run_number }}
+        working-directory: mobile/menugen_app
+
+      - name: Rename APK with build number + commit
+        run: |
+          SRC=mobile/menugen_app/build/app/outputs/flutter-apk/app-debug.apk
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          DEST=mobile/menugen_app/build/app/outputs/flutter-apk/menugen-debug-${{ github.run_number }}-$SHORT_SHA.apk
+          cp "$SRC" "$DEST"
+          echo "ARTIFACT_PATH=$DEST" >> $GITHUB_ENV
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: menugen-debug-apk-${{ github.run_number }}
+          path: mobile/menugen_app/build/app/outputs/flutter-apk/menugen-debug-*.apk
+          retention-days: 14
+          if-no-files-found: error
