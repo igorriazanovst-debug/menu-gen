@@ -6,7 +6,6 @@ Missing lines:
   42  MenuGeneratorError.to_response (базовый)
   77  EmptyRolePoolError: reason_hint включён в сообщение
 """
-import pytest
 
 from apps.menu.exceptions import EmptyRolePoolError, MenuGeneratorError
 
@@ -33,16 +32,16 @@ class TestEmptyRolePoolError:
         assert "(день 1)" in str(err)
 
     def test_with_member_name(self):
-        err = EmptyRolePoolError(
-            role="vegetable", meal_slot="dinner", day_offset=2, member_name="Маша"
-        )
+        err = EmptyRolePoolError(role="vegetable", meal_slot="dinner", day_offset=2, member_name="Маша")
         assert " для Маша" in str(err)
         assert "(день 3)" in str(err)
 
     def test_with_reason_hint(self):
         # Покрывает строку 77: if reason_hint
         err = EmptyRolePoolError(
-            role="grain", meal_slot="breakfast", day_offset=0,
+            role="grain",
+            meal_slot="breakfast",
+            day_offset=0,
             reason_hint="Все рецепты вызывают аллергию.",
         )
         assert "Все рецепты вызывают аллергию." in str(err)
@@ -58,7 +57,10 @@ class TestEmptyRolePoolError:
 
     def test_to_response_with_details(self):
         err = EmptyRolePoolError(
-            role="protein", meal_slot="lunch", day_offset=1, member_name="Папа",
+            role="protein",
+            meal_slot="lunch",
+            day_offset=1,
+            member_name="Папа",
         )
         resp = err.to_response()
         assert resp["error"] == "empty_role_pool"

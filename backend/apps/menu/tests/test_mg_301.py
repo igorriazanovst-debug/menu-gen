@@ -6,6 +6,7 @@ MG-301: тесты метода тарелки.
 - при пустом пуле роли API возвращает 400 + читаемое сообщение
 - AuditLog содержит запись "menu.generate.empty_role_pool"
 """
+
 # MG_301_V_tests
 import datetime
 
@@ -47,11 +48,11 @@ def setup_full(db):
     _attach_premium(family)
     member = FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
     for i in range(5):
-        _mk_recipe(f"Курица {i}",   "protein")
-        _mk_recipe(f"Гречка {i}",   "grain")
-        _mk_recipe(f"Салат {i}",    "vegetable")
-        _mk_recipe(f"Яблоко {i}",   "fruit")
-        _mk_recipe(f"Йогурт {i}",   "dairy")
+        _mk_recipe(f"Курица {i}", "protein")
+        _mk_recipe(f"Гречка {i}", "grain")
+        _mk_recipe(f"Салат {i}", "vegetable")
+        _mk_recipe(f"Яблоко {i}", "fruit")
+        _mk_recipe(f"Йогурт {i}", "dairy")
     return user, family, member
 
 
@@ -166,6 +167,7 @@ class TestEmptyRolePool:
     def test_no_menu_saved_on_error(self, client, db):
         """При ошибке меню не должно появиться в БД."""
         from apps.menu.models import Menu
+
         user = User.objects.create_user(email="rollback@example.com", name="Ролл", password="pass1234")
         family = Family.objects.create(owner=user, name="Ролл-семья")
         _attach_premium(family)
@@ -183,11 +185,14 @@ class TestEmptyRolePool:
         assert after == before
 
 
+from datetime import timedelta as _MG606_td  # noqa: E402
+from decimal import Decimal as _MG606_D  # noqa: E402
+
+from django.utils import timezone as _MG606_tz  # noqa: E402
+
 # MG-606.C: автоматический Premium для тестовых семей
-from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
-from decimal import Decimal as _MG606_D
-from django.utils import timezone as _MG606_tz
-from datetime import timedelta as _MG606_td
+from apps.subscriptions.models import Subscription as _MG606_Sub  # noqa: E402
+from apps.subscriptions.models import SubscriptionPlan as _MG606_Plan  # noqa: E402
 
 
 def _attach_premium(family):

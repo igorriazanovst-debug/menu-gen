@@ -18,17 +18,15 @@ class ProfileSerializer(serializers.Serializer):
     calorie_target = serializers.IntegerField(read_only=True)
     # MG-203: targets + meal plan
     protein_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
-    fat_target_g     = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
-    carb_target_g    = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
-    fiber_target_g   = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
-    meal_plan_type   = serializers.CharField(read_only=True)
+    fat_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
+    carb_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
+    fiber_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, read_only=True)
+    meal_plan_type = serializers.CharField(read_only=True)
 
     # MG_504_V_family_profile
     bedtime_hour = serializers.IntegerField(read_only=True, allow_null=True)
     cheat_meal_interval = serializers.IntegerField(read_only=True)
     last_cheat_meal_date = serializers.DateField(read_only=True, allow_null=True)
-
-
 
     # MG_205UI_V_family_ser = 1
     targets_meta = serializers.SerializerMethodField()
@@ -36,27 +34,22 @@ class ProfileSerializer(serializers.Serializer):
     def get_targets_meta(self, obj):
         from apps.users.models import ProfileTargetAudit
         from apps.users.serializers import TARGET_FIELDS_MG205UI
+
         if not obj or not getattr(obj, "pk", None):
             return {}
         out = {}
         for f in TARGET_FIELDS_MG205UI:
-            last = (
-                ProfileTargetAudit.objects.filter(profile=obj, field=f)
-                .order_by("-at")
-                .first()
-            )
+            last = ProfileTargetAudit.objects.filter(profile=obj, field=f).order_by("-at").first()
             if last is None:
                 out[f] = {"source": "auto", "by_user": None, "at": None}
             else:
                 out[f] = {
                     "source": last.source,
-                    "by_user": (
-                        {"id": last.by_user.id, "name": last.by_user.name}
-                        if last.by_user_id else None
-                    ),
+                    "by_user": ({"id": last.by_user.id, "name": last.by_user.name} if last.by_user_id else None),
                     "at": last.at.isoformat() if last.at else None,
                 }
         return out
+
 
 class FamilyMemberSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
@@ -117,13 +110,9 @@ class RemoveMemberSerializer(serializers.Serializer):
 
 class ProfileUpdateSerializer(serializers.Serializer):
     birth_year = serializers.IntegerField(required=False, allow_null=True)
-    gender = serializers.ChoiceField(
-        choices=["male", "female", "other"], required=False, allow_null=True
-    )
+    gender = serializers.ChoiceField(choices=["male", "female", "other"], required=False, allow_null=True)
     height_cm = serializers.IntegerField(required=False, allow_null=True)
-    weight_kg = serializers.DecimalField(
-        max_digits=5, decimal_places=1, required=False, allow_null=True
-    )
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=1, required=False, allow_null=True)
     activity_level = serializers.ChoiceField(
         choices=["sedentary", "light", "moderate", "active", "very_active"],
         required=False,
@@ -134,32 +123,16 @@ class ProfileUpdateSerializer(serializers.Serializer):
     )
     calorie_target = serializers.IntegerField(required=False, allow_null=True)
     # MG-203: targets + meal plan (write)
-    protein_target_g = serializers.DecimalField(
-        max_digits=6, decimal_places=1, required=False, allow_null=True
-    )
-    fat_target_g = serializers.DecimalField(
-        max_digits=6, decimal_places=1, required=False, allow_null=True
-    )
-    carb_target_g = serializers.DecimalField(
-        max_digits=6, decimal_places=1, required=False, allow_null=True
-    )
-    fiber_target_g = serializers.DecimalField(
-        max_digits=6, decimal_places=1, required=False, allow_null=True
-    )
-    meal_plan_type = serializers.ChoiceField(
-        choices=["3", "5"], required=False, allow_null=True
-    )
+    protein_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, required=False, allow_null=True)
+    fat_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, required=False, allow_null=True)
+    carb_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, required=False, allow_null=True)
+    fiber_target_g = serializers.DecimalField(max_digits=6, decimal_places=1, required=False, allow_null=True)
+    meal_plan_type = serializers.ChoiceField(choices=["3", "5"], required=False, allow_null=True)
 
     # MG_504_V_family_update
-    bedtime_hour = serializers.IntegerField(
-        required=False, allow_null=True, min_value=0, max_value=23
-    )
-    cheat_meal_interval = serializers.IntegerField(
-        required=False, min_value=1
-    )
-    last_cheat_meal_date = serializers.DateField(
-        required=False, allow_null=True
-    )
+    bedtime_hour = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=23)
+    cheat_meal_interval = serializers.IntegerField(required=False, min_value=1)
+    last_cheat_meal_date = serializers.DateField(required=False, allow_null=True)
 
 
 # MG_205_V_family_ser = 1
@@ -179,8 +152,8 @@ class FamilyMemberUpdateSerializer(serializers.Serializer):
     profile = ProfileUpdateSerializer(required=False)
 
     def update(self, instance, validated_data):
-        from apps.users.audit import record_target_change
         from apps.specialists.permissions import is_verified_specialist_for_user
+        from apps.users.audit import record_target_change
 
         user = instance.user
         request = self.context.get("request")

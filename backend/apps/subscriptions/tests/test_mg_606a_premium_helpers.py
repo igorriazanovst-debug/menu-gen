@@ -3,13 +3,13 @@
 Идея: ввести хелпер «премиум был» и permission «GET — всем кто платил,
 write — только активным». Подписки cancelled / одинокий trial → read запрещён.
 """
+
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
 from django.utils import timezone
-from rest_framework import permissions as drf_permissions
 
 from apps.family.models import Family, FamilyMember
 from apps.subscriptions.models import Subscription, SubscriptionPlan
@@ -21,8 +21,8 @@ from apps.subscriptions.permissions import (
 )
 from apps.users.models import User
 
-
 # ─── фикстуры ───────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def plan_premium(db):
@@ -66,6 +66,7 @@ def _sub(family, plan, status, expires_in_days=30):
 
 # ─── 1. has_active_premium ──────────────────────────────────────────────────
 
+
 class TestHasActivePremium:
     def test_none_family(self, db):
         assert has_active_premium(None) is False
@@ -103,6 +104,7 @@ class TestHasActivePremium:
 
 
 # ─── 2. has_ever_had_premium ────────────────────────────────────────────────
+
 
 class TestHasEverHadPremium:
     def test_none_family(self, db):
@@ -147,6 +149,7 @@ class TestHasEverHadPremium:
 
 
 # ─── 3. IsFamilyPremiumOrReadOnly ───────────────────────────────────────────
+
 
 def _req(user, method="GET"):
     r = MagicMock()
@@ -200,6 +203,7 @@ class TestIsFamilyPremiumOrReadOnly:
 
 
 # ─── 4. IsFamilyPremium (legacy) ────────────────────────────────────────────
+
 
 class TestIsFamilyPremiumLegacy:
     perm = IsFamilyPremium()

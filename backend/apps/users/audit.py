@@ -7,6 +7,7 @@ record_target_change():
 
 Используется из nutrition.fill_profile_targets и из serializers (PATCH).
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -50,7 +51,7 @@ def record_target_change(
     nv = _to_decimal(new_value)
     ov = _to_decimal(old_value)
 
-    pta = ProfileTargetAudit.objects.create(
+    ProfileTargetAudit.objects.create(
         profile=profile,
         field=field,
         source=source,
@@ -90,11 +91,7 @@ def get_field_source(profile, field: str) -> str:
     """
     from .models import ProfileTargetAudit
 
-    last = (
-        ProfileTargetAudit.objects.filter(profile=profile, field=field)
-        .order_by("-at")
-        .first()
-    )
+    last = ProfileTargetAudit.objects.filter(profile=profile, field=field).order_by("-at").first()
     return last.source if last else "auto"
 
 

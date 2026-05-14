@@ -110,7 +110,6 @@ def _bootstrap_user(user):
         pass
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # MG_205UI_V_views = 1
 # История правок целевых КБЖУ + сброс одного поля к авторасчёту.
@@ -128,11 +127,13 @@ TARGET_FIELD_CHOICES = (
 def _validate_target_field(field: str):
     if field not in TARGET_FIELD_CHOICES:
         from rest_framework.exceptions import ValidationError
+
         raise ValidationError({"field": f"Допустимые значения: {list(TARGET_FIELD_CHOICES)}"})
 
 
 class TargetHistoryView(APIView):
     """GET /users/me/targets/{field}/history/ — история правок одного поля."""
+
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, field: str):
@@ -154,6 +155,7 @@ class TargetHistoryView(APIView):
 
 class TargetResetView(APIView):
     """POST /users/me/targets/{field}/reset/ — пересчитать одно поле и снять lock."""
+
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request, field: str):

@@ -8,10 +8,10 @@
 - trial → POST 201 (фича работает в триале), GET 403 (нет «реального опыта»)
 - история active→expired → GET 200, POST 403
 """
+
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -20,8 +20,8 @@ from apps.family.models import Family, FamilyMember
 from apps.subscriptions.models import Subscription, SubscriptionPlan
 from apps.users.models import User
 
-
 # ─── фабрики ───────────────────────────────────────────────────────────────
+
 
 def _user(email):
     return User.objects.create_user(email=email, name="U", password="x12345")
@@ -81,6 +81,7 @@ def _post_payload():
 
 # ─── 1. ACTIVE ─────────────────────────────────────────────────────────────
 
+
 class TestActivePremium:
     def test_get_list_ok(self, db):
         family, head, _ = _family()
@@ -118,6 +119,7 @@ class TestActivePremium:
 
 
 # ─── 2. EXPIRED (active-по-статусу, истёкший по дате) ──────────────────────
+
 
 class TestExpiredPremium:
     """Самая важная группа: read остаётся, write закрыт."""
@@ -177,6 +179,7 @@ class TestExpiredPremium:
 
 # ─── 3. CANCELLED only / no sub ─────────────────────────────────────────────
 
+
 class TestNeverHadPremium:
     def test_no_sub_get_forbidden(self, db):
         family, head, _ = _family()
@@ -203,6 +206,7 @@ class TestNeverHadPremium:
 
 # ─── 4. TRIAL только ────────────────────────────────────────────────────────
 
+
 class TestTrialOnly:
     """trial: write можно (фича включена пока триал жив), но read-после-истечения нет — это не «реальный опыт»."""
 
@@ -221,6 +225,7 @@ class TestTrialOnly:
 
 
 # ─── 5. История: active → истёк по дате ────────────────────────────────────
+
 
 class TestHistoryActiveThenExpired:
     """Реальная история: был active, истёк, новой подписки нет. read должен сохраниться."""

@@ -4,6 +4,7 @@ IsDiaryEntryOwner — редактировать/удалять может то�
 (member которой = FamilyMember текущего user-а).
 Просмотр (SAFE_METHODS) уже ограничен через get_queryset.
 """
+
 from rest_framework import permissions
 
 from apps.family.models import FamilyMember
@@ -18,6 +19,4 @@ class IsDiaryEntryOwner(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
         # Владелец = FamilyMember текущего юзера == obj.member
-        return FamilyMember.objects.filter(
-            user=request.user, pk=obj.member_id
-        ).exists()
+        return FamilyMember.objects.filter(user=request.user, pk=obj.member_id).exists()

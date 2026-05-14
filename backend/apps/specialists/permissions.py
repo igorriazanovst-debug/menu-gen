@@ -8,6 +8,7 @@ SpecialistCanEditClientProfile — текущий user является verified
 is_verified_specialist_for_user(actor, target_user) — хелпер для
 определения source='specialist' в serializers.
 """
+
 from __future__ import annotations
 
 from rest_framework import permissions
@@ -41,9 +42,7 @@ def is_verified_specialist_for_user(actor, target_user) -> bool:
     from apps.family.models import FamilyMember
     from apps.specialists.models import SpecialistAssignment
 
-    target_family_ids = list(
-        FamilyMember.objects.filter(user=target_user).values_list("family_id", flat=True)
-    )
+    target_family_ids = list(FamilyMember.objects.filter(user=target_user).values_list("family_id", flat=True))
     if not target_family_ids:
         return False
 

@@ -13,12 +13,13 @@
     * SAFE_METHODS (GET/HEAD/OPTIONS) → нужен has_ever_had_premium
     * write (POST/PATCH/PUT/DELETE)   → нужен has_active_premium
 """
+
 from django.utils import timezone
 from rest_framework import permissions
 
 from apps.family.models import FamilyMember
-from .models import Subscription
 
+from .models import Subscription
 
 PREMIUM_PLAN_CODE = "premium"
 PREMIUM_ACTIVE_STATUSES = (Subscription.Status.ACTIVE, Subscription.Status.TRIAL)
@@ -59,11 +60,7 @@ def get_user_family(user):
     """Возвращает Family пользователя (через FamilyMember) или None."""
     if not user or not user.is_authenticated:
         return None
-    membership = (
-        FamilyMember.objects.select_related("family")
-        .filter(user=user)
-        .first()
-    )
+    membership = FamilyMember.objects.select_related("family").filter(user=user).first()
     return membership.family if membership else None
 
 

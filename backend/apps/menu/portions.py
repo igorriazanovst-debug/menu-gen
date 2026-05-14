@@ -11,14 +11,17 @@ MG-304: расчёт суточной нормы овощей+фруктов в 
   2) Recipe.povar_raw.dish_weight_g_calc / servings_normalized (или servings)
   3) DEFAULT_PORTION_G_FALLBACK = 200 г (страховка для редких пустых)
 """
+
 # MG_304_V_portions
 from __future__ import annotations
+
 from datetime import date
 from typing import Optional
 
-ADULT_PORTION_G       = 150.0
-PORTIONS_PER_DAY      = 5
+ADULT_PORTION_G = 150.0
+PORTIONS_PER_DAY = 5
 DEFAULT_PORTION_G_FALLBACK = 200.0
+
 
 # плавная коррекция нормы по возрасту (множитель к ADULT_PORTION_G * 5)
 # < 4 года   → 0.40

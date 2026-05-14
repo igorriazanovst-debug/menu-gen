@@ -10,6 +10,7 @@
 - меню не существует → 404
 - нет Premium → 403
 """
+
 from datetime import date, timedelta
 from decimal import Decimal
 

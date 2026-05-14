@@ -8,9 +8,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
+
 # MG_605D_V_views: импорт MenuItem для import-from-menu
 from apps.menu.models import Menu, MenuItem
-from apps.subscriptions.permissions import IsFamilyPremium, IsFamilyPremiumOrReadOnly
+from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
 from .models import DiaryEntry, WaterLog
 from .permissions import IsDiaryEntryOwner
@@ -46,11 +47,7 @@ def _resolve_target_member(request, current_member):
         raise NotFound("Участник не найден.")
     if target_id == current_member.id:
         return current_member
-    target = (
-        FamilyMember.objects.select_related("family")
-        .filter(pk=target_id, family=current_member.family)
-        .first()
-    )
+    target = FamilyMember.objects.select_related("family").filter(pk=target_id, family=current_member.family).first()
     if target is None:
         # Вне области видимости — не светим существование
         raise NotFound("Участник не найден.")
@@ -83,11 +80,7 @@ class DiaryListCreateView(generics.ListCreateAPIView):
         if not current:
             return DiaryEntry.objects.none()
         target = self._target_member()
-        qs = (
-            DiaryEntry.objects.filter(member=target)
-            .select_related("recipe")
-            .order_by("date", "meal_type")
-        )
+        qs = DiaryEntry.objects.filter(member=target).select_related("recipe").order_by("date", "meal_type")
         day = self.request.query_params.get("date")
         if day:
             qs = qs.filter(date=day)
@@ -131,6 +124,7 @@ class DiaryEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
     Видеть чужие записи: HEAD — все в своей семье, MEMBER — только свои.
     Редактировать/удалять может только владелец записи.
     """
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly, IsDiaryEntryOwner]
     http_method_names = ["get", "patch", "delete", "head", "options"]
     serializer_class = DiaryEntrySerializer
@@ -205,6 +199,7 @@ class DiaryStatsView(APIView):
                (вручную добавленное всегда учитывается в факте; плановое — только после галочки)
     - total:   синоним actual (для UI прогресс-бара)
     """
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(
@@ -225,9 +220,7 @@ class DiaryStatsView(APIView):
         date_from = request.query_params.get("from", str(date.today()))
         date_to = request.query_params.get("to", str(date.today()))
 
-        entries = DiaryEntry.objects.filter(
-            member=target, date__gte=date_from, date__lte=date_to
-        )
+        entries = DiaryEntry.objects.filter(member=target, date__gte=date_from, date__lte=date_to)
 
         stats: dict = {}
         for entry in entries:
@@ -269,6 +262,7 @@ class DiaryImportFromMenuView(APIView):
     - Ответ 200: {created: N, skipped: M, entries: [...]} (полный список DiaryEntry
       для этого меню+target, включая ранее существующие, чтобы UI мог сразу отрисовать).
     """
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(
@@ -298,11 +292,9 @@ class DiaryImportFromMenuView(APIView):
             return Response({"detail": "Меню не найдено."}, status=status.HTTP_404_NOT_FOUND)
 
         # MenuItem'ы: только те, что для target (или общие — member IS NULL).
-        items_qs = MenuItem.objects.filter(menu=menu).filter(
-            member__in=[target]
-        ).select_related("recipe") | MenuItem.objects.filter(
-            menu=menu, member__isnull=True
-        ).select_related("recipe")
+        items_qs = MenuItem.objects.filter(menu=menu).filter(member__in=[target]).select_related(
+            "recipe"
+        ) | MenuItem.objects.filter(menu=menu, member__isnull=True).select_related("recipe")
         items_qs = items_qs.distinct()
 
         created_count = 0

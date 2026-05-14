@@ -30,8 +30,14 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
         # MG_605B_V_serializers: план-факт
         # MG-605.C: используется и для POST, и для PATCH (через partial=True)
         fields = (
-            "date", "meal_type", "recipe", "custom_name",
-            "nutrition", "quantity", "planned_menu_item", "is_eaten",
+            "date",
+            "meal_type",
+            "recipe",
+            "custom_name",
+            "nutrition",
+            "quantity",
+            "planned_menu_item",
+            "is_eaten",
         )
 
     def validate(self, attrs):
@@ -67,6 +73,7 @@ class DiaryStatsDaySerializer(serializers.Serializer):
                (вручную добавленное считаем фактом сразу; плановое — только после галочки)
     - total:   синоним actual (для UI прогресс-бара)
     """
+
     date = serializers.DateField()
     planned = _NutritionBucketSerializer()
     actual = _NutritionBucketSerializer()
@@ -79,6 +86,7 @@ DiaryStatsSerializer = DiaryStatsDaySerializer
 
 class DiaryImportSerializer(serializers.Serializer):
     """MG-605.D: query-params для POST /diary/import-from-menu/."""
+
     menu_id = serializers.IntegerField()
     date = serializers.DateField()
 

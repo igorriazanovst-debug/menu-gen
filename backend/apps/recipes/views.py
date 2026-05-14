@@ -4,31 +4,25 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from django.db.models import Count
 from .filters import RecipeFilter
 from .models import DeletedRecipe, Recipe, RecipeAuthor
 from .permissions import IsAuthorOrAdmin, IsRecipeAuthorRole
-from .serializers import (
-    RecipeAuthorSerializer,
-    RecipeDetailSerializer,
-    RecipeListSerializer,
-    RecipeWriteSerializer,
-)
+from .serializers import RecipeAuthorSerializer, RecipeDetailSerializer, RecipeListSerializer, RecipeWriteSerializer
 
 
 class RecipeCountryListView(generics.ListAPIView):
     """GET /recipes/countries/ — список стран из БД."""
+
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, *args, **kwargs):
         countries = (
-            Recipe.objects
-            .filter(is_published=True)
+            Recipe.objects.filter(is_published=True)
             .exclude(country__isnull=True)
-            .exclude(country='')
-            .values_list('country', flat=True)
+            .exclude(country="")
+            .values_list("country", flat=True)
             .distinct()
-            .order_by('country')
+            .order_by("country")
         )
         return Response(sorted(set(c.strip() for c in countries if c and c.strip())))
 
@@ -74,28 +68,26 @@ class RecipeViewSet(ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-
     def destroy(self, request, *args, **kwargs):
         recipe = self.get_object()
-        import json
-        from django.forms.models import model_to_dict
+
         snapshot = {
-            "id":          recipe.id,
-            "title":       recipe.title,
-            "cook_time":   recipe.cook_time,
-            "servings":    recipe.servings,
+            "id": recipe.id,
+            "title": recipe.title,
+            "cook_time": recipe.cook_time,
+            "servings": recipe.servings,
             "ingredients": recipe.ingredients,
-            "steps":       recipe.steps,
-            "nutrition":   recipe.nutrition,
-            "categories":  recipe.categories,
-            "image_url":   recipe.image_url,
-            "video_url":   recipe.video_url,
-            "source_url":  recipe.source_url,
-            "country":     recipe.country,
-            "is_custom":   recipe.is_custom,
-            "is_published":recipe.is_published,
-            "created_at":  str(recipe.created_at),
-            "updated_at":  str(recipe.updated_at),
+            "steps": recipe.steps,
+            "nutrition": recipe.nutrition,
+            "categories": recipe.categories,
+            "image_url": recipe.image_url,
+            "video_url": recipe.video_url,
+            "source_url": recipe.source_url,
+            "country": recipe.country,
+            "is_custom": recipe.is_custom,
+            "is_published": recipe.is_published,
+            "created_at": str(recipe.created_at),
+            "updated_at": str(recipe.updated_at),
         }
         DeletedRecipe.objects.create(
             original_id=recipe.id,

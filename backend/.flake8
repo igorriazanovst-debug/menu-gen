@@ -2,6 +2,7 @@
 max-line-length = 120
 exclude =
     migrations,
+    scripts,
     __pycache__,
     .git,
     .venv,

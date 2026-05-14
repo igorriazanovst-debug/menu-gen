@@ -46,13 +46,13 @@ class MenuItem(models.Model):
         SNACK = "snack", "Перекус"
 
     class ComponentRole(models.TextChoices):
-        PROTEIN   = "protein",   "Белок"
-        GRAIN     = "grain",     "Крупа/гарнир"
+        PROTEIN = "protein", "Белок"
+        GRAIN = "grain", "Крупа/гарнир"
         VEGETABLE = "vegetable", "Овощи"
-        FRUIT     = "fruit",     "Фрукт"
-        DAIRY     = "dairy",     "Молочное"
-        OIL       = "oil",       "Масло"
-        OTHER     = "other",     "Прочее"
+        FRUIT = "fruit", "Фрукт"
+        DAIRY = "dairy", "Молочное"
+        OIL = "oil", "Масло"
+        OTHER = "other", "Прочее"
 
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name="items")
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
@@ -113,11 +113,11 @@ class ShoppingItem(models.Model):
 
 
 class DeletedMenu(models.Model):
-    menu_id     = models.IntegerField(db_index=True)
-    family      = models.ForeignKey("family.Family", on_delete=models.CASCADE, related_name="deleted_menus")
-    deleted_by  = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True)
-    data        = models.JSONField()
-    deleted_at  = models.DateTimeField(auto_now_add=True)
+    menu_id = models.IntegerField(db_index=True)
+    family = models.ForeignKey("family.Family", on_delete=models.CASCADE, related_name="deleted_menus")
+    deleted_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True)
+    data = models.JSONField()
+    deleted_at = models.DateTimeField(auto_now_add=True)
     purge_after = models.DateTimeField()
 
     class Meta:

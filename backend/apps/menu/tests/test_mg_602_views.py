@@ -25,14 +25,8 @@ from rest_framework.test import APIClient
 
 from apps.family.models import Family, FamilyMember
 from apps.fridge.models import FridgeItem
-from apps.menu.models import (
-    DeletedMenu,
-    Menu,
-    MenuItem,
-    ShoppingItem,
-    ShoppingList,
-)
 from apps.menu import views as menu_views
+from apps.menu.models import DeletedMenu, Menu, MenuItem, ShoppingList
 from apps.recipes.models import Recipe
 from apps.users.models import User
 
@@ -44,17 +38,13 @@ def client():
 
 
 def _mk_user(email="u@example.com", name="Юзер", user_type="user", **extra):
-    return User.objects.create_user(
-        email=email, name=name, password="x12345", user_type=user_type, **extra
-    )
+    return User.objects.create_user(email=email, name=name, password="x12345", user_type=user_type, **extra)
 
 
 def _mk_family(user, role=None):
     fam = Family.objects.create(owner=user, name=f"Семья {user.name}")
     _attach_premium(fam)
-    member = FamilyMember.objects.create(
-        family=fam, user=user, role=role or FamilyMember.Role.HEAD
-    )
+    member = FamilyMember.objects.create(family=fam, user=user, role=role or FamilyMember.Role.HEAD)
     return fam, member
 
 
@@ -76,8 +66,7 @@ def setup(db):
     user = _mk_user(email="m@example.com", name="Мама")
     fam, member = _mk_family(user)
     for i in range(30):
-        _mk_recipe(title=f"Рецепт {i}",
-                   nutrition={"calories": {"value": str(300 + i * 10), "unit": "ккал"}})
+        _mk_recipe(title=f"Рецепт {i}", nutrition={"calories": {"value": str(300 + i * 10), "unit": "ккал"}})
     return user, fam, member
 
 
@@ -115,17 +104,21 @@ class TestHelpers:
         admin = _mk_user(email="ad@x.com", name="AD", user_type="admin")
         owner = _mk_user(email="ow@x.com", name="OW")
         fam, _ = _mk_family(owner)
-        menu = Menu.objects.create(family=fam, creator_id=owner.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=owner.id,
+            period_days=1,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today(),
+        )
         assert menu_views._can_delete_menu(admin, fam, menu) is True
 
     def test_can_delete_menu_creator(self, db):
         u = _mk_user(email="cr@x.com", name="CR")
         fam, _ = _mk_family(u)
-        menu = Menu.objects.create(family=fam, creator_id=u.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
+        menu = Menu.objects.create(
+            family=fam, creator_id=u.id, period_days=1, start_date=datetime.date.today(), end_date=datetime.date.today()
+        )
         assert menu_views._can_delete_menu(u, fam, menu) is True
 
     def test_can_delete_menu_head_not_creator(self, db):
@@ -133,9 +126,13 @@ class TestHelpers:
         other = _mk_user(email="ot@x.com", name="OT")
         fam, _ = _mk_family(head)
         FamilyMember.objects.create(family=fam, user=other, role=FamilyMember.Role.MEMBER)
-        menu = Menu.objects.create(family=fam, creator_id=other.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=other.id,
+            period_days=1,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today(),
+        )
         assert menu_views._can_delete_menu(head, fam, menu) is True
 
     def test_can_delete_menu_member_not_creator_returns_false(self, db):
@@ -143,16 +140,22 @@ class TestHelpers:
         member = _mk_user(email="me@x.com", name="ME")
         fam, _ = _mk_family(head)
         FamilyMember.objects.create(family=fam, user=member, role=FamilyMember.Role.MEMBER)
-        menu = Menu.objects.create(family=fam, creator_id=head.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=head.id,
+            period_days=1,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today(),
+        )
         assert menu_views._can_delete_menu(member, fam, menu) is False
 
     def test_check_allergens_finds_match(self, db):
-        recipe = _mk_recipe(ingredients=[
-            {"name": "Молоко 3.2%", "quantity": "200", "unit": "мл"},
-            {"name": "Мука", "quantity": "100", "unit": "г"},
-        ])
+        recipe = _mk_recipe(
+            ingredients=[
+                {"name": "Молоко 3.2%", "quantity": "200", "unit": "мл"},
+                {"name": "Мука", "quantity": "100", "unit": "г"},
+            ]
+        )
         found = menu_views._check_allergens(recipe, {"молоко"})
         assert "молоко" in found
 
@@ -161,10 +164,12 @@ class TestHelpers:
         assert menu_views._check_allergens(recipe, set()) == []
 
     def test_check_allergens_no_dup(self, db):
-        recipe = _mk_recipe(ingredients=[
-            {"name": "Молоко", "quantity": "100", "unit": "мл"},
-            {"name": "Молоко сгущ.", "quantity": "50", "unit": "г"},
-        ])
+        recipe = _mk_recipe(
+            ingredients=[
+                {"name": "Молоко", "quantity": "100", "unit": "мл"},
+                {"name": "Молоко сгущ.", "quantity": "50", "unit": "г"},
+            ]
+        )
         found = menu_views._check_allergens(recipe, {"молоко"})
         assert found.count("молоко") == 1
 
@@ -198,12 +203,11 @@ class TestHelpers:
     def test_menu_snapshot_with_items(self, db):
         u = _mk_user(email="sn@x.com", name="SN")
         fam, member = _mk_family(u)
-        menu = Menu.objects.create(family=fam, creator_id=u.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
+        menu = Menu.objects.create(
+            family=fam, creator_id=u.id, period_days=1, start_date=datetime.date.today(), end_date=datetime.date.today()
+        )
         recipe = _mk_recipe()
-        MenuItem.objects.create(menu=menu, recipe=recipe, member=member,
-                                meal_type="breakfast", day_offset=0)
+        MenuItem.objects.create(menu=menu, recipe=recipe, member=member, meal_type="breakfast", day_offset=0)
         snap = menu_views._menu_snapshot(menu)
         assert snap["period_days"] == 1
         assert len(snap["items"]) == 1
@@ -221,26 +225,24 @@ class TestMenuGenerateNegative:
         # MG-606.C: нет семьи → нет Premium → 403 от gate (раньше: 404 из view).
         u = _mk_user(email="nf@x.com", name="NF")
         client.force_authenticate(u)
-        resp = client.post(reverse("menu-generate"),
-                           {"period_days": 1, "start_date": str(datetime.date.today())},
-                           format="json")
+        resp = client.post(
+            reverse("menu-generate"), {"period_days": 1, "start_date": str(datetime.date.today())}, format="json"
+        )
         assert resp.status_code == 403
 
     def test_with_max_cook_time_filter(self, client, setup):
         user, _, _ = setup
         Recipe.objects.all().update(cook_time=20)
         client.force_authenticate(user)
-        resp = client.post(reverse("menu-generate"),
-                           {"period_days": 1, "max_cook_time": 30},
-                           format="json")
+        resp = client.post(reverse("menu-generate"), {"period_days": 1, "max_cook_time": 30}, format="json")
         assert resp.status_code == 201
 
     def test_with_calorie_min_max_filters(self, client, setup):
         user, _, _ = setup
         client.force_authenticate(user)
-        resp = client.post(reverse("menu-generate"),
-                           {"period_days": 1, "calorie_min": 100, "calorie_max": 5000},
-                           format="json")
+        resp = client.post(
+            reverse("menu-generate"), {"period_days": 1, "calorie_min": 100, "calorie_max": 5000}, format="json"
+        )
         assert resp.status_code == 201
 
 
@@ -310,9 +312,13 @@ class TestMenuDelete:
         fam, _ = _mk_family(head)
         FamilyMember.objects.create(family=fam, user=member, role=FamilyMember.Role.MEMBER)
         # Меню создал head, а удалить пытается member (не creator, не head)
-        menu = Menu.objects.create(family=fam, creator_id=head.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=head.id,
+            period_days=1,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today(),
+        )
         client.force_authenticate(member)
         resp = client.delete(reverse("menu-delete", args=[menu.id]))
         assert resp.status_code == 403
@@ -380,10 +386,16 @@ class TestDeletedAndRestore:
                 "status": "active",
                 "filters_used": {},
                 "items": [
-                    {"recipe_id": 99999, "member_id": member.id,
-                     "meal_type": "breakfast", "day_offset": 0,
-                     "meal_slot": "breakfast", "component_role": "other",
-                     "is_cheat_meal": False, "quantity": "1.0"},
+                    {
+                        "recipe_id": 99999,
+                        "member_id": member.id,
+                        "meal_type": "breakfast",
+                        "day_offset": 0,
+                        "meal_slot": "breakfast",
+                        "component_role": "other",
+                        "is_cheat_meal": False,
+                        "quantity": "1.0",
+                    },
                 ],
             },
             purge_after=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24),
@@ -399,11 +411,16 @@ class TestDeletedAndRestore:
         FamilyMember.objects.create(family=fam, user=member, role=FamilyMember.Role.MEMBER)
         # DeletedMenu, deleted_by=head, restore пробует member
         deleted = DeletedMenu.objects.create(
-            menu_id=1, family=fam, deleted_by=head,
-            data={"items": [], "period_days": 1,
-                  "start_date": str(datetime.date.today()),
-                  "end_date": str(datetime.date.today()),
-                  "filters_used": {}},
+            menu_id=1,
+            family=fam,
+            deleted_by=head,
+            data={
+                "items": [],
+                "period_days": 1,
+                "start_date": str(datetime.date.today()),
+                "end_date": str(datetime.date.today()),
+                "filters_used": {},
+            },
             purge_after=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24),
         )
         client.force_authenticate(member)
@@ -420,8 +437,7 @@ class TestMenuItemSwap:
         # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="snf@x.com", name="SNF")
         client.force_authenticate(u)
-        resp = client.patch(reverse("menu-item-swap", args=[1, 1]),
-                            {"recipe_id": 1}, format="json")
+        resp = client.patch(reverse("menu-item-swap", args=[1, 1]), {"recipe_id": 1}, format="json")
         assert resp.status_code == 403
 
     def test_swap_no_permission_403(self, client, db):
@@ -430,21 +446,22 @@ class TestMenuItemSwap:
         fam, head_m = _mk_family(head)
         FamilyMember.objects.create(family=fam, user=member, role=FamilyMember.Role.MEMBER)
         recipe = _mk_recipe()
-        menu = Menu.objects.create(family=fam, creator_id=head.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
-        item = MenuItem.objects.create(menu=menu, recipe=recipe, member=head_m,
-                                       meal_type="breakfast", day_offset=0)
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=head.id,
+            period_days=1,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today(),
+        )
+        item = MenuItem.objects.create(menu=menu, recipe=recipe, member=head_m, meal_type="breakfast", day_offset=0)
         client.force_authenticate(member)
-        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]),
-                            {"recipe_id": recipe.id}, format="json")
+        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]), {"recipe_id": recipe.id}, format="json")
         assert resp.status_code == 403
 
     def test_swap_menu_not_found(self, client, setup):
         user, _, _ = setup
         client.force_authenticate(user)
-        resp = client.patch(reverse("menu-item-swap", args=[99999, 1]),
-                            {"recipe_id": 1}, format="json")
+        resp = client.patch(reverse("menu-item-swap", args=[99999, 1]), {"recipe_id": 1}, format="json")
         assert resp.status_code == 404
 
     def test_swap_recipe_not_found(self, client, setup):
@@ -453,8 +470,7 @@ class TestMenuItemSwap:
         gen = client.post(reverse("menu-generate"), {"period_days": 1}, format="json")
         menu_id = gen.data["id"]
         item_id = gen.data["items"][0]["id"]
-        resp = client.patch(reverse("menu-item-swap", args=[menu_id, item_id]),
-                            {"recipe_id": 99999}, format="json")
+        resp = client.patch(reverse("menu-item-swap", args=[menu_id, item_id]), {"recipe_id": 99999}, format="json")
         assert resp.status_code == 404
 
     def test_swap_different_food_group_400(self, client, db):
@@ -462,51 +478,51 @@ class TestMenuItemSwap:
         fam, member = _mk_family(u)
         recipe_a = _mk_recipe(title="Овощи", food_group="vegetable")
         recipe_b = _mk_recipe(title="Мясо", food_group="protein")
-        menu = Menu.objects.create(family=fam, creator_id=u.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
-        item = MenuItem.objects.create(menu=menu, recipe=recipe_a, member=member,
-                                       meal_type="lunch", day_offset=0)
+        menu = Menu.objects.create(
+            family=fam, creator_id=u.id, period_days=1, start_date=datetime.date.today(), end_date=datetime.date.today()
+        )
+        item = MenuItem.objects.create(menu=menu, recipe=recipe_a, member=member, meal_type="lunch", day_offset=0)
         client.force_authenticate(u)
-        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]),
-                            {"recipe_id": recipe_b.id}, format="json")
+        resp = client.patch(
+            reverse("menu-item-swap", args=[menu.id, item.id]), {"recipe_id": recipe_b.id}, format="json"
+        )
         assert resp.status_code == 400
 
     def test_swap_calorie_min_warning(self, client, db):
         u = _mk_user(email="cm@x.com", name="CM")
         fam, member = _mk_family(u)
-        rec_a = _mk_recipe(title="A",
-                           nutrition={"calories": {"value": "500"}})
-        rec_b = _mk_recipe(title="B",
-                           nutrition={"calories": {"value": "10"}})
-        menu = Menu.objects.create(family=fam, creator_id=u.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today(),
-                                   filters_used={"calorie_min": 2000})
-        item = MenuItem.objects.create(menu=menu, recipe=rec_a, member=member,
-                                       meal_type="lunch", day_offset=0)
+        rec_a = _mk_recipe(title="A", nutrition={"calories": {"value": "500"}})
+        rec_b = _mk_recipe(title="B", nutrition={"calories": {"value": "10"}})
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=u.id,
+            period_days=1,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today(),
+            filters_used={"calorie_min": 2000},
+        )
+        item = MenuItem.objects.create(menu=menu, recipe=rec_a, member=member, meal_type="lunch", day_offset=0)
         client.force_authenticate(u)
-        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]),
-                            {"recipe_id": rec_b.id}, format="json")
+        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]), {"recipe_id": rec_b.id}, format="json")
         assert resp.status_code == 200
         assert resp.data["calorie_warning"] is True
 
     def test_swap_calorie_max_warning(self, client, db):
         u = _mk_user(email="cmax@x.com", name="CMAX")
         fam, member = _mk_family(u)
-        rec_a = _mk_recipe(title="A",
-                           nutrition={"calories": {"value": "300"}})
-        rec_b = _mk_recipe(title="B",
-                           nutrition={"calories": {"value": "9999"}})
-        menu = Menu.objects.create(family=fam, creator_id=u.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today(),
-                                   filters_used={"calorie_max": 1000})
-        item = MenuItem.objects.create(menu=menu, recipe=rec_a, member=member,
-                                       meal_type="lunch", day_offset=0)
+        rec_a = _mk_recipe(title="A", nutrition={"calories": {"value": "300"}})
+        rec_b = _mk_recipe(title="B", nutrition={"calories": {"value": "9999"}})
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=u.id,
+            period_days=1,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today(),
+            filters_used={"calorie_max": 1000},
+        )
+        item = MenuItem.objects.create(menu=menu, recipe=rec_a, member=member, meal_type="lunch", day_offset=0)
         client.force_authenticate(u)
-        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]),
-                            {"recipe_id": rec_b.id}, format="json")
+        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]), {"recipe_id": rec_b.id}, format="json")
         assert resp.status_code == 200
         assert resp.data["calorie_warning"] is True
 
@@ -514,17 +530,18 @@ class TestMenuItemSwap:
         u = _mk_user(email="alg@x.com", name="ALG", allergies=["орех"])
         fam, member = _mk_family(u)
         rec_a = _mk_recipe(title="A")
-        rec_b = _mk_recipe(title="B", ingredients=[
-            {"name": "Грецкий орех", "quantity": "50", "unit": "г"},
-        ])
-        menu = Menu.objects.create(family=fam, creator_id=u.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
-        item = MenuItem.objects.create(menu=menu, recipe=rec_a, member=member,
-                                       meal_type="lunch", day_offset=0)
+        rec_b = _mk_recipe(
+            title="B",
+            ingredients=[
+                {"name": "Грецкий орех", "quantity": "50", "unit": "г"},
+            ],
+        )
+        menu = Menu.objects.create(
+            family=fam, creator_id=u.id, period_days=1, start_date=datetime.date.today(), end_date=datetime.date.today()
+        )
+        item = MenuItem.objects.create(menu=menu, recipe=rec_a, member=member, meal_type="lunch", day_offset=0)
         client.force_authenticate(u)
-        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]),
-                            {"recipe_id": rec_b.id}, format="json")
+        resp = client.patch(reverse("menu-item-swap", args=[menu.id, item.id]), {"recipe_id": rec_b.id}, format="json")
         assert resp.status_code == 200
         assert resp.data["allergen_warning"] is True
         assert "орех" in resp.data["allergens_found"]
@@ -582,17 +599,17 @@ class TestShopping:
     def test_shopping_list_skips_fridge_items(self, client, db):
         u = _mk_user(email="fr@x.com", name="FR")
         fam, member = _mk_family(u)
-        recipe = _mk_recipe(ingredients=[
-            {"name": "Молоко", "quantity": "100", "unit": "мл"},
-            {"name": "Мука", "quantity": "200", "unit": "г"},
-        ])
-        FridgeItem.objects.create(family=fam, name="Молоко", quantity=Decimal("500"),
-                                  unit="мл", is_deleted=False)
-        menu = Menu.objects.create(family=fam, creator_id=u.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
-        MenuItem.objects.create(menu=menu, recipe=recipe, member=member,
-                                meal_type="breakfast", day_offset=0)
+        recipe = _mk_recipe(
+            ingredients=[
+                {"name": "Молоко", "quantity": "100", "unit": "мл"},
+                {"name": "Мука", "quantity": "200", "unit": "г"},
+            ]
+        )
+        FridgeItem.objects.create(family=fam, name="Молоко", quantity=Decimal("500"), unit="мл", is_deleted=False)
+        menu = Menu.objects.create(
+            family=fam, creator_id=u.id, period_days=1, start_date=datetime.date.today(), end_date=datetime.date.today()
+        )
+        MenuItem.objects.create(menu=menu, recipe=recipe, member=member, meal_type="breakfast", day_offset=0)
         client.force_authenticate(u)
         resp = client.get(reverse("menu-shopping-list", args=[menu.id]))
         assert resp.status_code == 200
@@ -603,14 +620,15 @@ class TestShopping:
     def test_shopping_list_handles_bad_quantity(self, client, db):
         u = _mk_user(email="bq@x.com", name="BQ")
         fam, member = _mk_family(u)
-        recipe = _mk_recipe(ingredients=[
-            {"name": "Соль", "quantity": "по вкусу", "unit": "г"},
-        ])
-        menu = Menu.objects.create(family=fam, creator_id=u.id, period_days=1,
-                                   start_date=datetime.date.today(),
-                                   end_date=datetime.date.today())
-        MenuItem.objects.create(menu=menu, recipe=recipe, member=member,
-                                meal_type="breakfast", day_offset=0)
+        recipe = _mk_recipe(
+            ingredients=[
+                {"name": "Соль", "quantity": "по вкусу", "unit": "г"},
+            ]
+        )
+        menu = Menu.objects.create(
+            family=fam, creator_id=u.id, period_days=1, start_date=datetime.date.today(), end_date=datetime.date.today()
+        )
+        MenuItem.objects.create(menu=menu, recipe=recipe, member=member, meal_type="breakfast", day_offset=0)
         client.force_authenticate(u)
         resp = client.get(reverse("menu-shopping-list", args=[menu.id]))
         assert resp.status_code == 200
@@ -646,11 +664,14 @@ class TestShopping:
         assert r2.data["is_purchased"] is False
 
 
+from datetime import timedelta as _MG606_td  # noqa: E402
+from decimal import Decimal as _MG606_D  # noqa: E402
+
+from django.utils import timezone as _MG606_tz  # noqa: E402
+
 # MG-606.C: автоматический Premium для тестовых семей
-from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
-from decimal import Decimal as _MG606_D
-from django.utils import timezone as _MG606_tz
-from datetime import timedelta as _MG606_td
+from apps.subscriptions.models import Subscription as _MG606_Sub  # noqa: E402
+from apps.subscriptions.models import SubscriptionPlan as _MG606_Plan  # noqa: E402
 
 
 def _attach_premium(family):

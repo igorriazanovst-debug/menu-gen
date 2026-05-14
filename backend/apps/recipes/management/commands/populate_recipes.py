@@ -7,6 +7,7 @@ Usage:
     python manage.py populate_recipes --dry-run
     python manage.py populate_recipes --update   # overwrite existing by source_url
 """
+
 import json
 import logging
 from pathlib import Path
@@ -17,9 +18,7 @@ from apps.recipes.models import Recipe
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INPUT = (
-    Path(__file__).resolve().parents[5] / "scripts" / "enriched_recipes.json"
-)
+DEFAULT_INPUT = Path(__file__).resolve().parents[5] / "scripts" / "enriched_recipes.json"
 
 
 class Command(BaseCommand):
@@ -66,10 +65,7 @@ class Command(BaseCommand):
                 errors += 1
                 logger.warning("Error importing «%s»: %s", data.get("title", "?"), exc)
 
-        summary = (
-            f"Done  →  created: {created}  |  updated: {updated}  "
-            f"|  skipped: {skipped}  |  errors: {errors}"
-        )
+        summary = f"Done  →  created: {created}  |  updated: {updated}  " f"|  skipped: {skipped}  |  errors: {errors}"
         style = self.style.SUCCESS if errors == 0 else self.style.WARNING
         self.stdout.write(style(summary))
 
@@ -102,17 +98,17 @@ class Command(BaseCommand):
     @staticmethod
     def _fields(data: dict) -> dict:
         return {
-            "title":        data["title"],
-            "cook_time":    data.get("cook_time"),
-            "servings":     data.get("servings"),
-            "ingredients":  data.get("ingredients") or [],
-            "steps":        data.get("steps") or [],
-            "nutrition":    data.get("nutrition") or {},
-            "categories":   data.get("categories") or [],
-            "image_url":    data.get("image_url"),
-            "source_url":   data.get("source_url"),
-            "country":      data.get("country"),
-            "is_custom":    False,
+            "title": data["title"],
+            "cook_time": data.get("cook_time"),
+            "servings": data.get("servings"),
+            "ingredients": data.get("ingredients") or [],
+            "steps": data.get("steps") or [],
+            "nutrition": data.get("nutrition") or {},
+            "categories": data.get("categories") or [],
+            "image_url": data.get("image_url"),
+            "source_url": data.get("source_url"),
+            "country": data.get("country"),
+            "is_custom": False,
             "is_published": True,
         }
 

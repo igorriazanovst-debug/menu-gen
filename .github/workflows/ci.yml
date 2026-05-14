@@ -24,15 +24,15 @@ jobs:
         working-directory: backend
 
       - name: Run flake8
-        run: flake8 . --max-line-length=120 --exclude=migrations
+        run: flake8 . --max-line-length=120 --exclude=migrations,scripts
         working-directory: backend
 
       - name: Run black check
-        run: black --check . --exclude=migrations
+        run: black --check . --exclude='/(migrations|scripts)/'
         working-directory: backend
 
       - name: Run isort check
-        run: isort --check-only . --skip=migrations
+        run: isort --check-only . --skip=migrations --skip=scripts
         working-directory: backend
 
   backend-test:

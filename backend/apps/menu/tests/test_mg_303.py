@@ -7,11 +7,14 @@ MG-303 tests: распределение КБЖУ по приёмам.
   3) _pick_for_role — эскалация окна ±15/30/50% (по mock-пулу с известными калориями)
   4) _collect_meal_calorie_warnings — пишет meal_calorie_mismatch при отклонении >50%
 """
+
 # MG_303_V_tests
 from __future__ import annotations
-import pytest
+
 from datetime import date
 from unittest.mock import MagicMock
+
+import pytest
 
 from apps.menu import generator as g
 
@@ -27,7 +30,11 @@ def test_mg_303_weights_5_sum_to_1():
     s = sum(g.MEAL_CALORIE_WEIGHTS_5.values())
     assert abs(s - 1.0) < 1e-9, f"weights 5 sum={s}"
     assert set(g.MEAL_CALORIE_WEIGHTS_5.keys()) == {
-        "breakfast", "snack1", "lunch", "snack2", "dinner",
+        "breakfast",
+        "snack1",
+        "lunch",
+        "snack2",
+        "dinner",
     }
 
 
@@ -53,6 +60,7 @@ def _make_gen(meal_plan_type="3"):
     gen.tracker = g._WeeklyTracker()
     gen.last_warnings = []
     from collections import defaultdict
+
     gen._meal_cal_actual = defaultdict(float)
     gen._meal_cal_target = {}
     return gen
@@ -61,18 +69,18 @@ def _make_gen(meal_plan_type="3"):
 # ── 2. _meal_target_cal ──────────────────────────────────────────────────
 def test_mg_303_meal_target_cal_3plan():
     gen = _make_gen("3")
-    assert gen._meal_target_cal(2000, "breakfast") == pytest.approx(500.0)   # 0.25
-    assert gen._meal_target_cal(2000, "lunch")     == pytest.approx(800.0)   # 0.40
-    assert gen._meal_target_cal(2000, "dinner")    == pytest.approx(700.0)   # 0.35
+    assert gen._meal_target_cal(2000, "breakfast") == pytest.approx(500.0)  # 0.25
+    assert gen._meal_target_cal(2000, "lunch") == pytest.approx(800.0)  # 0.40
+    assert gen._meal_target_cal(2000, "dinner") == pytest.approx(700.0)  # 0.35
 
 
 def test_mg_303_meal_target_cal_5plan():
     gen = _make_gen("5")
-    assert gen._meal_target_cal(2000, "breakfast") == pytest.approx(600.0)   # 0.30
-    assert gen._meal_target_cal(2000, "snack1")    == pytest.approx(100.0)   # 0.05
-    assert gen._meal_target_cal(2000, "lunch")     == pytest.approx(700.0)   # 0.35
-    assert gen._meal_target_cal(2000, "snack2")    == pytest.approx(100.0)   # 0.05
-    assert gen._meal_target_cal(2000, "dinner")    == pytest.approx(500.0)   # 0.25
+    assert gen._meal_target_cal(2000, "breakfast") == pytest.approx(600.0)  # 0.30
+    assert gen._meal_target_cal(2000, "snack1") == pytest.approx(100.0)  # 0.05
+    assert gen._meal_target_cal(2000, "lunch") == pytest.approx(700.0)  # 0.35
+    assert gen._meal_target_cal(2000, "snack2") == pytest.approx(100.0)  # 0.05
+    assert gen._meal_target_cal(2000, "dinner") == pytest.approx(500.0)  # 0.25
 
 
 def test_mg_303_meal_target_cal_no_target():
@@ -88,8 +96,7 @@ def test_mg_303_meal_target_cal_unknown_slot_fallback():
 
 
 # ── 3. _pick_for_role: эскалация окна ────────────────────────────────────
-def _r(rid: int, cal: float, food_group="grain", protein_type=None,
-       is_red_meat=False, is_fatty_fish=False):
+def _r(rid: int, cal: float, food_group="grain", protein_type=None, is_red_meat=False, is_fatty_fish=False):
     """Build a mock recipe."""
     r = MagicMock()
     r.id = rid
@@ -113,9 +120,15 @@ def test_mg_303_pick_for_role_picks_inside_15pct():
     ]
     pools = {"grain": pool}
     chosen = gen._pick_for_role(
-        role="grain", meal_type="breakfast", pools=pools,
-        used=set(), hard_exclude=set(), fridge_ids=set(),
-        target_cal=500.0, member_id=10, day_offset=0,
+        role="grain",
+        meal_type="breakfast",
+        pools=pools,
+        used=set(),
+        hard_exclude=set(),
+        fridge_ids=set(),
+        target_cal=500.0,
+        member_id=10,
+        day_offset=0,
     )
     assert chosen is not None
     assert chosen.id in (1, 2)
@@ -130,9 +143,15 @@ def test_mg_303_pick_for_role_escalates_to_30pct():
     ]
     pools = {"grain": pool}
     chosen = gen._pick_for_role(
-        role="grain", meal_type="breakfast", pools=pools,
-        used=set(), hard_exclude=set(), fridge_ids=set(),
-        target_cal=500.0, member_id=10, day_offset=0,
+        role="grain",
+        meal_type="breakfast",
+        pools=pools,
+        used=set(),
+        hard_exclude=set(),
+        fridge_ids=set(),
+        target_cal=500.0,
+        member_id=10,
+        day_offset=0,
     )
     assert chosen.id == 1
 
@@ -146,9 +165,15 @@ def test_mg_303_pick_for_role_escalates_to_50pct():
     ]
     pools = {"grain": pool}
     chosen = gen._pick_for_role(
-        role="grain", meal_type="breakfast", pools=pools,
-        used=set(), hard_exclude=set(), fridge_ids=set(),
-        target_cal=500.0, member_id=10, day_offset=0,
+        role="grain",
+        meal_type="breakfast",
+        pools=pools,
+        used=set(),
+        hard_exclude=set(),
+        fridge_ids=set(),
+        target_cal=500.0,
+        member_id=10,
+        day_offset=0,
     )
     assert chosen.id == 1
 
@@ -158,13 +183,19 @@ def test_mg_303_pick_for_role_fallback_random_outside_50pct():
     gen = _make_gen("3")
     pool = [
         _r(1, 1500.0, "grain"),  # +200%
-        _r(2, 100.0, "grain"),   # -80%
+        _r(2, 100.0, "grain"),  # -80%
     ]
     pools = {"grain": pool}
     chosen = gen._pick_for_role(
-        role="grain", meal_type="breakfast", pools=pools,
-        used=set(), hard_exclude=set(), fridge_ids=set(),
-        target_cal=500.0, member_id=10, day_offset=0,
+        role="grain",
+        meal_type="breakfast",
+        pools=pools,
+        used=set(),
+        hard_exclude=set(),
+        fridge_ids=set(),
+        target_cal=500.0,
+        member_id=10,
+        day_offset=0,
     )
     assert chosen is not None  # выбор сделан, не None
 

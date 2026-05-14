@@ -26,8 +26,7 @@ def _get_specialist(user):
 
 
 # MG_205_V = 1: класс перемещён в apps/specialists/permissions.py
-from .permissions import IsVerifiedSpecialist  # noqa: F401  re-export для обратной совместимости
-
+from .permissions import IsVerifiedSpecialist  # noqa: F401,E402  re-export для обратной совместимости
 
 # ── Профиль специалиста ──────────────────────────────────────────────────────
 

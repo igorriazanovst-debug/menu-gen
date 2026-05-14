@@ -3,6 +3,7 @@
 Покрытие: без Premium / cancelled / только trial → 403 на GET и POST.
 Active Premium → доступ; expired → GET 200, POST 403.
 """
+
 from datetime import timedelta
 from decimal import Decimal
 

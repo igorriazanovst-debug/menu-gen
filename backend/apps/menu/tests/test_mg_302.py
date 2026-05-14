@@ -6,29 +6,36 @@ MG-302: недельные/дневные лимиты в генераторе �
 
 Политика: soft+warnings. Генератор не падает, нарушения — в last_warnings.
 """
+
 from __future__ import annotations
-import pytest
+
 from datetime import date
 from unittest.mock import patch
 
 from apps.menu import generator as gen_module
-from apps.menu.generator import (
-    MenuGenerator,
-    _WeeklyTracker,
-    RED_MEAT_MAX_GRAMS_PER_WEEK,
-    FATTY_FISH_MIN_PER_WEEK,
-    PLANT_PROTEIN_MIN_PER_DAY,
-)
-
+from apps.menu.generator import FATTY_FISH_MIN_PER_WEEK, RED_MEAT_MAX_GRAMS_PER_WEEK, MenuGenerator, _WeeklyTracker
 
 # ───── _WeeklyTracker unit tests ─────────────────────────────────────────────
 
+
 class _R:
     """Лёгкий «рецепт» для трекера."""
-    def __init__(self, rid=1, is_red_meat=False, is_fatty_fish=False,
-                 protein_type=None, portion_g=200.0, food_group=None,
-                 nutrition=None, ingredients=None, suitable_for=None,
-                 is_published=True, country=None, cook_time=None):
+
+    def __init__(
+        self,
+        rid=1,
+        is_red_meat=False,
+        is_fatty_fish=False,
+        protein_type=None,
+        portion_g=200.0,
+        food_group=None,
+        nutrition=None,
+        ingredients=None,
+        suitable_for=None,
+        is_published=True,
+        country=None,
+        cook_time=None,
+    ):
         self.id = rid
         self.is_red_meat = is_red_meat
         self.is_fatty_fish = is_fatty_fish
@@ -46,14 +53,14 @@ class _R:
 def _fake_portion_grams_factory(by_id):
     def _fake(recipe):
         return by_id.get(recipe.id, getattr(recipe, "_portion_g", 200.0))
+
     return _fake
 
 
 def test_tracker_red_meat_grams_accumulate():
     t = _WeeklyTracker()
     r = _R(rid=1, is_red_meat=True, portion_g=300.0)
-    with patch.object(gen_module, "recipe_portion_grams",
-                      side_effect=_fake_portion_grams_factory({1: 300.0})):
+    with patch.object(gen_module, "recipe_portion_grams", side_effect=_fake_portion_grams_factory({1: 300.0})):
         t.add(member_id=10, day_offset=0, recipe=r)
         t.add(member_id=10, day_offset=3, recipe=r)
     assert t.get_week(10, 0)["red_meat_grams"] == 600.0
@@ -85,22 +92,27 @@ def test_tracker_plant_per_day_count():
 
 # ───── _pick_for_role: правила приоритета ────────────────────────────────────
 
+
 class _Member:
     def __init__(self, mid=1):
         self.id = mid
+
         class _U:
             allergies = []
             disliked_products = []
             name = ""
             email = ""
+
             class profile:
                 calorie_target = None
+
         self.user = _U()
 
 
 def _make_gen(members=None, period=7):
     class _Fam:
         id = 1
+
     return MenuGenerator(
         family=_Fam(),
         members=members or [_Member()],
@@ -119,8 +131,7 @@ def test_pick_red_meat_blocked_after_500g():
     red = _R(rid=100, is_red_meat=True, food_group="protein")
     other = _R(rid=101, is_red_meat=False, food_group="protein", protein_type="animal")
 
-    pools = {"protein": [red, other], "grain": [], "vegetable": [],
-             "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"protein": [red, other], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
 
     with patch.object(gen_module, "recipe_portion_grams", return_value=100.0):
         # plant за день уже есть — чтобы не сработал plant-boost
@@ -129,9 +140,15 @@ def test_pick_red_meat_blocked_after_500g():
         g.tracker.get_week(1, 0)["fatty_fish"] = FATTY_FISH_MIN_PER_WEEK
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein", meal_type="lunch", pools=pools,
-                used=set(), hard_exclude=set(), fridge_ids=set(),
-                target_cal=None, member_id=1, day_offset=0,
+                role="protein",
+                meal_type="lunch",
+                pools=pools,
+                used=set(),
+                hard_exclude=set(),
+                fridge_ids=set(),
+                target_cal=None,
+                member_id=1,
+                day_offset=0,
             )
     assert picked.id == 101  # red был отрезан
 
@@ -141,16 +158,21 @@ def test_pick_red_meat_fallback_when_no_alternative():
     g = _make_gen()
     g.tracker.get_week(1, 0)["red_meat_grams"] = 500.0
     red = _R(rid=200, is_red_meat=True, food_group="protein", protein_type="animal")
-    pools = {"protein": [red], "grain": [], "vegetable": [],
-             "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"protein": [red], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
     with patch.object(gen_module, "recipe_portion_grams", return_value=100.0):
         g.tracker.get_day(1, 0)["plant"] = 1
         g.tracker.get_week(1, 0)["fatty_fish"] = FATTY_FISH_MIN_PER_WEEK
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein", meal_type="lunch", pools=pools,
-                used=set(), hard_exclude=set(), fridge_ids=set(),
-                target_cal=None, member_id=1, day_offset=0,
+                role="protein",
+                meal_type="lunch",
+                pools=pools,
+                used=set(),
+                hard_exclude=set(),
+                fridge_ids=set(),
+                target_cal=None,
+                member_id=1,
+                day_offset=0,
             )
     assert picked is not None and picked.id == 200
 
@@ -159,15 +181,20 @@ def test_pick_plant_boost_when_zero_for_day():
     g = _make_gen()
     plant = _R(rid=300, protein_type="plant", food_group="protein")
     animal = _R(rid=301, protein_type="animal", food_group="protein")
-    pools = {"protein": [plant, animal], "grain": [], "vegetable": [],
-             "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"protein": [plant, animal], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
     with patch.object(gen_module, "recipe_portion_grams", return_value=200.0):
         # plant=0, fish=0 — должен сработать plant boost (приоритетней)
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein", meal_type="lunch", pools=pools,
-                used=set(), hard_exclude=set(), fridge_ids=set(),
-                target_cal=None, member_id=1, day_offset=0,
+                role="protein",
+                meal_type="lunch",
+                pools=pools,
+                used=set(),
+                hard_exclude=set(),
+                fridge_ids=set(),
+                target_cal=None,
+                member_id=1,
+                day_offset=0,
             )
     assert picked.id == 300
 
@@ -176,16 +203,21 @@ def test_pick_fish_boost_when_plant_already_done():
     g = _make_gen()
     fish = _R(rid=400, is_fatty_fish=True, protein_type="animal", food_group="protein")
     other = _R(rid=401, protein_type="animal", food_group="protein")
-    pools = {"protein": [fish, other], "grain": [], "vegetable": [],
-             "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"protein": [fish, other], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
     with patch.object(gen_module, "recipe_portion_grams", return_value=180.0):
-        g.tracker.get_day(1, 0)["plant"] = 1   # plant уже сделан
+        g.tracker.get_day(1, 0)["plant"] = 1  # plant уже сделан
         # fish=0 — должен сработать fish boost
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein", meal_type="lunch", pools=pools,
-                used=set(), hard_exclude=set(), fridge_ids=set(),
-                target_cal=None, member_id=1, day_offset=0,
+                role="protein",
+                meal_type="lunch",
+                pools=pools,
+                used=set(),
+                hard_exclude=set(),
+                fridge_ids=set(),
+                target_cal=None,
+                member_id=1,
+                day_offset=0,
             )
     assert picked.id == 400
 
@@ -195,21 +227,27 @@ def test_pick_no_boost_when_all_satisfied():
     g = _make_gen()
     a = _R(rid=500, protein_type="animal", food_group="protein")
     b = _R(rid=501, protein_type="animal", food_group="protein")
-    pools = {"protein": [a, b], "grain": [], "vegetable": [],
-             "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"protein": [a, b], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
     with patch.object(gen_module, "recipe_portion_grams", return_value=180.0):
         g.tracker.get_day(1, 0)["plant"] = 1
         g.tracker.get_week(1, 0)["fatty_fish"] = FATTY_FISH_MIN_PER_WEEK
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein", meal_type="lunch", pools=pools,
-                used=set(), hard_exclude=set(), fridge_ids=set(),
-                target_cal=None, member_id=1, day_offset=0,
+                role="protein",
+                meal_type="lunch",
+                pools=pools,
+                used=set(),
+                hard_exclude=set(),
+                fridge_ids=set(),
+                target_cal=None,
+                member_id=1,
+                day_offset=0,
             )
     assert picked.id == 500  # candidates не сужались
 
 
 # ───── warnings collectors ───────────────────────────────────────────────────
+
 
 def test_collect_weekly_warnings_red_meat_overlimit():
     g = _make_gen(period=7)

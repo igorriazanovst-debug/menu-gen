@@ -16,11 +16,9 @@ class GenerateMenuSerializer(serializers.Serializer):
     member_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_empty=True)
     calorie_min = serializers.IntegerField(required=False, min_value=0)
     calorie_max = serializers.IntegerField(required=False, min_value=0)
-    meal_plan_type = serializers.ChoiceField(choices=['3', '5'], default='3', required=False)
+    meal_plan_type = serializers.ChoiceField(choices=["3", "5"], default="3", required=False)
     # MG_605A_V_serializers: mode мульти-член (per_member | family)
-    mode = serializers.ChoiceField(
-        choices=['per_member', 'family'], default='family', required=False
-    )
+    mode = serializers.ChoiceField(choices=["per_member", "family"], default="family", required=False)
 
 
 class MenuItemSerializer(serializers.ModelSerializer):
@@ -29,7 +27,17 @@ class MenuItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MenuItem
-        fields = ("id", "day_offset", "meal_type", "meal_slot", "component_role", "recipe", "member_name", "quantity", "is_cheat_meal")
+        fields = (
+            "id",
+            "day_offset",
+            "meal_type",
+            "meal_slot",
+            "component_role",
+            "recipe",
+            "member_name",
+            "quantity",
+            "is_cheat_meal",
+        )
 
 
 class MenuItemSwapSerializer(serializers.Serializer):
@@ -81,9 +89,11 @@ class DeletedMenuSerializer(serializers.ModelSerializer):
 
     class Meta:
         from .models import DeletedMenu
+
         model = DeletedMenu
         fields = ("id", "menu_id", "data", "deleted_by_name", "deleted_at", "purge_after", "can_purge")
 
     def get_can_purge(self, obj):
         from django.utils import timezone
+
         return timezone.now() >= obj.purge_after

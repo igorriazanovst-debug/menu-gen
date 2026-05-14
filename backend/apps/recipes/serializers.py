@@ -29,18 +29,22 @@ class RecipeListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Recipe
         fields = (
-            "id",
-            "title",
-            "cook_time",
-            "servings",
-            "categories",
-            "image_url",
-            "nutrition",
-            "country",
-            "is_custom",
-            "author_name",
-            "created_at",
-        ) + CLASSIFICATION_FIELDS + MG501_FIELDS
+            (
+                "id",
+                "title",
+                "cook_time",
+                "servings",
+                "categories",
+                "image_url",
+                "nutrition",
+                "country",
+                "is_custom",
+                "author_name",
+                "created_at",
+            )
+            + CLASSIFICATION_FIELDS
+            + MG501_FIELDS
+        )
 
 
 class RecipeDetailSerializer(serializers.ModelSerializer):
@@ -49,42 +53,50 @@ class RecipeDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Recipe
         fields = (
-            "id",
-            "legacy_id",
-            "title",
-            "cook_time",
-            "servings",
-            "ingredients",
-            "steps",
-            "nutrition",
-            "categories",
-            "image_url",
-            "video_url",
-            "source_url",
-            "country",
-            "is_custom",
-            "is_published",
-            "author_name",
-            "created_at",
-            "updated_at",
-        ) + CLASSIFICATION_FIELDS + MG501_FIELDS
+            (
+                "id",
+                "legacy_id",
+                "title",
+                "cook_time",
+                "servings",
+                "ingredients",
+                "steps",
+                "nutrition",
+                "categories",
+                "image_url",
+                "video_url",
+                "source_url",
+                "country",
+                "is_custom",
+                "is_published",
+                "author_name",
+                "created_at",
+                "updated_at",
+            )
+            + CLASSIFICATION_FIELDS
+            + MG501_FIELDS
+        )
 
 
 class RecipeWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Recipe
         fields = (
-            "title",
-            "cook_time",
-            "servings",
-            "ingredients",
-            "steps",
-            "nutrition",
-            "categories",
-            "image_url",
-            "video_url",
-            "country",
-        ) + CLASSIFICATION_FIELDS + MG501_FIELDS
+            (
+                "title",
+                "cook_time",
+                "servings",
+                "ingredients",
+                "steps",
+                "nutrition",
+                "categories",
+                "image_url",
+                "video_url",
+                "country",
+            )
+            + CLASSIFICATION_FIELDS
+            + MG501_FIELDS
+        )
 
     def validate_ingredients(self, value):
         if not isinstance(value, list):
@@ -110,9 +122,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         allowed = {"breakfast", "lunch", "dinner", "snack"}
         for item in value:
             if item not in allowed:
-                raise serializers.ValidationError(
-                    f"Недопустимое значение '{item}'. Допустимы: {sorted(allowed)}."
-                )
+                raise serializers.ValidationError(f"Недопустимое значение '{item}'. Допустимы: {sorted(allowed)}.")
         return value
 
     def validate(self, attrs):
@@ -124,9 +134,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
 
         food_group = get_val("food_group")
         if food_group == Recipe.FoodGroup.GRAIN and not get_val("grain_type"):
-            raise serializers.ValidationError(
-                {"grain_type": "Обязательно при food_group=grain (whole / refined)."}
-            )
+            raise serializers.ValidationError({"grain_type": "Обязательно при food_group=grain (whole / refined)."})
         if food_group == Recipe.FoodGroup.PROTEIN and not get_val("protein_type"):
             raise serializers.ValidationError(
                 {"protein_type": "Обязательно при food_group=protein (animal / plant / mixed)."}

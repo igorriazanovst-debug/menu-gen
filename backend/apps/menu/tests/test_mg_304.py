@@ -6,18 +6,24 @@ MG-304: тесты подсчёта 5 порций овощей/фруктов �
   - generator: добор snack-слотами при недоборе
   - generator: warnings при невозможности добрать
 """
+
 # MG_304_V_tests
 from __future__ import annotations
+
 from datetime import date
+
 import pytest
 
 from apps.menu.portions import (
-    ADULT_PORTION_G, PORTIONS_PER_DAY, DEFAULT_PORTION_G_FALLBACK,
-    daily_target_grams, recipe_portion_grams,
+    ADULT_PORTION_G,
+    DEFAULT_PORTION_G_FALLBACK,
+    PORTIONS_PER_DAY,
+    daily_target_grams,
+    recipe_portion_grams,
 )
 
-
 # ────────────────────────── portions: pure unit ───────────────────────────────
+
 
 class _FakeProfile:
     def __init__(self, birth_year):
@@ -34,15 +40,18 @@ class _FakeMember:
         self.user = _FakeUser(birth_year)
 
 
-@pytest.mark.parametrize("birth_year, expected", [
-    (None,         150 * 5 * 1.00),  # нет данных → как взрослый
-    (2024,         150 * 5 * 0.40),  # 1 год
-    (2020,         150 * 5 * 0.55),  # 5 лет
-    (2017,         150 * 5 * 0.70),  # 8 лет
-    (2014,         150 * 5 * 0.85),  # 11 лет
-    (2010,         150 * 5 * 1.00),  # 15 лет
-    (1985,         150 * 5 * 1.00),  # взрослый
-])
+@pytest.mark.parametrize(
+    "birth_year, expected",
+    [
+        (None, 150 * 5 * 1.00),  # нет данных → как взрослый
+        (2024, 150 * 5 * 0.40),  # 1 год
+        (2020, 150 * 5 * 0.55),  # 5 лет
+        (2017, 150 * 5 * 0.70),  # 8 лет
+        (2014, 150 * 5 * 0.85),  # 11 лет
+        (2010, 150 * 5 * 1.00),  # 15 лет
+        (1985, 150 * 5 * 1.00),  # взрослый
+    ],
+)
 def test_daily_target_grams_age_curve(birth_year, expected):
     member = _FakeMember(birth_year)
     got = daily_target_grams(member, ref_date=date(2025, 6, 1))
@@ -89,15 +98,16 @@ def test_recipe_portion_grams_handles_comma_decimal():
 
 # ────────────────────────── generator: integration ────────────────────────────
 
+
 @pytest.mark.django_db
 def test_mg_304_top_up_when_shortfall(monkeypatch):
     """
     Имитация: после основного цикла недобор — в items должен появиться
     хотя бы один is_virtual snack-слот veg/fruit. Используем мок _build_pools_by_role.
     """
-    from apps.recipes.models import Recipe
-    from apps.menu.generator import MenuGenerator
     from apps.family.models import Family, FamilyMember
+    from apps.menu.generator import MenuGenerator
+    from apps.recipes.models import Recipe
     from apps.users.models import User
 
     user = User.objects.create_user(email="mg304@test.local", password="x")
@@ -107,23 +117,28 @@ def test_mg_304_top_up_when_shortfall(monkeypatch):
     # 5 рецептов veg + 5 fruit + минимально protein/grain/dairy
     def mk(title, fg):
         return Recipe.objects.create(
-            title=title, food_group=fg,
+            title=title,
+            food_group=fg,
             ingredients=[],
             nutrition={"weight": {"value": "150.0"}, "calories": {"value": "100"}},
             servings=1,
             servings_normalized=1,
             povar_raw={},
         )
-    veg = [mk(f"V{i}", "vegetable") for i in range(8)]
-    fr  = [mk(f"F{i}", "fruit") for i in range(8)]
-    pr  = [mk(f"P{i}", "protein") for i in range(8)]
-    gr  = [mk(f"G{i}", "grain") for i in range(8)]
-    dy  = [mk(f"D{i}", "dairy") for i in range(8)]
+
+    [mk(f"V{i}", "vegetable") for i in range(8)]
+    [mk(f"F{i}", "fruit") for i in range(8)]
+    [mk(f"P{i}", "protein") for i in range(8)]
+    [mk(f"G{i}", "grain") for i in range(8)]
+    [mk(f"D{i}", "dairy") for i in range(8)]
 
     gen = MenuGenerator(
-        family=family, members=[member],
-        period_days=1, start_date=date(2025, 6, 1),
-        plan_code="free", filters={"meal_plan_type": "3"},
+        family=family,
+        members=[member],
+        period_days=1,
+        start_date=date(2025, 6, 1),
+        plan_code="free",
+        filters={"meal_plan_type": "3"},
     )
     items = gen.generate()
     assert isinstance(items, list)
@@ -135,6 +150,6 @@ def test_mg_304_top_up_when_shortfall(monkeypatch):
     assert total_g >= 750.0 - 0.01
 
     # warnings должно быть пусто, поскольку добили
-    # MG_302_V_tests: теперь last_warnings может содержать fatty_fish/plant shortfall — здесь проверяем только veg_fruit_shortfall
+    # MG_302_V_tests: теперь last_warnings может содержать fatty_fish/plant shortfall — здесь проверяем только veg_fruit_shortfall  # noqa: E501
     veg_warns = [w for w in getattr(gen, "last_warnings", []) if w.get("code") == "veg_fruit_shortfall"]
     assert veg_warns == []

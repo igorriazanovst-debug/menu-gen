@@ -15,6 +15,7 @@ MG-505 tests: cheat-meal слот.
 
 # MG_505_V_tests
 """
+
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock
@@ -25,11 +26,11 @@ from django.contrib.auth import get_user_model
 from apps.menu.generator import (
     CHEAT_MEAL_DEFAULT_INTERVAL,
     CHEAT_MEAL_SLOTS,
+    RED_MEAT_MAX_GRAMS_PER_WEEK,
     MenuGenerator,
     _mg505_is_cheat_day,
     _mg505_mark_cheat_meal_used,
     _mg505_pick_cheat_slot,
-    RED_MEAT_MAX_GRAMS_PER_WEEK,
 )
 from apps.users.models import Profile
 
@@ -40,6 +41,7 @@ pytestmark = pytest.mark.django_db
 # --------------------------------------------------------------------------
 # Фикстуры
 # --------------------------------------------------------------------------
+
 
 @pytest.fixture
 def user_with_profile():
@@ -69,6 +71,7 @@ def _make_member(user=None, member_id=1):
 # --------------------------------------------------------------------------
 # 1-5: _mg505_is_cheat_day
 # --------------------------------------------------------------------------
+
 
 def test_is_cheat_day_first_time_returns_false(user_with_profile):
     """last_cheat_meal_date=None → False (отсчёт от сегодня)."""
@@ -122,6 +125,7 @@ def test_is_cheat_day_no_profile_returns_false():
 # 6: _mg505_pick_cheat_slot
 # --------------------------------------------------------------------------
 
+
 def test_pick_cheat_slot_deterministic():
     """Чередование lunch/dinner по (member_id + day_offset) % 2."""
     assert _mg505_pick_cheat_slot(0, 0) == CHEAT_MEAL_SLOTS[0]  # lunch
@@ -142,6 +146,7 @@ def test_cheat_meal_slots_are_lunch_or_dinner():
 # --------------------------------------------------------------------------
 # 7-8: _mg505_mark_cheat_meal_used
 # --------------------------------------------------------------------------
+
 
 def test_mark_cheat_meal_used_updates_profile_date(user_with_profile):
     u, p = user_with_profile
@@ -164,13 +169,32 @@ def test_mark_cheat_meal_used_no_profile_safe():
 # 9-10: _pick_for_role(is_cheat=True) — bypass правил
 # --------------------------------------------------------------------------
 
-def _make_recipe(rid, food_group="protein", calories=500.0,
-                 is_red_meat=False, is_fatty_fish=False, has_added_sugar=False,
-                 protein_type=None, oil_tsp=0.0):
+
+def _make_recipe(
+    rid,
+    food_group="protein",
+    calories=500.0,
+    is_red_meat=False,
+    is_fatty_fish=False,
+    has_added_sugar=False,
+    protein_type=None,
+    oil_tsp=0.0,
+):
     """Фабрика mock-рецепта."""
-    r = MagicMock(spec=["id", "food_group", "nutrition", "is_red_meat",
-                        "is_fatty_fish", "has_added_sugar", "protein_type",
-                        "ingredients", "suitable_for", "name"])
+    r = MagicMock(
+        spec=[
+            "id",
+            "food_group",
+            "nutrition",
+            "is_red_meat",
+            "is_fatty_fish",
+            "has_added_sugar",
+            "protein_type",
+            "ingredients",
+            "suitable_for",
+            "name",
+        ]
+    )
     r.id = rid
     r.food_group = food_group
     r.nutrition = {"calories": {"value": calories}, "oil_tsp": oil_tsp}
@@ -214,7 +238,7 @@ def test_pick_for_role_cheat_bypasses_calorie_filter():
         used=set(),
         hard_exclude=set(),
         fridge_ids=set(),
-        target_cal=300.0,    # 2000 далеко от 300 — без cheat был бы отфильтрован
+        target_cal=300.0,  # 2000 далеко от 300 — без cheat был бы отфильтрован
         member_id=1,
         day_offset=0,
         is_cheat=True,
@@ -229,8 +253,7 @@ def test_pick_for_role_cheat_bypasses_red_meat_limit():
     # эмулируем что в этой неделе уже >500г red_meat
     g.tracker.get_week(1, 0)["red_meat_grams"] = 600.0
 
-    red = _make_recipe(1, food_group="protein", calories=500.0,
-                       is_red_meat=True, protein_type="animal")
+    red = _make_recipe(1, food_group="protein", calories=500.0, is_red_meat=True, protein_type="animal")
     pools = {"protein": [red]}
 
     picked = g._pick_for_role(
@@ -254,10 +277,8 @@ def test_pick_for_role_normal_blocks_red_meat_overlimit():
     g = _make_generator()
     g.tracker.get_week(1, 0)["red_meat_grams"] = RED_MEAT_MAX_GRAMS_PER_WEEK + 100.0
 
-    red = _make_recipe(1, food_group="protein", calories=500.0,
-                       is_red_meat=True, protein_type="animal")
-    plant = _make_recipe(2, food_group="protein", calories=500.0,
-                         protein_type="plant")
+    red = _make_recipe(1, food_group="protein", calories=500.0, is_red_meat=True, protein_type="animal")
+    plant = _make_recipe(2, food_group="protein", calories=500.0, protein_type="plant")
     pools = {"protein": [red, plant]}
 
     picked = g._pick_for_role(

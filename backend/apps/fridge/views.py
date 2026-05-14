@@ -8,12 +8,7 @@ from apps.family.models import FamilyMember
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
 from .models import FridgeItem, Product
-from .serializers import (
-    BarcodeLookupSerializer,
-    FridgeItemSerializer,
-    FridgeItemWriteSerializer,
-    ProductSerializer,
-)
+from .serializers import BarcodeLookupSerializer, FridgeItemSerializer, FridgeItemWriteSerializer, ProductSerializer
 
 
 def _get_family(user):

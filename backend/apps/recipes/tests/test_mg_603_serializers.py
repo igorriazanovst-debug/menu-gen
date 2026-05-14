@@ -40,9 +40,7 @@ class TestValidateIngredients:
         assert "ingredients" in s.errors
 
     def test_item_without_name_raises(self):
-        s = RecipeWriteSerializer(data=_minimal(
-            ingredients=[{"quantity": "100", "unit": "г"}]
-        ))
+        s = RecipeWriteSerializer(data=_minimal(ingredients=[{"quantity": "100", "unit": "г"}]))
         assert s.is_valid() is False
         assert "ingredients" in s.errors
 
@@ -98,9 +96,7 @@ class TestValidateSuitableFor:
         assert "suitable_for" in s.errors
 
     def test_all_allowed_values_pass(self):
-        s = RecipeWriteSerializer(data=_minimal(
-            suitable_for=["breakfast", "lunch", "dinner", "snack"]
-        ))
+        s = RecipeWriteSerializer(data=_minimal(suitable_for=["breakfast", "lunch", "dinner", "snack"]))
         assert s.is_valid(), s.errors
 
     def test_empty_list_passes(self):
@@ -119,9 +115,7 @@ class TestValidateFoodGroup:
         assert "grain_type" in s.errors
 
     def test_grain_with_grain_type_passes(self):
-        s = RecipeWriteSerializer(data=_minimal(
-            food_group="grain", grain_type="whole"
-        ))
+        s = RecipeWriteSerializer(data=_minimal(food_group="grain", grain_type="whole"))
         assert s.is_valid(), s.errors
 
     def test_protein_without_protein_type_raises(self):
@@ -130,9 +124,7 @@ class TestValidateFoodGroup:
         assert "protein_type" in s.errors
 
     def test_protein_with_protein_type_passes(self):
-        s = RecipeWriteSerializer(data=_minimal(
-            food_group="protein", protein_type="animal"
-        ))
+        s = RecipeWriteSerializer(data=_minimal(food_group="protein", protein_type="animal"))
         assert s.is_valid(), s.errors
 
     def test_vegetable_no_constraints(self):

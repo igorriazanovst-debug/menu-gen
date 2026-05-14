@@ -1,4 +1,3 @@
-import json
 from datetime import timedelta
 
 from django.db import transaction
@@ -14,8 +13,8 @@ from apps.recipes.models import Recipe
 from apps.subscriptions.models import Subscription
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
-from .generator import MenuGenerator
 from .exceptions import MenuGeneratorError  # MG_301_V_views
+from .generator import MenuGenerator
 from .models import DeletedMenu, Menu, MenuItem, ShoppingItem, ShoppingList
 from .serializers import (
     DeletedMenuSerializer,
@@ -27,8 +26,8 @@ from .serializers import (
     ShoppingListSerializer,
 )
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _get_family(user):
     membership = FamilyMember.objects.select_related("family").filter(user=user).first()
@@ -99,18 +98,20 @@ def _menu_snapshot(menu):
     # MG_602_V_views: добавлены meal_slot, component_role, is_cheat_meal для корректного restore
     items = []
     for item in MenuItem.objects.filter(menu=menu).select_related("recipe", "member__user"):
-        items.append({
-            "id": item.id,
-            "day_offset": item.day_offset,
-            "meal_type": item.meal_type,
-            "meal_slot": item.meal_slot,
-            "component_role": item.component_role,
-            "is_cheat_meal": item.is_cheat_meal,
-            "recipe_id": item.recipe_id,
-            "recipe_title": item.recipe.title,
-            "member_id": item.member_id,
-            "quantity": str(item.quantity),
-        })
+        items.append(
+            {
+                "id": item.id,
+                "day_offset": item.day_offset,
+                "meal_type": item.meal_type,
+                "meal_slot": item.meal_slot,
+                "component_role": item.component_role,
+                "is_cheat_meal": item.is_cheat_meal,
+                "recipe_id": item.recipe_id,
+                "recipe_title": item.recipe.title,
+                "member_id": item.member_id,
+                "quantity": str(item.quantity),
+            }
+        )
     return {
         "id": menu.id,
         "start_date": str(menu.start_date),
@@ -123,6 +124,7 @@ def _menu_snapshot(menu):
 
 
 # ── views ─────────────────────────────────────────────────────────────────────
+
 
 class MenuGenerateView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
@@ -182,24 +184,28 @@ class MenuGenerateView(APIView):
                 status=Menu.Status.ACTIVE,
                 filters_used=filters,
             )
-            MenuItem.objects.bulk_create([
-                MenuItem(
-                    menu=menu,
-                    recipe=item["recipe"],
-                    member=item["member"],
-                    meal_type=item["meal_type"],
-                    meal_slot=item.get("meal_slot", item["meal_type"]),
-                    day_offset=item["day_offset"],
-                    component_role=item.get("component_role", "other"),
-                    is_cheat_meal=item.get("is_cheat_meal", False),  # MG_505_V_views
-                    quantity=item.get("quantity", 1),  # MG_605A_V_views
-                )
-                for item in generated
-            ])
+            MenuItem.objects.bulk_create(
+                [
+                    MenuItem(
+                        menu=menu,
+                        recipe=item["recipe"],
+                        member=item["member"],
+                        meal_type=item["meal_type"],
+                        meal_slot=item.get("meal_slot", item["meal_type"]),
+                        day_offset=item["day_offset"],
+                        component_role=item.get("component_role", "other"),
+                        is_cheat_meal=item.get("is_cheat_meal", False),  # MG_505_V_views
+                        quantity=item.get("quantity", 1),  # MG_605A_V_views
+                    )
+                    for item in generated
+                ]
+            )
 
             # MG_505_V_views: обновить last_cheat_meal_date для членов, у которых в этом меню был cheat
             from collections import defaultdict
+
             from apps.menu.generator import _mg505_mark_cheat_meal_used
+
             _mg505_seen = defaultdict(list)  # member_id -> list of (day_offset)
             for it in generated:
                 if it.get("is_cheat_meal"):
@@ -210,6 +216,7 @@ class MenuGenerateView(APIView):
                 if m.id in _mg505_seen:
                     last_day = max(_mg505_seen[m.id])
                     from datetime import timedelta as _mg505_td
+
                     _mg505_mark_cheat_meal_used(m, start_date + _mg505_td(days=last_day))
 
         menu_full = Menu.objects.prefetch_related("items__recipe", "items__member__user").get(id=menu.id)
@@ -247,6 +254,7 @@ class MenuDetailView(generics.RetrieveAPIView):
 
 class MenuDeleteView(APIView):
     """Мягкое удаление — перемещение в карантин на 24ч."""
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def delete(self, request, menu_id):
@@ -275,6 +283,7 @@ class MenuDeleteView(APIView):
 
 class DeletedMenuListView(APIView):
     """Список меню в карантине для текущей семьи."""
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get(self, request):
@@ -287,6 +296,7 @@ class DeletedMenuListView(APIView):
 
 class MenuRestoreView(APIView):
     """Восстановление меню из карантина (до истечения 24ч)."""
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def post(self, request, deleted_id):
@@ -298,7 +308,7 @@ class MenuRestoreView(APIView):
         except DeletedMenu.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        if not _can_delete_menu(request.user, family, type("M", (), {"creator_id": deleted.deleted_by_id})() ):
+        if not _can_delete_menu(request.user, family, type("M", (), {"creator_id": deleted.deleted_by_id})()):
             return Response({"detail": "Нет прав."}, status=status.HTTP_403_FORBIDDEN)
 
         snap = deleted.data
@@ -387,12 +397,15 @@ class MenuItemSwapView(APIView):
         if filters.get("calorie_max") and cal > 0 and cal > float(filters["calorie_max"]) / 4:
             calorie_warning = True
 
-        return Response({
-            "allergen_warning": allergen_warning,
-            "allergens_found": found_allergens,
-            "calorie_warning": calorie_warning,
-            "recipe_calories": cal,
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "allergen_warning": allergen_warning,
+                "allergens_found": found_allergens,
+                "calorie_warning": calorie_warning,
+                "recipe_calories": cal,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class MenuArchiveView(APIView):
@@ -453,6 +466,7 @@ class ShoppingItemToggleView(APIView):
 
 def _build_shopping_list(shopping_list: ShoppingList, menu: Menu, family: Family):
     from collections import defaultdict
+
     fridge = {i.name.lower() for i in FridgeItem.objects.filter(family=family, is_deleted=False)}
     aggregated = defaultdict(lambda: {"quantity": 0, "unit": ""})
     for menu_item in MenuItem.objects.filter(menu=menu).select_related("recipe"):

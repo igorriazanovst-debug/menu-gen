@@ -5,12 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Family, FamilyMember
-from .serializers import (
-    FamilyMemberSerializer,
-    FamilyMemberUpdateSerializer,
-    FamilySerializer,
-    InviteMemberSerializer,
-)
+from .serializers import FamilyMemberSerializer, FamilyMemberUpdateSerializer, FamilySerializer, InviteMemberSerializer
 
 User = get_user_model()
 
@@ -137,15 +132,14 @@ class FamilyMemberUpdateView(APIView):
 
         # MG_205_V_family_view = 1: добавлен путь для verified specialist'а
         is_head = family.owner_id == request.user.id or request.user.user_type == "admin"
-        is_self = FamilyMember.objects.filter(
-            family=family, user=request.user, id=member_id
-        ).exists()
+        is_self = FamilyMember.objects.filter(family=family, user=request.user, id=member_id).exists()
 
         # Specialist допускается, если у него есть активный assignment на эту семью
         is_specialist = False
         try:
-            from apps.specialists.permissions import _get_specialist
             from apps.specialists.models import SpecialistAssignment
+            from apps.specialists.permissions import _get_specialist
+
             spec = _get_specialist(request.user)
             if spec and spec.is_verified:
                 is_specialist = SpecialistAssignment.objects.filter(
@@ -160,15 +154,11 @@ class FamilyMemberUpdateView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         try:
-            member = FamilyMember.objects.select_related("user__profile").get(
-                id=member_id, family=family
-            )
+            member = FamilyMember.objects.select_related("user__profile").get(id=member_id, family=family)
         except FamilyMember.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        serializer = FamilyMemberUpdateSerializer(
-            member, data=request.data, partial=True, context={"request": request}
-        )
+        serializer = FamilyMemberUpdateSerializer(member, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
@@ -191,7 +181,6 @@ def _get_active_plan(family):
     return sub.plan if sub else None
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # MG_205UI_V_family_views = 1
 # История + reset для одного поля КБЖУ участника семьи.
@@ -209,6 +198,7 @@ TARGET_FIELD_CHOICES = (
 def _validate_target_field(field: str):
     if field not in TARGET_FIELD_CHOICES:
         from rest_framework.exceptions import ValidationError
+
         raise ValidationError({"field": f"Допустимые значения: {list(TARGET_FIELD_CHOICES)}"})
 
 
@@ -220,14 +210,13 @@ def _resolve_member_with_perm(request, member_id):
         return None, Response(status=status.HTTP_404_NOT_FOUND)
 
     is_head = family.owner_id == request.user.id or request.user.user_type == "admin"
-    is_self = FamilyMember.objects.filter(
-        family=family, user=request.user, id=member_id
-    ).exists()
+    is_self = FamilyMember.objects.filter(family=family, user=request.user, id=member_id).exists()
 
     is_specialist = False
     try:
-        from apps.specialists.permissions import _get_specialist
         from apps.specialists.models import SpecialistAssignment
+        from apps.specialists.permissions import _get_specialist
+
         spec = _get_specialist(request.user)
         if spec and spec.is_verified:
             is_specialist = SpecialistAssignment.objects.filter(
@@ -242,9 +231,7 @@ def _resolve_member_with_perm(request, member_id):
         return None, Response(status=status.HTTP_403_FORBIDDEN)
 
     try:
-        member = FamilyMember.objects.select_related("user__profile").get(
-            id=member_id, family=family
-        )
+        member = FamilyMember.objects.select_related("user__profile").get(id=member_id, family=family)
     except FamilyMember.DoesNotExist:
         return None, Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -269,6 +256,7 @@ class FamilyMemberTargetHistoryView(APIView):
         member, _ = result
         from apps.users.models import ProfileTargetAudit
         from apps.users.serializers import ProfileTargetAuditSerializer
+
         try:
             profile = member.user.profile
         except Exception:

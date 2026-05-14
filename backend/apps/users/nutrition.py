@@ -17,26 +17,28 @@
         углеводы: (calories - белки*4 - жиры*9) / 4
         клетчатка: 14 г / 1000 ккал
 """
+
 from __future__ import annotations
+
 from datetime import date
 from decimal import Decimal
 
-MG_202_V = 1   # маркер версии формулы (для идемпотентности apply-скрипта)
-MG_205_V = 1   # учёт источника правок (auto/user/specialist)
+MG_202_V = 1  # маркер версии формулы (для идемпотентности apply-скрипта)
+MG_205_V = 1  # учёт источника правок (auto/user/specialist)
 
 ACTIVITY_FACTOR = {
-    "sedentary":   1.2,
-    "light":       1.375,
-    "moderate":    1.55,
-    "active":      1.725,
+    "sedentary": 1.2,
+    "light": 1.375,
+    "moderate": 1.55,
+    "active": 1.725,
     "very_active": 1.9,
 }
 
 GOAL_DELTA_KCAL = {
     "lose_weight": -500,
     "gain_weight": +300,
-    "maintain":       0,
-    "healthy":        0,
+    "maintain": 0,
+    "healthy": 0,
 }
 
 PROTEIN_PER_KG = 1.5
@@ -65,17 +67,17 @@ def calorie_target_for_goal(tdee_value: float, goal: str) -> int:
 def macro_targets(calories: int, weight_kg: float) -> dict:
     """{protein_g, fat_g, carbs_g, fiber_g} по формуле MG-202."""
     protein_g = round(weight_kg * PROTEIN_PER_KG, 1)
-    fat_g     = round((calories * FAT_PCT_OF_CAL) / 9, 1)
+    fat_g = round((calories * FAT_PCT_OF_CAL) / 9, 1)
     cal_protein = protein_g * 4
-    cal_fat     = fat_g * 9
-    cal_carbs   = max(0, calories - cal_protein - cal_fat)
-    carbs_g     = round(cal_carbs / 4, 1)
-    fiber_g     = round(calories / 1000 * FIBER_PER_1000_KCAL, 1)
+    cal_fat = fat_g * 9
+    cal_carbs = max(0, calories - cal_protein - cal_fat)
+    carbs_g = round(cal_carbs / 4, 1)
+    fiber_g = round(calories / 1000 * FIBER_PER_1000_KCAL, 1)
     return {
         "protein_g": protein_g,
-        "fat_g":     fat_g,
-        "carbs_g":   carbs_g,
-        "fiber_g":   fiber_g,
+        "fat_g": fat_g,
+        "carbs_g": carbs_g,
+        "fiber_g": fiber_g,
     }
 
 
@@ -100,17 +102,17 @@ def calculate_targets(profile) -> dict | None:
     weight = float(profile.weight_kg)
     height = float(profile.height_cm)
 
-    bmr      = mifflin_st_jeor(weight, height, age, gender)
+    bmr = mifflin_st_jeor(weight, height, age, gender)
     tdee_val = tdee(bmr, (profile.activity_level or "moderate"))
-    cals     = calorie_target_for_goal(tdee_val, (profile.goal or "maintain"))
-    macros   = macro_targets(cals, weight)
+    cals = calorie_target_for_goal(tdee_val, (profile.goal or "maintain"))
+    macros = macro_targets(cals, weight)
 
     return {
-        "calorie_target":   cals,
+        "calorie_target": cals,
         "protein_target_g": Decimal(str(macros["protein_g"])),
-        "fat_target_g":     Decimal(str(macros["fat_g"])),
-        "carb_target_g":    Decimal(str(macros["carbs_g"])),
-        "fiber_target_g":   Decimal(str(macros["fiber_g"])),
+        "fat_target_g": Decimal(str(macros["fat_g"])),
+        "carb_target_g": Decimal(str(macros["carbs_g"])),
+        "fiber_target_g": Decimal(str(macros["fiber_g"])),
     }
 
 
@@ -128,7 +130,7 @@ def fill_profile_targets(profile, force: bool = False, actor=None) -> bool:
 
     Возвращает True если что-то изменилось.
     """
-    from .audit import record_target_change, is_locked
+    from .audit import is_locked, record_target_change
 
     targets = calculate_targets(profile)
     if not targets:

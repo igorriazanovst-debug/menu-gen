@@ -20,7 +20,7 @@ from rest_framework.test import APIClient
 
 from apps.family.models import Family, FamilyMember
 from apps.menu.generator import MenuGenerator
-from apps.menu.models import Menu, MenuItem
+from apps.menu.models import MenuItem
 from apps.recipes.models import Recipe
 from apps.users.models import Profile, User
 
@@ -54,9 +54,7 @@ def _mk_user_with_profile(email, name, **profile_kwargs):
 def _mk_family(user):
     family = Family.objects.create(owner=user, name=f"Семья {user.name}")
     _attach_premium(family)
-    member = FamilyMember.objects.create(
-        family=family, user=user, role=FamilyMember.Role.HEAD
-    )
+    member = FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
     return family, member
 
 
@@ -73,18 +71,12 @@ def rich_pool(db):
     """Богатый пул рецептов для интеграционных тестов."""
     # 5 рецептов на каждую роль, разной калорийности
     for i in range(5):
-        _mk_recipe(f"Курица {i}", "protein",
-                   protein_type="animal", kcal=Decimal(str(250 + i * 20)))
-        _mk_recipe(f"Бобы {i}", "protein",
-                   protein_type="plant", kcal=Decimal(str(200 + i * 20)))
-        _mk_recipe(f"Гречка {i}", "grain",
-                   grain_type="whole", kcal=Decimal(str(280 + i * 10)))
-        _mk_recipe(f"Овощи {i}", "vegetable",
-                   kcal=Decimal(str(80 + i * 10)))
-        _mk_recipe(f"Фрукт {i}", "fruit",
-                   kcal=Decimal(str(70 + i * 5)))
-        _mk_recipe(f"Йогурт {i}", "dairy",
-                   kcal=Decimal(str(120 + i * 10)))
+        _mk_recipe(f"Курица {i}", "protein", protein_type="animal", kcal=Decimal(str(250 + i * 20)))
+        _mk_recipe(f"Бобы {i}", "protein", protein_type="plant", kcal=Decimal(str(200 + i * 20)))
+        _mk_recipe(f"Гречка {i}", "grain", grain_type="whole", kcal=Decimal(str(280 + i * 10)))
+        _mk_recipe(f"Овощи {i}", "vegetable", kcal=Decimal(str(80 + i * 10)))
+        _mk_recipe(f"Фрукт {i}", "fruit", kcal=Decimal(str(70 + i * 5)))
+        _mk_recipe(f"Йогурт {i}", "dairy", kcal=Decimal(str(120 + i * 10)))
     return Recipe.objects.all()
 
 
@@ -99,7 +91,8 @@ class TestMG505CheatMealIntegration:
         # interval=2, last_cheat=сегодня-3 → cheat должен появиться на день 0
         today = datetime.date.today()
         u = _mk_user_with_profile(
-            "cheat-yes@x.local", "CheatYes",
+            "cheat-yes@x.local",
+            "CheatYes",
             cheat_meal_interval=2,
             last_cheat_meal_date=today - datetime.timedelta(days=3),
         )
@@ -113,16 +106,15 @@ class TestMG505CheatMealIntegration:
         )
         assert resp.status_code == 201, resp.data
 
-        cheat_items = MenuItem.objects.filter(
-            menu_id=resp.data["id"], is_cheat_meal=True
-        )
+        cheat_items = MenuItem.objects.filter(menu_id=resp.data["id"], is_cheat_meal=True)
         assert cheat_items.exists(), "cheat-meal должен появиться когда interval достигнут"
 
     def test_cheat_meal_does_not_appear_before_interval(self, client, rich_pool):
         # interval=10, last_cheat=сегодня-1 → cheat НЕ должен появиться
         today = datetime.date.today()
         u = _mk_user_with_profile(
-            "cheat-no@x.local", "CheatNo",
+            "cheat-no@x.local",
+            "CheatNo",
             cheat_meal_interval=10,
             last_cheat_meal_date=today - datetime.timedelta(days=1),
         )
@@ -136,17 +128,15 @@ class TestMG505CheatMealIntegration:
         )
         assert resp.status_code == 201, resp.data
 
-        cheat_items = MenuItem.objects.filter(
-            menu_id=resp.data["id"], is_cheat_meal=True
-        )
-        assert not cheat_items.exists(), \
-            "cheat-meal не должен появиться раньше interval"
+        cheat_items = MenuItem.objects.filter(menu_id=resp.data["id"], is_cheat_meal=True)
+        assert not cheat_items.exists(), "cheat-meal не должен появиться раньше interval"
 
     def test_cheat_meal_zero_interval_disables(self, client, rich_pool):
         # interval=0 → выключено, cheat не появляется никогда
         today = datetime.date.today()
         u = _mk_user_with_profile(
-            "cheat-off@x.local", "CheatOff",
+            "cheat-off@x.local",
+            "CheatOff",
             cheat_meal_interval=0,
             last_cheat_meal_date=today - datetime.timedelta(days=100),
         )
@@ -160,11 +150,8 @@ class TestMG505CheatMealIntegration:
         )
         assert resp.status_code == 201, resp.data
 
-        cheat_items = MenuItem.objects.filter(
-            menu_id=resp.data["id"], is_cheat_meal=True
-        )
-        assert not cheat_items.exists(), \
-            "interval=0 должен полностью отключать cheat-meal"
+        cheat_items = MenuItem.objects.filter(menu_id=resp.data["id"], is_cheat_meal=True)
+        assert not cheat_items.exists(), "interval=0 должен полностью отключать cheat-meal"
 
 
 # ==================================================================
@@ -179,7 +166,8 @@ class TestMG303CalorieDistribution:
         в окно ±50% от целевого."""
         today = datetime.date.today()
         u = _mk_user_with_profile(
-            "cal3@x.local", "Cal3",
+            "cal3@x.local",
+            "Cal3",
             calorie_target=2000,
             meal_plan_type="3",
         )
@@ -252,9 +240,7 @@ class TestMG502OilLimit:
         # среди выбранных. Если фильтр работает — light должны
         # доминировать (>= 50%), даже если суммарно по дням возможны
         # точечные превышения, когда альтернатив нет.
-        items = list(MenuItem.objects.filter(
-            menu_id=resp.data["id"], is_cheat_meal=False
-        ).select_related("recipe"))
+        items = list(MenuItem.objects.filter(menu_id=resp.data["id"], is_cheat_meal=False).select_related("recipe"))
         total = len(items)
         assert total > 0, "Нет ни одного MenuItem"
         light = sum(1 for it in items if float(it.recipe.oil_tsp or 0) == 0)
@@ -299,11 +285,13 @@ class TestMG503AddedSugar:
         # В основных приёмах (breakfast/lunch/dinner): доля sweet должна быть
         # ниже 50%, т.к. при равном пуле sweet/normal генератор предпочитает
         # normal (sweet allowed только когда нет альтернатив).
-        main_items = list(MenuItem.objects.filter(
-            menu_id=resp.data["id"],
-            meal_type__in=["breakfast", "lunch", "dinner"],
-            is_cheat_meal=False,
-        ).select_related("recipe"))
+        main_items = list(
+            MenuItem.objects.filter(
+                menu_id=resp.data["id"],
+                meal_type__in=["breakfast", "lunch", "dinner"],
+                is_cheat_meal=False,
+            ).select_related("recipe")
+        )
         total = len(main_items)
         assert total > 0, "Нет ни одного MenuItem в основных приёмах"
         sweet = sum(1 for it in main_items if it.recipe.has_added_sugar)
@@ -334,12 +322,9 @@ class TestMG302RedMeatWeekly:
 
         # Все protein — красное мясо 200г/порция (3 порции = 600г > 500)
         for i in range(5):
-            _mk_recipe(f"Beef{i}", "protein",
-                       protein_type="animal", is_red_meat=True,
-                       servings_normalized=1)
+            _mk_recipe(f"Beef{i}", "protein", protein_type="animal", is_red_meat=True, servings_normalized=1)
             _mk_recipe(f"Beans{i}", "protein", protein_type="plant")
-            _mk_recipe(f"Fish{i}", "protein",
-                       protein_type="animal", is_fatty_fish=True)
+            _mk_recipe(f"Fish{i}", "protein", protein_type="animal", is_fatty_fish=True)
             _mk_recipe(f"G{i}", "grain")
             _mk_recipe(f"V{i}", "vegetable")
             _mk_recipe(f"F{i}", "fruit")
@@ -355,16 +340,12 @@ class TestMG302RedMeatWeekly:
         )
         items = gen.generate()
         # Проверяем что не все белки — красное мясо
-        red_count = sum(
-            1 for it in items
-            if it["recipe"].is_red_meat and it.get("component_role") == "protein"
-        )
-        total_protein = sum(
-            1 for it in items if it.get("component_role") == "protein"
-        )
+        red_count = sum(1 for it in items if it["recipe"].is_red_meat and it.get("component_role") == "protein")
+        total_protein = sum(1 for it in items if it.get("component_role") == "protein")
         # Хоть один НЕ red_meat protein должен быть выбран на неделе.
-        assert red_count < total_protein or total_protein == 0, \
-            f"Все {total_protein} protein-приёмов оказались red_meat — лимит 500г/неделю не работает"
+        assert (
+            red_count < total_protein or total_protein == 0
+        ), f"Все {total_protein} protein-приёмов оказались red_meat — лимит 500г/неделю не работает"
 
 
 # ==================================================================
@@ -378,7 +359,8 @@ class TestMG601MainMealComposition:
     def test_main_meal_three_components_with_target(self, client, db):
         today = datetime.date.today()
         u = _mk_user_with_profile(
-            "mm@x.local", "MainMeal",
+            "mm@x.local",
+            "MainMeal",
             calorie_target=2000,
             meal_plan_type="3",
         )
@@ -408,15 +390,19 @@ class TestMG601MainMealComposition:
 
         for (day, slot), roles in groups.items():
             if slot in ("lunch", "dinner"):
-                assert {"protein", "grain", "vegetable"}.issubset(roles), \
-                    f"Слот {slot} день {day} не содержит 3 компонентов: {roles}"
+                assert {"protein", "grain", "vegetable"}.issubset(
+                    roles
+                ), f"Слот {slot} день {day} не содержит 3 компонентов: {roles}"
 
+
+from datetime import timedelta as _MG606_td  # noqa: E402
+from decimal import Decimal as _MG606_D  # noqa: E402
+
+from django.utils import timezone as _MG606_tz  # noqa: E402
 
 # MG-606.C: автоматический Premium для тестовых семей
-from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
-from decimal import Decimal as _MG606_D
-from django.utils import timezone as _MG606_tz
-from datetime import timedelta as _MG606_td
+from apps.subscriptions.models import Subscription as _MG606_Sub  # noqa: E402
+from apps.subscriptions.models import SubscriptionPlan as _MG606_Plan  # noqa: E402
 
 
 def _attach_premium(family):

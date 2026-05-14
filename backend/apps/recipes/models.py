@@ -1,5 +1,5 @@
-from django.db import models
 from django.contrib.postgres.indexes import GinIndex
+from django.db import models
 
 from apps.users.models import User
 
@@ -9,7 +9,9 @@ class Recipe(models.Model):
     title = models.CharField(max_length=512)
     cook_time = models.CharField(max_length=64, null=True, blank=True)
     servings = models.PositiveSmallIntegerField(null=True, blank=True)
-    servings_normalized = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Нормализованное число порций (MG-104d-5)")
+    servings_normalized = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Нормализованное число порций (MG-104d-5)"
+    )
     ingredients = models.JSONField(default=list)
     steps = models.JSONField(default=list)
     nutrition = models.JSONField(default=dict)
@@ -24,56 +26,69 @@ class Recipe(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-
     class FoodGroup(models.TextChoices):
-        GRAIN     = "grain",     "Зерновые"
-        PROTEIN   = "protein",   "Белки"
+        GRAIN = "grain", "Зерновые"
+        PROTEIN = "protein", "Белки"
         VEGETABLE = "vegetable", "Овощи"
-        FRUIT     = "fruit",     "Фрукты"
-        DAIRY     = "dairy",     "Молочные"
-        OIL       = "oil",       "Масла/жиры"
-        OTHER     = "other",     "Прочее"
+        FRUIT = "fruit", "Фрукты"
+        DAIRY = "dairy", "Молочные"
+        OIL = "oil", "Масла/жиры"
+        OTHER = "other", "Прочее"
 
     class ProteinType(models.TextChoices):
         ANIMAL = "animal", "Животный"
-        PLANT  = "plant",  "Растительный"
-        MIXED  = "mixed",  "Смешанный"
+        PLANT = "plant", "Растительный"
+        MIXED = "mixed", "Смешанный"
 
     class GrainType(models.TextChoices):
-        WHOLE   = "whole",   "Цельнозерновые"
+        WHOLE = "whole", "Цельнозерновые"
         REFINED = "refined", "Рафинированные"
 
     class CookingMethod(models.TextChoices):  # MG_501_V_model
-        BOILED     = "boiled",     "Варёное"
-        BAKED      = "baked",      "Запечённое"
-        FRIED      = "fried",      "Жареное"
-        GRILLED    = "grilled",    "Гриль"
-        RAW        = "raw",        "Сырое"
-        STEWED     = "stewed",     "Тушёное"
-        STEAMED    = "steamed",    "На пару"
+        BOILED = "boiled", "Варёное"
+        BAKED = "baked", "Запечённое"
+        FRIED = "fried", "Жареное"
+        GRILLED = "grilled", "Гриль"
+        RAW = "raw", "Сырое"
+        STEWED = "stewed", "Тушёное"
+        STEAMED = "steamed", "На пару"
 
-    food_group    = models.CharField(max_length=16, choices=FoodGroup.choices, null=True, blank=True)
-    suitable_for  = models.JSONField(default=list, blank=True)
-    povar_raw     = models.JSONField(blank=True, null=True)
-    protein_type  = models.CharField(max_length=8, choices=ProteinType.choices, null=True, blank=True)
-    grain_type    = models.CharField(max_length=8, choices=GrainType.choices, null=True, blank=True)
+    food_group = models.CharField(max_length=16, choices=FoodGroup.choices, null=True, blank=True)
+    suitable_for = models.JSONField(default=list, blank=True)
+    povar_raw = models.JSONField(blank=True, null=True)
+    protein_type = models.CharField(max_length=8, choices=ProteinType.choices, null=True, blank=True)
+    grain_type = models.CharField(max_length=8, choices=GrainType.choices, null=True, blank=True)
     is_fatty_fish = models.BooleanField(default=False)
-    is_red_meat   = models.BooleanField(default=False)
-    kcal     = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True, help_text='Калорийность на 1 порцию, ккал (MG-104d-4).')
-    proteins = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Белки на 1 порцию, г.')
-    fats     = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Жиры на 1 порцию, г.')
-    carbs    = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text='Углеводы на 1 порцию, г.')
-    cooking_method      = models.CharField(  # MG_501_V_model
-        max_length=16, choices=CookingMethod.choices, null=True, blank=True,
-        help_text='Метод приготовления (MG-501).',
+    is_red_meat = models.BooleanField(default=False)
+    kcal = models.DecimalField(
+        max_digits=7, decimal_places=1, null=True, blank=True, help_text="Калорийность на 1 порцию, ккал (MG-104d-4)."
     )
-    has_added_sugar     = models.BooleanField(default=False, help_text='Содержит добавленный сахар (MG-501).')
-    oil_tsp             = models.DecimalField(
-        max_digits=4, decimal_places=1, null=True, blank=True,
-        help_text='Расход масла в чайных ложках (MG-501).',
+    proteins = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Белки на 1 порцию, г."
     )
-    serving_size_label  = models.CharField(
-        max_length=64, null=True, blank=True,
+    fats = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True, help_text="Жиры на 1 порцию, г.")
+    carbs = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Углеводы на 1 порцию, г."
+    )
+    cooking_method = models.CharField(  # MG_501_V_model
+        max_length=16,
+        choices=CookingMethod.choices,
+        null=True,
+        blank=True,
+        help_text="Метод приготовления (MG-501).",
+    )
+    has_added_sugar = models.BooleanField(default=False, help_text="Содержит добавленный сахар (MG-501).")
+    oil_tsp = models.DecimalField(
+        max_digits=4,
+        decimal_places=1,
+        null=True,
+        blank=True,
+        help_text="Расход масла в чайных ложках (MG-501).",
+    )
+    serving_size_label = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
         help_text='Подпись размера порции, напр. "1 тарелка / 200 г" (MG-501).',
     )
 
@@ -122,13 +137,12 @@ class RecipeAuthor(models.Model):
 
 class DeletedRecipe(models.Model):
     """Рецепты, удалённые администратором. Используются для аудита и восстановления."""
-    original_id   = models.IntegerField(db_index=True)
-    title         = models.CharField(max_length=512)
-    data          = models.JSONField()           # полный снапшот Recipe
-    deleted_by    = models.ForeignKey(
-        "users.User", on_delete=models.SET_NULL, null=True, blank=True
-    )
-    deleted_at    = models.DateTimeField(auto_now_add=True)
+
+    original_id = models.IntegerField(db_index=True)
+    title = models.CharField(max_length=512)
+    data = models.JSONField()  # полный снапшот Recipe
+    deleted_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True)
+    deleted_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "deleted_recipes"

@@ -7,29 +7,30 @@ EmptyRolePoolError — поднимается, если для требуемо�
 Сообщение составляется на русском, понятным для не-технического пользователя
 языком — оно проксируется в API ответ 400.
 """
+
 # MG_301_V_exceptions
 from __future__ import annotations
-from typing import Optional
 
+from typing import Optional
 
 # человекочитаемые названия ролей
 ROLE_LABELS_RU = {
-    "protein":   "белковый компонент (мясо, рыба, бобы, яйца, творог)",
-    "grain":     "зерновой/крахмалистый компонент (крупа, гарнир, хлеб)",
+    "protein": "белковый компонент (мясо, рыба, бобы, яйца, творог)",
+    "grain": "зерновой/крахмалистый компонент (крупа, гарнир, хлеб)",
     "vegetable": "овощной компонент",
-    "fruit":     "фруктовый компонент",
-    "dairy":     "молочный компонент",
-    "oil":       "масло/жир",
-    "other":     "компонент",
+    "fruit": "фруктовый компонент",
+    "dairy": "молочный компонент",
+    "oil": "масло/жир",
+    "other": "компонент",
 }
 
 MEAL_LABELS_RU = {
     "breakfast": "завтрака",
-    "lunch":     "обеда",
-    "dinner":    "ужина",
-    "snack1":    "первого перекуса",
-    "snack2":    "второго перекуса",
-    "snack":     "перекуса",
+    "lunch": "обеда",
+    "dinner": "ужина",
+    "snack1": "первого перекуса",
+    "snack2": "второго перекуса",
+    "snack": "перекуса",
 }
 
 
@@ -69,10 +70,7 @@ class EmptyRolePoolError(MenuGeneratorError):
         day_n = day_offset + 1
         who = f" для {self.member_name}" if self.member_name else ""
 
-        msg = (
-            f"Не удалось подобрать {role_lbl}{who} "
-            f"для {meal_lbl} (день {day_n}). "
-        )
+        msg = f"Не удалось подобрать {role_lbl}{who} " f"для {meal_lbl} (день {day_n}). "
         if reason_hint:
             msg += f"{reason_hint} "
         msg += (

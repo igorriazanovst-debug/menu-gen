@@ -9,18 +9,17 @@
 - DELETE сохраняет существующее поведение
 - DiaryStats с ?member_id=
 """
+
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from django.contrib.auth import get_user_model
-from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.diary.models import DiaryEntry
 from apps.family.models import Family, FamilyMember
 from apps.subscriptions.models import Subscription, SubscriptionPlan
-from apps.diary.models import DiaryEntry
 
 User = get_user_model()
 

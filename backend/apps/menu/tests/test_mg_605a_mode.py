@@ -1,6 +1,7 @@
 """
 MG-605.A: тесты режима мульти-член (per_member / family).
 """
+
 # MG_605A_V_tests
 from __future__ import annotations
 
@@ -16,8 +17,8 @@ from apps.menu.models import Menu, MenuItem
 from apps.recipes.models import Recipe
 from apps.users.models import Profile, User
 
-
 # ─────────────────────────── fixtures ─────────────────────────────────────────
+
 
 @pytest.fixture
 def client():
@@ -32,9 +33,9 @@ def _mk(title, food_group, calories=300, weight_g=200, suitable_for=None, **extr
         nutrition={
             "calories": {"value": str(calories), "unit": "ккал"},
             "proteins": {"value": "10", "unit": "г"},
-            "fats":     {"value": "5", "unit": "г"},
-            "carbs":    {"value": "30", "unit": "г"},
-            "weight":   {"value": str(weight_g), "unit": "г"},
+            "fats": {"value": "5", "unit": "г"},
+            "carbs": {"value": "30", "unit": "г"},
+            "weight": {"value": str(weight_g), "unit": "г"},
         },
         categories=[],
         is_published=True,
@@ -47,11 +48,11 @@ def _mk(title, food_group, calories=300, weight_g=200, suitable_for=None, **extr
 def _seed_recipes():
     """Полный набор всех ролей × достаточное количество."""
     for i in range(10):
-        _mk(f"Курица {i}",   "protein")
-        _mk(f"Гречка {i}",   "grain")
-        _mk(f"Салат {i}",    "vegetable")
-        _mk(f"Яблоко {i}",   "fruit")
-        _mk(f"Йогурт {i}",   "dairy")
+        _mk(f"Курица {i}", "protein")
+        _mk(f"Гречка {i}", "grain")
+        _mk(f"Салат {i}", "vegetable")
+        _mk(f"Яблоко {i}", "fruit")
+        _mk(f"Йогурт {i}", "dairy")
 
 
 @pytest.fixture
@@ -89,38 +90,61 @@ def family_solo(db):
 
 # ─────────────────────────── unit: __init__ flag ──────────────────────────────
 
+
 @pytest.mark.django_db
 class TestModeFlag:
     def test_default_mode_is_family(self, family_with_three):
         family, members = family_with_three
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="free", filters={})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="free",
+            filters={},
+        )
         assert gen.mode == "family"
 
     def test_explicit_per_member(self, family_with_three):
         family, members = family_with_three
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="free",
-                            filters={"mode": "per_member"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="free",
+            filters={"mode": "per_member"},
+        )
         assert gen.mode == "per_member"
 
     def test_invalid_mode_falls_back_to_family(self, family_with_three):
         family, members = family_with_three
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="free",
-                            filters={"mode": "bogus"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="free",
+            filters={"mode": "bogus"},
+        )
         assert gen.mode == "family"
 
 
 # ─────────────────────────── unit: mode=family ────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestModeFamily:
     def test_family_one_recipe_per_role_slot(self, family_with_three):
         family, members = family_with_three
-        gen = MenuGenerator(family=family, members=members, period_days=2,
-                            start_date=datetime.date.today(), plan_code="free",
-                            filters={"mode": "family"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=2,
+            start_date=datetime.date.today(),
+            plan_code="free",
+            filters={"mode": "family"},
+        )
         items = gen.generate()
 
         groups = {}
@@ -134,9 +158,14 @@ class TestModeFamily:
 
     def test_family_item_per_member(self, family_with_three):
         family, members = family_with_three
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="free",
-                            filters={"mode": "family"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="free",
+            filters={"mode": "family"},
+        )
         items = gen.generate()
 
         groups = {}
@@ -152,9 +181,14 @@ class TestModeFamily:
     def test_family_quantity_scales_by_age(self, family_with_three):
         family, members = family_with_three
         head, wife, kid = members
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="free",
-                            filters={"mode": "family"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="free",
+            filters={"mode": "family"},
+        )
         items = gen.generate()
 
         per_member = {}
@@ -173,9 +207,14 @@ class TestModeFamily:
     def test_family_solo_member_no_dup(self, family_solo):
         """Семья из 1 человека: family не должен включаться (нечего дублировать)."""
         family, members = family_solo
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="free",
-                            filters={"mode": "family"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="free",
+            filters={"mode": "family"},
+        )
         items = gen.generate()
         for it in items:
             assert it["member"].id == members[0].id
@@ -183,13 +222,19 @@ class TestModeFamily:
 
 # ─────────────────────────── unit: mode=per_member ────────────────────────────
 
+
 @pytest.mark.django_db
 class TestModePerMember:
     def test_per_member_items_per_member(self, family_with_three):
         family, members = family_with_three
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="free",
-                            filters={"mode": "per_member"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="free",
+            filters={"mode": "per_member"},
+        )
         items = gen.generate()
 
         groups = {}
@@ -205,6 +250,7 @@ class TestModePerMember:
 
 # ─────────────────────────── unit: _family_virtual_member ─────────────────────
 
+
 @pytest.mark.django_db
 class TestFamilyVirtualMember:
     def test_union_allergies(self, family_with_three):
@@ -216,18 +262,28 @@ class TestFamilyVirtualMember:
         members[2].user.allergies = []
         members[2].user.save()
 
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="premium",
-                            filters={"mode": "family"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="premium",
+            filters={"mode": "family"},
+        )
         virt = gen._family_virtual_member()
         assert "орех" in virt["hard_exclude"]
         assert "молоко" in virt["hard_exclude"]
 
     def test_avg_calorie_target(self, family_with_three):
         family, members = family_with_three
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="premium",
-                            filters={"mode": "family"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="premium",
+            filters={"mode": "family"},
+        )
         virt = gen._family_virtual_member()
         assert virt["calorie_target"] == int((2400 + 2000 + 1500) / 3)
 
@@ -236,14 +292,20 @@ class TestFamilyVirtualMember:
         for m in members:
             m.user.profile.calorie_target = None
             m.user.profile.save()
-        gen = MenuGenerator(family=family, members=members, period_days=1,
-                            start_date=datetime.date.today(), plan_code="premium",
-                            filters={"mode": "family"})
+        gen = MenuGenerator(
+            family=family,
+            members=members,
+            period_days=1,
+            start_date=datetime.date.today(),
+            plan_code="premium",
+            filters={"mode": "family"},
+        )
         virt = gen._family_virtual_member()
         assert virt["calorie_target"] is None
 
 
 # ─────────────────────────── e2e: HTTP /menu/generate ─────────────────────────
+
 
 @pytest.mark.django_db
 class TestModeAPI:
@@ -291,18 +353,20 @@ class TestModeAPI:
         )
         assert resp.status_code == 201, resp.data
         member_ids_in_db = set(
-            MenuItem.objects.filter(menu_id=resp.data["id"], is_cheat_meal=False)
-            .values_list("member_id", flat=True)
+            MenuItem.objects.filter(menu_id=resp.data["id"], is_cheat_meal=False).values_list("member_id", flat=True)
         )
         expected = {m.id for m in members}
         assert expected.issubset(member_ids_in_db)
 
 
+from datetime import timedelta as _MG606_td  # noqa: E402
+from decimal import Decimal as _MG606_D  # noqa: E402
+
+from django.utils import timezone as _MG606_tz  # noqa: E402
+
 # MG-606.C: автоматический Premium для тестовых семей
-from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
-from decimal import Decimal as _MG606_D
-from django.utils import timezone as _MG606_tz
-from datetime import timedelta as _MG606_td
+from apps.subscriptions.models import Subscription as _MG606_Sub  # noqa: E402
+from apps.subscriptions.models import SubscriptionPlan as _MG606_Plan  # noqa: E402
 
 
 def _attach_premium(family):

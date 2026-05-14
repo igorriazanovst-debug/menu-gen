@@ -1,12 +1,6 @@
 from django.urls import path
 
-from .views import (
-    DiaryEntryDetailView,
-    DiaryImportFromMenuView,
-    DiaryListCreateView,
-    DiaryStatsView,
-    WaterLogView,
-)
+from .views import DiaryEntryDetailView, DiaryImportFromMenuView, DiaryListCreateView, DiaryStatsView, WaterLogView
 
 urlpatterns = [
     path("", DiaryListCreateView.as_view(), name="diary-list"),

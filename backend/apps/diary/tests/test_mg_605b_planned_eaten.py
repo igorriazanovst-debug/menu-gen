@@ -7,6 +7,7 @@ MG-605.B: тесты планового FK + is_eaten в DiaryEntry.
 - сериализатор отдаёт оба поля
 - сериализатор пишет оба поля
 """
+
 # MG_605B_V_tests
 from __future__ import annotations
 
@@ -37,8 +38,12 @@ def setup(db):
     # MG-605.C: активная Premium-подписка, требуется новым gate
     from datetime import timedelta as _td
     from decimal import Decimal as _D
+
     from django.utils import timezone as _tz
-    from apps.subscriptions.models import Subscription as _Sub, SubscriptionPlan as _Plan
+
+    from apps.subscriptions.models import Subscription as _Sub
+    from apps.subscriptions.models import SubscriptionPlan as _Plan
+
     _plan, _ = _Plan.objects.get_or_create(
         code="premium",
         defaults={"name": "Premium", "price": _D("0")},
@@ -57,8 +62,8 @@ def setup(db):
         nutrition={
             "calories": {"value": "300", "unit": "ккал"},
             "proteins": {"value": "10", "unit": "г"},
-            "fats":     {"value": "5", "unit": "г"},
-            "carbs":    {"value": "50", "unit": "г"},
+            "fats": {"value": "5", "unit": "г"},
+            "carbs": {"value": "50", "unit": "г"},
         },
         is_published=True,
     )
@@ -84,13 +89,18 @@ def setup(db):
 
 # ─────────────────────────── unit: модель ─────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestDiaryEntryFields:
     def test_default_is_eaten_false(self, setup):
         user, member, recipe, _ = setup
         e = DiaryEntry.objects.create(
-            member=member, date=datetime.date.today(),
-            meal_type="breakfast", recipe=recipe, nutrition={}, quantity=1,
+            member=member,
+            date=datetime.date.today(),
+            meal_type="breakfast",
+            recipe=recipe,
+            nutrition={},
+            quantity=1,
         )
         assert e.is_eaten is False
         assert e.planned_menu_item is None
@@ -98,9 +108,14 @@ class TestDiaryEntryFields:
     def test_can_attach_planned_menu_item(self, setup):
         user, member, recipe, menu_item = setup
         e = DiaryEntry.objects.create(
-            member=member, date=datetime.date.today(),
-            meal_type="breakfast", recipe=recipe, nutrition={}, quantity=1,
-            planned_menu_item=menu_item, is_eaten=False,
+            member=member,
+            date=datetime.date.today(),
+            meal_type="breakfast",
+            recipe=recipe,
+            nutrition={},
+            quantity=1,
+            planned_menu_item=menu_item,
+            is_eaten=False,
         )
         assert e.planned_menu_item_id == menu_item.id
         assert e.is_eaten is False
@@ -108,55 +123,83 @@ class TestDiaryEntryFields:
     def test_set_is_eaten_true(self, setup):
         user, member, recipe, menu_item = setup
         e = DiaryEntry.objects.create(
-            member=member, date=datetime.date.today(),
-            meal_type="breakfast", recipe=recipe, nutrition={}, quantity=1,
-            planned_menu_item=menu_item, is_eaten=True,
+            member=member,
+            date=datetime.date.today(),
+            meal_type="breakfast",
+            recipe=recipe,
+            nutrition={},
+            quantity=1,
+            planned_menu_item=menu_item,
+            is_eaten=True,
         )
         assert e.is_eaten is True
 
 
 # ─────────────────────────── unit: уникальность OneToOne ──────────────────────
 
+
 @pytest.mark.django_db
 class TestOneToOneConstraint:
     def test_cannot_attach_twice_same_menu_item(self, setup):
         user, member, recipe, menu_item = setup
         DiaryEntry.objects.create(
-            member=member, date=datetime.date.today(),
-            meal_type="breakfast", recipe=recipe, nutrition={}, quantity=1,
+            member=member,
+            date=datetime.date.today(),
+            meal_type="breakfast",
+            recipe=recipe,
+            nutrition={},
+            quantity=1,
             planned_menu_item=menu_item,
         )
         with pytest.raises(IntegrityError):
             DiaryEntry.objects.create(
-                member=member, date=datetime.date.today(),
-                meal_type="breakfast", recipe=recipe, nutrition={}, quantity=1,
+                member=member,
+                date=datetime.date.today(),
+                meal_type="breakfast",
+                recipe=recipe,
+                nutrition={},
+                quantity=1,
                 planned_menu_item=menu_item,
             )
 
     def test_two_entries_with_null_planned_item_allowed(self, setup):
         user, member, recipe, _ = setup
         DiaryEntry.objects.create(
-            member=member, date=datetime.date.today(),
-            meal_type="breakfast", recipe=recipe, nutrition={}, quantity=1,
+            member=member,
+            date=datetime.date.today(),
+            meal_type="breakfast",
+            recipe=recipe,
+            nutrition={},
+            quantity=1,
         )
         # Вторая без планового пункта — должна создаваться без ошибок
         DiaryEntry.objects.create(
-            member=member, date=datetime.date.today(),
-            meal_type="snack", custom_name="Орех", nutrition={}, quantity=1,
+            member=member,
+            date=datetime.date.today(),
+            meal_type="snack",
+            custom_name="Орех",
+            nutrition={},
+            quantity=1,
         )
         assert DiaryEntry.objects.count() == 2
 
 
 # ─────────────────────────── unit: SET_NULL при удалении MenuItem ─────────────
 
+
 @pytest.mark.django_db
 class TestSetNullOnMenuItemDelete:
     def test_diary_entry_keeps_when_menu_item_deleted(self, setup):
         user, member, recipe, menu_item = setup
         e = DiaryEntry.objects.create(
-            member=member, date=datetime.date.today(),
-            meal_type="breakfast", recipe=recipe, nutrition={}, quantity=1,
-            planned_menu_item=menu_item, is_eaten=True,
+            member=member,
+            date=datetime.date.today(),
+            meal_type="breakfast",
+            recipe=recipe,
+            nutrition={},
+            quantity=1,
+            planned_menu_item=menu_item,
+            is_eaten=True,
         )
         eid = e.id
         menu_item.delete()
@@ -168,14 +211,20 @@ class TestSetNullOnMenuItemDelete:
 
 # ─────────────────────────── API: сериализатор отдаёт новые поля ──────────────
 
+
 @pytest.mark.django_db
 class TestSerializerExposesFields:
     def test_get_returns_planned_and_is_eaten(self, client, setup):
         user, member, recipe, menu_item = setup
         DiaryEntry.objects.create(
-            member=member, date=datetime.date.today(),
-            meal_type="breakfast", recipe=recipe, nutrition={}, quantity=1,
-            planned_menu_item=menu_item, is_eaten=False,
+            member=member,
+            date=datetime.date.today(),
+            meal_type="breakfast",
+            recipe=recipe,
+            nutrition={},
+            quantity=1,
+            planned_menu_item=menu_item,
+            is_eaten=False,
         )
         client.force_authenticate(user)
         resp = client.get(reverse("diary-list"), {"date": str(datetime.date.today())})

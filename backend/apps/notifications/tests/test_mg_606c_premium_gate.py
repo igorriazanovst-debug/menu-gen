@@ -10,6 +10,7 @@ Coverage:
 - expired (active+date past) → 200 list, 403 mark-read
 - cancelled-only → 403 on both
 """
+
 from datetime import timedelta
 from decimal import Decimal
 
@@ -45,7 +46,9 @@ def _plan():
 def _sub(family, status, expires_in_days=30):
     now = timezone.now()
     return Subscription.objects.create(
-        family=family, plan=_plan(), status=status,
+        family=family,
+        plan=_plan(),
+        status=status,
         started_at=now - timedelta(days=1),
         expires_at=now + timedelta(days=expires_in_days),
     )

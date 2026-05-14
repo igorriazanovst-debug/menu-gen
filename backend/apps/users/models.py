@@ -96,7 +96,8 @@ class Profile(models.Model):
     meal_plan_type = models.CharField(max_length=2, choices=MealPlan.choices, default=MealPlan.THREE)
     # MG_504_V_model
     bedtime_hour = models.PositiveSmallIntegerField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Час отхода ко сну (0-23) для правила «не есть за 3ч до сна»",
     )
     cheat_meal_interval = models.PositiveSmallIntegerField(
@@ -104,7 +105,8 @@ class Profile(models.Model):
         help_text="Интервал в днях между cheat-meal приёмами",
     )
     last_cheat_meal_date = models.DateField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Дата последнего cheat-meal — обновляется генератором",
     )
     updated_at = models.DateTimeField(auto_now=True)
@@ -118,7 +120,7 @@ class Profile(models.Model):
     # MG-202: auto-fill targets on save
     def save(self, *args, **kwargs):
         # MG-205: actor может быть проброшен через kwargs из view
-        actor = kwargs.pop('_mg205_actor', None)
+        actor = kwargs.pop("_mg205_actor", None)
         from .nutrition import fill_profile_targets
 
         is_new = self.pk is None
@@ -131,12 +133,13 @@ class Profile(models.Model):
         # когда pk появился только что.
         if is_new:
             from .audit import record_target_change
+
             for f in (
-                'calorie_target',
-                'protein_target_g',
-                'fat_target_g',
-                'carb_target_g',
-                'fiber_target_g',
+                "calorie_target",
+                "protein_target_g",
+                "fat_target_g",
+                "carb_target_g",
+                "fiber_target_g",
             ):
                 v = getattr(self, f, None)
                 if v is None:
@@ -147,10 +150,10 @@ class Profile(models.Model):
                         profile=self,
                         field=f,
                         new_value=v,
-                        source='auto',
+                        source="auto",
                         by_user=actor,
                         old_value=None,
-                        reason='auto-fill on profile create',
+                        reason="auto-fill on profile create",
                     )
 
 
@@ -180,9 +183,7 @@ class ProfileTargetAudit(models.Model):
         USER = "user", "user"
         SPECIALIST = "specialist", "specialist"
 
-    profile = models.ForeignKey(
-        "Profile", on_delete=models.CASCADE, related_name="target_audits"
-    )
+    profile = models.ForeignKey("Profile", on_delete=models.CASCADE, related_name="target_audits")
     field = models.CharField(max_length=32, choices=Field.choices)
     source = models.CharField(max_length=16, choices=Source.choices)
     by_user = models.ForeignKey(
@@ -192,12 +193,8 @@ class ProfileTargetAudit(models.Model):
         blank=True,
         related_name="profile_target_edits",
     )
-    old_value = models.DecimalField(
-        max_digits=8, decimal_places=2, null=True, blank=True
-    )
-    new_value = models.DecimalField(
-        max_digits=8, decimal_places=2, null=True, blank=True
-    )
+    old_value = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    new_value = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     reason = models.TextField(blank=True, default="")
     at = models.DateTimeField(auto_now_add=True)
 

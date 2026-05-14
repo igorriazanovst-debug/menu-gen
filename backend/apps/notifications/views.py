@@ -5,8 +5,9 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Notification
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
+
+from .models import Notification
 
 
 class NotificationSerializer(drf_serializers.ModelSerializer):

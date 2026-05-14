@@ -1,18 +1,18 @@
 import os
 import uuid
+
 from django.conf import settings
-from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm", "video/quicktime"}
-MAX_IMAGE_SIZE = 10 * 1024 * 1024   # 10 MB
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 MAX_VIDEO_SIZE = 200 * 1024 * 1024  # 200 MB
 
 
@@ -21,10 +21,15 @@ class RecipeMediaUploadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        request={"multipart/form-data": {"type": "object", "properties": {
-            "file": {"type": "string", "format": "binary"},
-            "media_type": {"type": "string", "enum": ["image", "video"]},
-        }}},
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "format": "binary"},
+                    "media_type": {"type": "string", "enum": ["image", "video"]},
+                },
+            }
+        },
         responses={200: {"type": "object", "properties": {"url": {"type": "string"}}}},
     )
     def post(self, request):

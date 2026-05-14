@@ -9,6 +9,7 @@
 - запись manual (planned_menu_item=None) → всегда actual, не planned
 - запись manual+is_eaten=True → всегда actual
 """
+
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -35,7 +36,8 @@ def _premium_family(owner):
     fam = Family.objects.create(owner=owner)
     head = FamilyMember.objects.create(family=fam, user=owner, role=FamilyMember.Role.HEAD)
     plan, _ = SubscriptionPlan.objects.get_or_create(
-        code="premium", defaults={"name": "Premium", "price": Decimal("0")},
+        code="premium",
+        defaults={"name": "Premium", "price": Decimal("0")},
     )
     Subscription.objects.create(
         family=fam,
@@ -64,14 +66,22 @@ def _recipe(kcal=300, p=10, f=5, c=50):
 
 def _menu_item(family, recipe, member=None):
     menu = Menu.objects.create(
-        family=family, creator_id=family.owner_id,
-        period_days=1, start_date=date.today(), end_date=date.today(),
+        family=family,
+        creator_id=family.owner_id,
+        period_days=1,
+        start_date=date.today(),
+        end_date=date.today(),
         status=Menu.Status.ACTIVE,
     )
     return MenuItem.objects.create(
-        menu=menu, recipe=recipe, member=member,
-        meal_type="breakfast", meal_slot="breakfast",
-        day_offset=0, quantity=Decimal("1"), component_role="other",
+        menu=menu,
+        recipe=recipe,
+        member=member,
+        meal_type="breakfast",
+        meal_slot="breakfast",
+        day_offset=0,
+        quantity=Decimal("1"),
+        component_role="other",
     )
 
 
@@ -88,8 +98,13 @@ class TestDiaryStatsNewShape:
         fam, head = _premium_family(user)
         r = _recipe(kcal=100)
         DiaryEntry.objects.create(
-            member=head, date=date.today(), meal_type="breakfast",
-            recipe=r, nutrition=r.nutrition, quantity=1, is_eaten=True,
+            member=head,
+            date=date.today(),
+            meal_type="breakfast",
+            recipe=r,
+            nutrition=r.nutrition,
+            quantity=1,
+            is_eaten=True,
         )
         client.force_authenticate(user)
         resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
@@ -105,8 +120,13 @@ class TestDiaryStatsNewShape:
         fam, head = _premium_family(user)
         r = _recipe(kcal=200)
         DiaryEntry.objects.create(
-            member=head, date=date.today(), meal_type="snack",
-            recipe=r, nutrition=r.nutrition, quantity=1, is_eaten=False,
+            member=head,
+            date=date.today(),
+            meal_type="snack",
+            recipe=r,
+            nutrition=r.nutrition,
+            quantity=1,
+            is_eaten=False,
         )
         client.force_authenticate(user)
         resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
@@ -122,9 +142,14 @@ class TestDiaryStatsNewShape:
         r = _recipe(kcal=300)
         mi = _menu_item(fam, r, member=head)
         DiaryEntry.objects.create(
-            member=head, date=date.today(), meal_type="breakfast",
-            recipe=r, nutrition=r.nutrition, quantity=1,
-            planned_menu_item=mi, is_eaten=False,
+            member=head,
+            date=date.today(),
+            meal_type="breakfast",
+            recipe=r,
+            nutrition=r.nutrition,
+            quantity=1,
+            planned_menu_item=mi,
+            is_eaten=False,
         )
         client.force_authenticate(user)
         resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
@@ -140,9 +165,14 @@ class TestDiaryStatsNewShape:
         r = _recipe(kcal=400, p=20, f=10, c=30)
         mi = _menu_item(fam, r, member=head)
         DiaryEntry.objects.create(
-            member=head, date=date.today(), meal_type="breakfast",
-            recipe=r, nutrition=r.nutrition, quantity=1,
-            planned_menu_item=mi, is_eaten=True,
+            member=head,
+            date=date.today(),
+            meal_type="breakfast",
+            recipe=r,
+            nutrition=r.nutrition,
+            quantity=1,
+            planned_menu_item=mi,
+            is_eaten=True,
         )
         client.force_authenticate(user)
         resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
@@ -157,8 +187,13 @@ class TestDiaryStatsNewShape:
         fam, head = _premium_family(user)
         r = _recipe(kcal=100)
         DiaryEntry.objects.create(
-            member=head, date=date.today(), meal_type="snack",
-            recipe=r, nutrition=r.nutrition, quantity=Decimal("2.5"), is_eaten=True,
+            member=head,
+            date=date.today(),
+            meal_type="snack",
+            recipe=r,
+            nutrition=r.nutrition,
+            quantity=Decimal("2.5"),
+            is_eaten=True,
         )
         client.force_authenticate(user)
         resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
@@ -173,13 +208,22 @@ class TestDiaryStatsNewShape:
         r_manual = _recipe(kcal=100)
         mi = _menu_item(fam, r_plan, member=head)
         DiaryEntry.objects.create(
-            member=head, date=date.today(), meal_type="breakfast",
-            recipe=r_plan, nutrition=r_plan.nutrition, quantity=1,
-            planned_menu_item=mi, is_eaten=False,
+            member=head,
+            date=date.today(),
+            meal_type="breakfast",
+            recipe=r_plan,
+            nutrition=r_plan.nutrition,
+            quantity=1,
+            planned_menu_item=mi,
+            is_eaten=False,
         )
         DiaryEntry.objects.create(
-            member=head, date=date.today(), meal_type="snack",
-            recipe=r_manual, nutrition=r_manual.nutrition, quantity=1,
+            member=head,
+            date=date.today(),
+            meal_type="snack",
+            recipe=r_manual,
+            nutrition=r_manual.nutrition,
+            quantity=1,
             is_eaten=False,
         )
         client.force_authenticate(user)

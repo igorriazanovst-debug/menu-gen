@@ -181,11 +181,14 @@ class TestShoppingList:
             assert item.is_purchased is True
 
 
+from datetime import timedelta as _MG606_td  # noqa: E402
+from decimal import Decimal as _MG606_D  # noqa: E402
+
+from django.utils import timezone as _MG606_tz  # noqa: E402
+
 # MG-606.C: автоматический Premium для тестовых семей
-from apps.subscriptions.models import Subscription as _MG606_Sub, SubscriptionPlan as _MG606_Plan
-from decimal import Decimal as _MG606_D
-from django.utils import timezone as _MG606_tz
-from datetime import timedelta as _MG606_td
+from apps.subscriptions.models import Subscription as _MG606_Sub  # noqa: E402
+from apps.subscriptions.models import SubscriptionPlan as _MG606_Plan  # noqa: E402
 
 
 def _attach_premium(family):

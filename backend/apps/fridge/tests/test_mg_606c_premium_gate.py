@@ -2,6 +2,7 @@
 
 Покрытие: без Premium → 403, active → 200, expired (active+истёкший по дате) → GET 200, POST 403.
 """
+
 from datetime import timedelta
 from decimal import Decimal
 
@@ -37,7 +38,9 @@ def _plan():
 def _sub(family, status, expires_in_days=30):
     now = timezone.now()
     return Subscription.objects.create(
-        family=family, plan=_plan(), status=status,
+        family=family,
+        plan=_plan(),
+        status=status,
         started_at=now - timedelta(days=1),
         expires_at=now + timedelta(days=expires_in_days),
     )

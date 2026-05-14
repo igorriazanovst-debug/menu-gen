@@ -8,21 +8,22 @@
 - cancelled только → {is_active=False, has_ever=False}
 - basic (не premium) → {is_active=False, has_ever=False, plan='basic'}
 """
+
 from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from django.utils import timezone
-from rest_framework.test import APIRequestFactory
 from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
 
 from apps.family.models import Family, FamilyMember
 from apps.subscriptions.models import Subscription, SubscriptionPlan
 from apps.users.models import User
 from apps.users.serializers import UserMeSerializer
 
-
 # ─── фикстуры ───────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def plan_premium(db):
@@ -49,9 +50,7 @@ def _user(email):
 def _family(owner_email):
     head = _user(owner_email)
     family = Family.objects.create(owner=head, name="F")
-    FamilyMember.objects.create(
-        family=family, user=head, role=FamilyMember.Role.HEAD
-    )
+    FamilyMember.objects.create(family=family, user=head, role=FamilyMember.Role.HEAD)
     return family, head
 
 
@@ -75,15 +74,14 @@ def _serialize(user):
 
 # ─── тесты ──────────────────────────────────────────────────────────────────
 
+
 class TestSubscriptionStatusField:
     def test_no_family_returns_none(self, db):
         u = _user("lone@e.com")
         data = _serialize(u)
         assert data["subscription_status"] is None
 
-    def test_family_no_subscription_returns_payload_with_false_flags(
-        self, db
-    ):
+    def test_family_no_subscription_returns_payload_with_false_flags(self, db):
         _, head = _family("h1@e.com")
         data = _serialize(head)
         assert data["subscription_status"] == {
@@ -153,13 +151,9 @@ class TestSubscriptionStatusField:
             expires_in_days=-100,
         )
         # Свежая active
-        latest = _sub(
-            family, plan_premium, Subscription.Status.ACTIVE
-        )
+        latest = _sub(family, plan_premium, Subscription.Status.ACTIVE)
         # Сдвинем started_at старой ещё дальше в прошлое
-        old = Subscription.objects.filter(family=family).exclude(
-            id=latest.id
-        ).first()
+        old = Subscription.objects.filter(family=family).exclude(id=latest.id).first()
         old.started_at = timezone.now() - timedelta(days=200)
         old.save()
 

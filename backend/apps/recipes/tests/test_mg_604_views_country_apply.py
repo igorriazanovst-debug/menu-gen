@@ -39,28 +39,44 @@ class TestRecipeCountryList:
 
     def test_excludes_unpublished(self, client, db, author):
         Recipe.objects.create(
-            title="Скрытый", ingredients=[{"name": "и"}], steps=[{"text": "ш"}],
-            country="Япония", is_published=False, author=author,
+            title="Скрытый",
+            ingredients=[{"name": "и"}],
+            steps=[{"text": "ш"}],
+            country="Япония",
+            is_published=False,
+            author=author,
         )
         resp = client.get(reverse("recipe-countries"))
         assert "Япония" not in resp.data
 
     def test_excludes_empty_country(self, client, db, author):
         Recipe.objects.create(
-            title="Без страны", ingredients=[{"name": "и"}], steps=[{"text": "ш"}],
-            country="", is_published=True, author=author,
+            title="Без страны",
+            ingredients=[{"name": "и"}],
+            steps=[{"text": "ш"}],
+            country="",
+            is_published=True,
+            author=author,
         )
         Recipe.objects.create(
-            title="Только пробелы", ingredients=[{"name": "и"}], steps=[{"text": "ш"}],
-            country="   ", is_published=True, author=author,
+            title="Только пробелы",
+            ingredients=[{"name": "и"}],
+            steps=[{"text": "ш"}],
+            country="   ",
+            is_published=True,
+            author=author,
         )
         resp = client.get(reverse("recipe-countries"))
         assert resp.data == []  # обе записи отфильтрованы
 
     def test_strips_whitespace(self, client, db, author):
         Recipe.objects.create(
-            title="С пробелами", ingredients=[{"name": "и"}], steps=[{"text": "ш"}],
-            country="  Франция  ", is_published=True, author=author,
+            title="С пробелами",
+            ingredients=[{"name": "и"}],
+            steps=[{"text": "ш"}],
+            country="  Франция  ",
+            is_published=True,
+            author=author,
         )
         resp = client.get(reverse("recipe-countries"))
         assert "Франция" in resp.data

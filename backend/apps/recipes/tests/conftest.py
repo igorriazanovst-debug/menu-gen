@@ -14,7 +14,9 @@ def client():
 @pytest.fixture
 def plain_user(db):
     return User.objects.create_user(
-        email="plain@example.com", name="Обычный", password="x12345",
+        email="plain@example.com",
+        name="Обычный",
+        password="x12345",
         user_type="user",
     )
 
@@ -22,7 +24,9 @@ def plain_user(db):
 @pytest.fixture
 def author(db):
     return User.objects.create_user(
-        email="author@example.com", name="Автор", password="x12345",
+        email="author@example.com",
+        name="Автор",
+        password="x12345",
         user_type="recipe_author",
     )
 
@@ -30,7 +34,9 @@ def author(db):
 @pytest.fixture
 def admin(db):
     return User.objects.create_user(
-        email="admin@example.com", name="Админ", password="x12345",
+        email="admin@example.com",
+        name="Админ",
+        password="x12345",
         user_type="admin",
     )
 

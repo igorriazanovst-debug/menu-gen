@@ -4,7 +4,7 @@ MG-205 tests: отслеживание источника правок целе�
 Сценарии:
   1. auto: новый профиль → fill_profile_targets создаёт записи source='auto'
   2. user override: PATCH через UserMeUpdateSerializer → source='user', lock
-  3. specialist override: PATCH через FamilyMemberUpdateSerializer от verified specialist'а с активным assignment → source='specialist'
+  3. specialist override: PATCH через FamilyMemberUpdateSerializer от verified specialist'а с активным assignment → source='specialist'  # noqa: E501
   4. reset: force=True снимает lock и ставит source='auto'
   5. lock: при source='user' автоматический fill_profile_targets(force=False) НЕ перетирает
   6. AuditLog дублирование: при правке создаётся запись entity_type='profile_target'
@@ -13,21 +13,18 @@ MG-205 tests: отслеживание источника правок целе�
   docker compose -f /opt/menugen/docker-compose.yml exec -T backend \
     pytest apps/users/tests/test_mg_205.py -v
 """
+
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory
 
+from apps.family.serializers import FamilyMemberUpdateSerializer
+from apps.users.audit import get_field_source, is_locked, record_target_change
 from apps.users.models import Profile, ProfileTargetAudit
-from apps.users.audit import (
-    record_target_change,
-    get_field_source,
-    is_locked,
-)
 from apps.users.nutrition import fill_profile_targets
 from apps.users.serializers import UserMeUpdateSerializer
-from apps.family.serializers import FamilyMemberUpdateSerializer
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
@@ -65,7 +62,9 @@ def specialist_user():
     u.save()
     sp = Specialist.objects.create(
         user=u,
-        specialist_type=Specialist.Type.NUTRITIONIST if hasattr(Specialist.Type, "NUTRITIONIST") else list(Specialist.Type)[0],
+        specialist_type=(
+            Specialist.Type.NUTRITIONIST if hasattr(Specialist.Type, "NUTRITIONIST") else list(Specialist.Type)[0]
+        ),
         is_verified=True,
     )
     return u, sp
@@ -136,8 +135,7 @@ def test_03_lock_prevents_auto_overwrite(user_with_profile):
     p.save()  # триггерит fill(force=False) — НЕ должен перетереть
 
     p.refresh_from_db()
-    assert p.protein_target_g == Decimal("200.0"), \
-        "залоченное поле перетёрто авторасчётом!"
+    assert p.protein_target_g == Decimal("200.0"), "залоченное поле перетёрто авторасчётом!"
     assert is_locked(p, "protein_target_g") is True
 
 
@@ -146,8 +144,12 @@ def test_04_force_resets_to_auto(user_with_profile):
     u, p = user_with_profile
 
     record_target_change(
-        profile=p, field="protein_target_g", new_value=Decimal("999.0"),
-        source="user", by_user=u, old_value=p.protein_target_g,
+        profile=p,
+        field="protein_target_g",
+        new_value=Decimal("999.0"),
+        source="user",
+        by_user=u,
+        old_value=p.protein_target_g,
     )
     p.protein_target_g = Decimal("999.0")
     p.save()
@@ -171,9 +173,7 @@ def test_05_specialist_override_via_family_serializer(user_with_profile, special
     doc_user, specialist = specialist_user
 
     family = Family.objects.create(owner=client_user, name="Test Family")
-    member = FamilyMember.objects.create(
-        family=family, user=client_user, role=FamilyMember.Role.HEAD
-    )
+    member = FamilyMember.objects.create(family=family, user=client_user, role=FamilyMember.Role.HEAD)
     SpecialistAssignment.objects.create(
         family=family,
         specialist=specialist,
@@ -232,23 +232,26 @@ def test_07_audit_log_dublicate(user_with_profile):
 
     u, p = user_with_profile
 
-    before = AuditLog.objects.filter(
-        entity_type="profile_target", entity_id=f"{p.id}:protein_target_g"
-    ).count()
+    before = AuditLog.objects.filter(entity_type="profile_target", entity_id=f"{p.id}:protein_target_g").count()
 
     record_target_change(
-        profile=p, field="protein_target_g", new_value=Decimal("123.0"),
-        source="user", by_user=u, old_value=p.protein_target_g, reason="test",
+        profile=p,
+        field="protein_target_g",
+        new_value=Decimal("123.0"),
+        source="user",
+        by_user=u,
+        old_value=p.protein_target_g,
+        reason="test",
     )
 
-    after = AuditLog.objects.filter(
-        entity_type="profile_target", entity_id=f"{p.id}:protein_target_g"
-    ).count()
+    after = AuditLog.objects.filter(entity_type="profile_target", entity_id=f"{p.id}:protein_target_g").count()
     assert after == before + 1
 
-    last = AuditLog.objects.filter(
-        entity_type="profile_target", entity_id=f"{p.id}:protein_target_g"
-    ).order_by("-id").first()
+    last = (
+        AuditLog.objects.filter(entity_type="profile_target", entity_id=f"{p.id}:protein_target_g")
+        .order_by("-id")
+        .first()
+    )
     assert last.action == "profile_target.update"
     assert last.new_values["source"] == "user"
     assert last.new_values["by_user_id"] == u.id
