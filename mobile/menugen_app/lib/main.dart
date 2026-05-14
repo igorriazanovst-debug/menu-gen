@@ -63,7 +63,11 @@ class MenuGenApp extends StatelessWidget {
         BlocProvider(create: (_) => ConnectivityCubit()),
         BlocProvider.value(value: premiumGate),
         BlocProvider(
-          create: (_) => AuthBloc(apiClient: apiClient, tokenStorage: tokenStorage)
+          create: (_) => AuthBloc(
+            apiClient: apiClient,
+            tokenStorage: tokenStorage,
+            premiumGate: premiumGate,
+          )
             ..add(const AuthCheckRequested()),
         ),
         BlocProvider(create: (_) => MenuBloc(apiClient: apiClient, db: db, premiumGate: premiumGate)),

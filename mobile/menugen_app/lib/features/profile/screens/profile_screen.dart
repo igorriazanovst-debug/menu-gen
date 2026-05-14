@@ -8,6 +8,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/macro_pill.dart';
 import '../../../core/widgets/target_field.dart';
+import '../../../core/premium/premium_badge.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiClient apiClient;
@@ -116,6 +117,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           fontSize: 32, color: AppColors.primary),
                     ),
                   ),
+                ),
+                const SizedBox(height: 12),
+                // MG-profile-premium: subscription badge.
+                PremiumBadge(
+                  subscriptionStatus: user['subscription_status'] as Map<String, dynamic>?,
                 ),
                 const SizedBox(height: 12),
                 Center(

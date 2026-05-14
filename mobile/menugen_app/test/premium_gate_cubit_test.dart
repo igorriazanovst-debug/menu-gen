@@ -74,5 +74,76 @@ void main() {
         isA<PremiumGateState>().having((s) => s.status, 'status', PremiumStatus.unknown),
       ],
     );
+
+    // ─── MG-profile-premium: bootstrap from /users/me/ ──────────────────
+
+    blocTest<PremiumGateCubit, PremiumGateState>(
+      'bootstrap(null) is a no-op',
+      build: PremiumGateCubit.new,
+      act: (c) => c.bootstrap(null),
+      expect: () => const <PremiumGateState>[],
+    );
+
+    blocTest<PremiumGateCubit, PremiumGateState>(
+      'bootstrap with subscription_status=null emits unknown',
+      build: PremiumGateCubit.new,
+      seed: () => const PremiumGateState(status: PremiumStatus.lockedForRead),
+      act: (c) => c.bootstrap({'subscription_status': null}),
+      expect: () => [
+        isA<PremiumGateState>().having((s) => s.status, 'status', PremiumStatus.unknown),
+      ],
+    );
+
+    blocTest<PremiumGateCubit, PremiumGateState>(
+      'bootstrap active premium -> unknown',
+      build: PremiumGateCubit.new,
+      seed: () => const PremiumGateState(status: PremiumStatus.lockedForRead),
+      act: (c) => c.bootstrap({
+        'subscription_status': {
+          'is_active_premium': true,
+          'has_ever_premium': true,
+          'plan_code': 'premium',
+          'status': 'active',
+          'expires_at': '2027-01-01T00:00:00Z',
+        }
+      }),
+      expect: () => [
+        isA<PremiumGateState>().having((s) => s.status, 'status', PremiumStatus.unknown),
+      ],
+    );
+
+    blocTest<PremiumGateCubit, PremiumGateState>(
+      'bootstrap expired premium -> lockedForWrite',
+      build: PremiumGateCubit.new,
+      act: (c) => c.bootstrap({
+        'subscription_status': {
+          'is_active_premium': false,
+          'has_ever_premium': true,
+          'plan_code': 'premium',
+          'status': 'expired',
+          'expires_at': '2025-01-01T00:00:00Z',
+        }
+      }),
+      expect: () => [
+        isA<PremiumGateState>().having((s) => s.status, 'status', PremiumStatus.lockedForWrite),
+      ],
+    );
+
+    blocTest<PremiumGateCubit, PremiumGateState>(
+      'bootstrap never-paid -> lockedForRead',
+      build: PremiumGateCubit.new,
+      act: (c) => c.bootstrap({
+        'subscription_status': {
+          'is_active_premium': false,
+          'has_ever_premium': false,
+          'plan_code': 'premium',
+          'status': 'cancelled',
+          'expires_at': '2025-01-01T00:00:00Z',
+        }
+      }),
+      expect: () => [
+        isA<PremiumGateState>().having((s) => s.status, 'status', PremiumStatus.lockedForRead),
+      ],
+    );
   });
 }

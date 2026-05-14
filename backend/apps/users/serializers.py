@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
+from django.utils import timezone  # noqa: F401  # MG-profile-premium
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_spectacular.utils import extend_schema_field
 
 from .models import Profile
 
@@ -184,6 +186,8 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 class UserMeSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(read_only=True)
+    # MG-profile-premium: derived subscription summary for proactive UI.
+    subscription_status = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -199,8 +203,50 @@ class UserMeSerializer(serializers.ModelSerializer):
             "disliked_products",
             "created_at",
             "profile",
+            "subscription_status",
         )
         read_only_fields = ("id", "vk_id", "user_type", "created_at")
+
+    @extend_schema_field({
+        "type": "object",
+        "nullable": True,
+        "properties": {
+            "is_active_premium": {"type": "boolean"},
+            "has_ever_premium":  {"type": "boolean"},
+            "plan_code":         {"type": "string", "nullable": True},
+            "status":            {"type": "string", "nullable": True,
+                                  "enum": ["active", "trial", "expired", "cancelled", None]},
+            "expires_at":        {"type": "string", "format": "date-time", "nullable": True},
+        },
+    })
+    def get_subscription_status(self, obj):
+        # Local import — avoid app-loading order issues.
+        from apps.subscriptions.permissions import (
+            get_user_family,
+            has_active_premium,
+            has_ever_had_premium,
+        )
+        from apps.subscriptions.models import Subscription
+
+        family = get_user_family(obj)
+        if family is None:
+            return None
+
+        latest = (
+            Subscription.objects
+            .filter(family=family)
+            .select_related("plan")
+            .order_by("-started_at")
+            .first()
+        )
+
+        return {
+            "is_active_premium": has_active_premium(family),
+            "has_ever_premium":  has_ever_had_premium(family),
+            "plan_code":         latest.plan.code if latest else None,
+            "status":            latest.status if latest else None,
+            "expires_at":        latest.expires_at.isoformat() if latest else None,
+        }
 
 
 # MG_205_V_serializers = 1

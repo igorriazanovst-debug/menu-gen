@@ -105,6 +105,46 @@ class PremiumGateCubit extends Cubit<PremiumGateState> {
   /// Signal that user upgraded / regained access. Clears lock.
   void reset() => emit(const PremiumGateState.unknown());
 
+  /// MG-profile-premium: proactive seed from `/users/me/` response.
+  ///
+  /// Decision matrix from `subscription_status`:
+  ///   - null OR is_active_premium=true  → unknown (no banner, full access)
+  ///   - has_ever_premium=true && !active → lockedForWrite (read-only)
+  ///   - otherwise                        → lockedForRead (no access)
+  ///
+  /// `trial` counts as is_active_premium=true on backend, so a trial user
+  /// sees no banner. When the trial expires without payment,
+  /// has_ever_premium stays false → bootstrap will set lockedForRead.
+  void bootstrap(Map<String, dynamic>? me) {
+    if (me == null) return;
+    final raw = me['subscription_status'];
+    if (raw == null) {
+      emit(const PremiumGateState.unknown());
+      return;
+    }
+    if (raw is! Map) return;
+    final s = Map<String, dynamic>.from(raw);
+    final isActive = s['is_active_premium'] == true;
+    final hasEver = s['has_ever_premium'] == true;
+
+    if (isActive) {
+      emit(const PremiumGateState.unknown());
+      return;
+    }
+    if (hasEver) {
+      emit(state.copyWith(
+        status: PremiumStatus.lockedForWrite,
+        lastLockMessage: null,
+      ));
+      return;
+    }
+    emit(state.copyWith(
+      status: PremiumStatus.lockedForRead,
+      lastLockMessage: null,
+    ));
+  }
+
+
   @override
   Future<void> close() async {
     await _sub?.cancel();

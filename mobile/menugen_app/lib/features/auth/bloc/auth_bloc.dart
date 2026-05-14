@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/token_storage.dart';
+import '../../../core/premium/premium_gate_cubit.dart';
 
 abstract class AuthEvent extends Equatable {
   const AuthEvent();
@@ -35,8 +36,14 @@ class AuthError extends AuthState {
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final ApiClient apiClient;
   final TokenStorage tokenStorage;
+  // MG-profile-premium: seed proactive premium status from /users/me/.
+  final PremiumGateCubit? premiumGate;
 
-  AuthBloc({required this.apiClient, required this.tokenStorage})
+  AuthBloc({
+    required this.apiClient,
+    required this.tokenStorage,
+    this.premiumGate,
+  })
       : super(const AuthUnauthenticated()) {
     on<AuthCheckRequested>(_onCheck);
     on<AuthLoginRequested>(_onLogin);
@@ -51,7 +58,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final hasToken = await tokenStorage.hasToken();
       if (!hasToken) { emit(const AuthUnauthenticated()); return; }
       final resp = await apiClient.get('/users/me/');
-      emit(AuthAuthenticated(Map<String, dynamic>.from(_data(resp) as Map)));
+      final me = Map<String, dynamic>.from(_data(resp) as Map);
+      premiumGate?.bootstrap(me);
+      emit(AuthAuthenticated(me));
     } catch (_) {
       await tokenStorage.clearTokens();
       emit(const AuthUnauthenticated());
@@ -67,12 +76,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       await tokenStorage.saveTokens(
           access: data['access'] as String, refresh: data['refresh'] as String);
       final me = await apiClient.get('/users/me/');
-      emit(AuthAuthenticated(Map<String, dynamic>.from(_data(me) as Map)));
+      final meMap = Map<String, dynamic>.from(_data(me) as Map);
+      premiumGate?.bootstrap(meMap);
+      emit(AuthAuthenticated(meMap));
     } catch (e) { emit(AuthError(e.toString())); }
   }
 
   Future<void> _onLogout(AuthLogoutRequested e, Emitter<AuthState> emit) async {
     await tokenStorage.clearTokens();
+    premiumGate?.reset();
     emit(const AuthUnauthenticated());
   }
 }
