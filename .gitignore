@@ -116,3 +116,20 @@ pubspec.lock
 .bak_mg*
 /tmp/mg_*
 backend/apps/*/migrations/*.bak*
+
+# MG-cleanup: one-off scripts and backup dirs, not tracked
+/apply_*.sh
+/backend/scripts/diag_*.sh
+/backend/scripts/diag_*.py
+/backend/scripts/fix_*.sh
+/backend/scripts/fix_*.py
+/backend/scripts/apply_*.sh
+/backend/scripts/commit_*.sh
+/backend/scripts/install_*.sh
+/backend/scripts/fetch_*.sh
+/backend/scripts/list_*.sh
+/backend/scripts/setup_*.sh
+/backend/scripts/wait_*.sh
+/backend/scripts/pin_*.sh
+/backend/scripts/edit_*.py
+/mobile/menugen_app/.bak-*/
