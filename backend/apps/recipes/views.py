@@ -205,10 +205,13 @@ class RecipeViewSet(ModelViewSet):
     @extend_schema(
         request=RecipeFavoriteWriteSerializer,
         responses={
-            200: {"type": "object", "properties": {
-                "is_favorite": {"type": "boolean"},
-                "is_disliked": {"type": "boolean"},
-            }},
+            200: {
+                "type": "object",
+                "properties": {
+                    "is_favorite": {"type": "boolean"},
+                    "is_disliked": {"type": "boolean"},
+                },
+            },
         },
     )
     @action(detail=True, methods=["post", "delete"], url_path="favorite")
@@ -224,9 +227,7 @@ class RecipeViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         is_fav = bool(serializer.validated_data["is_favorite"])
 
-        obj, _ = RecipeFavorite.objects.update_or_create(
-            user=user, recipe=recipe, defaults={"is_favorite": is_fav}
-        )
+        obj, _ = RecipeFavorite.objects.update_or_create(user=user, recipe=recipe, defaults={"is_favorite": is_fav})
         return Response({"is_favorite": obj.is_favorite, "is_disliked": not obj.is_favorite})
 
 

@@ -16,6 +16,7 @@ Recipe filters (MG-recipes-screen):
 - ``calories_min`` / ``calories_max`` — оставлено как было.
 - ``category`` (deprecated) — оставлено для совместимости.
 """
+
 from __future__ import annotations
 
 from django_filters import rest_framework as filters
