@@ -153,6 +153,11 @@ class RecipesBloc extends Bloc<RecipesEvent, RecipesState> {
   }
 
   Future<void> _onFilter(RecipesFilterChanged e, Emitter<RecipesState> emit) async {
+    // Emit Loading for fresh page (so BlocListener fires even if the next
+    // RecipesPageLoaded happens to equal the previous one — Equatable dedupes).
+    if (e.page <= 1) {
+      emit(const RecipesLoading());
+    }
     try {
       final params = e.filters.toQueryParams(
         search: e.search,

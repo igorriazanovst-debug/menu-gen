@@ -315,7 +315,7 @@ class _FilterSheetState extends State<FilterSheet> {
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () =>
-                            setState(() => _f = const RecipeFilters()),
+                            Navigator.of(context).pop(const RecipeFilters()),
                         child: const Text('Сбросить'),
                       ),
                     ),
