@@ -24,6 +24,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   Map<String, dynamic>? _recipe;
   String? _error;
   bool _loading = true;
+  bool _favBusy = false;
 
   @override
   void initState() {
@@ -52,11 +53,80 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
   }
 
+  Future<void> _toggleFavorite() async {
+    final r = _recipe;
+    if (r == null || _favBusy) return;
+    final isFav = (r['is_favorite'] as bool?) ?? false;
+    final isDis = (r['is_disliked'] as bool?) ?? false;
+
+    bool? next;
+    bool newFav, newDis;
+    if (!isFav && !isDis) {
+      next = true; newFav = true; newDis = false;
+    } else if (isFav) {
+      next = false; newFav = false; newDis = true;
+    } else {
+      next = null; newFav = false; newDis = false;
+    }
+
+    setState(() {
+      _favBusy = true;
+      r['is_favorite'] = newFav;
+      r['is_disliked'] = newDis;
+    });
+
+    try {
+      if (next == null) {
+        await widget.apiClient.delete('/recipes/${widget.recipeId}/favorite/');
+      } else {
+        await widget.apiClient.post(
+          '/recipes/${widget.recipeId}/favorite/',
+          data: {'is_favorite': next},
+        );
+      }
+    } catch (err) {
+      // revert
+      setState(() {
+        r['is_favorite'] = isFav;
+        r['is_disliked'] = isDis;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(err is ApiException ? err.message : err.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _favBusy = false);
+    }
+  }
+
+  Widget _favIcon() {
+    final r = _recipe;
+    if (r == null) return const SizedBox.shrink();
+    final isFav = (r['is_favorite'] as bool?) ?? false;
+    final isDis = (r['is_disliked'] as bool?) ?? false;
+    return IconButton(
+      onPressed: _favBusy ? null : _toggleFavorite,
+      icon: Icon(
+        isFav
+            ? Icons.favorite
+            : (isDis ? Icons.heart_broken : Icons.favorite_border),
+        color: isFav
+            ? AppColors.primary
+            : (isDis ? Colors.grey.shade400 : null),
+      ),
+      tooltip: isFav
+          ? 'Любимое'
+          : (isDis ? 'Нелюбимое' : 'Добавить в любимые'),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_recipe?['title'] as String? ?? 'Рецепт'),
+        actions: [_favIcon()],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -73,6 +143,7 @@ class _DetailBody extends StatelessWidget {
 
   String get _title => (recipe['title'] as String?) ?? '';
   String? get _imageUrl => recipe['image_url'] as String?;
+  String? get _videoUrl => recipe['video_url'] as String?;
   String? get _cookTime => recipe['cook_time'] as String?;
   int? get _servings => recipe['servings'] as int?;
   String? get _country => recipe['country'] as String?;
@@ -95,6 +166,9 @@ class _DetailBody extends StatelessWidget {
       recipe['nutrition'] is Map
           ? Map<String, dynamic>.from(recipe['nutrition'] as Map)
           : <String, dynamic>{};
+
+  List<String> get _categories =>
+      (recipe['categories'] as List?)?.whereType<String>().toList() ?? const [];
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +197,8 @@ class _DetailBody extends StatelessWidget {
               Text(
                 _title,
                 style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w700,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary),
               ),
               const SizedBox(height: 12),
@@ -141,6 +216,31 @@ class _DetailBody extends StatelessWidget {
                     _MetaItem(icon: Icons.public, text: _country!),
                 ],
               ),
+              if (_categories.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _categories
+                      .map((c) => Chip(
+                            label: Text(c, style: const TextStyle(fontSize: 12)),
+                            visualDensity: VisualDensity.compact,
+                          ))
+                      .toList(),
+                ),
+              ],
+              if (_videoUrl != null && _videoUrl!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Видео: $_videoUrl')),
+                    );
+                  },
+                  icon: const Icon(Icons.play_circle_outline),
+                  label: const Text('Смотреть видео'),
+                ),
+              ],
               if (_nutrition.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 _NutritionGrid(nutrition: _nutrition),
@@ -177,7 +277,10 @@ class _DetailBody extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.circle, size: 6, color: AppColors.secondary),
+          const Padding(
+            padding: EdgeInsets.only(top: 7),
+            child: Icon(Icons.circle, size: 6, color: AppColors.secondary),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(name,
@@ -257,13 +360,14 @@ class _NutritionGrid extends StatelessWidget {
           return Expanded(
             child: Column(
               children: [
-                Text(e.$2!, style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
+                Text(e.$2!,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary)),
                 const SizedBox(height: 2),
-                Text(e.$1, style: TextStyle(
-                    fontSize: 12, color: Colors.grey.shade600)),
+                Text(e.$1,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               ],
             ),
           );

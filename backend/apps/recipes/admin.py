@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Recipe, RecipeAuthor
+from .models import Recipe, RecipeAuthor, RecipeFavorite
 
 
 @admin.register(Recipe)
@@ -44,3 +44,11 @@ class RecipeAuthorAdmin(admin.ModelAdmin):
     @admin.action(description="Отклонить заявки")
     def reject(self, request, queryset):
         queryset.update(status="rejected")
+
+
+@admin.register(RecipeFavorite)
+class RecipeFavoriteAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "recipe", "is_favorite", "created_at")
+    list_filter = ("is_favorite",)
+    raw_id_fields = ("user", "recipe")
+    search_fields = ("recipe__title", "user__email", "user__name")

@@ -133,3 +133,5 @@ backend/apps/*/migrations/*.bak*
 /backend/scripts/pin_*.sh
 /backend/scripts/edit_*.py
 /mobile/menugen_app/.bak-*/
+_apk/
+*.apk

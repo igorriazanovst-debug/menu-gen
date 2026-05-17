@@ -42,7 +42,7 @@ class AppRouter {
           builder: (context, state, child) => MainShell(child: child),
           routes: [
             GoRoute(path: '/menu',    builder: (_, __) => MenuScreen(apiClient: apiClient)),
-            GoRoute(path: '/recipes', builder: (_, __) => const RecipesScreen()),
+            GoRoute(path: '/recipes', builder: (_, __) => RecipesScreen(apiClient: apiClient)),
             GoRoute(path: '/fridge',  builder: (_, __) => const FridgeScreen()),
             GoRoute(path: '/diary',   builder: (_, __) => const DiaryScreen()),
             GoRoute(path: '/profile', builder: (_, state) => ProfileScreen(apiClient: apiClient)),

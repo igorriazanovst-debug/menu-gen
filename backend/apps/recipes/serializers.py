@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Recipe, RecipeAuthor
+from .models import Recipe, RecipeAuthor, RecipeFavorite
 
 User = get_user_model()
 
@@ -15,7 +15,7 @@ CLASSIFICATION_FIELDS = (
     "is_red_meat",
 )
 
-MG501_FIELDS = (  # MG_501_V_serializers
+MG501_FIELDS = (
     "cooking_method",
     "has_added_sugar",
     "oil_tsp",
@@ -23,8 +23,33 @@ MG501_FIELDS = (  # MG_501_V_serializers
 )
 
 
-class RecipeListSerializer(serializers.ModelSerializer):
+class _FavoriteStateMixin(serializers.Serializer):
+    """Adds ``is_favorite`` / ``is_disliked`` derived from the current user."""
+
+    is_favorite = serializers.SerializerMethodField()
+    is_disliked = serializers.SerializerMethodField()
+
+    def _get_fav(self, obj):
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return None
+        cache = self.context.get("favorites_cache")
+        if cache is None:
+            return RecipeFavorite.objects.filter(user=request.user, recipe=obj).first()
+        return cache.get(obj.id)
+
+    def get_is_favorite(self, obj):
+        f = self._get_fav(obj)
+        return bool(f and f.is_favorite)
+
+    def get_is_disliked(self, obj):
+        f = self._get_fav(obj)
+        return bool(f and not f.is_favorite)
+
+
+class RecipeListSerializer(_FavoriteStateMixin, serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
+    fridge_match_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Recipe
@@ -41,13 +66,22 @@ class RecipeListSerializer(serializers.ModelSerializer):
                 "is_custom",
                 "author_name",
                 "created_at",
+                "is_favorite",
+                "is_disliked",
+                "fridge_match_count",
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS
         )
 
+    def get_fridge_match_count(self, obj):
+        scores = self.context.get("fridge_scores")
+        if not scores:
+            return None
+        return scores.get(obj.id, 0)
 
-class RecipeDetailSerializer(serializers.ModelSerializer):
+
+class RecipeDetailSerializer(_FavoriteStateMixin, serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
 
     class Meta:
@@ -72,6 +106,8 @@ class RecipeDetailSerializer(serializers.ModelSerializer):
                 "author_name",
                 "created_at",
                 "updated_at",
+                "is_favorite",
+                "is_disliked",
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS
@@ -126,7 +162,6 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        # на partial_update в attrs может не быть полей — берём из instance
         def get_val(name):
             if name in attrs:
                 return attrs[name]
@@ -152,3 +187,9 @@ class RecipeAuthorSerializer(serializers.ModelSerializer):
         model = RecipeAuthor
         fields = ("id", "status", "motivation_text", "applied_at", "approved_at", "recipes_count")
         read_only_fields = ("id", "status", "applied_at", "approved_at", "recipes_count")
+
+
+class RecipeFavoriteWriteSerializer(serializers.Serializer):
+    """Body для POST /recipes/{id}/favorite/."""
+
+    is_favorite = serializers.BooleanField()

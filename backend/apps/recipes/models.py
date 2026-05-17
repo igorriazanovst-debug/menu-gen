@@ -70,7 +70,7 @@ class Recipe(models.Model):
     carbs = models.DecimalField(
         max_digits=6, decimal_places=1, null=True, blank=True, help_text="Углеводы на 1 порцию, г."
     )
-    cooking_method = models.CharField(  # MG_501_V_model
+    cooking_method = models.CharField(
         max_length=16,
         choices=CookingMethod.choices,
         null=True,
@@ -105,7 +105,7 @@ class Recipe(models.Model):
             models.Index(fields=["grain_type"]),
             models.Index(fields=["is_fatty_fish"]),
             models.Index(fields=["is_red_meat"]),
-            models.Index(fields=["cooking_method"]),  # MG_501_V_model
+            models.Index(fields=["cooking_method"]),
             models.Index(fields=["has_added_sugar"]),
             GinIndex(fields=["suitable_for"], name="recipe_suitable_for_gin"),
         ]
@@ -140,7 +140,7 @@ class DeletedRecipe(models.Model):
 
     original_id = models.IntegerField(db_index=True)
     title = models.CharField(max_length=512)
-    data = models.JSONField()  # полный снапшот Recipe
+    data = models.JSONField()
     deleted_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True)
     deleted_at = models.DateTimeField(auto_now_add=True)
 
@@ -150,3 +150,25 @@ class DeletedRecipe(models.Model):
 
     def __str__(self):
         return f"Deleted({self.original_id}, {self.title[:40]})"
+
+
+class RecipeFavorite(models.Model):
+    """Любимое/нелюбимое (per-user). is_favorite=True — любимое, False — нелюбимое."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="recipe_favorites")
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="favorites")
+    is_favorite = models.BooleanField(default=True, help_text="True=любимое, False=нелюбимое")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "recipe_favorites"
+        unique_together = [("user", "recipe")]
+        indexes = [
+            models.Index(fields=["user", "is_favorite"]),
+            models.Index(fields=["recipe"]),
+        ]
+
+    def __str__(self):
+        tag = "fav" if self.is_favorite else "dis"
+        return f"{tag}({self.user_id}→{self.recipe_id})"
