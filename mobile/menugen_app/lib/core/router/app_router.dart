@@ -10,6 +10,7 @@ import '../../features/family/screens/family_screen.dart';
 import '../../features/fridge/screens/fridge_screen.dart';
 import '../../features/menu/screens/menu_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
+import '../../features/recipes/screens/recipe_detail_screen.dart';
 import '../../features/recipes/screens/recipes_screen.dart';
 import '../../features/shopping/screens/shopping_list_screen.dart';
 import '../api/api_client.dart';
@@ -30,10 +31,17 @@ class AppRouter {
       routes: [
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
         GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),
+        GoRoute(
+          path: '/recipes/:id',
+          builder: (_, state) => RecipeDetailScreen(
+            apiClient: apiClient,
+            recipeId: int.parse(state.pathParameters['id']!),
+          ),
+        ),
         ShellRoute(
           builder: (context, state, child) => MainShell(child: child),
           routes: [
-            GoRoute(path: '/menu',    builder: (_, __) => const MenuScreen()),
+            GoRoute(path: '/menu',    builder: (_, __) => MenuScreen(apiClient: apiClient)),
             GoRoute(path: '/recipes', builder: (_, __) => const RecipesScreen()),
             GoRoute(path: '/fridge',  builder: (_, __) => const FridgeScreen()),
             GoRoute(path: '/diary',   builder: (_, __) => const DiaryScreen()),
