@@ -10,6 +10,7 @@ class Product(models.Model):
     calories_per_100g = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     nutrition = models.JSONField(default=dict)
     barcode = models.CharField(max_length=64, null=True, blank=True, unique=True)
+    image_url = models.URLField(max_length=1024, null=True, blank=True)
 
     class Meta:
         db_table = "products"

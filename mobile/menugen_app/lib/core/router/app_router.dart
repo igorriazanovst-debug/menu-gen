@@ -43,7 +43,7 @@ class AppRouter {
           routes: [
             GoRoute(path: '/menu',    builder: (_, __) => MenuScreen(apiClient: apiClient)),
             GoRoute(path: '/recipes', builder: (_, __) => RecipesScreen(apiClient: apiClient)),
-            GoRoute(path: '/fridge',  builder: (_, __) => const FridgeScreen()),
+            GoRoute(path: '/fridge',  builder: (_, __) => FridgeScreen(apiClient: apiClient)),
             GoRoute(path: '/diary',   builder: (_, __) => const DiaryScreen()),
             GoRoute(path: '/profile', builder: (_, state) => ProfileScreen(apiClient: apiClient)),
           ],

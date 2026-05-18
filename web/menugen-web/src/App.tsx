@@ -11,6 +11,7 @@ import { RecipesPage }       from './pages/Recipes/RecipesPage';
 import { MenuPage }          from './pages/Menu/MenuPage';
 import { FamilyPage }        from './pages/Family/FamilyPage';
 import { DiaryPage }         from './pages/Diary/DiaryPage';
+import { FridgePage }        from './pages/Fridge/FridgePage';
 import { SubscriptionsPage } from './pages/Subscriptions/SubscriptionsPage';
 import { ProfilePage }       from './pages/Profile/ProfilePage';
 import { SpecialistDashboardPage } from './pages/specialist/SpecialistDashboardPage';
@@ -42,6 +43,7 @@ const AppRoutes: React.FC = () => {
         <Route path="recipes"       element={<RecipesPage />} />
         <Route path="family"        element={<FamilyPage />} />
         <Route path="diary"         element={<DiaryPage />} />
+        <Route path="fridge"        element={<FridgePage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="profile"       element={<ProfilePage />} />
         <Route path="specialist"                                          element={<SpecialistDashboardPage />} />

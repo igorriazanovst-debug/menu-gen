@@ -162,3 +162,30 @@ export interface TargetAuditEntry {
   by_user: { id: number; name: string } | null;
 }
 
+// ── Fridge ──────────────────────────────────────────────────────────────────
+export interface Product {
+  id: number;
+  name: string;
+  category?: string;
+  default_unit?: string;
+  calories_per_100g?: string | number | null;
+  nutrition?: Record<string, number>;
+  barcode?: string | null;
+  image_url?: string | null;
+}
+export interface FridgeItem {
+  id: number;
+  product?: number | null;
+  product_name?: string | null;
+  product_category?: string | null;
+  product_image_url?: string | null;
+  name: string;
+  quantity?: string | number | null;
+  unit?: string;
+  expiry_date?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface BarcodeLookupResult extends Product {
+  source: 'local' | 'openfoodfacts';
+}

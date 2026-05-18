@@ -9,6 +9,7 @@ const NAV = [
   { path: '/recipes',       icon: '📖', label: 'Рецепты'      },
   { path: '/family',        icon: '👨‍👩‍👧', label: 'Семья'        },
   { path: '/diary',         icon: '📓', label: 'Дневник'      },
+  { path: '/fridge',        icon: '🧊', label: 'Холодильник'  },
   { path: '/subscriptions', icon: '💳', label: 'Подписка'     },
   { path: '/profile',       icon: '👤', label: 'Профиль'      },
 ];

@@ -226,3 +226,15 @@ SPECTACULAR_SETTINGS["ENUM_NAME_OVERRIDES"] = {
     "PaymentStatusEnum": "apps.payments.models.Payment.Status",
     "MenuStatusEnum": "apps.menu.models.Menu.Status",
 }
+
+
+# ── Fridge: OpenFoodFacts fallback for unknown barcodes ──────────────
+OPENFOODFACTS_BASE_URL = config(
+    "OPENFOODFACTS_BASE_URL",
+    default="https://world.openfoodfacts.org",
+)
+OPENFOODFACTS_TIMEOUT = config("OPENFOODFACTS_TIMEOUT", default=4.0, cast=float)
+OPENFOODFACTS_USER_AGENT = config(
+    "OPENFOODFACTS_USER_AGENT",
+    default="MenuGen/1.0 (+https://menugen.local)",
+)

@@ -16,24 +16,23 @@ class FridgeLoadRequested extends FridgeEvent {
   const FridgeLoadRequested();
 }
 
-/// Add a new fridge item. Name preserved from pre-patch API for screen
-/// compatibility.
 class FridgeItemAdded extends FridgeEvent {
   final String name;
-  final double? quantity;
-  final String? unit;
-  final String? expiryDate;
+  final double quantity;
+  final String unit;
+  final String expiryDate;
+  final int? productId;
   const FridgeItemAdded({
     required this.name,
-    this.quantity,
-    this.unit,
-    this.expiryDate,
+    required this.quantity,
+    required this.unit,
+    required this.expiryDate,
+    this.productId,
   });
   @override
-  List<Object?> get props => [name, quantity, unit, expiryDate];
+  List<Object?> get props => [name, quantity, unit, expiryDate, productId];
 }
 
-/// Delete a fridge item. Name preserved from pre-patch API.
 class FridgeItemDeleted extends FridgeEvent {
   final int id;
   const FridgeItemDeleted(this.id);
@@ -58,7 +57,6 @@ class FridgeLoaded extends FridgeState {
   List<Object?> get props => [items];
 }
 
-/// MG-606: 403 from IsFamilyPremiumOrReadOnly.
 class FridgePremiumLocked extends FridgeState {
   final String message;
   final bool isWrite;
@@ -119,10 +117,13 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
 
   Future<void> _onAdd(FridgeItemAdded e, Emitter<FridgeState> emit) async {
     try {
-      final body = <String, dynamic>{'name': e.name};
-      if (e.quantity != null) body['quantity'] = e.quantity;
-      if (e.unit != null) body['unit'] = e.unit;
-      if (e.expiryDate != null) body['expiry_date'] = e.expiryDate;
+      final body = <String, dynamic>{
+        'name': e.name,
+        'quantity': e.quantity,
+        'unit': e.unit,
+        'expiry_date': e.expiryDate,
+      };
+      if (e.productId != null) body['product'] = e.productId;
       await apiClient.post('/fridge/', data: body);
       add(const FridgeLoadRequested());
     } catch (err) {

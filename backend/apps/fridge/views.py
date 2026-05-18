@@ -8,7 +8,13 @@ from apps.family.models import FamilyMember
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
 from .models import FridgeItem, Product
-from .serializers import BarcodeLookupSerializer, FridgeItemSerializer, FridgeItemWriteSerializer, ProductSerializer
+from .serializers import (
+    BarcodeLookupSerializer,
+    FridgeItemSerializer,
+    FridgeItemWriteSerializer,
+    ProductSerializer,
+)
+from .services import fetch_product_from_off
 
 
 def _get_family(user):
@@ -41,9 +47,7 @@ class FridgeListCreateView(generics.ListCreateAPIView):
         expiring = self.request.query_params.get("expiring_days")
         if expiring:
             import datetime
-
             from django.utils import timezone
-
             cutoff = timezone.now().date() + datetime.timedelta(days=int(expiring))
             qs = qs.filter(expiry_date__lte=cutoff, expiry_date__isnull=False)
         return qs
@@ -105,18 +109,36 @@ class FridgeItemDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class BarcodeLookupView(APIView):
+    """
+    POST /fridge/scan/  body: {"barcode": "..."}
+    1) try local Product;  2) try OpenFoodFacts (cache locally);  3) 404.
+    """
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(request=BarcodeLookupSerializer, responses={200: ProductSerializer})
     def post(self, request):
         serializer = BarcodeLookupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        barcode = serializer.validated_data["barcode"]
-        try:
-            product = Product.objects.get(barcode=barcode)
-            return Response(ProductSerializer(product).data)
-        except Product.DoesNotExist:
-            return Response({"detail": "Продукт не найден."}, status=status.HTTP_404_NOT_FOUND)
+        barcode = serializer.validated_data["barcode"].strip()
+        if not barcode:
+            return Response({"detail": "barcode required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        product = Product.objects.filter(barcode=barcode).first()
+        if product is not None:
+            data = ProductSerializer(product).data
+            data["source"] = "local"
+            return Response(data)
+
+        product = fetch_product_from_off(barcode)
+        if product is not None:
+            data = ProductSerializer(product).data
+            data["source"] = "openfoodfacts"
+            return Response(data, status=status.HTTP_200_OK)
+
+        return Response(
+            {"detail": "Продукт не найден.", "barcode": barcode},
+            status=status.HTTP_404_NOT_FOUND,
+        )
 
 
 class ProductSearchView(generics.ListAPIView):

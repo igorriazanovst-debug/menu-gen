@@ -6,12 +6,16 @@ from .models import FridgeItem, Product
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
-        fields = ("id", "name", "category", "default_unit", "calories_per_100g", "nutrition", "barcode")
+        fields = (
+            "id", "name", "category", "default_unit",
+            "calories_per_100g", "nutrition", "barcode", "image_url",
+        )
 
 
 class FridgeItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True, default=None)
     product_category = serializers.CharField(source="product.category", read_only=True, default=None)
+    product_image_url = serializers.CharField(source="product.image_url", read_only=True, default=None)
 
     class Meta:
         model = FridgeItem
@@ -20,6 +24,7 @@ class FridgeItemSerializer(serializers.ModelSerializer):
             "product",
             "product_name",
             "product_category",
+            "product_image_url",
             "name",
             "quantity",
             "unit",
