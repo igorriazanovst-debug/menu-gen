@@ -65,6 +65,7 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
   }
 
   Future<void> _onGenerate(MenuGenerateRequested e, Emitter<MenuState> emit) async {
+    // MG_607_V_mobile_bloc: расширенный body (countries, exclude_allergens, exclude_disliked, meal_plan_type)
     emit(const MenuGenerating());
     try {
       final body = <String, dynamic>{
@@ -72,7 +73,13 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
         'period_days': e.periodDays,
       };
       if (e.country != null) body['country'] = e.country;
+      if (e.countries != null && e.countries!.isNotEmpty) {
+        body['countries'] = e.countries;
+      }
       if (e.maxCookTime != null) body['max_cook_time'] = e.maxCookTime;
+      if (e.mealPlanType != null) body['meal_plan_type'] = e.mealPlanType;
+      if (e.excludeAllergens != null) body['exclude_allergens'] = e.excludeAllergens;
+      if (e.excludeDisliked != null) body['exclude_disliked'] = e.excludeDisliked;
       final r = await apiClient.post('/menu/generate/', data: body);
       emit(MenuGenerated(_asMap(r)));
     } catch (err) {

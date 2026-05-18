@@ -11,16 +11,28 @@ class MenuLoadRequested extends MenuEvent {
 }
 
 class MenuGenerateRequested extends MenuEvent {
+  // MG_607_V_mobile_event
   final String startDate;
   final int periodDays;
-  final String? country;
+  final String? country;          // legacy single
+  final List<String>? countries;  // MG-607
   final int? maxCookTime;
+  final String? mealPlanType;     // '3' | '5'
+  final List<String>? excludeAllergens;  // null = из profile; [] = выкл
+  final List<String>? excludeDisliked;   // null = из profile; [] = выкл
   const MenuGenerateRequested({
     required this.startDate,
     this.periodDays = 7,
     this.country,
+    this.countries,
     this.maxCookTime,
+    this.mealPlanType,
+    this.excludeAllergens,
+    this.excludeDisliked,
   });
   @override
-  List<Object?> get props => [startDate, periodDays, country, maxCookTime];
+  List<Object?> get props => [
+        startDate, periodDays, country, countries,
+        maxCookTime, mealPlanType, excludeAllergens, excludeDisliked,
+      ];
 }

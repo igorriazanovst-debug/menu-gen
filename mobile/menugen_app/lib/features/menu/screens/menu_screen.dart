@@ -269,7 +269,8 @@ class _MenuScreenState extends State<MenuScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => BlocProvider.value(
         value: context.read<MenuBloc>(),
-        child: const GenerateMenuBottomSheet(),
+        // MG_607_V_mobile_screen: передаём apiClient в sheet
+        child: GenerateMenuBottomSheet(apiClient: widget.apiClient),
       ),
     );
   }
