@@ -4,6 +4,7 @@ import { Card } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { Button } from '../../components/ui/Button';
 import { AddFridgeItemModal } from '../../components/fridge/AddFridgeItemModal';
+import { FridgeItemDetailModal } from '../../components/fridge/FridgeItemDetailModal';
 import type { FridgeItem } from '../../types';
 
 function daysUntil(d: string | null | undefined): number | null {
@@ -19,6 +20,7 @@ export const FridgePage: React.FC = () => {
   const [items, setItems]     = useState<FridgeItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [detailId, setDetailId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,7 +63,7 @@ export const FridgePage: React.FC = () => {
               : dl < 0 ? 'text-red-600'
               : dl < 3 ? 'text-yellow-600' : 'text-gray-600';
             return (
-              <Card key={it.id} className="p-4 flex gap-3 items-start">
+              <Card key={it.id} className="p-4 flex gap-3 items-start cursor-pointer hover:shadow-md transition" onClick={() => setDetailId(it.id)}>
                 {it.product_image_url ? (
                   <img src={it.product_image_url} alt=""
                     className="w-14 h-14 rounded-lg object-cover bg-gray-50"
@@ -83,7 +85,7 @@ export const FridgePage: React.FC = () => {
                   )}
                 </div>
                 <button
-                  onClick={() => onDelete(it.id)}
+                  onClick={(e) => { e.stopPropagation(); onDelete(it.id); }}
                   className="text-gray-400 hover:text-red-600 text-sm"
                   title="Удалить"
                 >
@@ -93,6 +95,13 @@ export const FridgePage: React.FC = () => {
             );
           })}
         </div>
+      )}
+
+      {detailId != null && (
+        <FridgeItemDetailModal
+          itemId={detailId}
+          onClose={() => setDetailId(null)}
+        />
       )}
 
       {showAdd && (

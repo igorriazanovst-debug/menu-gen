@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
 import '../bloc/fridge_bloc.dart';
@@ -76,6 +77,10 @@ class _FridgeScreenState extends State<FridgeScreen> {
                           : 'Осталось дней: $daysLeft')
                       : null,
                   trailing: Text('${item['quantity'] ?? ''} ${item['unit'] ?? ''}'),
+                  onTap: () {
+                    final id = item['id'];
+                    if (id != null) context.push('/fridge/$id/details');
+                  },
                   onLongPress: () {
                     final id = item['id'];
                     if (id != null) {

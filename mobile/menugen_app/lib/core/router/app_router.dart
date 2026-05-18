@@ -8,6 +8,7 @@ import '../../features/diary/screens/diary_screen.dart';
 import '../../features/family/bloc/family_bloc.dart';
 import '../../features/family/screens/family_screen.dart';
 import '../../features/fridge/screens/fridge_screen.dart';
+import '../../features/fridge/screens/fridge_item_detail_screen.dart';
 import '../../features/menu/screens/menu_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/recipes/screens/recipe_detail_screen.dart';
@@ -31,6 +32,13 @@ class AppRouter {
       routes: [
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
         GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),
+        GoRoute(
+          path: '/fridge/:id/details',
+          builder: (_, state) => FridgeItemDetailScreen(
+            apiClient: apiClient,
+            itemId: int.parse(state.pathParameters['id']!),
+          ),
+        ),
         GoRoute(
           path: '/recipes/:id',
           builder: (_, state) => RecipeDetailScreen(

@@ -141,6 +141,51 @@ class BarcodeLookupView(APIView):
         )
 
 
+class FridgeItemDetailsView(APIView):
+    """
+    GET /fridge/<int:pk>/details/
+    Returns extended info for the fridge item: nutrition (from Product if FK
+    set), expiry days-left, menu-usage stats for last 30 days.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    def get(self, request, pk: int):
+        family = _get_family(request.user)
+        if not family:
+            return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+        item = (
+            FridgeItem.objects
+            .filter(family=family, is_deleted=False, pk=pk)
+            .select_related("product")
+            .first()
+        )
+        if not item:
+            return Response({"detail": "Не найдено."}, status=status.HTTP_404_NOT_FOUND)
+
+        # days_left
+        days_left = None
+        if item.expiry_date is not None:
+            import datetime as _dt
+            from django.utils import timezone as _tz
+            days_left = (item.expiry_date - _tz.now().date()).days
+
+        product_data = None
+        if item.product is not None:
+            product_data = ProductSerializer(item.product).data
+
+        # usage_30d: name source is product.name if FK exists, else item.name
+        from .services import get_menu_usage_30d
+        name_for_lookup = (item.product.name if item.product else item.name)
+        usage = get_menu_usage_30d(family, name_for_lookup, days=30)
+
+        return Response({
+            "item": FridgeItemSerializer(item, context={"request": request}).data,
+            "product": product_data,
+            "days_left": days_left,
+            "usage_30d": usage,
+        })
+
+
 class ProductSearchView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
     serializer_class = ProductSerializer

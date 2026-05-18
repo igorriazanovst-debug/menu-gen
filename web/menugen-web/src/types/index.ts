@@ -189,3 +189,20 @@ export interface FridgeItem {
 export interface BarcodeLookupResult extends Product {
   source: 'local' | 'openfoodfacts';
 }
+
+export interface FridgeMenuUsageRecipe {
+  recipe_id: number;
+  title: string;
+  times: number;
+}
+export interface FridgeMenuUsage {
+  count: number;
+  period_days: number;
+  recipes: FridgeMenuUsageRecipe[];
+}
+export interface FridgeItemDetailsResponse {
+  item: FridgeItem;
+  product: Product | null;
+  days_left: number | null;
+  usage_30d: FridgeMenuUsage;
+}
