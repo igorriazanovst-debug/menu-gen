@@ -1,3 +1,39 @@
+#!/usr/bin/env bash
+# Patch: dark-theme bug fix
+#   1) main.dart -> themeMode: ThemeMode.light (forces light regardless of system)
+#   2) app_theme.dart -> rewrite AppTheme.dark() with full surfaces (for future)
+set -eu
+
+ROOT="/opt/menugen"
+APP="$ROOT/mobile/menugen_app"
+cd "$ROOT"
+
+TS=$(date +%Y%m%d_%H%M%S)
+BAK="$ROOT/backups/dark_theme_fix_${TS}"
+mkdir -p "$BAK/core/theme" "$BAK"
+
+echo "=== [1/4] backup main.dart + app_theme.dart ==="
+cp "$APP/lib/main.dart"                   "$BAK/main.dart"
+cp "$APP/lib/core/theme/app_theme.dart"   "$BAK/core/theme/app_theme.dart"
+echo "backup -> $BAK"
+
+echo
+echo "=== [2/4] patch main.dart: ThemeMode.system -> ThemeMode.light ==="
+python3 - <<'PYEOF'
+from pathlib import Path
+p = Path("/opt/menugen/mobile/menugen_app/lib/main.dart")
+s = p.read_text()
+old = "themeMode: ThemeMode.system,"
+new = "themeMode: ThemeMode.light, // dark theme disabled until full migration"
+if old not in s:
+    raise SystemExit("ERROR: marker 'themeMode: ThemeMode.system,' not found in main.dart")
+p.write_text(s.replace(old, new))
+print("main.dart updated.")
+PYEOF
+
+echo
+echo "=== [3/4] rewrite app_theme.dart with full dark theme ==="
+cat > "$APP/lib/core/theme/app_theme.dart" <<'DARTEOF'
 import 'package:flutter/material.dart';
 
 abstract class AppColors {
@@ -155,3 +191,17 @@ class AppTheme {
         ),
       );
 }
+DARTEOF
+echo "app_theme.dart rewritten."
+
+echo
+echo "=== [4/4] verify ==="
+echo "--- main.dart themeMode line:"
+grep -n "themeMode:" "$APP/lib/main.dart"
+echo
+echo "--- app_theme.dart lines count:"
+wc -l "$APP/lib/core/theme/app_theme.dart"
+
+echo
+echo "=== DONE. Backup: $BAK ==="
+echo "Next: rebuild APK from $APP and re-expose."

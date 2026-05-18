@@ -82,7 +82,7 @@ class MenuGenApp extends StatelessWidget {
             title: 'MenuGen',
             theme: AppTheme.light(),
             darkTheme: AppTheme.dark(),
-            themeMode: ThemeMode.system,
+            themeMode: ThemeMode.light, // dark theme disabled until full migration
             routerConfig: router,
             debugShowCheckedModeBanner: false,
             locale: const Locale('ru'),
