@@ -160,6 +160,13 @@ class MenuGenerateView(APIView):
             filters["meal_plan_type"] = data["meal_plan_type"]
         # MG_605A_V_views: проброс mode (per_member | family)
         filters["mode"] = data.get("mode", "family")
+        # MG_607_V_views: countries (мульти), exclude_allergens, exclude_disliked
+        if data.get("countries"):
+            filters["countries"] = list(data["countries"])
+        if "exclude_allergens" in data:
+            filters["exclude_allergens"] = list(data.get("exclude_allergens") or [])
+        if "exclude_disliked" in data:
+            filters["exclude_disliked"] = list(data.get("exclude_disliked") or [])
 
         generator = MenuGenerator(
             family=family,

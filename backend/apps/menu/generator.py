@@ -431,9 +431,14 @@ class MenuGenerator:
 
     def _build_recipe_pool(self) -> List[Recipe]:
         qs = Recipe.objects.filter(is_published=True)
+        # MG_607_V_generator: countries (list) имеет приоритет над country (str)
+        countries = self.filters.get("countries")
         country = self.filters.get("country")
-        if country and self.features.get("country"):
-            qs = qs.filter(country__iexact=country)
+        if self.features.get("country"):
+            if countries:
+                qs = qs.filter(country__in=list(countries))
+            elif country:
+                qs = qs.filter(country__iexact=country)
         max_time = self.filters.get("max_cook_time")
         recipes = list(qs.order_by("?")[:2000])
         if max_time:
@@ -775,13 +780,20 @@ class MenuGenerator:
 
     # MG_605A_V_generator: «виртуальный представитель семьи»
     def _family_virtual_member(self) -> dict:
+        # MG_607_V_generator: per-request override
+        override_a = self.filters.get("exclude_allergens")
+        override_d = self.filters.get("exclude_disliked")
         exclude = set()
         cals = []
+        if override_a is not None:
+            exclude.update(a.lower() for a in override_a if isinstance(a, str))
+        if override_d is not None and self.features.get("disliked"):
+            exclude.update(d.lower() for d in override_d if isinstance(d, str))
         for m in self.members:
             user = m.user
-            if isinstance(user.allergies, list):
+            if override_a is None and isinstance(user.allergies, list):
                 exclude.update(a.lower() for a in user.allergies)
-            if self.features.get("disliked") and isinstance(user.disliked_products, list):
+            if override_d is None and self.features.get("disliked") and isinstance(user.disliked_products, list):
                 exclude.update(d.lower() for d in user.disliked_products)
             if self.features.get("calories"):
                 try:
@@ -794,13 +806,21 @@ class MenuGenerator:
         return {"hard_exclude": exclude, "calorie_target": avg_cal}
 
     def _get_hard_exclude(self, member) -> set:
+        # MG_607_V_generator: per-request override через filters.exclude_allergens / exclude_disliked
+        override_a = self.filters.get("exclude_allergens")
+        override_d = self.filters.get("exclude_disliked")
         exclude = set()
         user = member.user
-        if isinstance(user.allergies, list):
+        if override_a is not None:
+            exclude.update(a.lower() for a in override_a if isinstance(a, str))
+        elif isinstance(user.allergies, list):
             exclude.update(a.lower() for a in user.allergies)
-        if self.features.get("disliked") and isinstance(user.disliked_products, list):
+        if override_d is not None:
+            if self.features.get("disliked"):
+                exclude.update(d.lower() for d in override_d if isinstance(d, str))
+        elif self.features.get("disliked") and isinstance(user.disliked_products, list):
             exclude.update(d.lower() for d in user.disliked_products)
-        if self.features.get("allergies_family"):
+        if override_a is None and self.features.get("allergies_family"):
             for m in self.members:
                 if isinstance(m.user.allergies, list):
                     exclude.update(a.lower() for a in m.user.allergies)

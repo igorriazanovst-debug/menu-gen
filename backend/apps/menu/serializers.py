@@ -19,6 +19,19 @@ class GenerateMenuSerializer(serializers.Serializer):
     meal_plan_type = serializers.ChoiceField(choices=["3", "5"], default="3", required=False)
     # MG_605A_V_serializers: mode мульти-член (per_member | family)
     mode = serializers.ChoiceField(choices=["per_member", "family"], default="family", required=False)
+    # MG_607_V_serializers: мульти-выбор стран + per-request override allergens/disliked
+    countries = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        required=False, allow_empty=True,
+    )
+    exclude_allergens = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        required=False, allow_empty=True,
+    )
+    exclude_disliked = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        required=False, allow_empty=True,
+    )
 
 
 class MenuItemSerializer(serializers.ModelSerializer):
