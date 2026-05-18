@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from .filters import RecipeFilter, _recipe_fridge_score
+from .filters import RecipeFilter
 from .models import DeletedRecipe, Recipe, RecipeAuthor, RecipeFavorite
 from .permissions import IsAuthorOrAdmin, IsRecipeAuthorRole
 from .serializers import (
@@ -103,10 +103,13 @@ class RecipeViewSet(ModelViewSet):
 
         if fridge_needles:
             # Compute scores across queryset; pick top-N by score.
+            from .filters import _names_from_raw
+
             scored = []
-            for r in queryset.only("id", "ingredients"):
-                s = _recipe_fridge_score(r, fridge_needles)
-                scored.append((r.pk, s))
+            for pk, ingredients in queryset.values_list("id", "ingredients"):
+                names = _names_from_raw(ingredients)
+                score = sum(1 for n in fridge_needles if any(n in name for name in names))
+                scored.append((pk, score))
             scored.sort(key=lambda x: (-x[1], -x[0]))
             ordered_ids = [pk for pk, s in scored if s > 0] or [pk for pk, _ in scored]
             fridge_scores = {pk: s for pk, s in scored}

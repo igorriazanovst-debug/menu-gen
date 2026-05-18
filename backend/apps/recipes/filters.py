@@ -28,14 +28,19 @@ def _normalize(s: str) -> str:
     return (s or "").strip().lower()
 
 
-def _ingredient_names(recipe: Recipe) -> list[str]:
+def _names_from_raw(ingredients) -> list[str]:
+    """Lower-cased ingredient names from a raw JSON list (no model instance)."""
     out = []
-    for ing in recipe.ingredients or []:
+    for ing in ingredients or []:
         if isinstance(ing, dict):
-            name = ing.get("name")
-            if name:
-                out.append(_normalize(str(name)))
+            n = ing.get("name")
+            if n:
+                out.append(_normalize(str(n)))
     return out
+
+
+def _ingredient_names(recipe: Recipe) -> list[str]:
+    return _names_from_raw(recipe.ingredients)
 
 
 def _recipe_matches_any(recipe: Recipe, needles: list[str]) -> bool:
@@ -126,22 +131,22 @@ class RecipeFilter(filters.FilterSet):
 
     def filter_calories_min(self, queryset, name, value):
         ids = []
-        for r in queryset.only("id", "nutrition"):
+        for pk, nut in queryset.values_list("id", "nutrition"):
             try:
-                cal = float((r.nutrition or {}).get("calories", {}).get("value", 0) or 0)
+                cal = float((nut or {}).get("calories", {}).get("value", 0) or 0)
                 if cal >= float(value):
-                    ids.append(r.pk)
+                    ids.append(pk)
             except (TypeError, ValueError, AttributeError):
                 pass
         return queryset.filter(pk__in=ids)
 
     def filter_calories_max(self, queryset, name, value):
         ids = []
-        for r in queryset.only("id", "nutrition"):
+        for pk, nut in queryset.values_list("id", "nutrition"):
             try:
-                cal = float((r.nutrition or {}).get("calories", {}).get("value", 0) or 0)
+                cal = float((nut or {}).get("calories", {}).get("value", 0) or 0)
                 if cal <= float(value):
-                    ids.append(r.pk)
+                    ids.append(pk)
             except (TypeError, ValueError, AttributeError):
                 pass
         return queryset.filter(pk__in=ids)
@@ -155,14 +160,22 @@ class RecipeFilter(filters.FilterSet):
         needles = self._parse_csv(value)
         if not needles:
             return queryset
-        ids = [r.pk for r in queryset.only("id", "ingredients") if _recipe_matches_all(r, needles)]
+        ids = []
+        for pk, ingredients in queryset.values_list("id", "ingredients"):
+            names = _names_from_raw(ingredients)
+            if all(any(n in name for name in names) for n in needles):
+                ids.append(pk)
         return queryset.filter(pk__in=ids)
 
     def filter_ingredients_any(self, queryset, name, value):
         needles = self._parse_csv(value)
         if not needles:
             return queryset
-        ids = [r.pk for r in queryset.only("id", "ingredients") if _recipe_matches_any(r, needles)]
+        ids = []
+        for pk, ingredients in queryset.values_list("id", "ingredients"):
+            names = _names_from_raw(ingredients)
+            if any(any(n in name for name in names) for n in needles):
+                ids.append(pk)
         return queryset.filter(pk__in=ids)
 
     # ─── allergens (по пользователю) ──────────────────────────────────────
@@ -179,9 +192,10 @@ class RecipeFilter(filters.FilterSet):
         if not allergens:
             return queryset
         good_ids = []
-        for r in queryset.only("id", "ingredients"):
-            if not _recipe_matches_any(r, allergens):
-                good_ids.append(r.pk)
+        for pk, ingredients in queryset.values_list("id", "ingredients"):
+            names = _names_from_raw(ingredients)
+            if not any(any(a in name for name in names) for a in allergens):
+                good_ids.append(pk)
         return queryset.filter(pk__in=good_ids)
 
     # ─── favorites ─────────────────────────────────────────────────────────
