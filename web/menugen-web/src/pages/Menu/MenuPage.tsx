@@ -11,6 +11,8 @@ import type { Menu, MenuItem, MealType, ComponentRole } from '../../types';
 import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../types';
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
 import { DayNutritionSummary } from '../../components/menu/DayNutritionSummary';
+// MG_607_V_menupage
+import { GenerateMenuForm } from '../../components/menu/GenerateMenuForm';
 
 const MEAL_ICONS: Record<string, string> = {
   breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎',
@@ -388,22 +390,7 @@ export const MenuPage: React.FC = () => {
 
   useEffect(() => { load(); }, []);  // eslint-disable-line
 
-  const handleGenerate = async () => {
-    setGenerating(true); setError('');
-    try {
-      const payload: any = {
-        period_days: periodDays,
-        start_date: startDate,
-        meal_plan_type: mealPlanType,
-      };
-      const { data } = await menuApi.generate(payload);
-      setActiveMenu(data);
-      setShowGenerateForm(false);
-      await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Ошибка генерации меню');
-    } finally { setGenerating(false); }
-  };
+  // MG_607_V_menupage: handleGenerate перенесён в GenerateMenuForm
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Удалить это меню? Его можно будет восстановить из Корзины в течение 24 часов.')) return;
@@ -426,44 +413,19 @@ export const MenuPage: React.FC = () => {
       </div>
 
       {showGenerateForm && (
-        <Card className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">С даты</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Период (дней)</label>
-              <input type="number" min={1} max={14} value={periodDays}
-                onChange={e => setPeriodDays(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Приёмов пищи</label>
-              <div className="flex gap-1">
-                <button type="button" onClick={() => setMealPlanType('3')}
-                  className={[
-                    'flex-1 px-3 py-2 rounded-xl border text-sm',
-                    mealPlanType === '3'
-                      ? 'border-tomato bg-tomato/10 text-tomato'
-                      : 'border-gray-200 bg-white text-gray-600',
-                  ].join(' ')}>3</button>
-                <button type="button" onClick={() => setMealPlanType('5')}
-                  className={[
-                    'flex-1 px-3 py-2 rounded-xl border text-sm',
-                    mealPlanType === '5'
-                      ? 'border-tomato bg-tomato/10 text-tomato'
-                      : 'border-gray-200 bg-white text-gray-600',
-                  ].join(' ')}>5</button>
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end mt-3">
-            <Button onClick={handleGenerate} loading={generating}>Создать меню</Button>
-          </div>
-        </Card>
-      )}
+          <GenerateMenuForm
+            initialMealPlan={mealPlanType}
+            userAllergies={user?.allergies ?? []}
+            userDisliked={user?.disliked_products ?? []}
+            userProfile={user?.profile}
+            onCancel={() => setShowGenerateForm(false)}
+            onCreated={(m) => {
+              setActiveMenu(m);
+              setShowGenerateForm(false);
+              load();
+            }}
+          />
+        )}
 
       {error && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
 
