@@ -156,6 +156,7 @@ def get_menu_usage_30d(family, product_name: str, days: int = 30) -> dict:
     top = sorted(by_recipe.values(), key=lambda x: x["times"], reverse=True)[:10]
     return {"count": total, "recipes": top, "period_days": days}
 
+
 # MG-609: OFF category string -> our ProductCategory slug.
 _OFF_TOKEN_MAP = [
     ("dair", "dairy"), ("milk", "dairy"), ("cheese", "dairy"), ("yogurt", "dairy"),

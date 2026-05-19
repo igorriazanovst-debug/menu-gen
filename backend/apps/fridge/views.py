@@ -16,7 +16,7 @@ from .serializers import (
     ProductCategorySerializer,
     ProductSerializer,
 )
-from .services import fetch_product_from_off, map_off_category_to_slug
+from .services import fetch_product_from_off
 
 
 def _get_family(user):
@@ -167,7 +167,6 @@ class FridgeItemDetailsView(APIView):
         # days_left
         days_left = None
         if item.expiry_date is not None:
-            import datetime as _dt
             from django.utils import timezone as _tz
             days_left = (item.expiry_date - _tz.now().date()).days
 
