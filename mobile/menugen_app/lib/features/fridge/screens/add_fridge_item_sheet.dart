@@ -46,6 +46,56 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   bool _loadingBarcode = false;
   String? _error;
 
+  // MG-609 additions
+  List<Map<String, dynamic>> _categories = [];
+  Map<String, dynamic>? _selectedCategory; // {id, slug, name_ru, icon, color, ...}
+  List<Map<String, dynamic>> _seedProducts = [];     // for the chosen category
+  List<Map<String, dynamic>> _history = [];          // family history
+  bool _loadingMeta = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    setState(() => _loadingMeta = true);
+    try {
+      final results = await Future.wait([
+        widget.apiClient.get('/fridge/categories/'),
+        widget.apiClient.get('/fridge/products/history/', params: {'limit': '40'}),
+      ]);
+      final cats = results[0];
+      final hist = results[1];
+      setState(() {
+        _categories = (cats is List)
+            ? cats.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList()
+            : [];
+        _history = (hist is List)
+            ? hist.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList()
+            : [];
+      });
+    } catch (_) {/* non-fatal */}
+    if (mounted) setState(() => _loadingMeta = false);
+  }
+
+  Future<void> _loadSeedForCategory(Map<String, dynamic> cat) async {
+    final slug = cat['slug'] as String?;
+    if (slug == null || slug.isEmpty) return;
+    try {
+      final r = await widget.apiClient.get(
+        '/fridge/products/',
+        params: {'category': slug, 'seed': '1'},
+      );
+      if (r is List) {
+        setState(() {
+          _seedProducts = r.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+        });
+      }
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -82,6 +132,15 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
         _imageUrl = m['image_url'] as String?;
         final du = (m['default_unit'] as String?) ?? '';
         if (du.isNotEmpty && _UNITS.contains(du)) _unit = du;
+        // Try to set category from product response.
+        final catSlug = m['category_slug'] as String?;
+        if (catSlug != null && catSlug.isNotEmpty) {
+          final found = _categories.where((c) => c['slug'] == catSlug);
+          if (found.isNotEmpty) {
+            _selectedCategory = found.first;
+            _loadSeedForCategory(_selectedCategory!);
+          }
+        }
       });
     } catch (e) {
       final msg = e.toString();
@@ -95,20 +154,63 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
     }
   }
 
+  void _applyHistory(Map<String, dynamic> h) {
+    setState(() {
+      _nameCtrl.text = (h['name'] as String?) ?? '';
+      _productId = h['product_id'] as int?;
+      _imageUrl = h['image_url'] as String?;
+      final du = (h['default_unit'] as String?) ?? '';
+      if (du.isNotEmpty && _UNITS.contains(du)) _unit = du;
+      final slug = h['category_slug'] as String?;
+      if (slug != null && slug.isNotEmpty) {
+        final found = _categories.where((c) => c['slug'] == slug);
+        if (found.isNotEmpty) {
+          _selectedCategory = found.first;
+          _loadSeedForCategory(_selectedCategory!);
+        }
+      }
+    });
+  }
+
+  void _applySeed(Map<String, dynamic> p) {
+    setState(() {
+      _nameCtrl.text = (p['name'] as String?) ?? '';
+      _productId = p['id'] as int?;
+      _imageUrl = p['image_url'] as String?;
+      final du = (p['default_unit'] as String?) ?? '';
+      if (du.isNotEmpty && _UNITS.contains(du)) _unit = du;
+    });
+  }
+
+  Color _parseColor(String? hex) {
+    if (hex == null || hex.isEmpty) return const Color(0xFFECEFF1);
+    var h = hex.replaceFirst('#', '');
+    if (h.length == 6) h = 'FF$h';
+    try {
+      return Color(int.parse(h, radix: 16));
+    } catch (_) {
+      return const Color(0xFFECEFF1);
+    }
+  }
+
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     if (_expiry == null) {
       setState(() => _error = 'Укажите срок годности');
       return;
     }
+    if (_selectedCategory == null) {
+      setState(() => _error = 'Выберите категорию');
+      return;
+    }
     final qty = double.tryParse(_qtyCtrl.text.replaceAll(',', '.')) ?? 0;
     context.read<FridgeBloc>().add(FridgeItemAdded(
-      name: _nameCtrl.text.trim(),
-      quantity: qty,
-      unit: _unit,
-      expiryDate: DateFormat('yyyy-MM-dd').format(_expiry!),
-      productId: _productId,
-    ));
+          name: _nameCtrl.text.trim(),
+          quantity: qty,
+          unit: _unit,
+          expiryDate: DateFormat('yyyy-MM-dd').format(_expiry!),
+          productId: _productId,
+        ));
     Navigator.of(context).pop();
   }
 
@@ -123,7 +225,8 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(
-                width: 40, height: 4,
+                width: 40,
+                height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade300,
@@ -140,13 +243,105 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
                   IconButton(
                     onPressed: _loadingBarcode ? null : _scanAndLookup,
                     icon: _loadingBarcode
-                        ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.qr_code_scanner),
                     tooltip: 'Сканировать штрих-код',
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
+
+              // ── HISTORY ──
+              if (_history.isNotEmpty) ...[
+                const Text('Из истории',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 36,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _history.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 6),
+                    itemBuilder: (_, i) {
+                      final h = _history[i];
+                      final icon = (h['category_icon'] as String?) ?? '';
+                      return ActionChip(
+                        avatar: icon.isNotEmpty ? Text(icon) : null,
+                        label: Text(h['name'] as String? ?? ''),
+                        onPressed: () => _applyHistory(h),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+
+              // ── CATEGORY ──
+              const Text('Категория *',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              if (_loadingMeta)
+                const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: LinearProgressIndicator(),
+                )
+              else
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _categories.map((c) {
+                    final selected = _selectedCategory != null &&
+                        _selectedCategory!['id'] == c['id'];
+                    final bg = _parseColor(c['color'] as String?);
+                    return ChoiceChip(
+                      selected: selected,
+                      backgroundColor: bg,
+                      selectedColor: bg,
+                      side: BorderSide(
+                        color: selected ? Colors.black : Colors.transparent,
+                        width: selected ? 1.5 : 0,
+                      ),
+                      label: Text(
+                        '${c['icon'] ?? ''} ${c['name_ru'] ?? ''}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onSelected: (_) {
+                        setState(() => _selectedCategory = c);
+                        _loadSeedForCategory(c);
+                      },
+                    );
+                  }).toList(),
+                ),
+
+              // ── SEED PRODUCTS for chosen category ──
+              if (_selectedCategory != null && _seedProducts.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text('Базовые продукты',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 36,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _seedProducts.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 6),
+                    itemBuilder: (_, i) {
+                      final p = _seedProducts[i];
+                      return ActionChip(
+                        label: Text(p['name'] as String? ?? ''),
+                        onPressed: () => _applySeed(p),
+                      );
+                    },
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 16),
+
               if (_imageUrl != null && _imageUrl!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
@@ -160,6 +355,7 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
                     ),
                   ),
                 ),
+
               TextFormField(
                 controller: _nameCtrl,
                 decoration: const InputDecoration(labelText: 'Название *'),
@@ -214,7 +410,8 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                Text(_error!,
+                    style: const TextStyle(color: Colors.red, fontSize: 13)),
               ],
               const SizedBox(height: 20),
               ElevatedButton(

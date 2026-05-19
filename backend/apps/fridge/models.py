@@ -3,20 +3,55 @@ from django.db import models
 from apps.family.models import Family
 
 
+class ProductCategory(models.Model):
+    """
+    Normalized product category (dairy, meat, vegetables, ...).
+    Used to group fridge view by groups and to render coloured zones.
+    """
+    slug = models.SlugField(max_length=64, unique=True)
+    name_ru = models.CharField(max_length=128)
+    name_en = models.CharField(max_length=128, blank=True)
+    icon = models.CharField(max_length=16, blank=True, help_text="Emoji or short symbol")
+    color = models.CharField(max_length=16, blank=True, help_text="Hex color, e.g. #FFE082")
+    sort_order = models.PositiveIntegerField(default=100)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "product_categories"
+        ordering = ["sort_order", "name_ru"]
+        indexes = [models.Index(fields=["slug"])]
+
+    def __str__(self):
+        return self.name_ru
+
+
 class Product(models.Model):
     name = models.CharField(max_length=255)
+    # Legacy free-form category text (kept for backward compat / OFF imports).
     category = models.CharField(max_length=100, blank=True)
+    # New normalized FK.
+    category_fk = models.ForeignKey(
+        ProductCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
+        db_column="category_id",
+    )
     default_unit = models.CharField(max_length=50, blank=True)
     calories_per_100g = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     nutrition = models.JSONField(default=dict)
     barcode = models.CharField(max_length=64, null=True, blank=True, unique=True)
     image_url = models.URLField(max_length=1024, null=True, blank=True)
+    is_seed = models.BooleanField(default=False, help_text="True for built-in basic products")
 
     class Meta:
         db_table = "products"
         indexes = [
             models.Index(fields=["category"]),
             models.Index(fields=["barcode"]),
+            models.Index(fields=["category_fk"]),
+            models.Index(fields=["is_seed"]),
         ]
 
     def __str__(self):

@@ -6,6 +6,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/db/app_database.dart';
 import '../../../core/premium/premium_gate_cubit.dart';
 
+// ── Events ─────────────────────────────────────────────────────────────────
 abstract class FridgeEvent extends Equatable {
   const FridgeEvent();
   @override
@@ -40,6 +41,7 @@ class FridgeItemDeleted extends FridgeEvent {
   List<Object?> get props => [id];
 }
 
+// ── States ─────────────────────────────────────────────────────────────────
 abstract class FridgeState extends Equatable {
   const FridgeState();
   @override
@@ -52,9 +54,21 @@ class FridgeLoading extends FridgeState {
 
 class FridgeLoaded extends FridgeState {
   final List<Map<String, dynamic>> items;
-  const FridgeLoaded({required this.items});
+  final List<Map<String, dynamic>> categories;
+  const FridgeLoaded({
+    required this.items,
+    this.categories = const [],
+  });
+  FridgeLoaded copyWith({
+    List<Map<String, dynamic>>? items,
+    List<Map<String, dynamic>>? categories,
+  }) =>
+      FridgeLoaded(
+        items: items ?? this.items,
+        categories: categories ?? this.categories,
+      );
   @override
-  List<Object?> get props => [items];
+  List<Object?> get props => [items, categories];
 }
 
 class FridgePremiumLocked extends FridgeState {
@@ -72,6 +86,7 @@ class FridgeError extends FridgeState {
   List<Object?> get props => [message];
 }
 
+// ── Bloc ───────────────────────────────────────────────────────────────────
 class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
   final ApiClient apiClient;
   final AppDatabase db;
@@ -100,16 +115,31 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
     return FridgeError(msg);
   }
 
+  Future<List<Map<String, dynamic>>> _fetchCategories() async {
+    try {
+      final r = await apiClient.get('/fridge/categories/');
+      if (r is List) {
+        return r.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+      }
+    } catch (_) {/* non-fatal — UI degrades to "no categories" */}
+    return const [];
+  }
+
   Future<void> _onLoad(FridgeLoadRequested e, Emitter<FridgeState> emit) async {
     emit(const FridgeLoading());
     try {
-      final r = await apiClient.get('/fridge/');
+      final results = await Future.wait([
+        apiClient.get('/fridge/'),
+        _fetchCategories(),
+      ]);
+      final r = results[0];
+      final cats = results[1] as List<Map<String, dynamic>>;
       final list = (r is Map ? (r['results'] as List? ?? []) : [])
           .whereType<Map>()
           .map((m) => Map<String, dynamic>.from(m))
           .toList();
       premiumGate?.reportReadSuccess();
-      emit(FridgeLoaded(items: list));
+      emit(FridgeLoaded(items: list, categories: cats));
     } catch (err) {
       emit(_toErrorState(err, isWrite: false));
     }

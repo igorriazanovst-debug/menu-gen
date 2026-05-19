@@ -145,7 +145,10 @@ class TestProductSearch:
         client.force_authenticate(user)
         resp = client.get(reverse("product-search"), {"q": "Творог"})
         assert resp.status_code == 200
-        assert len(resp.data["results"]) == 2
+        # MG-609 seed-tolerant: only assert our own products are present (seed may add more)
+        names = [r['name'] for r in resp.data['results']]
+        assert 'Творог жирный' in names
+        assert 'Творог обезжиренный' in names
 
     def test_search_too_short(self, client, user_with_family):
         user, _ = user_with_family

@@ -7,14 +7,16 @@ from rest_framework.views import APIView
 from apps.family.models import FamilyMember
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
-from .models import FridgeItem, Product
+from .models import FridgeItem, Product, ProductCategory
 from .serializers import (
     BarcodeLookupSerializer,
+    FridgeHistoryItemSerializer,
     FridgeItemSerializer,
     FridgeItemWriteSerializer,
+    ProductCategorySerializer,
     ProductSerializer,
 )
-from .services import fetch_product_from_off
+from .services import fetch_product_from_off, map_off_category_to_slug
 
 
 def _get_family(user):
@@ -196,3 +198,88 @@ class ProductSearchView(generics.ListAPIView):
         if len(q) < 2:
             return Product.objects.none()
         return Product.objects.filter(name__icontains=q)[:20]
+
+
+# ─── MG-609: category list ──────────────────────────────────────────────────
+class ProductCategoryListView(generics.ListAPIView):
+    """GET /fridge/categories/  — list active product categories."""
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    serializer_class = ProductCategorySerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return ProductCategory.objects.filter(is_active=True).order_by("sort_order", "name_ru")
+
+
+class ProductListView(generics.ListAPIView):
+    """GET /fridge/products/?category=<slug|id>&seed=1  — list products."""
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    serializer_class = ProductSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = Product.objects.select_related("category_fk").all()
+        cat = self.request.query_params.get("category")
+        if cat:
+            if str(cat).isdigit():
+                qs = qs.filter(category_fk_id=int(cat))
+            else:
+                qs = qs.filter(category_fk__slug=cat)
+        if self.request.query_params.get("seed") in ("1", "true"):
+            qs = qs.filter(is_seed=True)
+        return qs.order_by("category_fk__sort_order", "name")[:500]
+
+
+class FridgeHistoryView(APIView):
+    """GET /fridge/products/history/?limit=50 — aggregated history for the family."""
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    def get(self, request):
+        family = _get_family(request.user)
+        if not family:
+            return Response([], status=status.HTTP_200_OK)
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", 50)), 200))
+        except (TypeError, ValueError):
+            limit = 50
+
+        from django.db.models import Count, Max
+        rows = (
+            FridgeItem.objects
+            .filter(family=family)
+            .values(
+                "name",
+                "product_id",
+                "product__category_fk_id",
+                "product__category_fk__slug",
+                "product__category_fk__name_ru",
+                "product__category_fk__icon",
+                "product__category_fk__color",
+                "product__default_unit",
+                "product__image_url",
+                "unit",
+            )
+            .annotate(times_used=Count("id"), last_used=Max("created_at"))
+            .order_by("-last_used")[:limit]
+        )
+
+        out, seen = [], set()
+        for r in rows:
+            key = (r["name"] or "").strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "name": r["name"],
+                "product_id": r["product_id"],
+                "category_id": r["product__category_fk_id"],
+                "category_slug": r["product__category_fk__slug"] or "",
+                "category_name": r["product__category_fk__name_ru"] or "",
+                "category_icon": r["product__category_fk__icon"] or "",
+                "category_color": r["product__category_fk__color"] or "",
+                "default_unit": r["product__default_unit"] or r["unit"] or "",
+                "image_url": r["product__image_url"] or "",
+                "times_used": r["times_used"],
+                "last_used": r["last_used"],
+            })
+        return Response(FridgeHistoryItemSerializer(out, many=True).data)

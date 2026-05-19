@@ -155,3 +155,29 @@ def get_menu_usage_30d(family, product_name: str, days: int = 30) -> dict:
 
     top = sorted(by_recipe.values(), key=lambda x: x["times"], reverse=True)[:10]
     return {"count": total, "recipes": top, "period_days": days}
+
+# MG-609: OFF category string -> our ProductCategory slug.
+_OFF_TOKEN_MAP = [
+    ("dair", "dairy"), ("milk", "dairy"), ("cheese", "dairy"), ("yogurt", "dairy"),
+    ("meat", "meat"), ("chicken", "meat"), ("beef", "meat"), ("pork", "meat"), ("sausage", "meat"),
+    ("fish", "fish"), ("seafood", "fish"), ("shrimp", "fish"),
+    ("vegetabl", "vegetables"), ("legume", "vegetables"),
+    ("fruit", "fruits"), ("berry", "fruits"),
+    ("grain", "grains"), ("pasta", "grains"), ("rice", "grains"), ("cereal", "grains"),
+    ("bread", "bakery"), ("bakery", "bakery"),
+    ("egg", "eggs"),
+    ("oil", "oils"), ("sauce", "oils"), ("condiment", "condiments"), ("spice", "condiments"),
+    ("beverage", "drinks"), ("drink", "drinks"), ("juice", "drinks"), ("water", "drinks"),
+    ("frozen", "frozen"),
+    ("chocolate", "sweets"), ("candy", "sweets"), ("sweet", "sweets"), ("biscuit", "sweets"),
+]
+
+
+def map_off_category_to_slug(category_str: str) -> str:
+    s = (category_str or "").strip().lower()
+    if not s:
+        return "other"
+    for token, slug in _OFF_TOKEN_MAP:
+        if token in s:
+            return slug
+    return "other"

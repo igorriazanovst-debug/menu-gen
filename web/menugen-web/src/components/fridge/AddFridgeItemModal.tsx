@@ -1,9 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { fridgeApi } from '../../api/fridge';
-import type { BarcodeLookupResult, FridgeItem } from '../../types';
+import type {
+  BarcodeLookupResult,
+  FridgeHistoryItem,
+  FridgeItem,
+  Product,
+  ProductCategory,
+} from '../../types';
 
 const UNITS = ['шт', 'г', 'кг', 'мл', 'л', 'упак', 'банка'];
 
@@ -13,10 +19,10 @@ interface Props {
 }
 
 export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
-  const [name, setName]         = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [unit, setUnit]         = useState(UNITS[0]);
-  const [expiry, setExpiry]     = useState('');
+  const [name, setName]           = useState('');
+  const [quantity, setQuantity]   = useState('');
+  const [unit, setUnit]           = useState(UNITS[0]);
+  const [expiry, setExpiry]       = useState('');
   const [productId, setProductId] = useState<number | null>(null);
   const [imageUrl, setImageUrl]   = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
@@ -24,6 +30,64 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const handledRef = useRef(false);
+
+  // MG-609
+  const [categories, setCategories]       = useState<ProductCategory[]>([]);
+  const [history, setHistory]             = useState<FridgeHistoryItem[]>([]);
+  const [selectedCat, setSelectedCat]     = useState<ProductCategory | null>(null);
+  const [seedProducts, setSeedProducts]   = useState<Product[]>([]);
+  const [metaLoading, setMetaLoading]     = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setMetaLoading(true);
+      try {
+        const [catsRes, histRes] = await Promise.all([
+          fridgeApi.categories().catch(() => ({ data: [] as ProductCategory[] })),
+          fridgeApi.history(40).catch(() => ({ data: [] as FridgeHistoryItem[] })),
+        ]);
+        if (cancelled) return;
+        setCategories((catsRes as any).data ?? []);
+        setHistory((histRes as any).data ?? []);
+      } finally {
+        if (!cancelled) setMetaLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCat) { setSeedProducts([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await fridgeApi.products({ category: selectedCat.slug, seed: true });
+        if (!cancelled) setSeedProducts(data ?? []);
+      } catch {
+        if (!cancelled) setSeedProducts([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedCat]);
+
+  const applyHistory = (h: FridgeHistoryItem) => {
+    setName(h.name);
+    setProductId(h.product_id);
+    if (h.image_url) setImageUrl(h.image_url);
+    if (h.default_unit && UNITS.includes(h.default_unit)) setUnit(h.default_unit);
+    if (h.category_slug) {
+      const found = categories.find(c => c.slug === h.category_slug);
+      if (found) setSelectedCat(found);
+    }
+  };
+
+  const applySeed = (p: Product) => {
+    setName(p.name);
+    setProductId(p.id);
+    if (p.image_url) setImageUrl(p.image_url);
+    if (p.default_unit && UNITS.includes(p.default_unit)) setUnit(p.default_unit);
+  };
 
   const onBarcodeDetected = async (detected: { rawValue?: string }[]) => {
     if (handledRef.current) return;
@@ -40,6 +104,10 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
       setProductId(p.id);
       if (p.image_url) setImageUrl(p.image_url);
       if (p.default_unit && UNITS.includes(p.default_unit)) setUnit(p.default_unit);
+      if (p.category_slug) {
+        const found = categories.find(c => c.slug === p.category_slug);
+        if (found) setSelectedCat(found);
+      }
     } catch (e: any) {
       if (e?.response?.status === 404) {
         setError('Штрих-код не найден. Заполните поля вручную.');
@@ -57,8 +125,10 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
     e.preventDefault();
     setError(null);
     if (!name.trim() || !quantity || !unit || !expiry) {
-      setError('Заполните все обязательные поля');
-      return;
+      setError('Заполните все обязательные поля'); return;
+    }
+    if (!selectedCat) {
+      setError('Выберите категорию'); return;
     }
     const q = parseFloat(quantity.replace(',', '.'));
     if (!isFinite(q) || q <= 0) { setError('Кол-во должно быть > 0'); return; }
@@ -104,6 +174,74 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
             </div>
           ) : (
             <form onSubmit={onSubmit} className="space-y-4">
+              {/* HISTORY */}
+              {history.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-chocolate">Из истории</label>
+                  <div className="mt-1 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                    {history.map((h, i) => (
+                      <button
+                        key={`${h.name}-${i}`}
+                        type="button"
+                        onClick={() => applyHistory(h)}
+                        className="px-2.5 py-1 rounded-full bg-rice border border-gray-200 text-xs hover:bg-tomato/10"
+                      >
+                        {h.category_icon ? `${h.category_icon} ` : ''}{h.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* CATEGORY */}
+              <div>
+                <label className="text-sm font-medium text-chocolate">Категория *</label>
+                {metaLoading ? (
+                  <div className="mt-1 h-8 rounded bg-gray-100 animate-pulse" />
+                ) : (
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {categories.map(c => {
+                      const selected = selectedCat?.id === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setSelectedCat(c)}
+                          className={
+                            'px-2.5 py-1 rounded-full text-xs border transition ' +
+                            (selected
+                              ? 'border-chocolate ring-2 ring-chocolate/30 font-semibold'
+                              : 'border-transparent')
+                          }
+                          style={{ backgroundColor: c.color || '#ECEFF1' }}
+                        >
+                          {c.icon ? `${c.icon} ` : ''}{c.name_ru}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* SEED PRODUCTS for selected category */}
+              {selectedCat && seedProducts.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-chocolate">Базовые продукты</label>
+                  <div className="mt-1 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                    {seedProducts.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => applySeed(p)}
+                        className="px-2.5 py-1 rounded-full bg-white border border-gray-300 text-xs hover:bg-rice"
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button
                   variant="ghost"

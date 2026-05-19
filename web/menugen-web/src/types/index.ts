@@ -166,18 +166,29 @@ export interface TargetAuditEntry {
 export interface Product {
   id: number;
   name: string;
-  category?: string;
+  category?: string;                // legacy free-form string
+  category_id?: number | null;
+  category_slug?: string | null;
+  category_name?: string | null;
+  category_icon?: string | null;
+  category_color?: string | null;
   default_unit?: string;
   calories_per_100g?: string | number | null;
   nutrition?: Record<string, number>;
   barcode?: string | null;
   image_url?: string | null;
+  is_seed?: boolean;
 }
 export interface FridgeItem {
   id: number;
   product?: number | null;
   product_name?: string | null;
-  product_category?: string | null;
+  product_category?: string | null;          // legacy
+  product_category_id?: number | null;
+  product_category_slug?: string | null;
+  product_category_name?: string | null;
+  product_category_icon?: string | null;
+  product_category_color?: string | null;
   product_image_url?: string | null;
   name: string;
   quantity?: string | number | null;
@@ -205,4 +216,29 @@ export interface FridgeItemDetailsResponse {
   product: Product | null;
   days_left: number | null;
   usage_30d: FridgeMenuUsage;
+}
+
+// ── MG-609 ────────────────────────────────────────────────────────────────
+export interface ProductCategory {
+  id: number;
+  slug: string;
+  name_ru: string;
+  name_en?: string;
+  icon?: string;
+  color?: string;
+  sort_order?: number;
+}
+
+export interface FridgeHistoryItem {
+  name: string;
+  product_id: number | null;
+  category_id: number | null;
+  category_slug: string;
+  category_name: string;
+  category_icon: string;
+  category_color: string;
+  default_unit: string;
+  image_url: string;
+  times_used: number;
+  last_used: string | null;
 }
