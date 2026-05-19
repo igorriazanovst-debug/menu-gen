@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
@@ -162,7 +163,7 @@ class _MenuScreenState extends State<MenuScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.delete_outline),
+            icon: const Icon(Icons.inventory_2_outlined),
             tooltip: 'Карантин',
             onPressed: () {
               Navigator.of(context).push(
@@ -172,6 +173,19 @@ class _MenuScreenState extends State<MenuScreen> {
                     child: QuarantineScreen(apiClient: widget.apiClient),
                   ),
                 ),
+              );
+            },
+          ),
+          // MG_608_1_V_mobile_delete: удалить текущее меню (мягко, в карантин)
+          BlocBuilder<MenuBloc, MenuState>(
+            buildWhen: (a, b) => true,
+            builder: (context, state) {
+              final activeId = (state is MenuLoaded) ? state.active?['id'] : null;
+              if (activeId is! int) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                tooltip: 'Удалить меню',
+                onPressed: () => _confirmDeleteCurrent(context, activeId),
               );
             },
           ),
@@ -299,6 +313,56 @@ class _MenuScreenState extends State<MenuScreen> {
         label: const Text('Сгенерировать'),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteCurrent(BuildContext context, int menuId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить меню?'),
+        content: const Text(
+          'Меню переместится в карантин. Его можно будет восстановить в течение 24 часов.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await widget.apiClient.delete('/menu/$menuId/delete/');
+      if (!mounted) return;
+      try {
+        final p = await SharedPreferences.getInstance();
+        if (p.getInt('menugen.lastMenuId') == menuId) {
+          await p.remove('menugen.lastMenuId');
+        }
+      } catch (_) {}
+      // Сброс выбранной даты — для нового меню окно будет своё
+      setState(() {
+        _selectedDate = null;
+      });
+      // ignore: use_build_context_synchronously
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Меню перемещено в карантин')),
+      );
+      // ignore: use_build_context_synchronously
+      context.read<MenuBloc>().add(const MenuLoadRequested());
+    } catch (e) {
+      if (!mounted) return;
+      // ignore: use_build_context_synchronously
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления: $e')),
+      );
+    }
   }
 
   void _showGenerateSheet(BuildContext context) {
