@@ -1,4 +1,5 @@
 """Fridge services: OpenFoodFacts lookup + menu-usage stats."""
+
 from __future__ import annotations
 
 import datetime
@@ -50,11 +51,7 @@ def _normalize_off_product(raw: dict) -> Optional[dict]:
         except (TypeError, ValueError):
             pass
 
-    image = (
-        raw.get("image_front_url")
-        or raw.get("image_url")
-        or raw.get("image_small_url")
-    )
+    image = raw.get("image_front_url") or raw.get("image_url") or raw.get("image_small_url")
     category = (raw.get("categories") or "").split(",")[0].strip() if raw.get("categories") else ""
 
     return {
@@ -117,15 +114,11 @@ def get_menu_usage_30d(family, product_name: str, days: int = 30) -> dict:
     today = timezone.now().date()
     since = today - datetime.timedelta(days=days)
 
-    qs = (
-        MenuItem.objects
-        .filter(
-            menu__family=family,
-            menu__start_date__gte=since,
-            menu__start_date__lte=today,
-        )
-        .select_related("recipe")
-    )
+    qs = MenuItem.objects.filter(
+        menu__family=family,
+        menu__start_date__gte=since,
+        menu__start_date__lte=today,
+    ).select_related("recipe")
 
     total = 0
     by_recipe: dict[int, dict] = {}
@@ -159,18 +152,42 @@ def get_menu_usage_30d(family, product_name: str, days: int = 30) -> dict:
 
 # MG-609: OFF category string -> our ProductCategory slug.
 _OFF_TOKEN_MAP = [
-    ("dair", "dairy"), ("milk", "dairy"), ("cheese", "dairy"), ("yogurt", "dairy"),
-    ("meat", "meat"), ("chicken", "meat"), ("beef", "meat"), ("pork", "meat"), ("sausage", "meat"),
-    ("fish", "fish"), ("seafood", "fish"), ("shrimp", "fish"),
-    ("vegetabl", "vegetables"), ("legume", "vegetables"),
-    ("fruit", "fruits"), ("berry", "fruits"),
-    ("grain", "grains"), ("pasta", "grains"), ("rice", "grains"), ("cereal", "grains"),
-    ("bread", "bakery"), ("bakery", "bakery"),
+    ("dair", "dairy"),
+    ("milk", "dairy"),
+    ("cheese", "dairy"),
+    ("yogurt", "dairy"),
+    ("meat", "meat"),
+    ("chicken", "meat"),
+    ("beef", "meat"),
+    ("pork", "meat"),
+    ("sausage", "meat"),
+    ("fish", "fish"),
+    ("seafood", "fish"),
+    ("shrimp", "fish"),
+    ("vegetabl", "vegetables"),
+    ("legume", "vegetables"),
+    ("fruit", "fruits"),
+    ("berry", "fruits"),
+    ("grain", "grains"),
+    ("pasta", "grains"),
+    ("rice", "grains"),
+    ("cereal", "grains"),
+    ("bread", "bakery"),
+    ("bakery", "bakery"),
     ("egg", "eggs"),
-    ("oil", "oils"), ("sauce", "oils"), ("condiment", "condiments"), ("spice", "condiments"),
-    ("beverage", "drinks"), ("drink", "drinks"), ("juice", "drinks"), ("water", "drinks"),
+    ("oil", "oils"),
+    ("sauce", "oils"),
+    ("condiment", "condiments"),
+    ("spice", "condiments"),
+    ("beverage", "drinks"),
+    ("drink", "drinks"),
+    ("juice", "drinks"),
+    ("water", "drinks"),
     ("frozen", "frozen"),
-    ("chocolate", "sweets"), ("candy", "sweets"), ("sweet", "sweets"), ("biscuit", "sweets"),
+    ("chocolate", "sweets"),
+    ("candy", "sweets"),
+    ("sweet", "sweets"),
+    ("biscuit", "sweets"),
 ]
 
 

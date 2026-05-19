@@ -50,6 +50,7 @@ class FridgeListCreateView(generics.ListCreateAPIView):
         if expiring:
             import datetime
             from django.utils import timezone
+
             cutoff = timezone.now().date() + datetime.timedelta(days=int(expiring))
             qs = qs.filter(expiry_date__lte=cutoff, expiry_date__isnull=False)
         return qs
@@ -115,6 +116,7 @@ class BarcodeLookupView(APIView):
     POST /fridge/scan/  body: {"barcode": "..."}
     1) try local Product;  2) try OpenFoodFacts (cache locally);  3) 404.
     """
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     @extend_schema(request=BarcodeLookupSerializer, responses={200: ProductSerializer})
@@ -149,18 +151,14 @@ class FridgeItemDetailsView(APIView):
     Returns extended info for the fridge item: nutrition (from Product if FK
     set), expiry days-left, menu-usage stats for last 30 days.
     """
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get(self, request, pk: int):
         family = _get_family(request.user)
         if not family:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
-        item = (
-            FridgeItem.objects
-            .filter(family=family, is_deleted=False, pk=pk)
-            .select_related("product")
-            .first()
-        )
+        item = FridgeItem.objects.filter(family=family, is_deleted=False, pk=pk).select_related("product").first()
         if not item:
             return Response({"detail": "Не найдено."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -168,6 +166,7 @@ class FridgeItemDetailsView(APIView):
         days_left = None
         if item.expiry_date is not None:
             from django.utils import timezone as _tz
+
             days_left = (item.expiry_date - _tz.now().date()).days
 
         product_data = None
@@ -176,15 +175,18 @@ class FridgeItemDetailsView(APIView):
 
         # usage_30d: name source is product.name if FK exists, else item.name
         from .services import get_menu_usage_30d
-        name_for_lookup = (item.product.name if item.product else item.name)
+
+        name_for_lookup = item.product.name if item.product else item.name
         usage = get_menu_usage_30d(family, name_for_lookup, days=30)
 
-        return Response({
-            "item": FridgeItemSerializer(item, context={"request": request}).data,
-            "product": product_data,
-            "days_left": days_left,
-            "usage_30d": usage,
-        })
+        return Response(
+            {
+                "item": FridgeItemSerializer(item, context={"request": request}).data,
+                "product": product_data,
+                "days_left": days_left,
+                "usage_30d": usage,
+            }
+        )
 
 
 class ProductSearchView(generics.ListAPIView):
@@ -202,6 +204,7 @@ class ProductSearchView(generics.ListAPIView):
 # ─── MG-609: category list ──────────────────────────────────────────────────
 class ProductCategoryListView(generics.ListAPIView):
     """GET /fridge/categories/  — list active product categories."""
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
     serializer_class = ProductCategorySerializer
     pagination_class = None
@@ -212,6 +215,7 @@ class ProductCategoryListView(generics.ListAPIView):
 
 class ProductListView(generics.ListAPIView):
     """GET /fridge/products/?category=<slug|id>&seed=1  — list products."""
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
     serializer_class = ProductSerializer
     pagination_class = None
@@ -231,6 +235,7 @@ class ProductListView(generics.ListAPIView):
 
 class FridgeHistoryView(APIView):
     """GET /fridge/products/history/?limit=50 — aggregated history for the family."""
+
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get(self, request):
@@ -243,9 +248,9 @@ class FridgeHistoryView(APIView):
             limit = 50
 
         from django.db.models import Count, Max
+
         rows = (
-            FridgeItem.objects
-            .filter(family=family)
+            FridgeItem.objects.filter(family=family)
             .values(
                 "name",
                 "product_id",
@@ -268,17 +273,19 @@ class FridgeHistoryView(APIView):
             if not key or key in seen:
                 continue
             seen.add(key)
-            out.append({
-                "name": r["name"],
-                "product_id": r["product_id"],
-                "category_id": r["product__category_fk_id"],
-                "category_slug": r["product__category_fk__slug"] or "",
-                "category_name": r["product__category_fk__name_ru"] or "",
-                "category_icon": r["product__category_fk__icon"] or "",
-                "category_color": r["product__category_fk__color"] or "",
-                "default_unit": r["product__default_unit"] or r["unit"] or "",
-                "image_url": r["product__image_url"] or "",
-                "times_used": r["times_used"],
-                "last_used": r["last_used"],
-            })
+            out.append(
+                {
+                    "name": r["name"],
+                    "product_id": r["product_id"],
+                    "category_id": r["product__category_fk_id"],
+                    "category_slug": r["product__category_fk__slug"] or "",
+                    "category_name": r["product__category_fk__name_ru"] or "",
+                    "category_icon": r["product__category_fk__icon"] or "",
+                    "category_color": r["product__category_fk__color"] or "",
+                    "default_unit": r["product__default_unit"] or r["unit"] or "",
+                    "image_url": r["product__image_url"] or "",
+                    "times_used": r["times_used"],
+                    "last_used": r["last_used"],
+                }
+            )
         return Response(FridgeHistoryItemSerializer(out, many=True).data)

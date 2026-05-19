@@ -375,9 +375,7 @@ class MenuPurgeView(APIView):
         except DeletedMenu.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        if not _can_delete_menu(
-            request.user, family, type("M", (), {"creator_id": deleted.deleted_by_id})()
-        ):
+        if not _can_delete_menu(request.user, family, type("M", (), {"creator_id": deleted.deleted_by_id})()):
             return Response({"detail": "Нет прав."}, status=status.HTTP_403_FORBIDDEN)
 
         deleted.delete()
@@ -395,9 +393,7 @@ class MenuPurgeAllView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         # Только admin или head могут чистить всё
         is_admin = getattr(request.user, "user_type", "") == "admin"
-        is_head = FamilyMember.objects.filter(
-            family=family, user=request.user, role=FamilyMember.Role.HEAD
-        ).exists()
+        is_head = FamilyMember.objects.filter(family=family, user=request.user, role=FamilyMember.Role.HEAD).exists()
         if not (is_admin or is_head):
             return Response({"detail": "Нет прав."}, status=status.HTTP_403_FORBIDDEN)
 

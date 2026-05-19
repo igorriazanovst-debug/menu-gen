@@ -8,6 +8,7 @@ class ProductCategory(models.Model):
     Normalized product category (dairy, meat, vegetables, ...).
     Used to group fridge view by groups and to render coloured zones.
     """
+
     slug = models.SlugField(max_length=64, unique=True)
     name_ru = models.CharField(max_length=128)
     name_en = models.CharField(max_length=128, blank=True)

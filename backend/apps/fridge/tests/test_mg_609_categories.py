@@ -1,4 +1,5 @@
 """MG-609: ProductCategory + endpoints (categories / products / history)."""
+
 import datetime
 
 import pytest
@@ -29,7 +30,8 @@ def premium_user(db):
         defaults={"name": "Premium", "price": "0.00"},
     )
     Subscription.objects.create(
-        family=fam, plan=plan,
+        family=fam,
+        plan=plan,
         status=Subscription.Status.ACTIVE,
         started_at=timezone.now(),
         expires_at=timezone.now() + datetime.timedelta(days=30),
@@ -85,8 +87,11 @@ class TestMg609Categories:
         dairy_milk = Product.objects.filter(is_seed=True, category_fk__slug="dairy", name="Молоко").first()
         assert dairy_milk is not None
         FridgeItem.objects.create(
-            family=fam, product=dairy_milk, name="Молоко",
-            quantity=1, unit="л",
+            family=fam,
+            product=dairy_milk,
+            name="Молоко",
+            quantity=1,
+            unit="л",
             expiry_date=timezone.now().date() + datetime.timedelta(days=5),
             added_by_id=user.id,
         )
@@ -105,8 +110,12 @@ class TestMg609Categories:
         prod = Product.objects.filter(is_seed=True, name="Молоко").first()
         for _ in range(3):
             FridgeItem.objects.create(
-                family=fam, product=prod, name="Молоко",
-                quantity=1, unit="л", added_by_id=user.id,
+                family=fam,
+                product=prod,
+                name="Молоко",
+                quantity=1,
+                unit="л",
+                added_by_id=user.id,
             )
         FridgeItem.objects.create(family=fam, name="Грибы", quantity=200, unit="г", added_by_id=user.id)
 
@@ -127,13 +136,13 @@ class TestMg609Categories:
         FamilyMember.objects.create(family=other_fam, user=other, role="head")
         plan = SubscriptionPlan.objects.get(code="premium")
         Subscription.objects.create(
-            family=other_fam, plan=plan,
+            family=other_fam,
+            plan=plan,
             status=Subscription.Status.ACTIVE,
             started_at=timezone.now(),
             expires_at=timezone.now() + datetime.timedelta(days=30),
         )
-        FridgeItem.objects.create(family=other_fam, name="Сёмга", quantity=1, unit="кг",
-                                  added_by_id=other.id)
+        FridgeItem.objects.create(family=other_fam, name="Сёмга", quantity=1, unit="кг", added_by_id=other.id)
 
         client.force_authenticate(user)
         r = client.get(reverse("fridge-history"))

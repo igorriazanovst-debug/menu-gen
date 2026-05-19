@@ -1,4 +1,5 @@
 """MG-608: тесты карантина — purge, purge-all, expired filter, celery beat task."""
+
 import datetime
 
 import pytest

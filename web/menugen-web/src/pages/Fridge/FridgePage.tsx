@@ -92,7 +92,7 @@ export const FridgePage: React.FC = () => {
       arr.push(it);
       groups.set(slug, arr);
     }
-    const keys = [...groups.keys()].sort((a, b) => {
+    const keys = Array.from(groups.keys()).sort((a, b) => {
       const ao = bySlug.get(a)?.sort_order ?? 9999;
       const bo = bySlug.get(b)?.sort_order ?? 9999;
       return ao - bo;

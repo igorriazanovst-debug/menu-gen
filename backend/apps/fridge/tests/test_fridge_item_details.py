@@ -1,4 +1,5 @@
 """Tests for GET /fridge/<id>/details/ — nutrition, days_left, usage_30d."""
+
 import datetime
 from decimal import Decimal
 
@@ -24,7 +25,8 @@ def _family_with_premium():
         defaults={"name": "Premium", "price": "0", "period": "month"},
     )
     Subscription.objects.create(
-        family=family, plan=plan,
+        family=family,
+        plan=plan,
         status=Subscription.Status.ACTIVE,
         started_at=timezone.now(),
         expires_at=timezone.now() + datetime.timedelta(days=30),
@@ -42,7 +44,10 @@ def _auth(user):
 def test_details_product_null_returns_dashes():
     user, family = _family_with_premium()
     item = FridgeItem.objects.create(
-        family=family, name="Молоко", quantity=1, unit="л",
+        family=family,
+        name="Молоко",
+        quantity=1,
+        unit="л",
         expiry_date=timezone.now().date() + datetime.timedelta(days=5),
         added_by_id=user.id,
     )
@@ -59,14 +64,18 @@ def test_details_product_null_returns_dashes():
 def test_details_with_product_nutrition_and_image():
     user, family = _family_with_premium()
     p = Product.objects.create(
-        name="Молоко", barcode="111",
+        name="Молоко",
+        barcode="111",
         calories_per_100g=Decimal("60"),
         nutrition={"proteins": 3, "fats": 2.5, "carbs": 4.7},
         image_url="https://example.org/milk.jpg",
     )
     item = FridgeItem.objects.create(
-        family=family, product=p, name="Молоко",
-        quantity=Decimal("1"), unit="л",
+        family=family,
+        product=p,
+        name="Молоко",
+        quantity=Decimal("1"),
+        unit="л",
         expiry_date=timezone.now().date() + datetime.timedelta(days=3),
         added_by_id=user.id,
     )
@@ -106,30 +115,51 @@ def test_details_usage_30d_counts_exact_name():
 
     # Menu within last 30 days
     menu_inside = Menu.objects.create(
-        family=family, creator_id=user.id, period_days=7,
+        family=family,
+        creator_id=user.id,
+        period_days=7,
         start_date=today - datetime.timedelta(days=5),
         end_date=today + datetime.timedelta(days=2),
         status="active",
     )
-    MenuItem.objects.create(menu=menu_inside, recipe=recipe_milk, meal_type="breakfast",
-                            meal_slot="breakfast", day_offset=0)
-    MenuItem.objects.create(menu=menu_inside, recipe=recipe_milk2, meal_type="lunch",
-                            meal_slot="lunch", day_offset=1, component_role="grain")
-    MenuItem.objects.create(menu=menu_inside, recipe=recipe_other, meal_type="dinner",
-                            meal_slot="dinner", day_offset=2, component_role="vegetable")
+    MenuItem.objects.create(
+        menu=menu_inside, recipe=recipe_milk, meal_type="breakfast", meal_slot="breakfast", day_offset=0
+    )
+    MenuItem.objects.create(
+        menu=menu_inside,
+        recipe=recipe_milk2,
+        meal_type="lunch",
+        meal_slot="lunch",
+        day_offset=1,
+        component_role="grain",
+    )
+    MenuItem.objects.create(
+        menu=menu_inside,
+        recipe=recipe_other,
+        meal_type="dinner",
+        meal_slot="dinner",
+        day_offset=2,
+        component_role="vegetable",
+    )
 
     # Menu OUTSIDE 30-day window — should NOT count
     menu_outside = Menu.objects.create(
-        family=family, creator_id=user.id, period_days=7,
+        family=family,
+        creator_id=user.id,
+        period_days=7,
         start_date=today - datetime.timedelta(days=60),
         end_date=today - datetime.timedelta(days=53),
         status="archived",
     )
-    MenuItem.objects.create(menu=menu_outside, recipe=recipe_milk, meal_type="breakfast",
-                            meal_slot="breakfast", day_offset=0)
+    MenuItem.objects.create(
+        menu=menu_outside, recipe=recipe_milk, meal_type="breakfast", meal_slot="breakfast", day_offset=0
+    )
 
     item = FridgeItem.objects.create(
-        family=family, name="Молоко", quantity=1, unit="л",
+        family=family,
+        name="Молоко",
+        quantity=1,
+        unit="л",
         added_by_id=user.id,
     )
     c = _auth(user)
@@ -147,7 +177,10 @@ def test_details_usage_30d_counts_exact_name():
 def test_details_404_for_other_family_item():
     _, family_a = _family_with_premium()
     item = FridgeItem.objects.create(
-        family=family_a, name="X", quantity=1, unit="шт",
+        family=family_a,
+        name="X",
+        quantity=1,
+        unit="шт",
     )
     # different user
     other_user = User.objects.create_user(email="o@o.o", password="x", name="O")
@@ -155,7 +188,8 @@ def test_details_404_for_other_family_item():
     FamilyMember.objects.create(family=other_family, user=other_user, role="head")
     plan = SubscriptionPlan.objects.get(code="premium")
     Subscription.objects.create(
-        family=other_family, plan=plan,
+        family=other_family,
+        plan=plan,
         status=Subscription.Status.ACTIVE,
         started_at=timezone.now(),
         expires_at=timezone.now() + datetime.timedelta(days=30),

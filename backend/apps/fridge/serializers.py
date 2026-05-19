@@ -25,7 +25,8 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = (
-            "id", "name",
+            "id",
+            "name",
             "category",
             "category_id",
             "category_slug",
@@ -33,8 +34,10 @@ class ProductSerializer(serializers.ModelSerializer):
             "category_icon",
             "category_color",
             "default_unit",
-            "calories_per_100g", "nutrition",
-            "barcode", "image_url",
+            "calories_per_100g",
+            "nutrition",
+            "barcode",
+            "image_url",
             "is_seed",
         )
 
@@ -98,6 +101,7 @@ class BarcodeLookupSerializer(serializers.Serializer):
 
 class FridgeHistoryItemSerializer(serializers.Serializer):
     """Aggregated suggestion: name + last-used metadata (no DB model)."""
+
     name = serializers.CharField()
     product_id = serializers.IntegerField(allow_null=True)
     category_id = serializers.IntegerField(allow_null=True)

@@ -22,15 +22,18 @@ class GenerateMenuSerializer(serializers.Serializer):
     # MG_607_V_serializers: мульти-выбор стран + per-request override allergens/disliked
     countries = serializers.ListField(
         child=serializers.CharField(allow_blank=False),
-        required=False, allow_empty=True,
+        required=False,
+        allow_empty=True,
     )
     exclude_allergens = serializers.ListField(
         child=serializers.CharField(allow_blank=False),
-        required=False, allow_empty=True,
+        required=False,
+        allow_empty=True,
     )
     exclude_disliked = serializers.ListField(
         child=serializers.CharField(allow_blank=False),
-        required=False, allow_empty=True,
+        required=False,
+        allow_empty=True,
     )
 
 

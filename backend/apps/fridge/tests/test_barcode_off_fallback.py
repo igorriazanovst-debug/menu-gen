@@ -1,4 +1,5 @@
 """Tests for OpenFoodFacts fallback in BarcodeLookupView."""
+
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -21,8 +22,10 @@ def _family_with_premium():
     )
     from django.utils import timezone
     import datetime
+
     Subscription.objects.create(
-        family=family, plan=plan,
+        family=family,
+        plan=plan,
         status=Subscription.Status.ACTIVE,
         started_at=timezone.now(),
         expires_at=timezone.now() + datetime.timedelta(days=30),
@@ -99,6 +102,7 @@ def test_barcode_off_returns_not_found(mock_get):
 @patch("apps.fridge.services.requests.get")
 def test_barcode_off_timeout_returns_404(mock_get):
     import requests
+
     user = _family_with_premium()
     mock_get.side_effect = requests.Timeout("simulated")
 
