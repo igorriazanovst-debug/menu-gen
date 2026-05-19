@@ -180,8 +180,10 @@ class _MenuScreenState extends State<MenuScreen> {
           BlocBuilder<MenuBloc, MenuState>(
             buildWhen: (a, b) => true,
             builder: (context, state) {
-              final activeId = (state is MenuLoaded) ? state.active?['id'] : null;
-              if (activeId is! int) return const SizedBox.shrink();
+              if (state is! MenuLoaded) return const SizedBox.shrink();
+              final dynamic rawId = state.active?['id'];
+              if (rawId is! int) return const SizedBox.shrink();
+              final int activeId = rawId;
               return IconButton(
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 tooltip: 'Удалить меню',
