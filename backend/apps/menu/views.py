@@ -289,7 +289,7 @@ class MenuDeleteView(APIView):
 
 
 class DeletedMenuListView(APIView):
-    """Список меню в карантине для текущей семьи."""
+    """MG_608_V_views: Список меню в карантине (только не истёкшие)."""
 
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
@@ -297,7 +297,10 @@ class DeletedMenuListView(APIView):
         family = _get_family(request.user)
         if not family:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        items = DeletedMenu.objects.filter(family=family)
+        items = DeletedMenu.objects.filter(
+            family=family,
+            purge_after__gte=timezone.now(),
+        )
         return Response(DeletedMenuSerializer(items, many=True).data)
 
 
@@ -314,6 +317,13 @@ class MenuRestoreView(APIView):
             deleted = DeletedMenu.objects.get(id=deleted_id, family=family)
         except DeletedMenu.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
+
+        # MG_608_V_views: запрет восстановления истёкших записей
+        if deleted.purge_after < timezone.now():
+            return Response(
+                {"detail": "Срок хранения в карантине истёк."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if not _can_delete_menu(request.user, family, type("M", (), {"creator_id": deleted.deleted_by_id})()):
             return Response({"detail": "Нет прав."}, status=status.HTTP_403_FORBIDDEN)
@@ -349,6 +359,50 @@ class MenuRestoreView(APIView):
 
         menu_full = Menu.objects.prefetch_related("items__recipe", "items__member__user").get(id=menu.id)
         return Response(MenuDetailSerializer(menu_full).data, status=status.HTTP_201_CREATED)
+
+
+class MenuPurgeView(APIView):
+    """MG_608_V_views: окончательное удаление одной записи из карантина."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    def delete(self, request, deleted_id):
+        family = _get_family(request.user)
+        if not family:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        try:
+            deleted = DeletedMenu.objects.get(id=deleted_id, family=family)
+        except DeletedMenu.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if not _can_delete_menu(
+            request.user, family, type("M", (), {"creator_id": deleted.deleted_by_id})()
+        ):
+            return Response({"detail": "Нет прав."}, status=status.HTTP_403_FORBIDDEN)
+
+        deleted.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MenuPurgeAllView(APIView):
+    """MG_608_V_views: окончательное удаление всех записей карантина семьи."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    def delete(self, request):
+        family = _get_family(request.user)
+        if not family:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        # Только admin или head могут чистить всё
+        is_admin = getattr(request.user, "user_type", "") == "admin"
+        is_head = FamilyMember.objects.filter(
+            family=family, user=request.user, role=FamilyMember.Role.HEAD
+        ).exists()
+        if not (is_admin or is_head):
+            return Response({"detail": "Нет прав."}, status=status.HTTP_403_FORBIDDEN)
+
+        cnt, _ = DeletedMenu.objects.filter(family=family).delete()
+        return Response({"deleted": cnt}, status=status.HTTP_200_OK)
 
 
 class MenuItemSwapView(APIView):

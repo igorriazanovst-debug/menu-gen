@@ -10,6 +10,14 @@ class MenuLoadRequested extends MenuEvent {
   const MenuLoadRequested();
 }
 
+/// MG_608_V_mobile_event: загрузить детали по конкретному id
+class MenuDetailRequested extends MenuEvent {
+  final int menuId;
+  const MenuDetailRequested(this.menuId);
+  @override
+  List<Object?> get props => [menuId];
+}
+
 class MenuGenerateRequested extends MenuEvent {
   // MG_607_V_mobile_event
   final String startDate;

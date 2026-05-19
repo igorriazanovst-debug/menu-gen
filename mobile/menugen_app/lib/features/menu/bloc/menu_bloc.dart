@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
@@ -9,7 +10,7 @@ import '../../../core/premium/premium_gate_cubit.dart';
 part 'menu_event.dart';
 part 'menu_state.dart';
 
-/// MenuBloc — loads existing menu, generates new one.
+/// MenuBloc — loads existing menus, generates new one.
 ///
 /// MG-606: menu endpoints are protected by IsFamilyPremiumOrReadOnly.
 /// We map 403 → [MenuPremiumLocked] and report to [PremiumGateCubit].
@@ -18,12 +19,16 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
   final AppDatabase db;
   final PremiumGateCubit? premiumGate;
 
+  // MG_608_V_mobile_bloc
+  static const String _kPrefKey = 'menugen.lastMenuId';
+
   MenuBloc({
     required this.apiClient,
     required this.db,
     this.premiumGate,
   }) : super(const MenuLoading()) {
     on<MenuLoadRequested>(_onLoad);
+    on<MenuDetailRequested>(_onDetail);
     on<MenuGenerateRequested>(_onGenerate);
   }
 
@@ -43,6 +48,22 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
     return MenuError(msg);
   }
 
+  Future<int?> _readLastMenuId() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return p.getInt(_kPrefKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeLastMenuId(int id) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_kPrefKey, id);
+    } catch (_) {}
+  }
+
   Future<void> _onLoad(MenuLoadRequested e, Emitter<MenuState> emit) async {
     emit(const MenuLoading());
     try {
@@ -52,13 +73,51 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
           .map((m) => Map<String, dynamic>.from(m))
           .toList();
       if (list.isEmpty) {
-        emit(const MenuLoaded(menus: <Map<String, dynamic>>[]));
+        emit(const MenuLoaded(menus: <Map<String, dynamic>>[], active: null));
         return;
       }
-      final firstId = list.first['id'];
-      final detail = await apiClient.get('/menu/$firstId/');
+
+      // MG_608_V_mobile_bloc: выбираем последний сохранённый или first
+      int pickId = list.first['id'] as int;
+      final saved = await _readLastMenuId();
+      if (saved != null && list.any((m) => m['id'] == saved)) {
+        pickId = saved;
+      }
+
+      final detail = await apiClient.get('/menu/$pickId/');
+      await _writeLastMenuId(pickId);
       premiumGate?.reportReadSuccess();
-      emit(MenuLoaded(menus: <Map<String, dynamic>>[_asMap(detail)]));
+      emit(MenuLoaded(menus: list, active: _asMap(detail)));
+    } catch (err) {
+      emit(_toErrorState(err, isWrite: false));
+    }
+  }
+
+  /// MG_608_V_mobile_bloc: загрузка деталей по выбранному id (из dropdown).
+  Future<void> _onDetail(MenuDetailRequested e, Emitter<MenuState> emit) async {
+    // Берём текущий список из state, если он есть; иначе перечитываем список.
+    List<Map<String, dynamic>> menus = const [];
+    final cur = state;
+    if (cur is MenuLoaded) {
+      menus = cur.menus;
+    }
+    if (menus.isEmpty) {
+      try {
+        final listResp = await apiClient.get('/menu/');
+        menus = (listResp is Map ? (listResp['results'] as List? ?? []) : [])
+            .whereType<Map>()
+            .map((m) => Map<String, dynamic>.from(m))
+            .toList();
+      } catch (err) {
+        emit(_toErrorState(err, isWrite: false));
+        return;
+      }
+    }
+    emit(const MenuLoading());
+    try {
+      final detail = await apiClient.get('/menu/${e.menuId}/');
+      await _writeLastMenuId(e.menuId);
+      emit(MenuLoaded(menus: menus, active: _asMap(detail)));
     } catch (err) {
       emit(_toErrorState(err, isWrite: false));
     }
@@ -81,7 +140,12 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
       if (e.excludeAllergens != null) body['exclude_allergens'] = e.excludeAllergens;
       if (e.excludeDisliked != null) body['exclude_disliked'] = e.excludeDisliked;
       final r = await apiClient.post('/menu/generate/', data: body);
-      emit(MenuGenerated(_asMap(r)));
+      final m = _asMap(r);
+      final id = m['id'];
+      if (id is int) {
+        await _writeLastMenuId(id);
+      }
+      emit(MenuGenerated(m));
     } catch (err) {
       emit(_toErrorState(err, isWrite: true));
     }

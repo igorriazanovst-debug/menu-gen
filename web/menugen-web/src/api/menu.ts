@@ -47,6 +47,11 @@ export const menuApi = {
 
   restore: (deletedId: number) => client.post<Menu>(`/menu/quarantine/${deletedId}/restore/`),
 
+  // MG_608_V_api
+  purge: (deletedId: number) => client.delete(`/menu/quarantine/${deletedId}/purge/`),
+
+  purgeAll: () => client.delete<{ deleted: number }>(`/menu/quarantine/purge-all/`),
+
   swapItem: (menuId: number, itemId: number, recipeId: number) =>
     client.patch<SwapResult>(`/menu/${menuId}/items/${itemId}/`, { recipe_id: recipeId }),
 

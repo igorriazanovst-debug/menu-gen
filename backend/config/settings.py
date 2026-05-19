@@ -218,6 +218,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.notifications.tasks.send_menu_reminder",
         "schedule": crontab(day_of_week=1, hour=10, minute=0),  # каждый понедельник в 10:00
     },
+    # MG_608_V_beat: ежедневная очистка карантина меню (purge_after < now)
+    "purge-expired-menus": {
+        "task": "apps.menu.tasks.purge_expired_menus",
+        "schedule": crontab(hour=3, minute=15),
+    },
 }
 
 # drf-spectacular enum overrides

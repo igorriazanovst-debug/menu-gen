@@ -353,79 +353,227 @@ export const MenuPage: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<Menu | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
-  const [periodDays, setPeriodDays] = useState(7);
-  const [startDate, setStartDate] = useState(today());
-  const [mealPlanType, setMealPlanType] = useState<'3' | '5'>(
+  const [mealPlanType] = useState<'3' | '5'>(
     (user?.profile?.meal_plan_type ?? '3')
   );
   const [showGenerateForm, setShowGenerateForm] = useState(false);
+
+  // MG_608_V_menupage: карантин
+  const [showQuarantine, setShowQuarantine] = useState(false);
+  const [quarantine, setQuarantine] = useState<DeletedMenu[]>([]);
+  const [quarantineLoading, setQuarantineLoading] = useState(false);
+
+  const STORAGE_KEY = 'menugen.lastMenuId';
+
+  const loadDetail = useCallback(async (id: number) => {
+    setDetailLoading(true);
+    try {
+      const { data } = await menuApi.get(id);
+      setActiveMenu(data);
+      try { localStorage.setItem(STORAGE_KEY, String(id)); } catch {}
+    } catch {
+      setError('Не удалось загрузить меню');
+    } finally { setDetailLoading(false); }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
       const { data } = await menuApi.list();
-      const list = data.results ?? [];
+      const d = data as any;
+      const list: Menu[] = Array.isArray(d) ? d : (Array.isArray(d?.results) ? d.results : []);
       setMenus(list);
-      if (list.length && !activeMenu) {
-        await loadDetail(list[0].id);
-      } else if (!list.length) {
+      if (list.length) {
+        // MG_608: восстанавливаем последний выбранный из localStorage
+        let pickId = list[0].id;
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            const sid = Number(saved);
+            if (list.some(m => m.id === sid)) pickId = sid;
+          }
+        } catch {}
+        await loadDetail(pickId);
+      } else {
         setActiveMenu(null);
       }
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Не удалось загрузить меню');
     } finally { setLoading(false); }
-  }, [activeMenu]);
-
-  const loadDetail = async (id: number) => {
-    setDetailLoading(true);
-    try {
-      const { data } = await menuApi.get(id);
-      setActiveMenu(data);
-    } catch {
-      setError('Не удалось загрузить меню');
-    } finally { setDetailLoading(false); }
-  };
+  }, [loadDetail]);
 
   useEffect(() => { load(); }, []);  // eslint-disable-line
-
-  // MG_607_V_menupage: handleGenerate перенесён в GenerateMenuForm
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Удалить это меню? Его можно будет восстановить из Корзины в течение 24 часов.')) return;
     try {
       await menuApi.delete(id);
       setActiveMenu(null);
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
       await load();
     } catch { alert('Ошибка удаления'); }
+  };
+
+  // ── quarantine ─────────────────────────────────────────────────────────
+  const loadQuarantine = async () => {
+    setQuarantineLoading(true);
+    try {
+      const { data } = await menuApi.quarantine();
+      setQuarantine(Array.isArray(data) ? data : []);
+    } catch {
+      setQuarantine([]);
+    } finally {
+      setQuarantineLoading(false);
+    }
+    setShowQuarantine(true);
+  };
+
+  const handleRestore = async (deletedId: number) => {
+    try {
+      const { data } = await menuApi.restore(deletedId);
+      setQuarantine(prev => prev.filter(d => d.id !== deletedId));
+      setActiveMenu(data);
+      try { localStorage.setItem(STORAGE_KEY, String(data.id)); } catch {}
+      await load();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Ошибка восстановления');
+    }
+  };
+
+  const handlePurge = async (deletedId: number) => {
+    if (!window.confirm('Удалить это меню НАВСЕГДА? Это действие нельзя отменить.')) return;
+    try {
+      await menuApi.purge(deletedId);
+      setQuarantine(prev => prev.filter(d => d.id !== deletedId));
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Ошибка');
+    }
+  };
+
+  const handlePurgeAll = async () => {
+    if (!window.confirm('Очистить ВЕСЬ карантин? Это действие нельзя отменить.')) return;
+    try {
+      await menuApi.purgeAll();
+      setQuarantine([]);
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Ошибка');
+    }
   };
 
   if (loading) return <PageSpinner />;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-chocolate">Меню</h1>
-        <Button onClick={() => setShowGenerateForm(s => !s)}>
-          ✨ Сгенерировать
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={loadQuarantine}>🗑 Карантин</Button>
+          <Button onClick={() => setShowGenerateForm(s => !s)}>
+            ✨ Сгенерировать
+          </Button>
+        </div>
       </div>
 
+      {/* MG_608_V_menupage: чипы выбора меню */}
+      {menus.length > 1 && !showGenerateForm && (
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+          {menus.map(m => {
+            const isActive = activeMenu?.id === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => loadDetail(m.id)}
+                className={[
+                  'flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium transition border',
+                  isActive
+                    ? 'bg-tomato text-white border-tomato'
+                    : 'bg-white text-chocolate border-gray-200 hover:border-tomato',
+                ].join(' ')}
+              >
+                {formatDate(m.start_date)} — {formatDate(m.end_date)}
+                <span className="ml-1 text-[10px] opacity-70">· {m.period_days} дн.</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {showGenerateForm && (
-          <GenerateMenuForm
-            initialMealPlan={mealPlanType}
-            userAllergies={user?.allergies ?? []}
-            userDisliked={user?.disliked_products ?? []}
-            userProfile={user?.profile}
-            onCancel={() => setShowGenerateForm(false)}
-            onCreated={(m) => {
-              setActiveMenu(m);
-              setShowGenerateForm(false);
-              load();
-            }}
-          />
-        )}
+        <GenerateMenuForm
+          initialMealPlan={mealPlanType}
+          userAllergies={user?.allergies ?? []}
+          userDisliked={user?.disliked_products ?? []}
+          userProfile={user?.profile}
+          onCancel={() => setShowGenerateForm(false)}
+          onCreated={(m) => {
+            setActiveMenu(m);
+            try { localStorage.setItem(STORAGE_KEY, String(m.id)); } catch {}
+            setShowGenerateForm(false);
+            load();
+          }}
+        />
+      )}
+
+      {/* MG_608_V_menupage: модалка карантина */}
+      {showQuarantine && (
+        <Card className="p-5 border-2 border-yellow-400">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="font-semibold text-chocolate">Карантин меню</h2>
+            <div className="flex gap-2">
+              {quarantine.length > 0 && (
+                <Button variant="ghost" onClick={handlePurgeAll} className="text-red-500 text-xs">
+                  Очистить всё
+                </Button>
+              )}
+              <button onClick={() => setShowQuarantine(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+          </div>
+          {quarantineLoading ? (
+            <p className="text-sm text-gray-400">Загрузка…</p>
+          ) : quarantine.length === 0 ? (
+            <p className="text-sm text-gray-400">Карантин пуст</p>
+          ) : (
+            <div className="space-y-2">
+              {quarantine.map(d => (
+                <div key={d.id}
+                     className="flex items-center justify-between p-3 rounded-xl bg-yellow-50 border border-yellow-200 gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-chocolate">
+                      Меню #{d.menu_id}
+                      <span className="text-xs text-gray-400 ml-2">
+                        {d.data?.start_date && d.data?.end_date
+                          ? `${formatDate(d.data.start_date)} — ${formatDate(d.data.end_date)}`
+                          : ''}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Удалено: {new Date(d.deleted_at).toLocaleString('ru')}
+                      {d.deleted_by_name ? ` · ${d.deleted_by_name}` : ''}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      Истекает: {new Date(d.purge_after).toLocaleString('ru')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleRestore(d.id)}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-avocado text-white hover:bg-avocado/90">
+                      ↩ Восстановить
+                    </button>
+                    <button
+                      onClick={() => handlePurge(d.id)}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600">
+                      🗑 Навсегда
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {error && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
 

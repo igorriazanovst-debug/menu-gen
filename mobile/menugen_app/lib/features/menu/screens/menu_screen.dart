@@ -9,13 +9,9 @@ import '../bloc/menu_bloc.dart';
 import '../widgets/generate_menu_bottom_sheet.dart';
 import '../widgets/menu_day_strip.dart';
 import '../widgets/menu_meal_carousel.dart';
+import 'quarantine_screen.dart';
 
-/// Главный экран "Меню":
-///  1. Заголовок:  Меню для %name% на %start–end%
-///  2. Календарь дат (горизонтальный, tappable)
-///  3. Табы приёмов пищи (по profile.meal_plan_type)
-///  4. PageView крупных карточек блюд выбранного приёма
-///  5. tap по карточке → /recipes/:id
+/// Главный экран "Меню" (MG_608_V_mobile_screen — добавлен Dropdown выбора меню).
 class MenuScreen extends StatefulWidget {
   final ApiClient apiClient;
   const MenuScreen({super.key, required this.apiClient});
@@ -70,10 +66,9 @@ class _MenuScreenState extends State<MenuScreen> {
     }
   }
 
-  List<String> get _mealSlots =>
-      _mealPlanType == '5'
-          ? const ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner']
-          : const ['breakfast', 'lunch', 'dinner'];
+  List<String> get _mealSlots => _mealPlanType == '5'
+      ? const ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner']
+      : const ['breakfast', 'lunch', 'dinner'];
 
   static const _mealLabels = {
     'breakfast': 'Завтрак',
@@ -93,21 +88,6 @@ class _MenuScreenState extends State<MenuScreen> {
     'snack': Icons.apple,
   };
 
-  /// Меню с today внутри (start_date <= today <= end_date), иначе ближайшее.
-  Map<String, dynamic>? _pickMenu(List<Map<String, dynamic>> menus) {
-    if (menus.isEmpty) return null;
-    final today = DateTime.now();
-    final todayDate = DateTime(today.year, today.month, today.day);
-    for (final m in menus) {
-      final s = _parseDate(m['start_date']);
-      final e = _parseDate(m['end_date']);
-      if (s != null && e != null && !todayDate.isBefore(s) && !todayDate.isAfter(e)) {
-        return m;
-      }
-    }
-    return menus.first;
-  }
-
   DateTime? _parseDate(dynamic v) {
     if (v is! String || v.isEmpty) return null;
     try {
@@ -118,15 +98,15 @@ class _MenuScreenState extends State<MenuScreen> {
     }
   }
 
-  /// Маппинг item.meal_type на наш слот:
-  /// для 3-приёмов "snack" → не показываем (или сливаем в один tab "snack")
-  /// для 5-приёмов "snack" чередуем: первый встретившийся snack/день → snack1, второй → snack2
+  /// Маппинг item.meal_type → слот:
+  /// для 5-приёмов: первый snack за день → snack1, второй → snack2.
   List<Map<String, dynamic>> _itemsForSlot({
     required List<Map<String, dynamic>> dayItems,
     required String slot,
   }) {
     if (slot == 'snack1' || slot == 'snack2') {
-      final snacks = dayItems.where((i) => (i['meal_type'] as String?) == 'snack').toList();
+      final snacks =
+          dayItems.where((i) => (i['meal_type'] as String?) == 'snack').toList();
       if (snacks.isEmpty) return const [];
       if (slot == 'snack1') return [snacks.first];
       if (snacks.length >= 2) return [snacks[1]];
@@ -135,16 +115,71 @@ class _MenuScreenState extends State<MenuScreen> {
     return dayItems.where((i) => (i['meal_type'] as String?) == slot).toList();
   }
 
+  String _shortRange(Map<String, dynamic> m) {
+    final s = _parseDate(m['start_date']);
+    final e = _parseDate(m['end_date']);
+    if (s == null || e == null) return 'Меню #${m['id']}';
+    final fmt = DateFormat('d MMM', 'ru');
+    return '${fmt.format(s)} – ${fmt.format(e)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Меню'),
+        title: BlocBuilder<MenuBloc, MenuState>(
+          buildWhen: (a, b) => true,
+          builder: (context, state) {
+            if (state is MenuLoaded && state.menus.length > 1) {
+              final activeId = state.active?['id'];
+              return DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: activeId is int ? activeId : null,
+                  isExpanded: true,
+                  iconEnabledColor: Colors.white,
+                  dropdownColor: AppColors.primary,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  items: state.menus.map((m) {
+                    return DropdownMenuItem<int>(
+                      value: m['id'] as int,
+                      child: Text(
+                        _shortRange(m),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (id) {
+                    if (id != null && id != activeId) {
+                      context.read<MenuBloc>().add(MenuDetailRequested(id));
+                    }
+                  },
+                ),
+              );
+            }
+            return const Text('Меню');
+          },
+        ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Карантин',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => BlocProvider.value(
+                    value: context.read<MenuBloc>(),
+                    child: QuarantineScreen(apiClient: widget.apiClient),
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Обновить',
-            onPressed: () => context.read<MenuBloc>().add(const MenuLoadRequested()),
+            onPressed: () =>
+                context.read<MenuBloc>().add(const MenuLoadRequested()),
           ),
         ],
       ),
@@ -156,21 +191,21 @@ class _MenuScreenState extends State<MenuScreen> {
           if (state is MenuError) {
             return _ErrorView(
               message: state.message,
-              onRetry: () => context.read<MenuBloc>().add(const MenuLoadRequested()),
+              onRetry: () =>
+                  context.read<MenuBloc>().add(const MenuLoadRequested()),
             );
           }
           if (state is MenuPremiumLocked) {
             return _PremiumLockedView(message: state.message);
           }
 
-          final menus = <Map<String, dynamic>>[];
+          Map<String, dynamic>? menu;
           if (state is MenuLoaded) {
-            menus.addAll(state.menus);
+            menu = state.active;
           } else if (state is MenuGenerated) {
-            menus.add(state.menu);
+            menu = state.menu;
           }
 
-          final menu = _pickMenu(menus);
           if (menu == null) {
             return _EmptyView(onGenerate: () => _showGenerateSheet(context));
           }
@@ -180,13 +215,18 @@ class _MenuScreenState extends State<MenuScreen> {
           if (start == null) {
             return _ErrorView(
               message: 'Не удалось разобрать дату меню',
-              onRetry: () => context.read<MenuBloc>().add(const MenuLoadRequested()),
+              onRetry: () =>
+                  context.read<MenuBloc>().add(const MenuLoadRequested()),
             );
           }
-          final allDays = List<DateTime>.generate(periodDays, (i) => start.add(Duration(days: i)));
+          final allDays =
+              List<DateTime>.generate(periodDays, (i) => start.add(Duration(days: i)));
 
           // выбранная дата: today если в окне, иначе start
-          if (_selectedDate == null) {
+          // MG_608_V_mobile_screen: сброс _selectedDate если она вне окна нового меню
+          if (_selectedDate == null ||
+              _selectedDate!.isBefore(allDays.first) ||
+              _selectedDate!.isAfter(allDays.last)) {
             final today = DateTime.now();
             final todayDate = DateTime(today.year, today.month, today.day);
             _selectedDate = allDays.firstWhere(
@@ -269,7 +309,6 @@ class _MenuScreenState extends State<MenuScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => BlocProvider.value(
         value: context.read<MenuBloc>(),
-        // MG_607_V_mobile_screen: передаём apiClient в sheet
         child: GenerateMenuBottomSheet(apiClient: widget.apiClient),
       ),
     );
@@ -295,7 +334,9 @@ class _HeaderTitle extends StatelessWidget {
           Text(
             'Меню для $name',
             style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary),
           ),
           const SizedBox(height: 2),
           Text(
