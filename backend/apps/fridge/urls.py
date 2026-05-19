@@ -3,8 +3,8 @@ from django.urls import path
 from .views import (
     BarcodeLookupView,
     FridgeHistoryView,
-    FridgeItemDetailView,
     FridgeItemDetailsView,
+    FridgeItemDetailView,
     FridgeListCreateView,
     ProductCategoryListView,
     ProductListView,

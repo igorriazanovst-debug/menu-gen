@@ -49,6 +49,7 @@ class FridgeListCreateView(generics.ListCreateAPIView):
         expiring = self.request.query_params.get("expiring_days")
         if expiring:
             import datetime
+
             from django.utils import timezone
 
             cutoff = timezone.now().date() + datetime.timedelta(days=int(expiring))

@@ -1,6 +1,6 @@
 """Tests for OpenFoodFacts fallback in BarcodeLookupView."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.urls import reverse
@@ -20,8 +20,9 @@ def _family_with_premium():
         code="premium",
         defaults={"name": "Premium", "price": "0", "period": "month"},
     )
-    from django.utils import timezone
     import datetime
+
+    from django.utils import timezone
 
     Subscription.objects.create(
         family=family,

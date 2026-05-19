@@ -12,8 +12,8 @@ MG-607: тесты расширенных полей GenerateMenuSerializer и �
 # MG_607_V_tests
 from __future__ import annotations
 
-from decimal import Decimal as _D
 from datetime import timedelta as _td
+from decimal import Decimal as _D
 
 import pytest
 from django.urls import reverse
@@ -23,9 +23,9 @@ from rest_framework.test import APIClient
 from apps.family.models import Family, FamilyMember
 from apps.menu.models import Menu
 from apps.recipes.models import Recipe
-from apps.subscriptions.models import Subscription as _Sub, SubscriptionPlan as _Plan
+from apps.subscriptions.models import Subscription as _Sub
+from apps.subscriptions.models import SubscriptionPlan as _Plan
 from apps.users.models import Profile, User
-
 
 # ─────────────────────────── helpers ──────────────────────────────────────────
 
