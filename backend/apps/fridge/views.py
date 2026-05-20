@@ -3,6 +3,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.utils import timezone
 
 from apps.family.models import FamilyMember
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
@@ -232,6 +233,89 @@ class ProductListView(generics.ListAPIView):
         if self.request.query_params.get("seed") in ("1", "true"):
             qs = qs.filter(is_seed=True)
         return qs.order_by("category_fk__sort_order", "name")[:500]
+
+
+class FridgeExpiredBulkDeleteView(APIView):
+    """
+    POST /fridge/expired/delete/
+    Body: { "ids": [int, ...]  (optional),
+            "all": bool         (optional),
+            "drop_history": bool (default False) }
+    Deletes expired fridge items. If `all` is true, deletes all currently
+    expired items of the family. Otherwise deletes the given `ids`
+    (restricted to expired & family-owned).
+    drop_history=True  -> hard delete (record vanishes from history).
+    drop_history=False -> soft delete (is_deleted=True, stays in history).
+    Returns { "deleted": N }.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    def post(self, request):
+        family = _get_family(request.user)
+        if not family:
+            return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+
+        today = timezone.now().date()
+        qs = FridgeItem.objects.filter(
+            family=family,
+            is_deleted=False,
+            expiry_date__isnull=False,
+            expiry_date__lt=today,
+        )
+
+        if not request.data.get("all"):
+            ids = request.data.get("ids") or []
+            if not isinstance(ids, list) or not ids:
+                return Response({"detail": "Не выбраны позиции."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                ids = [int(x) for x in ids]
+            except (TypeError, ValueError):
+                return Response({"detail": "Некорректные id."}, status=status.HTTP_400_BAD_REQUEST)
+            qs = qs.filter(id__in=ids)
+
+        drop_history = bool(request.data.get("drop_history", False))
+        if drop_history:
+            deleted, _ = qs.delete()
+        else:
+            deleted = qs.update(is_deleted=True)
+
+        return Response({"deleted": deleted})
+
+
+class FridgeHistoryEntryView(APIView):
+    """
+    DELETE /fridge/products/history/<name>/
+    Query: ?drop_fridge=0|1  (default 0)
+
+    drop_fridge=0 (default): "remove from history only" — hard-deletes the
+        records with this name that are NOT in the fridge now (is_deleted=True).
+        Active items stay in the fridge.
+    drop_fridge=1: hard-deletes ALL records with this name (active + soft-deleted),
+        i.e. removes from fridge and from history at once.
+
+    Name match is case-insensitive exact (iexact) within the family.
+    Returns { "deleted": N }.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    def delete(self, request, name: str):
+        family = _get_family(request.user)
+        if not family:
+            return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+
+        name = (name or "").strip()
+        if not name:
+            return Response({"detail": "Пустое имя."}, status=status.HTTP_400_BAD_REQUEST)
+
+        qs = FridgeItem.objects.filter(family=family, name__iexact=name)
+        drop_fridge = str(request.query_params.get("drop_fridge", "0")).lower() in ("1", "true")
+        if not drop_fridge:
+            qs = qs.filter(is_deleted=True)
+
+        deleted, _ = qs.delete()
+        return Response({"deleted": deleted})
 
 
 class FridgeHistoryView(APIView):

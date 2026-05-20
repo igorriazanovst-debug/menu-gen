@@ -30,6 +30,17 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const handledRef = useRef(false);
+  // MG-610 focus refs
+  const nameRef = useRef<HTMLInputElement>(null);
+  const qtyRef = useRef<HTMLInputElement>(null);
+  const unitRef = useRef<HTMLSelectElement>(null);
+  const expiryRef = useRef<HTMLInputElement>(null);
+  const catRef = useRef<HTMLDivElement>(null);
+  const focusInvalid = (el: HTMLElement | null) => {
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof (el as any).focus === 'function') (el as any).focus();
+  };
 
   // MG-609
   const [categories, setCategories]       = useState<ProductCategory[]>([]);
@@ -124,14 +135,32 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!name.trim() || !quantity || !unit || !expiry) {
-      setError('Заполните все обязательные поля'); return;
-    }
     if (!selectedCat) {
-      setError('Выберите категорию'); return;
+      setError('Выберите категорию');
+      focusInvalid(catRef.current);
+      return;
+    }
+    if (!name.trim()) {
+      setError('Укажите название');
+      focusInvalid(nameRef.current);
+      return;
     }
     const q = parseFloat(quantity.replace(',', '.'));
-    if (!isFinite(q) || q <= 0) { setError('Кол-во должно быть > 0'); return; }
+    if (!quantity || !isFinite(q) || q <= 0) {
+      setError('Укажите количество (> 0)');
+      focusInvalid(qtyRef.current);
+      return;
+    }
+    if (!unit) {
+      setError('Выберите единицу измерения');
+      focusInvalid(unitRef.current);
+      return;
+    }
+    if (!expiry) {
+      setError('Укажите срок годности');
+      focusInvalid(expiryRef.current);
+      return;
+    }
     setSubmitting(true);
     try {
       const { data } = await fridgeApi.create({

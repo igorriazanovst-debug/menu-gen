@@ -28,6 +28,16 @@ export const fridgeApi = {
   scanBarcode: (barcode: string) =>
     client.post<BarcodeLookupResult>('/fridge/scan/', { barcode }),
 
+  // ── MG-610 ──────────────────────────────────────────────────────────────
+  deleteExpired: (payload: { ids?: number[]; all?: boolean; drop_history?: boolean }) =>
+    client.post<{ deleted: number }>('/fridge/expired/delete/', payload),
+
+  deleteHistoryEntry: (name: string, dropFridge = false) =>
+    client.delete<{ deleted: number }>(
+      `/fridge/products/history/${encodeURIComponent(name)}/`,
+      { params: dropFridge ? { drop_fridge: 1 } : {} },
+    ),
+
   // ── MG-609 ──────────────────────────────────────────────────────────────
   categories: () =>
     client.get<ProductCategory[]>('/fridge/categories/'),

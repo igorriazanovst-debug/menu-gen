@@ -39,6 +39,13 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _qtyCtrl = TextEditingController();
+  // MG-610 focus
+  final _nameFocus = FocusNode();
+  final _qtyFocus = FocusNode();
+  final _categoryKey = GlobalKey();
+  final _dateKey = GlobalKey();
+  bool _highlightCategory = false;
+  bool _highlightDate = false;
   String _unit = _UNITS.first;
   DateTime? _expiry;
   int? _productId;
@@ -100,7 +107,18 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   void dispose() {
     _nameCtrl.dispose();
     _qtyCtrl.dispose();
+    _nameFocus.dispose();
+    _qtyFocus.dispose();
     super.dispose();
+  }
+
+  void _scrollToKey(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx,
+          duration: const Duration(milliseconds: 300),
+          alignment: 0.3);
+    }
   }
 
   Future<void> _pickDate() async {
@@ -194,16 +212,49 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   }
 
   void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-    if (_expiry == null) {
-      setState(() => _error = 'Укажите срок годности');
-      return;
-    }
+    // MG-610 focus: highlight & focus the first missing required field.
+    setState(() {
+      _highlightCategory = false;
+      _highlightDate = false;
+    });
+
     if (_selectedCategory == null) {
-      setState(() => _error = 'Выберите категорию');
+      setState(() {
+        _error = 'Выберите категорию';
+        _highlightCategory = true;
+      });
+      _scrollToKey(_categoryKey);
       return;
     }
-    final qty = double.tryParse(_qtyCtrl.text.replaceAll(',', '.')) ?? 0;
+
+    final nameEmpty = _nameCtrl.text.trim().isEmpty;
+    final qtyVal = double.tryParse(_qtyCtrl.text.replaceAll(',', '.'));
+    final qtyBad = _qtyCtrl.text.trim().isEmpty || qtyVal == null || qtyVal <= 0;
+
+    if (nameEmpty) {
+      _formKey.currentState!.validate();
+      setState(() => _error = 'Укажите название');
+      _nameFocus.requestFocus();
+      return;
+    }
+    if (qtyBad) {
+      _formKey.currentState!.validate();
+      setState(() => _error = 'Укажите количество (> 0)');
+      _qtyFocus.requestFocus();
+      return;
+    }
+    if (_expiry == null) {
+      setState(() {
+        _error = 'Укажите срок годности';
+        _highlightDate = true;
+      });
+      _scrollToKey(_dateKey);
+      return;
+    }
+
+    if (!_formKey.currentState!.validate()) return;
+
+    final qty = qtyVal ?? 0;
     context.read<FridgeBloc>().add(FridgeItemAdded(
           name: _nameCtrl.text.trim(),
           quantity: qty,

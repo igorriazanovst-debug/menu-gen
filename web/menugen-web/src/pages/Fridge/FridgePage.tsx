@@ -5,6 +5,7 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { Button } from '../../components/ui/Button';
 import { AddFridgeItemModal } from '../../components/fridge/AddFridgeItemModal';
 import { FridgeItemDetailModal } from '../../components/fridge/FridgeItemDetailModal';
+import { HistoryEditorModal } from '../../components/fridge/HistoryEditorModal';
 import type { FridgeItem, ProductCategory } from '../../types';
 
 function daysUntil(d: string | null | undefined): number | null {
@@ -19,34 +20,10 @@ function daysUntil(d: string | null | undefined): number | null {
 type ViewMode = 'groups' | 'expiry';
 
 const EXPIRY_BUCKETS = [
-  {
-    key: 'expired',
-    title: 'Просрочено!',
-    emoji: '❌',
-    color: '#FFCDD2',
-    match: (d: number | null) => d != null && d < 0,
-  },
-  {
-    key: 'urgent',
-    title: 'Съесть в течение 2 дней',
-    emoji: '⚠️',
-    color: '#FFE0B2',
-    match: (d: number | null) => d != null && d >= 0 && d <= 2,
-  },
-  {
-    key: 'soon',
-    title: 'Подходят к завершению',
-    emoji: '⏰',
-    color: '#FFF9C4',
-    match: (d: number | null) => d != null && d >= 3 && d <= 7,
-  },
-  {
-    key: 'ok',
-    title: 'Достаточно времени',
-    emoji: '✅',
-    color: '#C8E6C9',
-    match: (d: number | null) => d == null || d > 7,
-  },
+  { key: 'expired', title: 'Просрочено!',                emoji: '❌', color: '#FFCDD2', match: (d: number | null) => d != null && d < 0 },
+  { key: 'urgent',  title: 'Съесть в течение 2 дней',    emoji: '⚠️', color: '#FFE0B2', match: (d: number | null) => d != null && d >= 0 && d <= 2 },
+  { key: 'soon',    title: 'Подходят к завершению',      emoji: '⏰', color: '#FFF9C4', match: (d: number | null) => d != null && d >= 3 && d <= 7 },
+  { key: 'ok',      title: 'Достаточно времени',         emoji: '✅', color: '#C8E6C9', match: (d: number | null) => d == null || d > 7 },
 ];
 
 export const FridgePage: React.FC = () => {
@@ -56,6 +33,11 @@ export const FridgePage: React.FC = () => {
   const [showAdd, setShowAdd]       = useState(false);
   const [detailId, setDetailId]     = useState<number | null>(null);
   const [viewMode, setViewMode]     = useState<ViewMode>('groups');
+  const [showHistory, setShowHistory] = useState(false);
+
+  // MG-610: selection mode for expired bulk delete
+  const [selecting, setSelecting]   = useState(false);
+  const [selected, setSelected]     = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,7 +63,51 @@ export const FridgePage: React.FC = () => {
     setItems(prev => prev.filter(it => it.id !== id));
   };
 
-  // ── Grouped by category ──
+  const expiredItems = useMemo(
+    () => items.filter(it => { const d = daysUntil(it.expiry_date); return d != null && d < 0; }),
+    [items],
+  );
+
+  const toggleSel = (id: number) =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const exitSelect = () => { setSelecting(false); setSelected(new Set()); };
+
+  const askDropHistory = (count: number, allWord: string): boolean | null => {
+    const drop = window.confirm(
+      `Удалить ${allWord} (${count} шт.)?\n\n` +
+      `Нажмите OK, чтобы также удалить эти продукты из истории добавления.\n` +
+      `Нажмите Отмена, чтобы оставить их в истории (мягкое удаление).`,
+    );
+    return drop;
+  };
+
+  const deleteSelected = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const drop = askDropHistory(ids.length, 'выбранные');
+    if (drop === null) return;
+    const { data } = await fridgeApi.deleteExpired({ ids, drop_history: drop });
+    if (data.deleted > 0) await load();
+    exitSelect();
+  };
+
+  const deleteAllExpired = async () => {
+    if (expiredItems.length === 0) return;
+    if (!window.confirm(`Удалить ВСЮ просрочку (${expiredItems.length} шт.)?`)) return;
+    const drop = window.confirm(
+      'Также удалить эти продукты из истории добавления?\n' +
+      'OK — удалить из истории. Отмена — оставить в истории (мягкое удаление).',
+    );
+    const { data } = await fridgeApi.deleteExpired({ all: true, drop_history: drop });
+    if (data.deleted > 0) await load();
+    exitSelect();
+  };
+
   const groupedByCategory = useMemo(() => {
     const bySlug = new Map<string, ProductCategory>();
     categories.forEach(c => bySlug.set(c.slug, c));
@@ -97,24 +123,16 @@ export const FridgePage: React.FC = () => {
       const bo = bySlug.get(b)?.sort_order ?? 9999;
       return ao - bo;
     });
-    return keys.map(slug => ({
-      slug,
-      cat: bySlug.get(slug),
-      items: groups.get(slug)!,
-    }));
+    return keys.map(slug => ({ slug, cat: bySlug.get(slug), items: groups.get(slug)! }));
   }, [items, categories]);
 
-  // ── Grouped by expiry bucket ──
   const groupedByExpiry = useMemo(() => {
     const buckets: { key: string; title: string; emoji: string; color: string; items: FridgeItem[] }[] =
       EXPIRY_BUCKETS.map(b => ({ key: b.key, title: b.title, emoji: b.emoji, color: b.color, items: [] }));
     for (const it of items) {
       const d = daysUntil(it.expiry_date);
       for (let i = 0; i < EXPIRY_BUCKETS.length; i++) {
-        if (EXPIRY_BUCKETS[i].match(d)) {
-          buckets[i].items.push(it);
-          break;
-        }
+        if (EXPIRY_BUCKETS[i].match(d)) { buckets[i].items.push(it); break; }
       }
     }
     return buckets.filter(b => b.items.length > 0);
@@ -122,18 +140,33 @@ export const FridgePage: React.FC = () => {
 
   const renderItem = (it: FridgeItem) => {
     const dl = daysUntil(it.expiry_date);
+    const expired = dl != null && dl < 0;
     const dlColor =
       dl == null ? 'text-gray-500'
       : dl < 0   ? 'text-red-600'
       : dl <= 2  ? 'text-orange-600'
       : dl <= 7  ? 'text-yellow-700'
                  : 'text-gray-600';
+    const selectable = selecting && expired;
+    const isSel = selected.has(it.id);
     return (
       <Card
         key={it.id}
-        className="p-3 flex gap-3 items-start cursor-pointer hover:shadow-md transition"
-        onClick={() => setDetailId(it.id)}
+        className={
+          'p-3 flex gap-3 items-start cursor-pointer hover:shadow-md transition ' +
+          (selectable && isSel ? 'ring-2 ring-red-500' : '')
+        }
+        onClick={() => { selectable ? toggleSel(it.id) : setDetailId(it.id); }}
       >
+        {selectable && (
+          <input
+            type="checkbox"
+            checked={isSel}
+            onChange={() => toggleSel(it.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-1 w-4 h-4 accent-red-600"
+          />
+        )}
         {it.product_image_url ? (
           <img
             src={it.product_image_url}
@@ -148,9 +181,7 @@ export const FridgePage: React.FC = () => {
         )}
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-chocolate truncate">{it.name}</h3>
-          <p className="text-sm text-gray-600 mt-0.5">
-            {it.quantity ?? ''} {it.unit ?? ''}
-          </p>
+          <p className="text-sm text-gray-600 mt-0.5">{it.quantity ?? ''} {it.unit ?? ''}</p>
           {it.expiry_date && (
             <p className={`text-xs mt-0.5 ${dlColor}`}>
               {dl != null && dl < 0
@@ -159,23 +190,46 @@ export const FridgePage: React.FC = () => {
             </p>
           )}
         </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(it.id); }}
-          className="text-gray-400 hover:text-red-600 text-sm"
-          title="Удалить"
-        >
-          🗑
-        </button>
+        {!selecting && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(it.id); }}
+            className="text-gray-400 hover:text-red-600 text-sm"
+            title="Удалить"
+          >🗑</button>
+        )}
       </Card>
     );
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-chocolate">Холодильник</h1>
-        <Button onClick={() => setShowAdd(true)}>+ Добавить</Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setShowHistory(true)}>🕘 История</Button>
+          {expiredItems.length > 0 && !selecting && (
+            <Button variant="ghost" onClick={() => setSelecting(true)}>
+              🧹 Удалить просрочку
+            </Button>
+          )}
+          <Button onClick={() => setShowAdd(true)}>+ Добавить</Button>
+        </div>
       </div>
+
+      {selecting && (
+        <Card className="p-3 flex items-center gap-2 flex-wrap bg-red-50 border border-red-200">
+          <span className="text-sm text-red-700">
+            Выберите просроченные продукты ({selected.size} выбрано)
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Button variant="ghost" onClick={exitSelect}>Отмена</Button>
+            <Button onClick={deleteAllExpired}>Удалить всю просрочку</Button>
+            <Button onClick={deleteSelected} disabled={selected.size === 0}>
+              Удалить выбранные
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200">
@@ -192,9 +246,7 @@ export const FridgePage: React.FC = () => {
                 ? 'border-tomato text-tomato'
                 : 'border-transparent text-gray-500 hover:text-chocolate')
             }
-          >
-            {t.label}
-          </button>
+          >{t.label}</button>
         ))}
       </div>
 
@@ -211,17 +263,11 @@ export const FridgePage: React.FC = () => {
             const name = grp.cat?.name_ru ?? 'Без категории';
             const icon = grp.cat?.icon ?? '📦';
             return (
-              <div
-                key={grp.slug}
-                className="rounded-2xl p-3"
-                style={{ backgroundColor: bg }}
-              >
+              <div key={grp.slug} className="rounded-2xl p-3" style={{ backgroundColor: bg }}>
                 <div className="flex items-center gap-2 px-2 pb-2">
                   <span className="text-xl">{icon}</span>
                   <span className="font-semibold text-chocolate">{name}</span>
-                  <span className="ml-auto bg-white/70 rounded-full px-2 py-0.5 text-xs font-medium">
-                    {grp.items.length}
-                  </span>
+                  <span className="ml-auto bg-white/70 rounded-full px-2 py-0.5 text-xs font-medium">{grp.items.length}</span>
                 </div>
                 <div className="bg-white rounded-xl p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {grp.items.map(renderItem)}
@@ -233,17 +279,11 @@ export const FridgePage: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {groupedByExpiry.map(b => (
-            <div
-              key={b.key}
-              className="rounded-2xl p-3"
-              style={{ backgroundColor: b.color }}
-            >
+            <div key={b.key} className="rounded-2xl p-3" style={{ backgroundColor: b.color }}>
               <div className="flex items-center gap-2 px-2 pb-2">
                 <span className="text-xl">{b.emoji}</span>
                 <span className="font-semibold text-chocolate">{b.title}</span>
-                <span className="ml-auto bg-white/70 rounded-full px-2 py-0.5 text-xs font-medium">
-                  {b.items.length}
-                </span>
+                <span className="ml-auto bg-white/70 rounded-full px-2 py-0.5 text-xs font-medium">{b.items.length}</span>
               </div>
               <div className="bg-white rounded-xl p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {b.items.map(renderItem)}
@@ -254,16 +294,17 @@ export const FridgePage: React.FC = () => {
       )}
 
       {detailId != null && (
-        <FridgeItemDetailModal
-          itemId={detailId}
-          onClose={() => setDetailId(null)}
-        />
+        <FridgeItemDetailModal itemId={detailId} onClose={() => setDetailId(null)} />
       )}
 
       {showAdd && (
-        <AddFridgeItemModal
-          onClose={() => setShowAdd(false)}
-          onAdded={onAdded}
+        <AddFridgeItemModal onClose={() => setShowAdd(false)} onAdded={onAdded} />
+      )}
+
+      {showHistory && (
+        <HistoryEditorModal
+          onClose={() => setShowHistory(false)}
+          onChanged={load}
         />
       )}
     </div>

@@ -41,6 +41,27 @@ class FridgeItemDeleted extends FridgeEvent {
   List<Object?> get props => [id];
 }
 
+class FridgeExpiredBulkDeleted extends FridgeEvent {
+  final List<int> ids;     // empty + all=true → delete all expired
+  final bool all;
+  final bool dropHistory;
+  const FridgeExpiredBulkDeleted({
+    this.ids = const [],
+    this.all = false,
+    this.dropHistory = false,
+  });
+  @override
+  List<Object?> get props => [ids, all, dropHistory];
+}
+
+class FridgeHistoryEntryDeleted extends FridgeEvent {
+  final String name;
+  final bool dropFridge;
+  const FridgeHistoryEntryDeleted(this.name, {this.dropFridge = false});
+  @override
+  List<Object?> get props => [name, dropFridge];
+}
+
 // ── States ─────────────────────────────────────────────────────────────────
 abstract class FridgeState extends Equatable {
   const FridgeState();
@@ -100,6 +121,8 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
     on<FridgeLoadRequested>(_onLoad);
     on<FridgeItemAdded>(_onAdd);
     on<FridgeItemDeleted>(_onDelete);
+    on<FridgeExpiredBulkDeleted>(_onExpiredBulkDelete);
+    on<FridgeHistoryEntryDeleted>(_onHistoryEntryDelete);
   }
 
   FridgeState _toErrorState(Object err, {required bool isWrite}) {
@@ -169,4 +192,35 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
       emit(_toErrorState(err, isWrite: true));
     }
   }
+
+  Future<void> _onExpiredBulkDelete(
+    FridgeExpiredBulkDeleted event,
+    Emitter<FridgeState> emit,
+  ) async {
+    try {
+      await apiClient.post('/fridge/expired/delete/', data: {
+        if (event.all) 'all': true,
+        if (!event.all) 'ids': event.ids,
+        'drop_history': event.dropHistory,
+      });
+      add(const FridgeLoadRequested());
+    } catch (e) {
+      emit(_toErrorState(e, isWrite: true));
+    }
+  }
+
+  Future<void> _onHistoryEntryDelete(
+    FridgeHistoryEntryDeleted event,
+    Emitter<FridgeState> emit,
+  ) async {
+    try {
+      final enc = Uri.encodeComponent(event.name);
+      final q = event.dropFridge ? '?drop_fridge=1' : '';
+      await apiClient.delete('/fridge/products/history/$enc/$q');
+      add(const FridgeLoadRequested());
+    } catch (e) {
+      emit(_toErrorState(e, isWrite: true));
+    }
+  }
+
 }
