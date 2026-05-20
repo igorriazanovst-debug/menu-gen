@@ -1,4 +1,5 @@
 """MG-610: bulk-delete expired + history edit endpoints."""
+
 import datetime
 
 import pytest
