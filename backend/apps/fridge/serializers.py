@@ -81,13 +81,93 @@ class FridgeItemSerializer(serializers.ModelSerializer):
 
 
 class FridgeItemWriteSerializer(serializers.ModelSerializer):
+    # MENUGEN_ADD_PRODUCT: optional fields from AI photo recognition.
+    # When present we create/find a Product so the item carries a category
+    # (fixes 'Прочее' grouping) and KBJU (fixes empty nutrition card).
+    category_slug = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    calories_per_100g = serializers.FloatField(write_only=True, required=False, allow_null=True)
+    nutrition = serializers.DictField(write_only=True, required=False)
+
     class Meta:
         model = FridgeItem
-        fields = ("product", "name", "quantity", "unit", "expiry_date")
+        fields = (
+            "product",
+            "name",
+            "quantity",
+            "unit",
+            "expiry_date",
+            "category_slug",
+            "calories_per_100g",
+            "nutrition",
+        )
+
+    def _resolve_product(self, name, category_slug, calories, nutrition):
+        """Find/create a Product to attach KBJU + category to the item.
+
+        Source priority for KBJU (per product decision):
+          1) existing local Product (by case-insensitive name) that already
+             has nutrition -> reuse it;
+          2) otherwise write the label-extracted KBJU onto the product.
+        Returns a Product or None (None when nothing to attach).
+        """
+        from .models import Product, ProductCategory
+
+        name = (name or "").strip()
+        if not name:
+            return None
+
+        cat = None
+        slug = (category_slug or "").strip()
+        if slug:
+            cat = ProductCategory.objects.filter(is_active=True, slug=slug).first()
+
+        nutrition = nutrition if isinstance(nutrition, dict) else {}
+        has_label_kbju = bool(nutrition) or calories is not None
+
+        # 1) reuse an existing product that already carries nutrition
+        existing = Product.objects.filter(name__iexact=name).order_by("id").first()
+        if existing is not None:
+            updates = []
+            if cat is not None and existing.category_fk_id != cat.id:
+                existing.category_fk = cat
+                updates.append("category_fk")
+            # fill KBJU only if product lacks it and we have it from the label
+            if not existing.nutrition and nutrition:
+                existing.nutrition = nutrition
+                updates.append("nutrition")
+            if existing.calories_per_100g is None and calories is not None:
+                existing.calories_per_100g = calories
+                updates.append("calories_per_100g")
+            if updates:
+                existing.save(update_fields=updates)
+            return existing
+
+        # 2) nothing to attach? skip product creation
+        if cat is None and not has_label_kbju:
+            return None
+
+        return Product.objects.create(
+            name=name[:255],
+            category_fk=cat,
+            calories_per_100g=calories,
+            nutrition=nutrition,
+        )
 
     def create(self, validated_data):
         family = self.context["family"]
         user = self.context["request"].user
+        category_slug = validated_data.pop("category_slug", "")
+        calories = validated_data.pop("calories_per_100g", None)
+        nutrition = validated_data.pop("nutrition", None)
+
+        # If the client did not pass an explicit product FK, try to build one
+        # from the recognized category/KBJU so the item is categorized + has
+        # nutrition. Manual adds without any of these keep product=None.
+        if not validated_data.get("product"):
+            product = self._resolve_product(validated_data.get("name"), category_slug, calories, nutrition)
+            if product is not None:
+                validated_data["product"] = product
+
         return FridgeItem.objects.create(
             **validated_data,
             family=family,
@@ -139,6 +219,8 @@ class RecognizedProductSerializer(serializers.Serializer):
     category = serializers.CharField(allow_blank=True)
     quantity = serializers.CharField(allow_null=True, required=False)
     confidence = serializers.FloatField()
+    calories_per_100g = serializers.FloatField(allow_null=True, required=False)  # MENUGEN_ADD_PRODUCT
+    nutrition = serializers.DictField(required=False)
     category_id = serializers.IntegerField(allow_null=True, required=False)
     category_slug = serializers.CharField(allow_null=True, allow_blank=True, required=False)
     category_name = serializers.CharField(allow_null=True, allow_blank=True, required=False)

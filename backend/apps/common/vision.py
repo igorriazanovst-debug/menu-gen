@@ -159,6 +159,14 @@ _RULES = (
     "Исправляй очевидные опечатки OCR. name — на русском, в нижнем регистре, кратко. "
 )
 
+# MENUGEN_KBJU: instruct the model to pull the nutrition table from the label.
+_KBJU_RULES = (
+    "Если на этикетке есть пищевая ценность на 100 г — заполни числа: "
+    "calories_per_100g (ккал на 100 г, не кДж), proteins (белки), fats (жиры), "
+    "carbs (углеводы), sugars (сахара) в граммах на 100 г. Числа — с точкой. "
+    "Если значения нет на этикетке — ставь null, НЕ выдумывай. "
+)
+
 
 def _system_single() -> str:
     return (
@@ -170,8 +178,11 @@ def _system_single() -> str:
         '{"name":"название продукта",'
         '"category":"slug категории или пустая строка",'
         '"quantity":"масса или объём если есть, иначе null",'
+        '"calories_per_100g":null,'
+        '"nutrition":{"proteins":null,"fats":null,"carbs":null,"sugars":null},'
         '"confidence":0.0}. '
-        "confidence — число от 0 до 1. Если текст не относится к еде — name=null."
+        + _KBJU_RULES  # MENUGEN_KBJU
+        + "confidence — число от 0 до 1. Если текст не относится к еде — name=null."
     )
 
 
@@ -186,9 +197,25 @@ def _system_multi() -> str:
         '[{"name":"название продукта",'
         '"category":"slug категории или пустая строка",'
         '"quantity":"масса/объём или null",'
-        '"confidence":0.0}]. '
-        "confidence — число от 0 до 1. Если еды нет — верни []."
+        '"calories_per_100g":null,'
+        '"nutrition":{"proteins":null,"fats":null,"carbs":null,"sugars":null},'
+        '"confidence":0.0}]. ' + _KBJU_RULES + "confidence — число от 0 до 1. Если еды нет — верни []."  # MENUGEN_KBJU
     )
+
+
+def _num_or_none(v):  # MENUGEN_KBJU
+    """Parse a number from model output; '12,4', '12.4 г', None -> float|None."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    m = re.search(r"-?\d+(?:[.,]\d+)?", str(v))
+    if not m:
+        return None
+    try:
+        return float(m.group(0).replace(",", "."))
+    except ValueError:
+        return None
 
 
 def _coerce_item(obj: dict) -> Optional[dict]:
@@ -206,10 +233,20 @@ def _coerce_item(obj: dict) -> Optional[dict]:
     qty = obj.get("quantity")
     if isinstance(qty, str) and qty.strip().lower() in ("", "null", "none"):
         qty = None
+    cals = _num_or_none(obj.get("calories_per_100g"))  # MENUGEN_KBJU
+    nut_in = obj.get("nutrition") or {}
+    nutrition = {}
+    if isinstance(nut_in, dict):
+        for k in ("proteins", "fats", "carbs", "sugars"):
+            v = _num_or_none(nut_in.get(k))
+            if v is not None:
+                nutrition[k] = v
     return {
         "name": str(name).strip(),
         "category": (str(obj.get("category")).strip() if obj.get("category") else ""),
         "quantity": qty,
+        "calories_per_100g": cals,
+        "nutrition": nutrition,
         "confidence": conf,
     }
 

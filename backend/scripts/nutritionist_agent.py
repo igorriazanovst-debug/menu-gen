@@ -1,5 +1,8 @@
 """
-Nutritionist Agent — post-processes scraped recipes using Claude API.
+Nutritionist Agent — post-processes scraped recipes using a configurable AI provider.
+
+Provider is selected via environment (AI_PROVIDER=yandex|anthropic). See
+apps.common.ai_provider for configuration details.
 
 Responsibilities:
   1. Classify meal_type (breakfast / lunch / dinner) for recipes without a tag.
@@ -8,22 +11,30 @@ Responsibilities:
   4. Select a balanced set: 100 per meal type with cuisine diversity.
 
 Usage:
-    ANTHROPIC_API_KEY=sk-... python nutritionist_agent.py \
+    AI_PROVIDER=yandex AI_API_KEY=AQVN... AI_FOLDER_ID=b1g... \
+        python nutritionist_agent.py \
         [--input scraped_recipes.json] \
         [--output enriched_recipes.json] \
         [--target 100]
 
 Environment:
-    ANTHROPIC_API_KEY  — required
+    AI_PROVIDER, AI_API_KEY, AI_FOLDER_ID, AI_TEXT_MODEL, AI_TEXT_MODEL_PRO
 """
 import argparse
 import json
 import logging
 import os
 import re
+import sys
 from pathlib import Path
 
-import anthropic
+# Make backend root importable so `apps.common.ai_provider` resolves when this
+# script is run standalone from backend/scripts/.
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
+from apps.common.ai_provider import get_ai_client  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -54,18 +65,11 @@ SYSTEM_PROMPT = """\
 """
 
 
-def _make_client() -> anthropic.Anthropic:
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        raise RuntimeError("ANTHROPIC_API_KEY environment variable is not set.")
-    return anthropic.Anthropic(api_key=key)
-
-
 # ---------------------------------------------------------------------------
 # Step 1: classify meal type
 # ---------------------------------------------------------------------------
 
-def classify_meal_type(client: anthropic.Anthropic, recipe: dict) -> str:
+def classify_meal_type(client, recipe: dict) -> str:
     ingredients_preview = ", ".join(
         i["name"] for i in recipe.get("ingredients", [])[:10]
     )
@@ -80,13 +84,13 @@ def classify_meal_type(client: anthropic.Anthropic, recipe: dict) -> str:
         "Ответь ОДНИМ словом без объяснений: breakfast, lunch или dinner."
     )
 
-    resp = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=10,
+    raw = client.complete(
+        prompt=prompt,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+        max_tokens=10,
+        temperature=0.0,
     )
-    result = resp.content[0].text.strip().lower()
+    result = (raw or "").strip().lower()
     return result if result in ("breakfast", "lunch", "dinner") else "lunch"
 
 
@@ -94,7 +98,7 @@ def classify_meal_type(client: anthropic.Anthropic, recipe: dict) -> str:
 # Step 2: fill in missing КБЖУ
 # ---------------------------------------------------------------------------
 
-def fill_nutrition(client: anthropic.Anthropic, recipe: dict) -> dict:
+def fill_nutrition(client, recipe: dict) -> dict:
     nutrition = recipe.get("nutrition", {})
     required = {"calories", "proteins", "fats", "carbs"}
 
@@ -122,13 +126,13 @@ def fill_nutrition(client: anthropic.Anthropic, recipe: dict) -> dict:
         '"carbs":{"value":"X","unit":"g"}}'
     )
 
-    resp = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=150,
+    raw = client.complete(
+        prompt=prompt,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+        max_tokens=150,
+        temperature=0.0,
     )
-    raw = resp.content[0].text.strip()
+    raw = (raw or "").strip()
 
     # Extract first JSON object from response
     m = re.search(r"\{.*\}", raw, re.DOTALL)
@@ -170,23 +174,21 @@ def is_suitable(recipe: dict, meal_type: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def select_balanced(
-    pool_by_meal: dict[str, list[dict]],
+    pool_by_meal: dict,
     target: int = 100,
-) -> list[dict]:
-    final: list[dict] = []
+) -> list:
+    final = []
 
     for meal_type, pool in pool_by_meal.items():
-        # Prefer recipes with complete nutrition
         complete = [r for r in pool if len(r.get("nutrition", {})) >= 4]
-        partial  = [r for r in pool if len(r.get("nutrition", {})) < 4]
-        ordered  = complete + partial
+        partial = [r for r in pool if len(r.get("nutrition", {})) < 4]
+        ordered = complete + partial
 
-        # Group by country for round-robin
-        by_country: dict[str, list[dict]] = {}
+        by_country = {}
         for r in ordered:
             by_country.setdefault(r.get("country", "?"), []).append(r)
 
-        selected: list[dict] = []
+        selected = []
         countries = list(by_country.keys())
         idx = 0
         while len(selected) < target and any(by_country.values()):
@@ -209,37 +211,33 @@ def select_balanced(
 # ---------------------------------------------------------------------------
 
 def run(input_path: Path, output_path: Path, target: int = 100) -> None:
-    client = _make_client()
+    client = get_ai_client()
 
-    raw_recipes: list[dict] = json.loads(input_path.read_text(encoding="utf-8"))
+    raw_recipes = json.loads(input_path.read_text(encoding="utf-8"))
     logger.info("Loaded %d scraped recipes", len(raw_recipes))
 
-    pool_by_meal: dict[str, list[dict]] = {
+    pool_by_meal = {
         "breakfast": [],
-        "lunch":     [],
-        "dinner":    [],
+        "lunch": [],
+        "dinner": [],
     }
 
     for i, recipe in enumerate(raw_recipes, 1):
         title = recipe.get("title", "?")
         logger.info("[%d/%d] %s", i, len(raw_recipes), title[:60])
 
-        # --- classify ---
         meal_type = recipe.get("meal_type")
         if meal_type not in pool_by_meal:
             meal_type = classify_meal_type(client, recipe)
             recipe["meal_type"] = meal_type
 
-        # --- fill nutrition ---
         recipe["nutrition"] = fill_nutrition(client, recipe)
 
-        # --- update categories ---
         cats = recipe.get("categories", [])
         if meal_type not in cats:
             cats.append(meal_type)
         recipe["categories"] = cats
 
-        # --- suitability gate ---
         if not is_suitable(recipe, meal_type):
             logger.debug("SKIP (caloric mismatch) %s", title[:60])
             continue
@@ -259,7 +257,7 @@ def run(input_path: Path, output_path: Path, target: int = 100) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Nutritionist agent for recipe enrichment")
     base = Path(__file__).parent
-    parser.add_argument("--input",  default=str(base / "scraped_recipes.json"))
+    parser.add_argument("--input", default=str(base / "scraped_recipes.json"))
     parser.add_argument("--output", default=str(base / "enriched_recipes.json"))
     parser.add_argument("--target", type=int, default=100, help="Recipes per meal type")
     args = parser.parse_args()

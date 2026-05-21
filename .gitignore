@@ -135,3 +135,10 @@ backend/apps/*/migrations/*.bak*
 /mobile/menugen_app/.bak-*/
 _apk/
 *.apk
+
+# MG-cleanup chat-40: secret script, archives, extracted patch dirs
+*.bak.*
+*.tar.gz
+patch_vision_*/
+patch_vision_*
+/backend/scripts/yc_ai_*.sh
