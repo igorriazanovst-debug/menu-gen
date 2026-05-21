@@ -11,6 +11,8 @@ class RecognizedProduct {
   final String category; // slug or ''
   final String? quantity;
   final double confidence;
+  final double? caloriesPer100g; // MENUGEN_KBJU
+  final Map<String, dynamic> nutrition;
   final int? categoryId;
   final String? categorySlug;
   final String? categoryName;
@@ -22,6 +24,8 @@ class RecognizedProduct {
     required this.category,
     required this.quantity,
     required this.confidence,
+    this.caloriesPer100g, // MENUGEN_KBJU
+    this.nutrition = const {},
     this.categoryId,
     this.categorySlug,
     this.categoryName,
@@ -34,6 +38,12 @@ class RecognizedProduct {
         category: (m['category'] ?? '').toString(),
         quantity: m['quantity'] as String?,
         confidence: (m['confidence'] is num) ? (m['confidence'] as num).toDouble() : 0.0,
+        caloriesPer100g: (m['calories_per_100g'] is num) // MENUGEN_KBJU
+            ? (m['calories_per_100g'] as num).toDouble()
+            : null,
+        nutrition: (m['nutrition'] is Map)
+            ? Map<String, dynamic>.from(m['nutrition'] as Map)
+            : const {},
         categoryId: m['category_id'] as int?,
         categorySlug: m['category_slug'] as String?,
         categoryName: m['category_name'] as String?,

@@ -256,12 +256,19 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
     if (!_formKey.currentState!.validate()) return;
 
     final qty = qtyVal ?? 0;
+    final rec = _lastRecognized; // MENUGEN_KBJU
+    final recMatchesName =
+        rec != null && rec.name.trim() == _nameCtrl.text.trim();
     context.read<FridgeBloc>().add(FridgeItemAdded(
           name: _nameCtrl.text.trim(),
           quantity: qty,
           unit: _unit,
           expiryDate: DateFormat('yyyy-MM-dd').format(_expiry!),
           productId: _productId,
+          categorySlug: (_selectedCategory?['slug'] as String?) ??
+              (recMatchesName ? (rec.categorySlug ?? rec.category) : null),
+          caloriesPer100g: recMatchesName ? rec.caloriesPer100g : null,
+          nutrition: recMatchesName ? rec.nutrition : null,
         ));
     Navigator.of(context).pop();
   }
@@ -343,7 +350,11 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   }
 
 
+  // MENUGEN_KBJU: remember last recognized product so manual save forwards KBJU.
+  RecognizedProduct? _lastRecognized;
+
   void _applyRecognized(RecognizedProduct p) {
+    _lastRecognized = p;
 
     setState(() {
 
@@ -423,6 +434,12 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
         expiryDate: expiry,
 
         productId: null,
+
+        categorySlug: p.categorySlug ?? p.category, // MENUGEN_KBJU
+
+        caloriesPer100g: p.caloriesPer100g,
+
+        nutrition: p.nutrition,
 
       ));
 

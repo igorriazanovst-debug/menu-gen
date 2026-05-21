@@ -23,15 +23,22 @@ class FridgeItemAdded extends FridgeEvent {
   final String unit;
   final String expiryDate;
   final int? productId;
+  final String? categorySlug; // MENUGEN_KBJU
+  final double? caloriesPer100g;
+  final Map<String, dynamic>? nutrition;
   const FridgeItemAdded({
     required this.name,
     required this.quantity,
     required this.unit,
     required this.expiryDate,
     this.productId,
+    this.categorySlug, // MENUGEN_KBJU
+    this.caloriesPer100g,
+    this.nutrition,
   });
   @override
-  List<Object?> get props => [name, quantity, unit, expiryDate, productId];
+  List<Object?> get props =>
+      [name, quantity, unit, expiryDate, productId, categorySlug, caloriesPer100g, nutrition];
 }
 
 class FridgeItemDeleted extends FridgeEvent {
@@ -177,6 +184,13 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
         'expiry_date': e.expiryDate,
       };
       if (e.productId != null) body['product'] = e.productId;
+      // MENUGEN_KBJU: pass recognized category + nutrition so the backend
+      // can attach a Product (category grouping + KBJU card).
+      if (e.categorySlug != null && e.categorySlug!.isNotEmpty) {
+        body['category_slug'] = e.categorySlug;
+      }
+      if (e.caloriesPer100g != null) body['calories_per_100g'] = e.caloriesPer100g;
+      if (e.nutrition != null && e.nutrition!.isNotEmpty) body['nutrition'] = e.nutrition;
       await apiClient.post('/fridge/', data: body);
       add(const FridgeLoadRequested());
     } catch (err) {
