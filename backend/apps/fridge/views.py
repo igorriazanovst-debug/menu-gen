@@ -3,8 +3,8 @@ from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import generics, permissions, status
-from rest_framework.response import Response
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
@@ -18,8 +18,8 @@ from .serializers import (
     FridgeItemWriteSerializer,
     ProductCategorySerializer,
     ProductSerializer,
-    RecognizePhotoRequestSerializer,
     RecognizedProductSerializer,
+    RecognizePhotoRequestSerializer,
 )
 from .services import fetch_product_from_off
 
@@ -379,6 +379,7 @@ class FridgeHistoryView(APIView):
             )
         return Response(FridgeHistoryItemSerializer(out, many=True).data)
 
+
 # >>> MENUGEN_VISION_BEGIN (managed block — do not edit between markers)
 
 
@@ -492,11 +493,7 @@ class RecognizePhotoView(APIView):
                 status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
 
-        from apps.common.vision import (
-            VisionConfigError,
-            VisionRequestError,
-            recognize_products,
-        )
+        from apps.common.vision import VisionConfigError, VisionRequestError, recognize_products
 
         try:
             products, raw_text = recognize_products(image_bytes, mime=mime, mode=mode)
@@ -515,9 +512,8 @@ class RecognizePhotoView(APIView):
         out = RecognizedProductSerializer(enriched, many=True).data
 
         if mode == "single":
-            return Response(
-                {"mode": "single", "product": (out[0] if out else None), "raw_text": raw_text}
-            )
+            return Response({"mode": "single", "product": (out[0] if out else None), "raw_text": raw_text})
         return Response({"mode": "multi", "products": out, "raw_text": raw_text})
+
 
 # <<< MENUGEN_VISION_END

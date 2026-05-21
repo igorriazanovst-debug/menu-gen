@@ -260,9 +260,7 @@ OCR_BASE_URL = config("OCR_BASE_URL", default="")
 OCR_MODEL = config("OCR_MODEL", default="page")
 OCR_MAX_IMAGE_MB = config("OCR_MAX_IMAGE_MB", default=10, cast=float)
 # Comma-separated language codes for OCR (e.g. "ru,en").
-OCR_LANGUAGE_CODES = [
-    c.strip() for c in config("OCR_LANGUAGE_CODES", default="ru,en").split(",") if c.strip()
-]
+OCR_LANGUAGE_CODES = [c.strip() for c in config("OCR_LANGUAGE_CODES", default="ru,en").split(",") if c.strip()]
 # Model used to extract product name from noisy OCR text.
 # Defaults to AI_TEXT_MODEL (yandexgpt-lite) per decision; override via env.
 AI_VISION_EXTRACT_MODEL = config("AI_VISION_EXTRACT_MODEL", default=AI_TEXT_MODEL)

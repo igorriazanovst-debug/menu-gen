@@ -13,6 +13,7 @@ var keeps both endpoints consistent.
 Depends only on `requests` (already in requirements) and the existing
 get_ai_client() text client. No new dependency.
 """
+
 from __future__ import annotations
 
 import base64
@@ -126,9 +127,7 @@ def _strip_fences(text: str) -> str:
 def _extract_model() -> str:
     """Model id for name extraction (default: AI_TEXT_MODEL, override via env)."""
     return (
-        getattr(settings, "AI_VISION_EXTRACT_MODEL", "")
-        or getattr(settings, "AI_TEXT_MODEL", "")
-        or "yandexgpt-lite"
+        getattr(settings, "AI_VISION_EXTRACT_MODEL", "") or getattr(settings, "AI_TEXT_MODEL", "") or "yandexgpt-lite"
     )
 
 
@@ -138,9 +137,7 @@ def _category_choices() -> List[Tuple[str, str]]:
     from apps.fridge.models import ProductCategory
 
     return list(
-        ProductCategory.objects.filter(is_active=True)
-        .order_by("sort_order", "name_ru")
-        .values_list("slug", "name_ru")
+        ProductCategory.objects.filter(is_active=True).order_by("sort_order", "name_ru").values_list("slug", "name_ru")
     )
 
 
@@ -151,8 +148,7 @@ def _categories_block() -> str:
         return ""
     lines = ", ".join(f"{slug} ({name})" for slug, name in choices)
     return (
-        "Поле category выбирай ТОЛЬКО из этого списка slug'ов "
-        f"(если ни один не подходит — пустая строка): {lines}. "
+        "Поле category выбирай ТОЛЬКО из этого списка slug'ов " f"(если ни один не подходит — пустая строка): {lines}. "
     )
 
 
@@ -279,9 +275,7 @@ def extract_products(ocr_text: str, mode: str = "single") -> List[dict]:
     return items
 
 
-def recognize_products(
-    image_bytes: bytes, mime: str = _DEFAULT_MIME, mode: str = "single"
-) -> Tuple[List[dict], str]:
+def recognize_products(image_bytes: bytes, mime: str = _DEFAULT_MIME, mode: str = "single") -> Tuple[List[dict], str]:
     """Full pipeline. Returns (products, raw_ocr_text)."""
     raw_text = recognize_text(image_bytes, mime=mime)
     products = extract_products(raw_text, mode=mode)

@@ -114,6 +114,7 @@ class FridgeHistoryItemSerializer(serializers.Serializer):
     times_used = serializers.IntegerField()
     last_used = serializers.DateTimeField(allow_null=True)
 
+
 # >>> MENUGEN_VISION_BEGIN (managed block — do not edit between markers)
 
 
@@ -143,5 +144,6 @@ class RecognizedProductSerializer(serializers.Serializer):
     category_name = serializers.CharField(allow_null=True, allow_blank=True, required=False)
     category_icon = serializers.CharField(allow_null=True, allow_blank=True, required=False)
     category_color = serializers.CharField(allow_null=True, allow_blank=True, required=False)
+
 
 # <<< MENUGEN_VISION_END

@@ -18,6 +18,7 @@ This module deliberately depends only on `requests` (already in requirements)
 for the Yandex path, and on `anthropic` (already in requirements) for the
 Anthropic path, so no new dependency is introduced.
 """
+
 from __future__ import annotations
 
 import json
@@ -98,16 +99,12 @@ class YandexAIClient(BaseAIClient):
             "Content-Type": "application/json",
         }
         try:
-            resp = requests.post(
-                url, headers=headers, data=json.dumps(payload), timeout=self._timeout
-            )
+            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=self._timeout)
         except requests.RequestException as exc:
             raise AIRequestError(f"Yandex AI request failed: {exc}") from exc
 
         if resp.status_code != 200:
-            raise AIRequestError(
-                f"Yandex AI HTTP {resp.status_code}: {resp.text[:500]}"
-            )
+            raise AIRequestError(f"Yandex AI HTTP {resp.status_code}: {resp.text[:500]}")
         data = resp.json()
         try:
             return data["choices"][0]["message"]["content"]
@@ -159,9 +156,7 @@ def get_ai_client(provider: Optional[str] = None) -> BaseAIClient:
     timeout = config("AI_TIMEOUT", default=30.0, cast=float)
 
     if provider == "yandex":
-        base_url = config(
-            "AI_BASE_URL", default="https://llm.api.cloud.yandex.net/v1"
-        )
+        base_url = config("AI_BASE_URL", default="https://llm.api.cloud.yandex.net/v1")
         folder_id = config("AI_FOLDER_ID", default="")
         text_model = config("AI_TEXT_MODEL", default="yandexgpt-lite")
         return YandexAIClient(
