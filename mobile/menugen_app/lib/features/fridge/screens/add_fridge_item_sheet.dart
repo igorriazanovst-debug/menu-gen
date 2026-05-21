@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/api/api_client.dart';
 import '../bloc/fridge_bloc.dart';
 import 'barcode_scanner_screen.dart';
+import 'recognize_photo_flow.dart';
 
 const _UNITS = ['шт', 'г', 'кг', 'мл', 'л', 'упак', 'банка'];
 
@@ -265,6 +266,174 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
     Navigator.of(context).pop();
   }
 
+  Future<void> _recognizePhoto() async {
+
+    final mode = await askRecognizeMode(context);
+
+    if (mode == null) return;
+
+    final file = await pickPhoto(context);
+
+    if (file == null) return;
+
+    setState(() {
+
+      _loadingBarcode = true;
+
+      _error = null;
+
+    });
+
+    try {
+
+      final products = await recognizePhoto(
+
+        apiClient: widget.apiClient,
+
+        file: file,
+
+        mode: mode,
+
+      );
+
+      if (!mounted) return;
+
+      if (mode == 'single') {
+
+        if (products.isEmpty) {
+
+          setState(() => _error = 'Продукт не распознан. Заполните вручную.');
+
+        } else {
+
+          _applyRecognized(products.first);
+
+        }
+
+      } else {
+
+        final chosen = await Navigator.of(context).push<List<RecognizedProduct>>(
+
+          MaterialPageRoute(
+
+            builder: (_) => RecognizedProductsPicker(products: products),
+
+          ),
+
+        );
+
+        if (chosen != null && chosen.isNotEmpty) {
+
+          _addRecognizedBatch(chosen);
+
+        }
+
+      }
+
+    } catch (e) {
+
+      if (mounted) setState(() => _error = 'Ошибка распознавания: $e');
+
+    } finally {
+
+      if (mounted) setState(() => _loadingBarcode = false);
+
+    }
+
+  }
+
+
+  void _applyRecognized(RecognizedProduct p) {
+
+    setState(() {
+
+      _nameCtrl.text = p.name;
+
+      _productId = null;
+
+      final q = p.quantity;
+
+      if (q != null && q.isNotEmpty) {
+
+        final num = RegExp(r'[0-9]+([.,][0-9]+)?').firstMatch(q)?.group(0);
+
+        if (num != null) _qtyCtrl.text = num.replaceAll(',', '.');
+
+      }
+
+      if (p.categorySlug != null) {
+
+        for (final c in _categories) {
+
+          if (c['slug'] == p.categorySlug) {
+
+            _selectedCategory = c;
+
+            break;
+
+          }
+
+        }
+
+      }
+
+    });
+
+  }
+
+
+  void _addRecognizedBatch(List<RecognizedProduct> chosen) {
+
+    final bloc = context.read<FridgeBloc>();
+
+    final today = DateTime.now();
+
+    final expiry = DateFormat('yyyy-MM-dd').format(
+
+      today.add(const Duration(days: 7)),
+
+    );
+
+    for (final p in chosen) {
+
+      double qty = 1;
+
+      final q = p.quantity;
+
+      if (q != null) {
+
+        final num = RegExp(r'[0-9]+([.,][0-9]+)?').firstMatch(q)?.group(0);
+
+        if (num != null) {
+
+          qty = double.tryParse(num.replaceAll(',', '.')) ?? 1;
+
+        }
+
+      }
+
+      bloc.add(FridgeItemAdded(
+
+        name: p.name,
+
+        quantity: qty,
+
+        unit: _UNITS.first,
+
+        expiryDate: expiry,
+
+        productId: null,
+
+      ));
+
+    }
+
+    Navigator.of(context).pop();
+
+  }
+
+
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -291,6 +460,11 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const Spacer(),
+                  IconButton(
+                    tooltip: 'Распознать по фото',
+                    onPressed: _loadingBarcode ? null : _recognizePhoto,
+                    icon: const Icon(Icons.photo_camera_outlined),
+                  ),
                   IconButton(
                     onPressed: _loadingBarcode ? null : _scanAndLookup,
                     icon: _loadingBarcode
