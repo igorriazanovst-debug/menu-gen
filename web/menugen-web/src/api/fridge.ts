@@ -7,6 +7,7 @@ import type {
   PaginatedResponse,
   Product,
   ProductCategory,
+  RecognizePhotoResponse,
 } from '../types';
 
 export const fridgeApi = {
@@ -24,6 +25,12 @@ export const fridgeApi = {
 
   details: (id: number) =>
     client.get<FridgeItemDetailsResponse>(`/fridge/${id}/details/`),
+
+  recognizePhoto: (imageB64: string, mode: 'single' | 'multi') =>
+    client.post<RecognizePhotoResponse>('/fridge/recognize-photo/', {
+      image_b64: imageB64,
+      mode,
+    }),
 
   scanBarcode: (barcode: string) =>
     client.post<BarcodeLookupResult>('/fridge/scan/', { barcode }),

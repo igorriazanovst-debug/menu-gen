@@ -1,8 +1,10 @@
+from django.conf import settings
 from django.utils import timezone
 from django_filters import rest_framework as filters
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
@@ -16,6 +18,8 @@ from .serializers import (
     FridgeItemWriteSerializer,
     ProductCategorySerializer,
     ProductSerializer,
+    RecognizePhotoRequestSerializer,
+    RecognizedProductSerializer,
 )
 from .services import fetch_product_from_off
 
@@ -374,3 +378,140 @@ class FridgeHistoryView(APIView):
                 }
             )
         return Response(FridgeHistoryItemSerializer(out, many=True).data)
+
+# >>> MENUGEN_VISION_BEGIN (managed block — do not edit between markers)
+
+
+# ─── Photo recognition endpoint (OCR + LLM) ─────────────────────────────────
+class RecognizePhotoView(APIView):
+    """
+    POST /fridge/recognize-photo/
+    Body (multipart): image=<file>, mode=single|multi
+       or (json):     {"image_b64": "...", "mode": "single|multi"}
+
+    Pipeline: Yandex Vision OCR (text) -> text LLM (name extraction).
+    Returns recognized product(s) for client-side prefill; does NOT create
+    fridge items (creation stays in FridgeListCreateView).
+
+    Response:
+      single -> {"mode":"single","product":{...}|null,"raw_text":"..."}
+      multi  -> {"mode":"multi","products":[{...}],"raw_text":"..."}
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def _match_category(self, label: str):
+        """Match category label to ProductCategory.
+
+        The extraction prompt now returns a category *slug* from the allowed
+        list, so try exact slug first; fall back to fuzzy name match for
+        backward compatibility / free-form labels.
+        """
+        label = (label or "").strip()
+        if not label:
+            return None
+        exact = ProductCategory.objects.filter(is_active=True, slug=label).first()
+        if exact is not None:
+            return exact
+        from django.db.models import Q
+
+        return (
+            ProductCategory.objects.filter(is_active=True)
+            .filter(Q(name_ru__icontains=label) | Q(slug__icontains=label) | Q(name_en__icontains=label))
+            .order_by("sort_order", "name_ru")
+            .first()
+        )
+
+    def _enrich(self, item: dict) -> dict:
+        cat = self._match_category(item.get("category", ""))
+        if cat is not None:
+            item = {
+                **item,
+                "category_id": cat.id,
+                "category_slug": cat.slug,
+                "category_name": cat.name_ru,
+                "category_icon": cat.icon,
+                "category_color": cat.color,
+            }
+        else:
+            item = {
+                **item,
+                "category_id": None,
+                "category_slug": None,
+                "category_name": None,
+                "category_icon": None,
+                "category_color": None,
+            }
+        return item
+
+    @extend_schema(
+        request=RecognizePhotoRequestSerializer,
+        responses={200: OpenApiResponse(description="Recognized product(s)")},
+    )
+    def post(self, request):
+        family = _get_family(request.user)
+        if not family:
+            return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+
+        req = RecognizePhotoRequestSerializer(data=request.data)
+        req.is_valid(raise_exception=True)
+        mode = req.validated_data["mode"]
+
+        # read image bytes + mime from file or base64
+        image_bytes = None
+        mime = "image/jpeg"
+        upload = req.validated_data.get("image")
+        if upload is not None:
+            image_bytes = upload.read()
+            mime = getattr(upload, "content_type", None) or mime
+        else:
+            import base64 as _b64
+
+            b64 = req.validated_data.get("image_b64", "") or ""
+            if "," in b64 and b64.strip().lower().startswith("data:"):
+                # data URL: data:image/png;base64,XXXX
+                head, b64 = b64.split(",", 1)
+                if "image/png" in head:
+                    mime = "image/png"
+                elif "application/pdf" in head:
+                    mime = "application/pdf"
+            try:
+                image_bytes = _b64.b64decode(b64, validate=False)
+            except Exception:
+                return Response({"detail": "Некорректный image_b64."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not image_bytes:
+            return Response({"detail": "Пустое изображение."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # size guard
+        max_mb = float(getattr(settings, "OCR_MAX_IMAGE_MB", 10))
+        if len(image_bytes) > max_mb * 1024 * 1024:
+            return Response(
+                {"detail": f"Изображение больше {int(max_mb)} МБ."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        from apps.common.vision import (
+            VisionConfigError,
+            VisionRequestError,
+            recognize_products,
+        )
+
+        try:
+            products, raw_text = recognize_products(image_bytes, mime=mime, mode=mode)
+        except VisionConfigError as exc:
+            return Response({"detail": f"Конфигурация распознавания: {exc}"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except VisionRequestError as exc:
+            return Response({"detail": f"Ошибка распознавания: {exc}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        enriched = [self._enrich(p) for p in products]
+        out = RecognizedProductSerializer(enriched, many=True).data
+
+        if mode == "single":
+            return Response(
+                {"mode": "single", "product": (out[0] if out else None), "raw_text": raw_text}
+            )
+        return Response({"mode": "multi", "products": out, "raw_text": raw_text})
+
+# <<< MENUGEN_VISION_END

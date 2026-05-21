@@ -11,6 +11,7 @@ from .views import (
     ProductCategoryListView,
     ProductListView,
     ProductSearchView,
+    RecognizePhotoView,
 )
 
 urlpatterns = [
@@ -24,4 +25,5 @@ urlpatterns = [
     path("products/history/<str:name>/", FridgeHistoryEntryView.as_view(), name="fridge-history-entry"),
     path("expired/delete/", FridgeExpiredBulkDeleteView.as_view(), name="fridge-expired-bulk-delete"),
     path("categories/", ProductCategoryListView.as_view(), name="product-categories"),
+    path("recognize-photo/", RecognizePhotoView.as_view(), name="fridge-recognize-photo"),
 ]

@@ -113,3 +113,35 @@ class FridgeHistoryItemSerializer(serializers.Serializer):
     image_url = serializers.CharField(allow_null=True, allow_blank=True)
     times_used = serializers.IntegerField()
     last_used = serializers.DateTimeField(allow_null=True)
+
+# >>> MENUGEN_VISION_BEGIN (managed block — do not edit between markers)
+
+
+# ─── Photo recognition (OCR + LLM) ──────────────────────────────────────────
+class RecognizePhotoRequestSerializer(serializers.Serializer):
+    """Accepts either a multipart file (`image`) or a base64 string (`image_b64`)."""
+
+    image = serializers.ImageField(required=False, write_only=True)
+    image_b64 = serializers.CharField(required=False, write_only=True, allow_blank=True)
+    mode = serializers.ChoiceField(choices=("single", "multi"), default="single")
+
+    def validate(self, attrs):
+        if not attrs.get("image") and not attrs.get("image_b64"):
+            raise serializers.ValidationError("Передайте фото: поле 'image' (файл) или 'image_b64'.")
+        return attrs
+
+
+class RecognizedProductSerializer(serializers.Serializer):
+    """One recognized product, enriched with matched ProductCategory if found."""
+
+    name = serializers.CharField()
+    category = serializers.CharField(allow_blank=True)
+    quantity = serializers.CharField(allow_null=True, required=False)
+    confidence = serializers.FloatField()
+    category_id = serializers.IntegerField(allow_null=True, required=False)
+    category_slug = serializers.CharField(allow_null=True, allow_blank=True, required=False)
+    category_name = serializers.CharField(allow_null=True, allow_blank=True, required=False)
+    category_icon = serializers.CharField(allow_null=True, allow_blank=True, required=False)
+    category_color = serializers.CharField(allow_null=True, allow_blank=True, required=False)
+
+# <<< MENUGEN_VISION_END

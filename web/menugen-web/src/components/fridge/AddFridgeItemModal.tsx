@@ -9,6 +9,7 @@ import type {
   FridgeItem,
   Product,
   ProductCategory,
+  RecognizedProduct,
 } from '../../types';
 
 const UNITS = ['шт', 'г', 'кг', 'мл', 'л', 'упак', 'банка'];
@@ -30,6 +31,101 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const handledRef = useRef(false);
+  // ── photo recognition (OCR + LLM) ──────────────────────────────────────
+  const recognizeFileRef = useRef<HTMLInputElement>(null);
+  const [recognizeMode, setRecognizeMode] = useState<'single' | 'multi'>('single');
+  const [recognizing, setRecognizing] = useState(false);
+  const [recognized, setRecognized] = useState<RecognizedProduct[]>([]);
+  const [recognizedChecked, setRecognizedChecked] = useState<boolean[]>([]);
+
+  const startRecognize = (mode: 'single' | 'multi') => {
+    setRecognizeMode(mode);
+    setError(null);
+    recognizeFileRef.current?.click();
+  };
+
+  const onPhotoChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setRecognizing(true);
+    setError(null);
+    setRecognized([]);
+    try {
+      const b64: string = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error('read failed'));
+        r.readAsDataURL(file);
+      });
+      const { data } = await fridgeApi.recognizePhoto(b64, recognizeMode);
+      if (recognizeMode === 'single') {
+        const prod = (data as any).product as RecognizedProduct | null;
+        if (!prod) {
+          setError('Продукт не распознан. Заполните вручную.');
+        } else {
+          applyRecognized(prod);
+        }
+      } else {
+        const list = ((data as any).products ?? []) as RecognizedProduct[];
+        if (list.length === 0) {
+          setError('Продукты не распознаны. Попробуйте другое фото.');
+        }
+        setRecognized(list);
+        setRecognizedChecked(list.map(() => true));
+      }
+    } catch (err: any) {
+      setError('Ошибка распознавания: ' + (err?.response?.data?.detail || err?.message || ''));
+    } finally {
+      setRecognizing(false);
+    }
+  };
+
+  const applyRecognized = (prod: RecognizedProduct) => {
+    setName(prod.name);
+    setProductId(null);
+    if (prod.quantity) {
+      const m = prod.quantity.match(/[0-9]+([.,][0-9]+)?/);
+      if (m) setQuantity(m[0].replace(',', '.'));
+    }
+    if (prod.category_slug) {
+      const found = categories.find(c => c.slug === prod.category_slug);
+      if (found) setSelectedCat(found);
+    }
+  };
+
+  const addRecognizedBatch = async () => {
+    const chosen = recognized.filter((_, i) => recognizedChecked[i]);
+    if (chosen.length === 0) return;
+    const today = new Date();
+    today.setDate(today.getDate() + 7);
+    const exp = today.toISOString().slice(0, 10);
+    setSubmitting(true);
+    setError(null);
+    try {
+      for (const prod of chosen) {
+        let qty = 1;
+        if (prod.quantity) {
+          const m = prod.quantity.match(/[0-9]+([.,][0-9]+)?/);
+          if (m) qty = parseFloat(m[0].replace(',', '.')) || 1;
+        }
+        const { data } = await fridgeApi.create({
+          name: prod.name,
+          quantity: qty,
+          unit: UNITS[0],
+          expiry_date: exp,
+          product: null,
+        });
+        onAdded(data);
+      }
+      onClose();
+    } catch (e: any) {
+      setError('Ошибка: ' + (e?.response?.data?.detail || e?.message || ''));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // MG-610 focus refs
   const nameRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
@@ -281,7 +377,65 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
                 >
                   {scanLoading ? 'Поиск...' : '📷 Сканировать штрих-код'}
                 </Button>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  className="flex-1"
+                  onClick={() => startRecognize('single')}
+                  disabled={recognizing || submitting}
+                >
+                  {recognizing ? 'Распознаю...' : '📸 Фото: 1 продукт'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  className="flex-1"
+                  onClick={() => startRecognize('multi')}
+                  disabled={recognizing || submitting}
+                >
+                  {recognizing ? 'Распознаю...' : '📸 Фото: несколько'}
+                </Button>
+                <input
+                  ref={recognizeFileRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={onPhotoChosen}
+                />
               </div>
+
+              {recognized.length > 0 && (
+                <div data-testid="recognized-list" className="rounded-xl border border-gray-200 p-3 space-y-2">
+                  <div className="text-sm font-medium text-chocolate">Распознанные продукты</div>
+                  {recognized.map((rp, i) => (
+                    <label key={`${rp.name}-${i}`} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={recognizedChecked[i] ?? false}
+                        onChange={(ev) => {
+                          const next = [...recognizedChecked];
+                          next[i] = ev.target.checked;
+                          setRecognizedChecked(next);
+                        }}
+                      />
+                      <span className="flex-1">
+                        {rp.category_icon ? `${rp.category_icon} ` : ''}{rp.name}
+                        {rp.quantity ? ` · ${rp.quantity}` : ''}
+                        {` · ${Math.round(rp.confidence * 100)}%`}
+                      </span>
+                    </label>
+                  ))}
+                  <Button
+                    type="button"
+                    className="w-full"
+                    onClick={addRecognizedBatch}
+                    disabled={submitting}
+                  >
+                    {submitting ? 'Добавляю...' : 'Добавить выбранные'}
+                  </Button>
+                </div>
+              )}
 
               {imageUrl && (
                 <img src={imageUrl} alt="" className="max-h-32 mx-auto rounded-lg object-contain"

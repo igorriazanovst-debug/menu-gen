@@ -243,3 +243,26 @@ OPENFOODFACTS_USER_AGENT = config(
     "OPENFOODFACTS_USER_AGENT",
     default="MenuGen/1.0 (+https://menugen.local)",
 )
+
+
+# ── AI provider (provider-agnostic; Yandex Cloud / Anthropic) ────────
+AI_PROVIDER = config("AI_PROVIDER", default="yandex")
+AI_BASE_URL = config("AI_BASE_URL", default="https://llm.api.cloud.yandex.net/v1")
+AI_API_KEY = config("AI_API_KEY", default="")
+AI_FOLDER_ID = config("AI_FOLDER_ID", default="")
+AI_TEXT_MODEL = config("AI_TEXT_MODEL", default="yandexgpt-lite")
+AI_TEXT_MODEL_PRO = config("AI_TEXT_MODEL_PRO", default="yandexgpt")
+AI_TIMEOUT = config("AI_TIMEOUT", default=30.0, cast=float)
+
+# ─── Photo recognition (Vision OCR + LLM extraction) ────────────────────────
+# OCR endpoint is derived from AI_BASE_URL domain unless OCR_BASE_URL is set.
+OCR_BASE_URL = config("OCR_BASE_URL", default="")
+OCR_MODEL = config("OCR_MODEL", default="page")
+OCR_MAX_IMAGE_MB = config("OCR_MAX_IMAGE_MB", default=10, cast=float)
+# Comma-separated language codes for OCR (e.g. "ru,en").
+OCR_LANGUAGE_CODES = [
+    c.strip() for c in config("OCR_LANGUAGE_CODES", default="ru,en").split(",") if c.strip()
+]
+# Model used to extract product name from noisy OCR text.
+# Defaults to AI_TEXT_MODEL (yandexgpt-lite) per decision; override via env.
+AI_VISION_EXTRACT_MODEL = config("AI_VISION_EXTRACT_MODEL", default=AI_TEXT_MODEL)

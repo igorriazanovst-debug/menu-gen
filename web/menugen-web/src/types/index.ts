@@ -242,3 +242,21 @@ export interface FridgeHistoryItem {
   times_used: number;
   last_used: string | null;
 }
+
+export interface RecognizedProduct {
+  name: string;
+  category: string;
+  quantity: string | null;
+  confidence: number;
+  category_id: number | null;
+  category_slug: string | null;
+  category_name: string | null;
+  category_icon: string | null;
+  category_color: string | null;
+}
+export interface RecognizePhotoResponse {
+  mode: 'single' | 'multi';
+  product?: RecognizedProduct | null;
+  products?: RecognizedProduct[];
+  raw_text: string;
+}
