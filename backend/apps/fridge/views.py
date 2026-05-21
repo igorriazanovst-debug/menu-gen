@@ -382,7 +382,7 @@ class FridgeHistoryView(APIView):
 # >>> MENUGEN_VISION_BEGIN (managed block — do not edit between markers)
 
 
-# ─── Photo recognition endpoint (OCR + LLM) ─────────────────────────────────
+# ─── Photo recognition endpoint (OCR + LLM) ───────────────────────────
 class RecognizePhotoView(APIView):
     """
     POST /fridge/recognize-photo/
@@ -501,9 +501,15 @@ class RecognizePhotoView(APIView):
         try:
             products, raw_text = recognize_products(image_bytes, mime=mime, mode=mode)
         except VisionConfigError as exc:
-            return Response({"detail": f"Конфигурация распознавания: {exc}"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response(
+                {"detail": f"Конфигурация распознавания: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except VisionRequestError as exc:
-            return Response({"detail": f"Ошибка распознавания: {exc}"}, status=status.HTTP_502_BAD_GATEWAY)
+            return Response(
+                {"detail": f"Ошибка распознавания: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         enriched = [self._enrich(p) for p in products]
         out = RecognizedProductSerializer(enriched, many=True).data
