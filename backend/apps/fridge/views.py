@@ -135,6 +135,12 @@ class BarcodeLookupView(APIView):
 
         product = Product.objects.filter(barcode=barcode).first()
         if product is not None:
+            # MENUGEN_LOCAL_ENRICH: a product cached before the category/KBJU
+            # fix may lack category_fk and/or nutrition. Backfill it on read so
+            # repeat scans group correctly and show KBJU.
+            from .services import enrich_existing_product
+
+            enrich_existing_product(product)
             data = ProductSerializer(product).data
             data["source"] = "local"
             return Response(data)
@@ -142,6 +148,7 @@ class BarcodeLookupView(APIView):
         product = fetch_product_from_off(barcode)
         if product is not None:
             data = ProductSerializer(product).data
+            # MENUGEN_SCAN_SOURCE: product may be enriched via OFF or GPT fallback
             data["source"] = "openfoodfacts"
             return Response(data, status=status.HTTP_200_OK)
 

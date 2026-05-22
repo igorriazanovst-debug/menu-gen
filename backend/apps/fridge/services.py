@@ -65,34 +65,49 @@ def _normalize_off_product(raw: dict) -> Optional[dict]:
 
 
 def fetch_product_from_off(barcode: str) -> Optional[Product]:
+    # MENUGEN_BARCODE_FETCH: OFF lookup + category_fk mapping + GPT fallbacks.
     base = getattr(settings, "OPENFOODFACTS_BASE_URL", "https://world.openfoodfacts.org")
     timeout = getattr(settings, "OPENFOODFACTS_TIMEOUT", 4.0)
     ua = getattr(settings, "OPENFOODFACTS_USER_AGENT", "MenuGen/1.0")
 
+    raw_off = {}
+    fields = None
     url = f"{base}/api/v2/product/{barcode}.json"
     try:
         r = requests.get(url, headers={"User-Agent": ua}, timeout=timeout)
-    except requests.RequestException as e:
+        if r.status_code == 200:
+            body = r.json()
+            if body.get("status") == 1:
+                raw_off = body.get("product") or {}
+                fields = _normalize_off_product(raw_off)
+        else:
+            logger.info("OFF returned status=%s for barcode=%s", r.status_code, barcode)
+    except (requests.RequestException, ValueError) as e:
         logger.warning("OFF request failed for barcode=%s: %s", barcode, e)
-        return None
 
-    if r.status_code != 200:
-        logger.info("OFF returned status=%s for barcode=%s", r.status_code, barcode)
-        return None
+    category_fk = None
+    if fields:
+        # OFF hit: resolve category_fk (deterministic, GPT only if 'other').
+        category_fk = _resolve_category_fk(fields, raw_off)
+        # KBJU gap -> GPT fill by name.
+        if not fields.get("nutrition") and fields.get("calories_per_100g") is None:
+            cals, nutrition = gpt_fill_nutrition(fields.get("name", ""))
+            if cals is not None:
+                fields["calories_per_100g"] = cals
+            if nutrition:
+                fields["nutrition"] = nutrition
+    else:
+        # OFF miss: last-resort GPT lookup by barcode (low confidence).
+        fields = gpt_lookup_by_barcode(barcode)
+        if not fields:
+            return None
+        category_fk = _resolve_category_fk(fields, {})
 
-    try:
-        body = r.json()
-    except ValueError:
-        return None
+    defaults = dict(fields)
+    if category_fk is not None:
+        defaults["category_fk"] = category_fk
 
-    if body.get("status") != 1:
-        return None
-
-    fields = _normalize_off_product(body.get("product") or {})
-    if not fields:
-        return None
-
-    product, _ = Product.objects.update_or_create(barcode=barcode, defaults=fields)
+    product, _ = Product.objects.update_or_create(barcode=barcode, defaults=defaults)
     return product
 
 
@@ -188,6 +203,15 @@ _OFF_TOKEN_MAP = [
     ("candy", "sweets"),
     ("sweet", "sweets"),
     ("biscuit", "sweets"),
+    # MENUGEN_BARCODE_GPT: ice-cream / desserts (OFF tags + RU text) -> sweets
+    ("ice-cream", "sweets"),
+    ("ice creams", "sweets"),
+    ("icecream", "sweets"),
+    ("dessert", "sweets"),
+    ("морожен", "sweets"),
+    ("десерт", "sweets"),
+    ("пломбир", "sweets"),
+    ("эскимо", "sweets"),
 ]
 
 
@@ -199,3 +223,204 @@ def map_off_category_to_slug(category_str: str) -> str:
         if token in s:
             return slug
     return "other"
+
+
+# ── MENUGEN_BARCODE_GPT: GPT fallbacks for category / KBJU / barcode lookup ──
+def _allowed_slugs() -> list:
+    """Active category slugs, for constraining GPT output. Local import keeps
+    this module importable without the app registry at import time."""
+    from .models import ProductCategory
+
+    return list(
+        ProductCategory.objects.filter(is_active=True).order_by("sort_order", "name_ru").values_list("slug", "name_ru")
+    )
+
+
+def _strip_fences(text: str) -> str:
+    import re as _re
+
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = _re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", t, flags=_re.IGNORECASE)
+    return t.strip()
+
+
+def _parse_json_loose(text: str):
+    import json as _json
+    import re as _re
+
+    cleaned = _strip_fences(text)
+    try:
+        return _json.loads(cleaned)
+    except ValueError:
+        m = _re.search(r"(\{.*\}|\[.*\])", cleaned, _re.DOTALL)
+        if not m:
+            return None
+        try:
+            return _json.loads(m.group(1))
+        except ValueError:
+            return None
+
+
+def _num_or_none(v):
+    import re as _re
+
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    m = _re.search(r"-?\d+(?:[.,]\d+)?", str(v))
+    if not m:
+        return None
+    try:
+        return float(m.group(0).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def gpt_pick_category_slug(name: str, hints: str = "") -> str:
+    """Ask the text LLM to choose ONE slug from our active categories.
+    Returns a valid slug or "" on failure. Never raises."""
+    from apps.common.ai_provider import AIRequestError, get_ai_client
+
+    choices = _allowed_slugs()
+    if not name or not choices:
+        return ""
+    listing = ", ".join(f"{slug} ({ru})" for slug, ru in choices)
+    valid = {slug for slug, _ in choices}
+    system = (
+        "Ты классификатор продуктов питания. По названию (и подсказкам) выбери "
+        "ОДНУ категорию строго из списка slug'ов. Верни СТРОГО JSON без markdown: "
+        '{"category":"slug"}. Если не уверен — {"category":"other"}. '
+        f"Список: {listing}."
+    )
+    prompt = f"Название: {name}\nПодсказки: {hints or '—'}"
+    try:
+        raw = get_ai_client().complete(prompt=prompt, system=system, max_tokens=40, temperature=0.0)
+    except AIRequestError as exc:
+        logger.warning("gpt_pick_category_slug failed for %r: %s", name, exc)
+        return ""
+    data = _parse_json_loose(raw) or {}
+    slug = str(data.get("category", "")).strip().lower()
+    return slug if slug in valid else ""
+
+
+def gpt_fill_nutrition(name: str):
+    """Ask the text LLM for KBJU per 100 g by product name.
+    Returns (calories_per_100g|None, nutrition_dict). Never raises."""
+    from apps.common.ai_provider import AIRequestError, get_ai_client
+
+    if not name:
+        return None, {}
+    system = (
+        "Ты нутрициолог. По названию продукта дай среднюю пищевую ценность на 100 г. "
+        "Верни СТРОГО JSON без markdown: "
+        '{"calories_per_100g":0,"proteins":0,"fats":0,"carbs":0,"sugars":0}. '
+        "Числа на 100 г. Если продукт неизвестен — все значения null, не выдумывай."
+    )
+    try:
+        raw = get_ai_client().complete(prompt=f"Продукт: {name}", system=system, max_tokens=120, temperature=0.0)
+    except AIRequestError as exc:
+        logger.warning("gpt_fill_nutrition failed for %r: %s", name, exc)
+        return None, {}
+    data = _parse_json_loose(raw) or {}
+    cals = _num_or_none(data.get("calories_per_100g"))
+    nutrition = {}
+    for k in ("proteins", "fats", "carbs", "sugars"):
+        v = _num_or_none(data.get(k))
+        if v is not None:
+            nutrition[k] = v
+    return cals, nutrition
+
+
+def gpt_lookup_by_barcode(barcode: str):
+    """Last resort when OFF has nothing: ask the LLM to identify a product by
+    its barcode (EAN). High hallucination risk -> caller marks low confidence.
+    Returns a normalized fields dict (like _normalize_off_product) or None."""
+    from apps.common.ai_provider import AIRequestError, get_ai_client
+
+    if not barcode:
+        return None
+    system = (
+        "Ты определяешь продукт питания по штрих-коду (EAN). Если НЕ знаешь товар "
+        "точно — верни name=null, НЕ выдумывай. Верни СТРОГО JSON без markdown: "
+        '{"name":"...","calories_per_100g":0,"proteins":0,"fats":0,"carbs":0,"sugars":0}.'
+    )
+    try:
+        raw = get_ai_client().complete(prompt=f"Штрих-код: {barcode}", system=system, max_tokens=160, temperature=0.0)
+    except AIRequestError as exc:
+        logger.warning("gpt_lookup_by_barcode failed for %s: %s", barcode, exc)
+        return None
+    data = _parse_json_loose(raw) or {}
+    name = str(data.get("name")).strip() if data.get("name") else ""
+    if not name or name.lower() in ("null", "none"):
+        return None
+    cals = _num_or_none(data.get("calories_per_100g"))
+    nutrition = {}
+    for k in ("proteins", "fats", "carbs", "sugars"):
+        v = _num_or_none(data.get(k))
+        if v is not None:
+            nutrition[k] = v
+    return {
+        "name": name[:255],
+        "category": "",
+        "default_unit": "",
+        "calories_per_100g": cals,
+        "nutrition": nutrition,
+        "image_url": None,
+    }
+
+
+def _resolve_category_fk(fields: dict, raw_off: dict):
+    """Map OFF text+tags to a category_fk; GPT fallback if mapping is 'other'.
+    Returns a ProductCategory instance or None. Never raises."""
+    from .models import ProductCategory
+
+    text = fields.get("category") or ""
+    tags = []
+    if isinstance(raw_off, dict):
+        tags = raw_off.get("categories_tags") or []
+    hint = " ".join([text] + [str(t) for t in tags])
+    slug = map_off_category_to_slug(hint)
+    if slug == "other":
+        gpt_slug = gpt_pick_category_slug(fields.get("name", ""), hints=hint)
+        if gpt_slug:
+            slug = gpt_slug
+    return ProductCategory.objects.filter(is_active=True, slug=slug).first()
+
+
+# ── MENUGEN_ENRICH_EXISTING: fix a cached Product missing category_fk / KBJU ──
+def enrich_existing_product(product) -> bool:
+    """Backfill category_fk and/or nutrition on an existing Product in place.
+    Uses deterministic category mapping (legacy text), GPT fallbacks otherwise.
+    Returns True if anything changed. Never raises."""
+    updates = []
+
+    # category_fk: map from legacy text; GPT only if mapping gives 'other'.
+    if product.category_fk_id is None:
+        from .models import ProductCategory
+
+        slug = map_off_category_to_slug(product.category or "")
+        if slug == "other":
+            gpt_slug = gpt_pick_category_slug(product.name or "", hints=product.category or "")
+            if gpt_slug:
+                slug = gpt_slug
+        cat = ProductCategory.objects.filter(is_active=True, slug=slug).first()
+        if cat is not None:
+            product.category_fk = cat
+            updates.append("category_fk")
+
+    # KBJU: fill only if completely missing.
+    if not product.nutrition and product.calories_per_100g is None:
+        cals, nutrition = gpt_fill_nutrition(product.name or "")
+        if cals is not None:
+            product.calories_per_100g = cals
+            updates.append("calories_per_100g")
+        if nutrition:
+            product.nutrition = nutrition
+            updates.append("nutrition")
+
+    if updates:
+        product.save(update_fields=updates)
+        return True
+    return False
