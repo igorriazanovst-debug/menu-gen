@@ -44,6 +44,24 @@ class Recipe(models.Model):
         WHOLE = "whole", "Цельнозерновые"
         REFINED = "refined", "Рафинированные"
 
+    class DishType(models.TextChoices):  # RB001_V_schema
+        SOUP = "soup", "Первое (суп)"
+        MAIN = "main", "Второе/горячее"
+        SALAD = "salad", "Салат"
+        SIDE = "side", "Гарнир"
+        DESSERT = "dessert", "Десерт"
+        DRINK = "drink", "Напиток/компот"
+        BAKERY = "bakery", "Выпечка"
+        SAUCE = "sauce", "Соус"
+        SNACK = "snack", "Перекус"
+        BREAKFAST_DISH = "breakfast_dish", "Завтрак-блюдо"
+
+    class Source(models.TextChoices):  # RB001_V_schema
+        OWN = "own", "Собственный"
+        IMPORT = "import", "Импорт"
+        USER = "user", "Пользовательский"
+        PARSED = "parsed", "Спарсенный"
+
     class CookingMethod(models.TextChoices):  # MG_501_V_model
         BOILED = "boiled", "Варёное"
         BAKED = "baked", "Запечённое"
@@ -92,6 +110,43 @@ class Recipe(models.Model):
         help_text='Подпись размера порции, напр. "1 тарелка / 200 г" (MG-501).',
     )
 
+    # ── RB001_V_schema: новые поля чистой базы рецептов ──────────────────────
+    dish_type = models.CharField(
+        max_length=16, choices=DishType.choices, null=True, blank=True,
+        help_text="Тип блюда (первое/второе/десерт...). RB-001.",
+    )
+    portion_g = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Вес одной порции, г. RB-001.",
+    )
+    kcal_per_100g = models.DecimalField(
+        max_digits=7, decimal_places=1, null=True, blank=True,
+        help_text="Калорийность на 100 г готового блюда. RB-001.",
+    )
+    proteins_per_100g = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Белки на 100 г. RB-001.",
+    )
+    fats_per_100g = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Жиры на 100 г. RB-001.",
+    )
+    carbs_per_100g = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Углеводы на 100 г. RB-001.",
+    )
+    sugars_per_100g = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Сахара на 100 г. RB-001.",
+    )
+    cook_time_min = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Время приготовления, мин (число). RB-001.",
+    )
+    is_vegan = models.BooleanField(default=False, help_text="Веганское. RB-001.")
+    is_vegetarian = models.BooleanField(default=False, help_text="Вегетарианское. RB-001.")
+    is_gluten_free = models.BooleanField(default=False, help_text="Без глютена. RB-001.")
+    is_lactose_free = models.BooleanField(default=False, help_text="Без лактозы. RB-001.")
+    allergens = models.JSONField(default=list, blank=True, help_text="Список аллергенов. RB-001.")
+    source = models.CharField(
+        max_length=8, choices=Source.choices, default=Source.OWN,
+        help_text="Источник рецепта. RB-001.",
+    )
+
     class Meta:
         db_table = "recipes"
         indexes = [
@@ -108,6 +163,12 @@ class Recipe(models.Model):
             models.Index(fields=["cooking_method"]),
             models.Index(fields=["has_added_sugar"]),
             GinIndex(fields=["suitable_for"], name="recipe_suitable_for_gin"),
+            models.Index(fields=["dish_type"]),  # RB001_V_schema
+            models.Index(fields=["source"]),
+            models.Index(fields=["is_vegan"]),
+            models.Index(fields=["is_vegetarian"]),
+            models.Index(fields=["is_gluten_free"]),
+            models.Index(fields=["is_lactose_free"]),
         ]
 
     def __str__(self):
@@ -172,3 +233,20 @@ class RecipeFavorite(models.Model):
     def __str__(self):
         tag = "fav" if self.is_favorite else "dis"
         return f"{tag}({self.user_id}→{self.recipe_id})"
+
+
+class ArchivedRecipe(models.Model):  # RB001_V_schema
+    """Старая база рецептов (RB-001). Полная копия для аудита/восстановления."""
+
+    original_id = models.IntegerField(db_index=True)
+    title = models.CharField(max_length=512)
+    data = models.JSONField(help_text="Полный снимок полей рецепта на момент архивации.")
+    archived_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "archived_recipes"
+        ordering = ["-archived_at"]
+        indexes = [models.Index(fields=["original_id"])]
+
+    def __str__(self):
+        return f"Archived({self.original_id}, {self.title[:40]})"
