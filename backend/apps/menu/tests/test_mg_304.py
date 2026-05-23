@@ -115,10 +115,11 @@ def test_mg_304_top_up_when_shortfall(monkeypatch):
     member = FamilyMember.objects.create(family=family, user=user, role="adult")
 
     # 5 рецептов veg + 5 fruit + минимально protein/grain/dairy
-    def mk(title, fg):
+    def mk(title, fg, dish_type="main"):
         return Recipe.objects.create(
             title=title,
             food_group=fg,
+            dish_type=dish_type,
             ingredients=[],
             nutrition={"weight": {"value": "150.0"}, "calories": {"value": "100"}},
             servings=1,
@@ -126,11 +127,11 @@ def test_mg_304_top_up_when_shortfall(monkeypatch):
             povar_raw={},
         )
 
-    [mk(f"V{i}", "vegetable") for i in range(8)]
-    [mk(f"F{i}", "fruit") for i in range(8)]
-    [mk(f"P{i}", "protein") for i in range(8)]
-    [mk(f"G{i}", "grain") for i in range(8)]
-    [mk(f"D{i}", "dairy") for i in range(8)]
+    # RB001_V_step4: добор овощей идёт из пула dish_type=salad
+    [mk(f"Salad{i}", "vegetable", dish_type="salad") for i in range(8)]
+    [mk(f"Main{i}", "protein", dish_type="main") for i in range(8)]
+    [mk(f"BF{i}", "grain", dish_type="breakfast_dish") for i in range(8)]
+    [mk(f"Snack{i}", "fruit", dish_type="snack") for i in range(8)]
 
     gen = MenuGenerator(
         family=family,
@@ -142,7 +143,7 @@ def test_mg_304_top_up_when_shortfall(monkeypatch):
     )
     items = gen.generate()
     assert isinstance(items, list)
-    veg_fruit_items = [i for i in items if i.get("component_role") in ("vegetable", "fruit")]
+    veg_fruit_items = [i for i in items if i.get("component_role") == "salad"]  # RB001_V_step4
     # 750г / 150г = 5 порций — должно быть достигнуто
     total_g = 0.0
     for it in veg_fruit_items:

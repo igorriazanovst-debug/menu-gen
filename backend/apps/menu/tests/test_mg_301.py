@@ -26,7 +26,7 @@ def client():
     return APIClient()
 
 
-def _mk_recipe(title, food_group, suitable_for=None, **extra):
+def _mk_recipe(title, food_group, suitable_for=None, dish_type="main", **extra):
     return Recipe.objects.create(
         title=title,
         ingredients=[{"name": "ингр", "quantity": "100", "unit": "г"}],
@@ -35,6 +35,7 @@ def _mk_recipe(title, food_group, suitable_for=None, **extra):
         categories=[],
         is_published=True,
         food_group=food_group,
+        dish_type=dish_type,
         suitable_for=suitable_for or ["breakfast", "lunch", "dinner", "snack"],
         **extra,
     )
@@ -48,11 +49,14 @@ def setup_full(db):
     _attach_premium(family)
     member = FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
     for i in range(5):
-        _mk_recipe(f"Курица {i}", "protein")
-        _mk_recipe(f"Гречка {i}", "grain")
-        _mk_recipe(f"Салат {i}", "vegetable")
-        _mk_recipe(f"Яблоко {i}", "fruit")
-        _mk_recipe(f"Йогурт {i}", "dairy")
+        _mk_recipe(f"Завтрак {i}", "grain", dish_type="breakfast_dish")
+        _mk_recipe(f"Суп {i}", "vegetable", dish_type="soup")
+        _mk_recipe(f"Горячее {i}", "protein", dish_type="main")
+        _mk_recipe(f"Салат {i}", "vegetable", dish_type="salad")
+        _mk_recipe(f"Перекус {i}", "fruit", dish_type="snack")
+        _mk_recipe(f"Напиток {i}", "fruit", dish_type="drink")
+        _mk_recipe(f"Десерт {i}", "grain", dish_type="dessert")
+        _mk_recipe(f"Выпечка {i}", "grain", dish_type="bakery")
     return user, family, member
 
 
@@ -68,14 +72,15 @@ class TestPlateMethodComponents:
         )
         assert resp.status_code == 201, resp.data
         items = resp.data["items"]
-        # за день: 3 приёма (breakfast/lunch/dinner) × 3 компонента = 9
-        # breakfast=grain+protein+fruit, lunch/dinner=protein+grain+vegetable
+        # RB001_V_step4: lunch=soup+main+salad+dessert+bakery, dinner=main+salad
         lunch_items = [i for i in items if i["meal_slot"] == "lunch"]
         roles = {i["component_role"] for i in lunch_items}
-        assert roles == {"protein", "grain", "vegetable"}, f"lunch roles: {roles}"
+        assert "main" in roles, f"lunch roles: {roles}"
+        assert roles <= {"soup", "main", "salad", "dessert", "bakery"}, f"lunch roles: {roles}"
         dinner_items = [i for i in items if i["meal_slot"] == "dinner"]
         roles = {i["component_role"] for i in dinner_items}
-        assert roles == {"protein", "grain", "vegetable"}, f"dinner roles: {roles}"
+        assert "main" in roles, f"dinner roles: {roles}"
+        assert roles <= {"main", "salad"}, f"dinner roles: {roles}"
 
     def test_breakfast_has_three_components(self, client, setup_full):
         user, _, _ = setup_full
@@ -88,7 +93,8 @@ class TestPlateMethodComponents:
         assert resp.status_code == 201
         breakfast = [i for i in resp.data["items"] if i["meal_slot"] == "breakfast"]
         roles = {i["component_role"] for i in breakfast}
-        assert roles == {"grain", "protein", "fruit"}, f"breakfast roles: {roles}"
+        assert "breakfast_dish" in roles, f"breakfast roles: {roles}"
+        assert roles <= {"breakfast_dish", "drink"}, f"breakfast roles: {roles}"
 
     def test_snack_5_meal_plan(self, client, setup_full):
         user, _, _ = setup_full
@@ -102,9 +108,11 @@ class TestPlateMethodComponents:
         items = resp.data["items"]
         snack1 = [i for i in items if i["meal_slot"] == "snack1"]
         snack2 = [i for i in items if i["meal_slot"] == "snack2"]
-        # snack1 = fruit + dairy (2), snack2 = protein + vegetable (2)
-        assert {i["component_role"] for i in snack1} == {"fruit", "dairy"}
-        assert {i["component_role"] for i in snack2} == {"protein", "vegetable"}
+        # RB001_V_step4: snack1/snack2 = snack (+ drink опц.)
+        assert "snack" in {i["component_role"] for i in snack1}
+        assert {i["component_role"] for i in snack1} <= {"snack", "drink"}
+        assert "snack" in {i["component_role"] for i in snack2}
+        assert {i["component_role"] for i in snack2} <= {"snack", "drink"}
 
     def test_component_role_stored_in_db(self, client, setup_full):
         user, family, _ = setup_full
@@ -115,38 +123,35 @@ class TestPlateMethodComponents:
             format="json",
         )
         items = MenuItem.objects.filter(menu__family=family)
-        # все роли в наборе
         roles = set(items.values_list("component_role", flat=True))
-        assert "protein" in roles
-        assert "grain" in roles
-        assert "vegetable" in roles or "fruit" in roles
-        # ни одной "other" (т.к. пулы полные)
+        # RB001_V_step4: основное блюдо всегда есть
+        assert "main" in roles
+        assert "breakfast_dish" in roles
         assert "other" not in roles, f"unexpected 'other' in roles: {roles}"
 
 
 @pytest.mark.django_db
 class TestEmptyRolePool:
     def test_no_vegetable_recipes_returns_400(self, client, db):
-        """Если нет рецептов с food_group=vegetable — 400 с понятным сообщением."""
+        """RB001_V_step4: нет рецептов dish_type=main — 400 (обязательная роль)."""
         user = User.objects.create_user(email="empty@example.com", name="Пустой", password="pass1234")
-        family = Family.objects.create(owner=user, name="Без овощей")
+        family = Family.objects.create(owner=user, name="Без главного")
         _attach_premium(family)
         FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
-        # есть protein, grain, fruit — но НЕТ vegetable
+        # есть завтрак, суп, салат, перекус — но НЕТ main
         for i in range(3):
-            _mk_recipe(f"Курица {i}", "protein")
-            _mk_recipe(f"Гречка {i}", "grain")
-            _mk_recipe(f"Яблоко {i}", "fruit")
-            _mk_recipe(f"Йогурт {i}", "dairy")
+            _mk_recipe(f"Завтрак {i}", "grain", dish_type="breakfast_dish")
+            _mk_recipe(f"Суп {i}", "vegetable", dish_type="soup")
+            _mk_recipe(f"Салат {i}", "vegetable", dish_type="salad")
+            _mk_recipe(f"Перекус {i}", "fruit", dish_type="snack")
 
         client.force_authenticate(user)
         resp = client.post(reverse("menu-generate"), {"period_days": 1}, format="json")
         assert resp.status_code == 400
         body = resp.data
         assert body["error"] == "empty_role_pool"
-        # сообщение по-русски, понятное
         assert "Не удалось подобрать" in body["message"]
-        assert body["details"]["role"] == "vegetable"
+        assert body["details"]["role"] == "main"
 
     def test_empty_pool_writes_audit_log(self, client, db):
         user = User.objects.create_user(email="audit@example.com", name="Аудит", password="pass1234")
@@ -154,9 +159,10 @@ class TestEmptyRolePool:
         _attach_premium(family)
         FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
         for i in range(3):
-            _mk_recipe(f"Курица {i}", "protein")
-            _mk_recipe(f"Гречка {i}", "grain")
-            _mk_recipe(f"Яблоко {i}", "fruit")
+            _mk_recipe(f"Завтрак {i}", "grain", dish_type="breakfast_dish")
+            _mk_recipe(f"Суп {i}", "vegetable", dish_type="soup")
+            _mk_recipe(f"Салат {i}", "vegetable", dish_type="salad")
+            _mk_recipe(f"Перекус {i}", "fruit", dish_type="snack")
 
         before = AuditLog.objects.filter(action="menu.generate.empty_role_pool").count()
         client.force_authenticate(user)
@@ -173,9 +179,10 @@ class TestEmptyRolePool:
         _attach_premium(family)
         FamilyMember.objects.create(family=family, user=user, role=FamilyMember.Role.HEAD)
         for i in range(3):
-            _mk_recipe(f"Курица {i}", "protein")
-            _mk_recipe(f"Гречка {i}", "grain")
-            _mk_recipe(f"Яблоко {i}", "fruit")
+            _mk_recipe(f"Завтрак {i}", "grain", dish_type="breakfast_dish")
+            _mk_recipe(f"Суп {i}", "vegetable", dish_type="soup")
+            _mk_recipe(f"Салат {i}", "vegetable", dish_type="salad")
+            _mk_recipe(f"Перекус {i}", "fruit", dish_type="snack")
 
         before = Menu.objects.filter(family=family).count()
         client.force_authenticate(user)

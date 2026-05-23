@@ -45,13 +45,17 @@ class MenuItem(models.Model):
         DINNER = "dinner", "Ужин"
         SNACK = "snack", "Перекус"
 
-    class ComponentRole(models.TextChoices):
-        PROTEIN = "protein", "Белок"
-        GRAIN = "grain", "Крупа/гарнир"
-        VEGETABLE = "vegetable", "Овощи"
-        FRUIT = "fruit", "Фрукт"
-        DAIRY = "dairy", "Молочное"
-        OIL = "oil", "Масло"
+    class ComponentRole(models.TextChoices):  # RB001_V_step4: роли = dish_type
+        BREAKFAST_DISH = "breakfast_dish", "Завтрак-блюдо"
+        SOUP = "soup", "Первое (суп)"
+        MAIN = "main", "Второе/горячее"
+        SALAD = "salad", "Салат"
+        SIDE = "side", "Гарнир"
+        DESSERT = "dessert", "Десерт"
+        DRINK = "drink", "Напиток"
+        BAKERY = "bakery", "Выпечка"
+        SAUCE = "sauce", "Соус"
+        SNACK = "snack", "Перекус"
         OTHER = "other", "Прочее"
 
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name="items")

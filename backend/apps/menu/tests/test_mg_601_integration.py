@@ -28,7 +28,7 @@ from apps.users.models import Profile, User
 # ------------------------------------------------------------------
 # helpers
 # ------------------------------------------------------------------
-def _mk_recipe(title, food_group, **extra):
+def _mk_recipe(title, food_group, dish_type="main", **extra):
     """Создать рецепт с разумными дефолтами, перекрываемыми **extra."""
     defaults = dict(
         ingredients=[{"name": "ингр", "quantity": "100", "unit": "г"}],
@@ -37,6 +37,7 @@ def _mk_recipe(title, food_group, **extra):
         categories=[],
         is_published=True,
         food_group=food_group,
+        dish_type=dish_type,
         suitable_for=["breakfast", "lunch", "dinner", "snack"],
         kcal=Decimal("300.0"),
     )
@@ -71,12 +72,14 @@ def rich_pool(db):
     """Богатый пул рецептов для интеграционных тестов."""
     # 5 рецептов на каждую роль, разной калорийности
     for i in range(5):
-        _mk_recipe(f"Курица {i}", "protein", protein_type="animal", kcal=Decimal(str(250 + i * 20)))
-        _mk_recipe(f"Бобы {i}", "protein", protein_type="plant", kcal=Decimal(str(200 + i * 20)))
-        _mk_recipe(f"Гречка {i}", "grain", grain_type="whole", kcal=Decimal(str(280 + i * 10)))
-        _mk_recipe(f"Овощи {i}", "vegetable", kcal=Decimal(str(80 + i * 10)))
-        _mk_recipe(f"Фрукт {i}", "fruit", kcal=Decimal(str(70 + i * 5)))
-        _mk_recipe(f"Йогурт {i}", "dairy", kcal=Decimal(str(120 + i * 10)))
+        # RB001_V_step4: main несёт protein-классификацию (для MG-302/505)
+        _mk_recipe(f"Горячее-жив {i}", "protein", dish_type="main", protein_type="animal", kcal=Decimal(str(250 + i * 20)))
+        _mk_recipe(f"Горячее-раст {i}", "protein", dish_type="main", protein_type="plant", kcal=Decimal(str(200 + i * 20)))
+        _mk_recipe(f"Завтрак {i}", "grain", dish_type="breakfast_dish", grain_type="whole", kcal=Decimal(str(280 + i * 10)))
+        _mk_recipe(f"Суп {i}", "vegetable", dish_type="soup", kcal=Decimal(str(120 + i * 10)))
+        _mk_recipe(f"Салат {i}", "vegetable", dish_type="salad", kcal=Decimal(str(80 + i * 10)))
+        _mk_recipe(f"Перекус {i}", "fruit", dish_type="snack", kcal=Decimal(str(70 + i * 5)))
+        _mk_recipe(f"Напиток {i}", "fruit", dish_type="drink", kcal=Decimal(str(60 + i * 5)))
     return Recipe.objects.all()
 
 
@@ -175,11 +178,11 @@ class TestMG303CalorieDistribution:
 
         # Богатый пул разной калорийности — чтобы pick мог найти попадание
         for i in range(15):
-            _mk_recipe(f"P{i}", "protein", kcal=Decimal(str(200 + i * 30)))
-            _mk_recipe(f"G{i}", "grain", kcal=Decimal(str(150 + i * 30)))
-            _mk_recipe(f"V{i}", "vegetable", kcal=Decimal(str(50 + i * 20)))
-            _mk_recipe(f"F{i}", "fruit", kcal=Decimal(str(60 + i * 10)))
-            _mk_recipe(f"D{i}", "dairy", kcal=Decimal(str(120 + i * 10)))
+            _mk_recipe(f"M{i}", "protein", dish_type="main", kcal=Decimal(str(200 + i * 30)))
+            _mk_recipe(f"BF{i}", "grain", dish_type="breakfast_dish", kcal=Decimal(str(150 + i * 30)))
+            _mk_recipe(f"Soup{i}", "vegetable", dish_type="soup", kcal=Decimal(str(50 + i * 20)))
+            _mk_recipe(f"Salad{i}", "vegetable", dish_type="salad", kcal=Decimal(str(60 + i * 10)))
+            _mk_recipe(f"Snack{i}", "fruit", dish_type="snack", kcal=Decimal(str(120 + i * 10)))
 
         client.force_authenticate(u)
         resp = client.post(
@@ -220,13 +223,12 @@ class TestMG502OilLimit:
 
         # 5 тяжёлых (oil_tsp=10) + 5 лёгких (oil_tsp=0) рецептов на каждую роль
         for i in range(5):
-            _mk_recipe(f"Oily-P{i}", "protein", oil_tsp=Decimal("10.0"))
-            _mk_recipe(f"Light-P{i}", "protein", oil_tsp=Decimal("0.0"))
-            _mk_recipe(f"Oily-G{i}", "grain", oil_tsp=Decimal("10.0"))
-            _mk_recipe(f"Light-G{i}", "grain", oil_tsp=Decimal("0.0"))
-            _mk_recipe(f"V{i}", "vegetable", oil_tsp=Decimal("0.0"))
-            _mk_recipe(f"F{i}", "fruit", oil_tsp=Decimal("0.0"))
-            _mk_recipe(f"D{i}", "dairy", oil_tsp=Decimal("0.0"))
+            _mk_recipe(f"Oily-M{i}", "protein", dish_type="main", oil_tsp=Decimal("10.0"))
+            _mk_recipe(f"Light-M{i}", "protein", dish_type="main", oil_tsp=Decimal("0.0"))
+            _mk_recipe(f"BF{i}", "grain", dish_type="breakfast_dish", oil_tsp=Decimal("0.0"))
+            _mk_recipe(f"Soup{i}", "vegetable", dish_type="soup", oil_tsp=Decimal("0.0"))
+            _mk_recipe(f"Salad{i}", "vegetable", dish_type="salad", oil_tsp=Decimal("0.0"))
+            _mk_recipe(f"Snack{i}", "fruit", dish_type="snack", oil_tsp=Decimal("0.0"))
 
         client.force_authenticate(u)
         resp = client.post(
@@ -266,13 +268,12 @@ class TestMG503AddedSugar:
 
         # Сладкие protein/grain (нарушители) + нормальные альтернативы
         for i in range(5):
-            _mk_recipe(f"SweetP{i}", "protein", has_added_sugar=True)
-            _mk_recipe(f"NormalP{i}", "protein", has_added_sugar=False)
-            _mk_recipe(f"SweetG{i}", "grain", has_added_sugar=True)
-            _mk_recipe(f"NormalG{i}", "grain", has_added_sugar=False)
-            _mk_recipe(f"V{i}", "vegetable", has_added_sugar=False)
-            _mk_recipe(f"F{i}", "fruit", has_added_sugar=False)
-            _mk_recipe(f"D{i}", "dairy", has_added_sugar=False)
+            _mk_recipe(f"SweetM{i}", "protein", dish_type="main", has_added_sugar=True)
+            _mk_recipe(f"NormalM{i}", "protein", dish_type="main", has_added_sugar=False)
+            _mk_recipe(f"BF{i}", "grain", dish_type="breakfast_dish", has_added_sugar=False)
+            _mk_recipe(f"Soup{i}", "vegetable", dish_type="soup", has_added_sugar=False)
+            _mk_recipe(f"Salad{i}", "vegetable", dish_type="salad", has_added_sugar=False)
+            _mk_recipe(f"Snack{i}", "fruit", dish_type="snack", has_added_sugar=False)
 
         client.force_authenticate(u)
         resp = client.post(
@@ -322,13 +323,13 @@ class TestMG302RedMeatWeekly:
 
         # Все protein — красное мясо 200г/порция (3 порции = 600г > 500)
         for i in range(5):
-            _mk_recipe(f"Beef{i}", "protein", protein_type="animal", is_red_meat=True, servings_normalized=1)
-            _mk_recipe(f"Beans{i}", "protein", protein_type="plant")
-            _mk_recipe(f"Fish{i}", "protein", protein_type="animal", is_fatty_fish=True)
-            _mk_recipe(f"G{i}", "grain")
-            _mk_recipe(f"V{i}", "vegetable")
-            _mk_recipe(f"F{i}", "fruit")
-            _mk_recipe(f"D{i}", "dairy")
+            _mk_recipe(f"Beef{i}", "protein", dish_type="main", protein_type="animal", is_red_meat=True, servings_normalized=1)
+            _mk_recipe(f"Beans{i}", "protein", dish_type="main", protein_type="plant")
+            _mk_recipe(f"Fish{i}", "protein", dish_type="main", protein_type="animal", is_fatty_fish=True)
+            _mk_recipe(f"BF{i}", "grain", dish_type="breakfast_dish")
+            _mk_recipe(f"Soup{i}", "vegetable", dish_type="soup")
+            _mk_recipe(f"Salad{i}", "vegetable", dish_type="salad")
+            _mk_recipe(f"Snack{i}", "fruit", dish_type="snack")
 
         gen = MenuGenerator(
             family=family,
@@ -340,8 +341,8 @@ class TestMG302RedMeatWeekly:
         )
         items = gen.generate()
         # Проверяем что не все белки — красное мясо
-        red_count = sum(1 for it in items if it["recipe"].is_red_meat and it.get("component_role") == "protein")
-        total_protein = sum(1 for it in items if it.get("component_role") == "protein")
+        red_count = sum(1 for it in items if it["recipe"].is_red_meat and it.get("component_role") == "main")  # RB001_V_step4
+        total_protein = sum(1 for it in items if it.get("component_role") == "main")  # RB001_V_step4
         # Хоть один НЕ red_meat protein должен быть выбран на неделе.
         assert (
             red_count < total_protein or total_protein == 0
@@ -367,11 +368,11 @@ class TestMG601MainMealComposition:
         family, _ = _mk_family(u)
 
         for i in range(5):
-            _mk_recipe(f"P{i}", "protein", kcal=Decimal("250"))
-            _mk_recipe(f"G{i}", "grain", kcal=Decimal("200"))
-            _mk_recipe(f"V{i}", "vegetable", kcal=Decimal("80"))
-            _mk_recipe(f"F{i}", "fruit", kcal=Decimal("70"))
-            _mk_recipe(f"D{i}", "dairy", kcal=Decimal("120"))
+            _mk_recipe(f"M{i}", "protein", dish_type="main", kcal=Decimal("250"))
+            _mk_recipe(f"BF{i}", "grain", dish_type="breakfast_dish", kcal=Decimal("200"))
+            _mk_recipe(f"Soup{i}", "vegetable", dish_type="soup", kcal=Decimal("120"))
+            _mk_recipe(f"Salad{i}", "vegetable", dish_type="salad", kcal=Decimal("80"))
+            _mk_recipe(f"Snack{i}", "fruit", dish_type="snack", kcal=Decimal("70"))
 
         client.force_authenticate(u)
         resp = client.post(
@@ -390,7 +391,7 @@ class TestMG601MainMealComposition:
 
         for (day, slot), roles in groups.items():
             if slot in ("lunch", "dinner"):
-                assert {"protein", "grain", "vegetable"}.issubset(
+                assert {"main"}.issubset(  # RB001_V_step4 
                     roles
                 ), f"Слот {slot} день {day} не содержит 3 компонентов: {roles}"
 

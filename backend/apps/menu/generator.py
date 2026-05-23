@@ -47,12 +47,28 @@ MEAL_TYPE_DB = {
     "snack2": "snack",
 }
 
+# RB001_V_step4: роли тарелки = dish_type рецепта.
+# Состав приёмов (порядок = порядок подбора):
+#   breakfast      -> breakfast_dish, drink?
+#   lunch          -> soup?, main, salad?, dessert?, bakery?
+#   dinner         -> main, salad?
+#   snack1/snack2  -> snack, drink?
 MEAL_COMPONENTS: Dict[str, Tuple[str, ...]] = {
-    "breakfast": ("grain", "protein", "fruit"),
-    "lunch": ("protein", "grain", "vegetable"),
-    "dinner": ("protein", "grain", "vegetable"),
-    "snack1": ("fruit", "dairy"),
-    "snack2": ("protein", "vegetable"),
+    "breakfast": ("breakfast_dish", "drink"),
+    "lunch": ("soup", "main", "salad", "dessert", "bakery"),
+    "dinner": ("main", "salad"),
+    "snack1": ("snack", "drink"),
+    "snack2": ("snack", "drink"),
+}
+
+# RB001_V_step4: обязательные роли — при пустом пуле поднимаем EmptyRolePoolError.
+# Остальные роли опциональны: нет рецепта → пропускаем (continue), без ошибки.
+REQUIRED_ROLES: Dict[str, Tuple[str, ...]] = {
+    "breakfast": ("breakfast_dish",),
+    "lunch": ("main",),
+    "dinner": ("main",),
+    "snack1": ("snack",),
+    "snack2": ("snack",),
 }
 
 # MG_302_V_generator: недельные/дневные лимиты
@@ -219,9 +235,11 @@ class MenuGenerator:
 
                     per_meal_cal = self._meal_target_cal(target_cal, meal_slot)
 
+                    # RB001_V_step4: ккал делим поровну на число ролей приёма
                     per_role_cal = (per_meal_cal / len(roles)) if per_meal_cal else None
 
                     self._meal_cal_target[(member.id, day, meal_slot)] = per_meal_cal
+                    required = REQUIRED_ROLES.get(meal_slot, ())
 
                     for role in roles:
                         recipe = self._pick_for_role(
@@ -235,10 +253,13 @@ class MenuGenerator:
                             member_id=member.id,
                             day_offset=day,
                             is_cheat=(
-                                _mg505_is_cheat and meal_slot == _mg505_cheat_slot and role == "protein"
+                                _mg505_is_cheat and meal_slot == _mg505_cheat_slot and role == "main"
                             ),  # MG_505_V_generate_loop
                         )
                         if recipe is None:
+                            # RB001_V_step4: опциональная роль — просто пропускаем
+                            if role not in required:
+                                continue
                             err = EmptyRolePoolError(
                                 role=role,
                                 meal_slot=meal_slot,
@@ -358,11 +379,12 @@ class MenuGenerator:
         warnings: list = []
         grams: dict = {}
         for it in items:
-            if it.get("component_role") in ("vegetable", "fruit"):
+            # RB001_V_step4: овощную долю даёт роль salad
+            if it.get("component_role") == "salad":
                 key = (it["member"].id, it["day_offset"])
                 grams[key] = grams.get(key, 0.0) + recipe_portion_grams(it["recipe"])
 
-        veg_fruit_pool = list(pools.get("vegetable", [])) + list(pools.get("fruit", []))
+        veg_fruit_pool = list(pools.get("salad", []))
 
         existing_snack_slots = {}
         for it in items:
@@ -398,7 +420,7 @@ class MenuGenerator:
                     used_per_member[member.id].add(candidate.id)
                     base_idx = existing_snack_slots.get(key, 0)
                     slot_n = base_idx + added + 1
-                    role = candidate.food_group if candidate.food_group in ("vegetable", "fruit") else "vegetable"
+                    role = "salad"  # RB001_V_step4
                     items.append(
                         {
                             "member": member,
@@ -453,18 +475,23 @@ class MenuGenerator:
         return recipes
 
     def _build_pools_by_role(self, recipes: List[Recipe]) -> Dict[str, List[Recipe]]:
+        # RB001_V_step4: пулы по dish_type рецепта (роль тарелки = dish_type)
         pools: Dict[str, List[Recipe]] = {
-            "protein": [],
-            "grain": [],
-            "vegetable": [],
-            "fruit": [],
-            "dairy": [],
-            "oil": [],
+            "breakfast_dish": [],
+            "soup": [],
+            "main": [],
+            "salad": [],
+            "side": [],
+            "dessert": [],
+            "drink": [],
+            "bakery": [],
+            "sauce": [],
+            "snack": [],
             "other": [],
         }
         for r in recipes:
-            fg = getattr(r, "food_group", None) or "other"
-            pools.setdefault(fg, []).append(r)
+            dt = getattr(r, "dish_type", None) or "other"
+            pools.setdefault(dt, []).append(r)
         return pools
 
     # ── pick ─────────────────────────────────────────────────────────────────
@@ -524,7 +551,7 @@ class MenuGenerator:
 
         # MG_302_V_generator: недельные/дневные лимиты — только для protein
         # MG_505_V_pick_bypass: в cheat-meal не применяем MG-302 для protein
-        if role == "protein" and not is_cheat:
+        if role == "main" and not is_cheat:  # RB001_V_step4: protein-лимиты на основное блюдо
             week = self.tracker.get_week(member_id, day_offset)
             day = self.tracker.get_day(member_id, day_offset)
 
@@ -712,6 +739,7 @@ class MenuGenerator:
                 for m in self.members:
                     self._meal_cal_target[(m.id, day, meal_slot)] = per_meal_cal
 
+                required = REQUIRED_ROLES.get(meal_slot, ())  # RB001_V_step4
                 for role in roles:
                     recipe = self._pick_for_role(
                         role=role,
@@ -726,6 +754,9 @@ class MenuGenerator:
                         is_cheat=False,
                     )
                     if recipe is None:
+                        # RB001_V_step4: опциональная роль — пропускаем
+                        if role not in required:
+                            continue
                         err = EmptyRolePoolError(
                             role=role,
                             meal_slot=meal_slot,

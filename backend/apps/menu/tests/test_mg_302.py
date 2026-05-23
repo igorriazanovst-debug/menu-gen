@@ -131,7 +131,7 @@ def test_pick_red_meat_blocked_after_500g():
     red = _R(rid=100, is_red_meat=True, food_group="protein")
     other = _R(rid=101, is_red_meat=False, food_group="protein", protein_type="animal")
 
-    pools = {"protein": [red, other], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"main": [red, other], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
 
     with patch.object(gen_module, "recipe_portion_grams", return_value=100.0):
         # plant за день уже есть — чтобы не сработал plant-boost
@@ -140,7 +140,7 @@ def test_pick_red_meat_blocked_after_500g():
         g.tracker.get_week(1, 0)["fatty_fish"] = FATTY_FISH_MIN_PER_WEEK
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein",
+                role="main",
                 meal_type="lunch",
                 pools=pools,
                 used=set(),
@@ -158,13 +158,13 @@ def test_pick_red_meat_fallback_when_no_alternative():
     g = _make_gen()
     g.tracker.get_week(1, 0)["red_meat_grams"] = 500.0
     red = _R(rid=200, is_red_meat=True, food_group="protein", protein_type="animal")
-    pools = {"protein": [red], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"main": [red], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
     with patch.object(gen_module, "recipe_portion_grams", return_value=100.0):
         g.tracker.get_day(1, 0)["plant"] = 1
         g.tracker.get_week(1, 0)["fatty_fish"] = FATTY_FISH_MIN_PER_WEEK
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein",
+                role="main",
                 meal_type="lunch",
                 pools=pools,
                 used=set(),
@@ -181,12 +181,12 @@ def test_pick_plant_boost_when_zero_for_day():
     g = _make_gen()
     plant = _R(rid=300, protein_type="plant", food_group="protein")
     animal = _R(rid=301, protein_type="animal", food_group="protein")
-    pools = {"protein": [plant, animal], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"main": [plant, animal], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
     with patch.object(gen_module, "recipe_portion_grams", return_value=200.0):
         # plant=0, fish=0 — должен сработать plant boost (приоритетней)
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein",
+                role="main",
                 meal_type="lunch",
                 pools=pools,
                 used=set(),
@@ -203,13 +203,13 @@ def test_pick_fish_boost_when_plant_already_done():
     g = _make_gen()
     fish = _R(rid=400, is_fatty_fish=True, protein_type="animal", food_group="protein")
     other = _R(rid=401, protein_type="animal", food_group="protein")
-    pools = {"protein": [fish, other], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"main": [fish, other], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
     with patch.object(gen_module, "recipe_portion_grams", return_value=180.0):
         g.tracker.get_day(1, 0)["plant"] = 1  # plant уже сделан
         # fish=0 — должен сработать fish boost
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein",
+                role="main",
                 meal_type="lunch",
                 pools=pools,
                 used=set(),
@@ -227,13 +227,13 @@ def test_pick_no_boost_when_all_satisfied():
     g = _make_gen()
     a = _R(rid=500, protein_type="animal", food_group="protein")
     b = _R(rid=501, protein_type="animal", food_group="protein")
-    pools = {"protein": [a, b], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
+    pools = {"main": [a, b], "grain": [], "vegetable": [], "fruit": [], "dairy": [], "oil": [], "other": []}
     with patch.object(gen_module, "recipe_portion_grams", return_value=180.0):
         g.tracker.get_day(1, 0)["plant"] = 1
         g.tracker.get_week(1, 0)["fatty_fish"] = FATTY_FISH_MIN_PER_WEEK
         with patch("random.choice", side_effect=lambda c: c[0]):
             picked = g._pick_for_role(
-                role="protein",
+                role="main",
                 meal_type="lunch",
                 pools=pools,
                 used=set(),

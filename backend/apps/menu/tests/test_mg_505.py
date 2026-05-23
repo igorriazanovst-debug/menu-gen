@@ -229,10 +229,10 @@ def test_pick_for_role_cheat_bypasses_calorie_filter():
     g = _make_generator()
     # один рецепт с калориями ОЧЕНЬ далеко от target
     r = _make_recipe(1, food_group="protein", calories=2000.0)
-    pools = {"protein": [r]}
+    pools = {"main": [r]}
 
     picked = g._pick_for_role(
-        role="protein",
+        role="main",
         meal_type="lunch",
         pools=pools,
         used=set(),
@@ -254,10 +254,10 @@ def test_pick_for_role_cheat_bypasses_red_meat_limit():
     g.tracker.get_week(1, 0)["red_meat_grams"] = 600.0
 
     red = _make_recipe(1, food_group="protein", calories=500.0, is_red_meat=True, protein_type="animal")
-    pools = {"protein": [red]}
+    pools = {"main": [red]}
 
     picked = g._pick_for_role(
-        role="protein",
+        role="main",
         meal_type="lunch",
         pools=pools,
         used=set(),
@@ -279,10 +279,10 @@ def test_pick_for_role_normal_blocks_red_meat_overlimit():
 
     red = _make_recipe(1, food_group="protein", calories=500.0, is_red_meat=True, protein_type="animal")
     plant = _make_recipe(2, food_group="protein", calories=500.0, protein_type="plant")
-    pools = {"protein": [red, plant]}
+    pools = {"main": [red, plant]}
 
     picked = g._pick_for_role(
-        role="protein",
+        role="main",
         meal_type="lunch",
         pools=pools,
         used=set(),
