@@ -29,7 +29,7 @@ DISH_TYPES = {"soup", "main", "salad", "side", "dessert", "drink",
 FOOD_GROUPS = {"grain", "protein", "vegetable", "fruit", "dairy", "oil", "other"}
 PROTEIN_TYPES = {"animal", "plant", "mixed"}
 GRAIN_TYPES = {"whole", "refined"}
-COOKING_METHODS = {"boiled", "baked", "fried", "grilled", "raw", "stewed", "steamed"}
+COOKING_METHODS = {"boiled", "baked", "fried", "grilled", "raw", "stewed", "steamed", "microwave"}
 SOURCES = {"own", "import", "user", "parsed"}
 MEAL_OK = {"breakfast", "lunch", "dinner", "snack"}
 ALLERG_OK = {"nuts", "eggs", "fish", "shellfish", "milk", "gluten", "soy", "peanuts", "sesame"}
@@ -208,6 +208,7 @@ class Command(BaseCommand):
                 per100[k] *= scale
 
         return {
+            "kcal": round(per100["kcal"], 1),
             "proteins": round(per100["proteins"], 1),
             "fats": round(per100["fats"], 1),
             "carbs": round(per100["carbs"], 1),
@@ -238,7 +239,7 @@ class Command(BaseCommand):
             tag = f"строка {row} ({title!r})"
 
             # обязательные
-            req = ["title", "ingredients", "steps", "portion_g", "kcal_per_100g",
+            req = ["title", "ingredients", "steps", "portion_g",
                    "dish_type", "meal_category", "food_group"]
             for f in req:
                 if _s(rec[f]) == "":
@@ -252,6 +253,8 @@ class Command(BaseCommand):
             if fg and fg not in FOOD_GROUPS:
                 errors.append(f"{tag}: food_group={fg!r} вне списка")
             pt = _s(rec["protein_type"]) or None
+            if pt == "dairy":  # RB001_import: молочное не относим к protein_type
+                pt = None
             if pt and pt not in PROTEIN_TYPES:
                 errors.append(f"{tag}: protein_type={pt!r} вне списка")
             gt = _s(rec["grain_type"]) or None
@@ -320,6 +323,9 @@ class Command(BaseCommand):
             kbju, unresolved = self._compute_kbju_100g(
                 d["ingredients"], d["kcal_per_100g"], use_ai)
             if kbju:
+                if d["kcal_per_100g"] is None and kbju.get("kcal"):
+                    from decimal import Decimal as _D
+                    d["kcal_per_100g"] = _D(str(kbju["kcal"]))  # RB001_import: kcal из ингредиентов
                 if d["proteins_per_100g"] is None:
                     d["proteins_per_100g"] = Decimal(str(kbju["proteins"]))
                 if d["fats_per_100g"] is None:
