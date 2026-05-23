@@ -31,6 +31,9 @@ PROTEIN_TYPES = {"animal", "plant", "mixed"}
 GRAIN_TYPES = {"whole", "refined"}
 COOKING_METHODS = {"boiled", "baked", "fried", "grilled", "raw", "stewed", "steamed", "microwave"}
 SOURCES = {"own", "import", "user", "parsed"}
+# RB001_import: разумные границы kcal/100г для готового блюда (нутрициология)
+KCAL_100G_MIN = 40
+KCAL_100G_MAX = 550
 MEAL_OK = {"breakfast", "lunch", "dinner", "snack"}
 ALLERG_OK = {"nuts", "eggs", "fish", "shellfish", "milk", "gluten", "soy", "peanuts", "sesame"}
 EXAMPLE_TITLES = {"Борщ классический", "Овсяная каша на молоке"}
@@ -326,6 +329,11 @@ class Command(BaseCommand):
                 if d["kcal_per_100g"] is None and kbju.get("kcal"):
                     from decimal import Decimal as _D
                     d["kcal_per_100g"] = _D(str(kbju["kcal"]))  # RB001_import: kcal из ингредиентов
+                    _kc = float(kbju["kcal"])
+                    if _kc < KCAL_100G_MIN or _kc > KCAL_100G_MAX:
+                        self.stdout.write(self.style.WARNING(
+                            f"  {d['tag']}: ⚠ kcal/100г={_kc} вне нормы "
+                            f"({KCAL_100G_MIN}..{KCAL_100G_MAX}) — проверьте ингредиенты/АI"))
                 if d["proteins_per_100g"] is None:
                     d["proteins_per_100g"] = Decimal(str(kbju["proteins"]))
                 if d["fats_per_100g"] is None:
