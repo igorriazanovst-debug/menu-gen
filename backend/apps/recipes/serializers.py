@@ -6,6 +6,53 @@ from .models import Recipe, RecipeAuthor, RecipeFavorite
 User = get_user_model()
 
 
+# KBJU_DISPLAY: БД хранит nutrition как ПЛОСКИЙ dict чисел на 100 г:
+#   {"calories": 83.0, "proteins": 2.7, "fats": 5.9, "carbs": 1.0, "sugars": 0.4}
+# Весь фронт (web + mobile) исторически ждёт ВЛОЖЕННЫЙ формат {value, unit}.
+# Нормализуем на чтении в сериализаторе, БД и фронт не трогаем.
+_NUTRITION_UNITS = {
+    "calories": "ккал",
+    "proteins": "г",
+    "fats": "г",
+    "carbs": "г",
+    "sugars": "г",
+    "fiber": "г",
+    "weight": "г",
+}
+
+
+def normalize_nutrition(raw):
+    """flat {key: number} -> {key: {"value": "X", "unit": "..."}};
+    уже вложенный формат оставляем как есть; None -> {}."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key, val in raw.items():
+        if isinstance(val, dict):
+            # уже {value, unit} — оставляем
+            out[key] = val
+            continue
+        if val is None:
+            continue
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            continue
+        # 83.0 -> "83", 5.9 -> "5.9"
+        text = str(int(num)) if num == int(num) else str(round(num, 1))
+        out[key] = {"value": text, "unit": _NUTRITION_UNITS.get(key, "")}
+    return out
+
+
+class _NutritionNormalizeMixin(serializers.Serializer):
+    """Подменяет поле nutrition на нормализованное представление."""
+
+    nutrition = serializers.SerializerMethodField()
+
+    def get_nutrition(self, obj):
+        return normalize_nutrition(getattr(obj, "nutrition", None))
+
+
 CLASSIFICATION_FIELDS = (
     "food_group",
     "suitable_for",
@@ -47,7 +94,7 @@ class _FavoriteStateMixin(serializers.Serializer):
         return bool(f and not f.is_favorite)
 
 
-class RecipeListSerializer(_FavoriteStateMixin, serializers.ModelSerializer):
+class RecipeListSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
     fridge_match_count = serializers.SerializerMethodField()
 
@@ -81,7 +128,7 @@ class RecipeListSerializer(_FavoriteStateMixin, serializers.ModelSerializer):
         return scores.get(obj.id, 0)
 
 
-class RecipeDetailSerializer(_FavoriteStateMixin, serializers.ModelSerializer):
+class RecipeDetailSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
 
     class Meta:

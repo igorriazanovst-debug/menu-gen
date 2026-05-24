@@ -87,9 +87,13 @@ def _check_allergens(recipe, allergens):
 
 
 def _recipe_calories(recipe):
-    # MG_602_V_views: добавлен AttributeError для случая, когда nutrition['calories'] не dict
+    # KBJU_DISPLAY: nutrition['calories'] может быть числом (плоский формат БД)
+    # или dict {value, unit} (legacy). Поддерживаем оба.
     try:
-        return float(recipe.nutrition.get("calories", {}).get("value", 0) or 0)
+        cal = (recipe.nutrition or {}).get("calories", 0)
+        if isinstance(cal, dict):
+            cal = cal.get("value", 0)
+        return float(cal or 0)
     except (TypeError, ValueError, AttributeError):
         return 0.0
 

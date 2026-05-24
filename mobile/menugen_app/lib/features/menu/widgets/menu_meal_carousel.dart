@@ -7,6 +7,104 @@ import '../../../core/theme/app_theme.dart';
 /// Если в slot 1 элемент — карточка во всю ширину; если несколько — Column со
 /// scroll'ом. Поля item — как из MenuItemSerializer:
 /// { id, meal_type, recipe: {...RecipeListSerializer}, member_name, quantity }
+// KBJU_DISPLAY: универсальное чтение nutrition (число ИЛИ {value,unit}) -> double?
+double? nutritionValue(dynamic nutrition, String key) {
+  if (nutrition is! Map) return null;
+  final raw = nutrition[key];
+  if (raw == null) return null;
+  if (raw is num) return raw.toDouble();
+  if (raw is Map) {
+    final v = raw['value'];
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.replaceAll(',', '.'));
+  }
+  if (raw is String) return double.tryParse(raw.replaceAll(',', '.'));
+  return null;
+}
+
+String _fmtNum(double v) =>
+    v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
+
+/// KBJU_DISPLAY: сумма КБЖУ по списку MenuItem (учёт quantity).
+class MealNutritionTotals {
+  final double calories;
+  final double proteins;
+  final double fats;
+  final double carbs;
+  const MealNutritionTotals(this.calories, this.proteins, this.fats, this.carbs);
+
+  bool get isEmpty => calories == 0 && proteins == 0 && fats == 0 && carbs == 0;
+
+  static MealNutritionTotals fromItems(List<Map<String, dynamic>> items) {
+    double cal = 0, pro = 0, fat = 0, carb = 0;
+    for (final it in items) {
+      final recipe = it['recipe'] is Map
+          ? Map<String, dynamic>.from(it['recipe'] as Map)
+          : const <String, dynamic>{};
+      final n = recipe['nutrition'];
+      final q = (it['quantity'] is num) ? (it['quantity'] as num).toDouble() : 1.0;
+      cal += (nutritionValue(n, 'calories') ?? 0) * q;
+      pro += (nutritionValue(n, 'proteins') ?? 0) * q;
+      fat += (nutritionValue(n, 'fats') ?? 0) * q;
+      carb += (nutritionValue(n, 'carbs') ?? 0) * q;
+    }
+    return MealNutritionTotals(cal, pro, fat, carb);
+  }
+}
+
+/// KBJU_DISPLAY: компактная строка-итог КБЖУ (для приёма и для дня).
+class NutritionTotalsBar extends StatelessWidget {
+  final String title;
+  final MealNutritionTotals totals;
+  const NutritionTotalsBar({super.key, required this.title, required this.totals});
+
+  @override
+  Widget build(BuildContext context) {
+    if (totals.isEmpty) return const SizedBox.shrink();
+    Widget cell(String label, double v, String unit) => Expanded(
+          child: Column(
+            children: [
+              Text('${_fmtNum(v)}$unit',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 2),
+              Text(label,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ],
+          ),
+        );
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              cell('ккал', totals.calories, ''),
+              cell('Б', totals.proteins, ' г'),
+              cell('Ж', totals.fats, ' г'),
+              cell('У', totals.carbs, ' г'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class MenuMealCarousel extends StatelessWidget {
   final String slotLabel;
   final List<Map<String, dynamic>> items;
@@ -41,22 +139,31 @@ class MenuMealCarousel extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 16),
-      itemBuilder: (context, i) {
-        final item = items[i];
-        final recipe = item['recipe'] is Map
-            ? Map<String, dynamic>.from(item['recipe'] as Map)
-            : <String, dynamic>{};
-        final recipeId = recipe['id'] as int?;
-        return _RecipeBigCard(
-          recipe: recipe,
-          memberName: item['member_name'] as String?,
-          onTap: recipeId == null ? null : () => onRecipeTap(recipeId),
-        );
-      },
+    final totals = MealNutritionTotals.fromItems(items);  // KBJU_DISPLAY
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        NutritionTotalsBar(title: 'Итог за приём', totals: totals),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 16),
+            itemBuilder: (context, i) {
+              final item = items[i];
+              final recipe = item['recipe'] is Map
+                  ? Map<String, dynamic>.from(item['recipe'] as Map)
+                  : <String, dynamic>{};
+              final recipeId = recipe['id'] as int?;
+              return _RecipeBigCard(
+                recipe: recipe,
+                memberName: item['member_name'] as String?,
+                onTap: recipeId == null ? null : () => onRecipeTap(recipeId),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -77,14 +184,10 @@ class _RecipeBigCard extends StatelessWidget {
   String? get _cookTime => recipe['cook_time'] as String?;
 
   String? get _calories {
-    final n = recipe['nutrition'];
-    if (n is Map) {
-      final cal = n['calories'];
-      if (cal is Map && cal['value'] != null) {
-        return '${cal['value']} ккал';
-      }
-    }
-    return null;
+    // KBJU_DISPLAY: nutrition['calories'] может быть числом или {value,unit}.
+    final v = nutritionValue(recipe['nutrition'], 'calories');
+    if (v == null) return null;
+    return '${_fmtNum(v)} ккал';
   }
 
   @override

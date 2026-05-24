@@ -274,6 +274,10 @@ class _MenuScreenState extends State<MenuScreen> {
                 selected: _selectedDate!,
                 onSelected: (d) => setState(() => _selectedDate = d),
               ),
+              NutritionTotalsBar(  // KBJU_DISPLAY: дневной итог КБЖУ
+                title: 'Итог за день',
+                totals: MealNutritionTotals.fromItems(dayItems),
+              ),
               _MealTabs(
                 slots: _mealSlots,
                 labels: _mealLabels,
@@ -415,7 +419,7 @@ class _HeaderTitle extends StatelessWidget {
   }
 }
 
-class _MealTabs extends StatelessWidget {
+class _MealTabs extends StatefulWidget {
   final List<String> slots;
   final Map<String, String> labels;
   final Map<String, IconData> icons;
@@ -431,17 +435,53 @@ class _MealTabs extends StatelessWidget {
   });
 
   @override
+  State<_MealTabs> createState() => _MealTabsState();
+}
+
+class _MealTabsState extends State<_MealTabs> {
+  // KBJU_DISPLAY: авто-скролл ленты к активному табу при свайпе PageView.
+  final ScrollController _ctrl = ScrollController();
+  static const double _chipExtent = 132.0; // оценка ширины чипа + separator
+
+  @override
+  void didUpdateWidget(covariant _MealTabs old) {
+    super.didUpdateWidget(old);
+    if (old.selected != widget.selected) _scrollToSelected();
+  }
+
+  void _scrollToSelected() {
+    if (!_ctrl.hasClients) return;
+    final target =
+        (widget.selected * _chipExtent) - 40; // лёгкий отступ слева
+    final max = _ctrl.position.maxScrollExtent;
+    final offset = target.clamp(0.0, max);
+    _ctrl.animateTo(offset,
+        duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final slots = widget.slots;
+    final labels = widget.labels;
+    final icons = widget.icons;
+    final onSelected = widget.onSelected;
     return SizedBox(
       height: 64,
       child: ListView.separated(
+        controller: _ctrl,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         itemCount: slots.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
           final slot = slots[i];
-          final active = i == selected;
+          final active = i == widget.selected;
           return ChoiceChip(
             label: Row(
               mainAxisSize: MainAxisSize.min,
