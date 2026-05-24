@@ -51,6 +51,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",  # RA-001
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -109,6 +110,13 @@ AUTH_PASSWORD_VALIDATORS = [
 AUTH_USER_MODEL = "users.User"
 
 LANGUAGE_CODE = "ru-ru"
+# ── RA-001 i18n (admin RU/EN, extensible) ─────────────────────────
+from django.utils.translation import gettext_lazy as _ra_
+LANGUAGES = [
+    ("ru", _ra_("Russian")),
+    ("en", _ra_("English")),
+]
+LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "Europe/Moscow"
 USE_I18N = True
 USE_TZ = True

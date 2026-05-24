@@ -1,0 +1,360 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: menugen-recipes 1.0\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ru\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "Add ingredient"
+msgstr "Добавить ингредиент"
+
+msgid "Add step"
+msgstr "Добавить шаг"
+
+msgid "Allergens"
+msgstr "Аллергены"
+
+msgid "Allergens present in the dish. Allowed: eggs, milk, gluten, fish, shellfish, nuts, peanuts, soy, sesame."
+msgstr "Аллергены в блюде. Допустимо: eggs, milk, gluten, fish, shellfish, nuts, peanuts, soy, sesame."
+
+msgid "Breakfast"
+msgstr "Завтрак"
+
+msgid "Calories / 100 g"
+msgstr "Калории / 100 г"
+
+msgid "Calories / serving"
+msgstr "Калории / порция"
+
+msgid "Calories per 100 g."
+msgstr "Калорийность на 100 г."
+
+msgid "Calories per serving."
+msgstr "Калорийность на 1 порцию."
+
+msgid "Carbs / 100 g"
+msgstr "Углеводы / 100 г"
+
+msgid "Carbs / serving"
+msgstr "Углеводы / порция"
+
+msgid "Carbs per 100 g."
+msgstr "Углеводы на 100 г."
+
+msgid "Carbs per serving, g."
+msgstr "Углеводы на 1 порцию, г."
+
+msgid "Categories"
+msgstr "Категории"
+
+msgid "Classification"
+msgstr "Классификация"
+
+msgid "Contains added sugar."
+msgstr "Содержит добавленный сахар."
+
+msgid "Content"
+msgstr "Содержание"
+
+msgid "Cook time (min)"
+msgstr "Время (мин)"
+
+msgid "Cook time (text)"
+msgstr "Время (текст)"
+
+msgid "Cooking method"
+msgstr "Метод приготовления"
+
+msgid "Cooking method: boiled, baked, fried, grilled, raw, stewed, steamed."
+msgstr "Метод приготовления: boiled, baked, fried, grilled, raw, stewed, steamed."
+
+msgid "Cooking time as free text, e.g. '30 min'. Prefer cook_time_min for numbers."
+msgstr "Время приготовления текстом, напр. '30 мин'. Для чисел используйте «Время (мин)»."
+
+msgid "Cooking time in minutes (integer)."
+msgstr "Время приготовления в минутах (целое число)."
+
+msgid "Country / cuisine"
+msgstr "Страна / кухня"
+
+msgid "Country / cuisine as free text."
+msgstr "Страна / кухня, свободный текст."
+
+msgid "Cover image URL."
+msgstr "URL обложки."
+
+msgid "Created by a user (not from base import)."
+msgstr "Создано пользователем (не из базового импорта)."
+
+msgid "Custom"
+msgstr "Пользовательский"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Dinner"
+msgstr "Ужин"
+
+msgid "Dish is fatty fish."
+msgstr "Блюдо — жирная рыба."
+
+msgid "Dish is red meat."
+msgstr "Блюдо — красное мясо."
+
+msgid "Dish type"
+msgstr "Тип блюда"
+
+msgid "Dish type (first course / main / dessert ...). One value."
+msgstr "Тип блюда (первое / второе / десерт ...). Одно значение."
+
+msgid "Eggs"
+msgstr "Яйца"
+
+msgid "Fats / 100 g"
+msgstr "Жиры / 100 г"
+
+msgid "Fats / serving"
+msgstr "Жиры / порция"
+
+msgid "Fats per 100 g."
+msgstr "Жиры на 100 г."
+
+msgid "Fats per serving, g."
+msgstr "Жиры на 1 порцию, г."
+
+msgid "Fatty fish"
+msgstr "Жирная рыба"
+
+msgid "Fish"
+msgstr "Рыба"
+
+msgid "Flags"
+msgstr "Признаки"
+
+msgid "Food group"
+msgstr "Пищевая группа"
+
+msgid "Free tags. Allowed values mirror dish types: soup, main, salad, side, dessert, drink, bakery, sauce, snack, breakfast_dish."
+msgstr "Свободные теги. Допустимые значения совпадают с типами блюд: soup, main, salad, side, dessert, drink, bakery, sauce, snack, breakfast_dish."
+
+msgid "Gluten"
+msgstr "Глютен"
+
+msgid "Gluten-free"
+msgstr "Без глютена"
+
+msgid "Gluten-free."
+msgstr "Без глютена."
+
+msgid "Grain type"
+msgstr "Тип зерна"
+
+msgid "Grain type: whole, refined."
+msgstr "Тип зерна: whole, refined."
+
+msgid "Grams"
+msgstr "Граммы"
+
+msgid "Has added sugar"
+msgstr "Добавленный сахар"
+
+msgid "Image URL"
+msgstr "URL изображения"
+
+msgid "Ingredients"
+msgstr "Ингредиенты"
+
+msgid "Lactose-free"
+msgstr "Без лактозы"
+
+msgid "Lactose-free."
+msgstr "Без лактозы."
+
+msgid "Legacy ID"
+msgstr "Legacy ID"
+
+msgid "List of ingredients. Each row: name, quantity, unit, grams. Grams are used to compute nutrition."
+msgstr "Список ингредиентов. Строка: название, количество, единица, граммы. Граммы нужны для расчёта КБЖУ."
+
+msgid "Lunch"
+msgstr "Обед"
+
+msgid "Main"
+msgstr "Основное"
+
+msgid "Meal slots this dish fits. Allowed: breakfast, lunch, dinner, snack."
+msgstr "Приёмы пищи, к которым подходит блюдо. Допустимо: breakfast, lunch, dinner, snack."
+
+msgid "Milk"
+msgstr "Молоко"
+
+msgid "Name"
+msgstr "Название"
+
+msgid "Normalized servings count used by the generator."
+msgstr "Нормализованное число порций для генератора."
+
+msgid "Number of servings as given by the source."
+msgstr "Число порций, как указано в источнике."
+
+msgid "Nutrition"
+msgstr "КБЖУ"
+
+msgid "Nutrition (per 100 g)"
+msgstr "КБЖУ (на 100 г)"
+
+msgid "Oil consumption in teaspoons."
+msgstr "Расход масла в чайных ложках."
+
+msgid "Oil, tsp"
+msgstr "Масло, ч.л."
+
+msgid "Ordered cooking steps. Numbering is assigned automatically."
+msgstr "Упорядоченные шаги приготовления. Нумерация присваивается автоматически."
+
+msgid "Original ID from the import source. Read-only."
+msgstr "Исходный ID из источника импорта. Только для чтения."
+
+msgid "Original source URL."
+msgstr "URL первоисточника."
+
+msgid "Peanuts"
+msgstr "Арахис"
+
+msgid "Per-100g nutrition object: calories, proteins, fats, carbs, sugars."
+msgstr "Объект КБЖУ на 100 г: calories, proteins, fats, carbs, sugars."
+
+msgid "Portion & timing"
+msgstr "Порция и время"
+
+msgid "Portion, g"
+msgstr "Порция, г"
+
+msgid "Primary food group: grain, protein, vegetable, fruit, dairy, oil, other."
+msgstr "Основная пищевая группа: grain, protein, vegetable, fruit, dairy, oil, other."
+
+msgid "Protein origin: animal, plant, mixed."
+msgstr "Происхождение белка: animal, plant, mixed."
+
+msgid "Protein type"
+msgstr "Тип белка"
+
+msgid "Proteins / 100 g"
+msgstr "Белки / 100 г"
+
+msgid "Proteins / serving"
+msgstr "Белки / порция"
+
+msgid "Proteins per 100 g."
+msgstr "Белки на 100 г."
+
+msgid "Proteins per serving, g."
+msgstr "Белки на 1 порцию, г."
+
+msgid "Publish selected"
+msgstr "Опубликовать выбранные"
+
+msgid "Published"
+msgstr "Опубликовано"
+
+msgid "Quantity"
+msgstr "Количество"
+
+msgid "Recipe name. Stored as-is (free text)."
+msgstr "Название рецепта. Хранится как есть (свободный текст)."
+
+msgid "Recipe origin: own, import, user, parsed."
+msgstr "Источник рецепта: own, import, user, parsed."
+
+msgid "Red meat"
+msgstr "Красное мясо"
+
+msgid "Service"
+msgstr "Служебное"
+
+msgid "Serving size caption, e.g. '1 plate / 200 g'."
+msgstr "Подпись размера порции, напр. '1 тарелка / 200 г'."
+
+msgid "Serving size label"
+msgstr "Подпись порции"
+
+msgid "Servings"
+msgstr "Порции"
+
+msgid "Servings (normalized)"
+msgstr "Порции (норм.)"
+
+msgid "Sesame"
+msgstr "Кунжут"
+
+msgid "Shellfish"
+msgstr "Моллюски/ракообразные"
+
+msgid "Snack"
+msgstr "Перекус"
+
+msgid "Source"
+msgstr "Источник"
+
+msgid "Source URL"
+msgstr "URL источника"
+
+msgid "Soy"
+msgstr "Соя"
+
+msgid "Step"
+msgstr "Шаг"
+
+msgid "Steps"
+msgstr "Шаги"
+
+msgid "Sugars / 100 g"
+msgstr "Сахара / 100 г"
+
+msgid "Sugars per 100 g."
+msgstr "Сахара на 100 г."
+
+msgid "Suitable for (meal)"
+msgstr "Подходит для (приём пищи)"
+
+msgid "Title"
+msgstr "Название"
+
+msgid "Tree nuts"
+msgstr "Орехи"
+
+msgid "Unit"
+msgstr "Единица"
+
+msgid "Unpublish selected"
+msgstr "Снять с публикации"
+
+msgid "Vegan"
+msgstr "Веганское"
+
+msgid "Vegan."
+msgstr "Веганское."
+
+msgid "Vegetarian"
+msgstr "Вегетарианское"
+
+msgid "Vegetarian."
+msgstr "Вегетарианское."
+
+msgid "Video URL"
+msgstr "URL видео"
+
+msgid "Video URL."
+msgstr "URL видео."
+
+msgid "Visible to clients."
+msgstr "Видно клиентам."
+
+msgid "Weight of one serving, grams."
+msgstr "Вес одной порции, граммы."
+
+msgid "legacy"
+msgstr "устар."
+
