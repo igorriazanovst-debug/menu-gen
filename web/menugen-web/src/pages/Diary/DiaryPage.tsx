@@ -1,83 +1,241 @@
-import React, { useState, useEffect } from 'react';
-import client from '../../api/client';
+// DIARY_V2
+import React, { useCallback, useEffect, useState } from 'react';
+import { diaryApi } from '../../api/diary';
+import { familyApi } from '../../api/family';
 import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { AddDiaryEntryModal } from '../../components/diary/AddDiaryEntryModal';
+import { ImportMenuModal } from '../../components/diary/ImportMenuModal';
+import { getErrorMessage } from '../../utils/api';
+import { MEAL_LABELS } from '../../types';
+import type { DiaryEntry, DiaryDayStats, FamilyMember } from '../../types';
 
-interface DiaryEntry {
-  id: number; date: string; meal_type: string;
-  recipe_title?: string; custom_name?: string;
-  nutrition: Record<string, { value: string; unit: string }>;
-  quantity: number;
-}
+const today = () => new Date().toISOString().split('T')[0];
+const WATER_GOAL_ML = 2000;
+const WATER_STEPS = [250, 500];
 
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Завтрак', lunch: 'Обед', dinner: 'Ужин', snack: 'Перекус',
-};
+const emptyBucket = { calories: 0, proteins: 0, fats: 0, carbs: 0 };
+
+const StatBox: React.FC<{ label: string; planned: number; actual: number; unit: string }> =
+({ label, planned, actual, unit }) => (
+  <div className="rounded-xl bg-rice px-3 py-2">
+    <div className="text-xs text-gray-500">{label}</div>
+    <div className="text-sm font-semibold text-chocolate">
+      {Math.round(actual)}<span className="text-xs font-normal text-gray-400"> / {Math.round(planned)} {unit}</span>
+    </div>
+  </div>
+);
 
 export const DiaryPage: React.FC = () => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(today());
+  const [memberId, setMemberId] = useState<number | undefined>(undefined);
+  const [members, setMembers] = useState<FamilyMember[]>([]);
+  const [isHead, setIsHead] = useState(false);
+
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
+  const [stats, setStats] = useState<DiaryDayStats | null>(null);
+  const [waterMl, setWaterMl] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
+  const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [customWater, setCustomWater] = useState('');
+
+  // Family (for member switcher; HEAD only).
   useEffect(() => {
-    setLoading(true);
-    client.get('/diary/', { params: { date } })
-      .then((r) => {
-        const data = r.data;
-        if (Array.isArray(data)) setEntries(data);
-        else if (Array.isArray(data?.results)) setEntries(data.results);
-        else setEntries([]);
+    familyApi.get()
+      .then(({ data }) => {
+        setMembers(data.members ?? []);
+        const me = data.members?.find((m) => m.role === 'head' || m.role === 'owner');
+        setIsHead(!!me);
       })
-      .catch(() => setEntries([]))
-      .finally(() => setLoading(false));
-  }, [date]);
+      .catch(() => { /* non-fatal */ });
+  }, []);
 
-  const totalCal = entries.reduce((sum, e) => {
-    const cal = parseFloat(e.nutrition?.calories?.value ?? '0') * e.quantity;
-    return sum + (isNaN(cal) ? 0 : cal);
-  }, 0);
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const [e, s, w] = await Promise.all([
+        diaryApi.list({ date, member_id: memberId }),
+        diaryApi.stats(date, date, memberId).catch(() => [] as DiaryDayStats[]),
+        diaryApi.getWater(date).catch(() => ({ date, water_ml: 0 })),
+      ]);
+      setEntries(e);
+      setStats(s[0] ?? { date, planned: emptyBucket, actual: emptyBucket, total: emptyBucket });
+      setWaterMl(w.water_ml ?? 0);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [date, memberId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggleEaten = async (e: DiaryEntry) => {
+    try {
+      await diaryApi.patch(e.id, { is_eaten: !e.is_eaten });
+      load();
+    } catch (err) { alert(getErrorMessage(err)); }
+  };
+
+  const remove = async (e: DiaryEntry) => {
+    if (!window.confirm('Удалить запись?')) return;
+    try {
+      await diaryApi.remove(e.id);
+      load();
+    } catch (err) { alert(getErrorMessage(err)); }
+  };
+
+  const addWater = async (ml: number) => {
+    const next = Math.max(0, waterMl + ml);
+    setWaterMl(next); // optimistic
+    try { await diaryApi.setWater(date, next); }
+    catch (err) { setWaterMl(waterMl); alert(getErrorMessage(err)); }
+  };
+
+  const setWaterExact = async () => {
+    const v = parseInt(customWater, 10);
+    if (!Number.isFinite(v) || v < 0) return;
+    setCustomWater('');
+    setWaterMl(v);
+    try { await diaryApi.setWater(date, v); }
+    catch (err) { setWaterMl(waterMl); alert(getErrorMessage(err)); }
+  };
+
+  const planned = entries.filter((e) => e.planned_menu_item != null);
+  const manual = entries.filter((e) => e.planned_menu_item == null);
+
+  const Entry: React.FC<{ e: DiaryEntry; canCheck: boolean }> = ({ e, canCheck }) => (
+    <Card className="p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          {canCheck ? (
+            <input type="checkbox" checked={e.is_eaten} onChange={() => toggleEaten(e)}
+                   className="w-5 h-5 accent-tomato cursor-pointer" />
+          ) : (
+            <span className="text-green-500 text-lg">✓</span>
+          )}
+          <div className="min-w-0">
+            <span className="text-xs text-gray-400 uppercase tracking-wide">
+              {MEAL_LABELS[e.meal_type] ?? e.meal_type}
+            </span>
+            <p className="font-medium text-chocolate mt-0.5 truncate">
+              {e.recipe_title ?? e.custom_name ?? 'Без названия'}
+              {e.quantity !== 1 && <span className="text-gray-400"> ×{e.quantity}</span>}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {e.nutrition?.calories && (
+            <span className="text-sm text-gray-500 whitespace-nowrap">
+              {e.nutrition.calories.value} {e.nutrition.calories.unit}
+            </span>
+          )}
+          <button onClick={() => remove(e)} className="text-gray-400 hover:text-red-600 text-sm" title="Удалить">🗑</button>
+        </div>
+      </div>
+    </Card>
+  );
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-chocolate">Дневник питания</h1>
-      <div className="flex items-center gap-4">
-        <input type="date" value={date}
-          max={new Date().toISOString().split('T')[0]}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-chocolate">Дневник питания</h1>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Импорт</Button>
+          <Button onClick={() => setShowAdd(true)}>＋ Добавить</Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <input type="date" value={date} max={today()}
           onChange={(e) => setDate(e.target.value)}
           className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-tomato/40 focus:border-tomato outline-none" />
-        {totalCal > 0 && (
-          <div className="px-3 py-1.5 rounded-xl bg-rice text-sm text-chocolate">
-            🔥 {Math.round(totalCal)} ккал за день
-          </div>
+        {isHead && members.length > 1 && (
+          <select value={memberId ?? ''} onChange={(e) => setMemberId(e.target.value ? Number(e.target.value) : undefined)}
+            className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-tomato/40 focus:border-tomato outline-none">
+            <option value="">Я</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
         )}
       </div>
-      {loading ? <PageSpinner /> : entries.length === 0 ? (
+
+      {/* Stats card (план / факт) */}
+      {stats && (
+        <Card className="p-4">
+          <div className="text-sm font-semibold text-chocolate mb-3">Итог за день (факт / план)</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <StatBox label="Калории" planned={stats.planned.calories} actual={stats.actual.calories} unit="ккал" />
+            <StatBox label="Белки" planned={stats.planned.proteins} actual={stats.actual.proteins} unit="г" />
+            <StatBox label="Жиры" planned={stats.planned.fats} actual={stats.actual.fats} unit="г" />
+            <StatBox label="Углеводы" planned={stats.planned.carbs} actual={stats.actual.carbs} unit="г" />
+          </div>
+        </Card>
+      )}
+
+      {/* Water tracker */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-semibold text-chocolate">💧 Вода</div>
+          <div className="text-sm text-gray-500">
+            {waterMl} / {WATER_GOAL_ML} мл
+          </div>
+        </div>
+        <div className="h-2 rounded-full bg-rice overflow-hidden mb-3">
+          <div className="h-full bg-tomato transition-all"
+               style={{ width: `${Math.min(100, (waterMl / WATER_GOAL_ML) * 100)}%` }} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {WATER_STEPS.map((ml) => (
+            <Button key={ml} variant="ghost" onClick={() => addWater(ml)}>+{ml} мл</Button>
+          ))}
+          <Button variant="ghost" onClick={() => addWater(-250)} disabled={waterMl <= 0}>−250 мл</Button>
+          <div className="flex items-center gap-2 ml-auto">
+            <input type="number" value={customWater} min="0"
+              onChange={(e) => setCustomWater(e.target.value)}
+              placeholder="мл"
+              className="w-24 rounded-xl border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-tomato/40 focus:border-tomato outline-none" />
+            <Button variant="ghost" onClick={setWaterExact} disabled={!customWater}>Задать</Button>
+          </div>
+        </div>
+      </Card>
+
+      {error && <p className="text-red-600 text-sm">{error}</p>}
+
+      {loading ? <PageSpinner /> : (entries.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <div className="text-5xl mb-4">📔</div>
           <p>Нет записей за этот день</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {entries.map((e) => (
-            <Card key={e.id} className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-gray-400 uppercase tracking-wide">
-                    {MEAL_LABELS[e.meal_type] ?? e.meal_type}
-                  </span>
-                  <p className="font-medium text-chocolate mt-0.5">
-                    {e.recipe_title ?? e.custom_name ?? 'Без названия'}
-                  </p>
-                </div>
-                {e.nutrition?.calories && (
-                  <span className="text-sm text-gray-500">
-                    {e.nutrition.calories.value} {e.nutrition.calories.unit}
-                  </span>
-                )}
-              </div>
-            </Card>
-          ))}
+        <div className="space-y-6">
+          {planned.length > 0 && (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-chocolate">📋 План ({planned.length})</div>
+              {planned.map((e) => <Entry key={e.id} e={e} canCheck />)}
+            </div>
+          )}
+          {manual.length > 0 && (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-chocolate">🍽 Факт ({manual.length})</div>
+              {manual.map((e) => <Entry key={e.id} e={e} canCheck={false} />)}
+            </div>
+          )}
         </div>
+      ))}
+
+      {showAdd && (
+        <AddDiaryEntryModal date={date} memberId={memberId}
+          onClose={() => setShowAdd(false)} onAdded={load} />
+      )}
+      {showImport && (
+        <ImportMenuModal date={date} memberId={memberId}
+          onClose={() => setShowImport(false)} onImported={load} />
       )}
     </div>
   );

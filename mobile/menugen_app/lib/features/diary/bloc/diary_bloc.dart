@@ -40,6 +40,7 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     on<DiaryAddManualRequested>(_onAddManual);
     on<DiaryDeleteRequested>(_onDelete);
     on<DiaryImportFromMenuRequested>(_onImportFromMenu);
+    on<DiaryWaterSetRequested>(_onWaterSet); // DIARY_V2
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────
@@ -124,12 +125,24 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
               total: const NutritionBucket.zero(),
             );
 
+      // DIARY_V2: water for the day (best-effort).
+      int waterMl = 0;
+      try {
+        final wParams = <String, dynamic>{'date': e.date};
+        if (e.memberId != null) wParams['member_id'] = e.memberId;
+        final wResp = await apiClient.get('/diary/water/', params: wParams);
+        if (wResp is Map && wResp['water_ml'] != null) {
+          waterMl = (wResp['water_ml'] as num).toInt();
+        }
+      } catch (_) {/* non-fatal */}
+
       premiumGate?.reportReadSuccess();
       emit(DiaryLoaded(
         date: e.date,
         memberId: e.memberId,
         entries: entries,
         stats: dayStats,
+        waterMl: waterMl,
       ));
     } catch (err) {
       emit(_toErrorState(err, isWrite: false));
@@ -236,6 +249,26 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
         memberId: prev is DiaryLoaded ? prev.memberId : null,
       ));
     } catch (err) {
+      emit(_toErrorState(err, isWrite: true));
+    }
+  }
+
+  // DIARY_V2: optimistic water set, persist via POST /diary/water/.
+  Future<void> _onWaterSet(
+    DiaryWaterSetRequested e,
+    Emitter<DiaryState> emit,
+  ) async {
+    final prev = state;
+    if (prev is DiaryLoaded) {
+      emit(prev.copyWith(waterMl: e.waterMl < 0 ? 0 : e.waterMl));
+    }
+    try {
+      await apiClient.post('/diary/water/', data: {
+        'date': e.date,
+        'water_ml': e.waterMl < 0 ? 0 : e.waterMl,
+      });
+    } catch (err) {
+      if (prev is DiaryLoaded) emit(prev); // revert
       emit(_toErrorState(err, isWrite: true));
     }
   }

@@ -18,11 +18,28 @@ class DiaryScreen extends StatefulWidget {
 class _DiaryScreenState extends State<DiaryScreen> {
   DateTime _selected = DateTime.now();
   int? _memberId;
+  List<Map<String, dynamic>> _members = const []; // DIARY_V2
+  bool _isHead = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadFamily(); // DIARY_V2
+  }
+
+  Future<void> _loadFamily() async {
+    try {
+      final api = context.read<DiaryBloc>().apiClient;
+      final r = await api.get('/family/');
+      final m = (r is Map ? r['members'] : null);
+      if (m is List && mounted) {
+        setState(() {
+          _members = m.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+          _isHead = _members.any((x) => x['role'] == 'head' || x['role'] == 'owner');
+        });
+      }
+    } catch (_) {/* non-fatal */}
   }
 
   void _load() {
@@ -40,12 +57,33 @@ class _DiaryScreenState extends State<DiaryScreen> {
       appBar: AppBar(
         title: const Text('Дневник питания'),
         actions: [
+          if (_isHead && _members.length > 1) // DIARY_V2 member switcher
+            PopupMenuButton<int?>(
+              icon: const Icon(Icons.people_outline),
+              tooltip: 'Член семьи',
+              onSelected: (v) {
+                setState(() => _memberId = v);
+                _load();
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem<int?>(value: null, child: Text('Я')),
+                ..._members.map((m) => PopupMenuItem<int?>(
+                      value: m['id'] as int?,
+                      child: Text((m['name'] as String?) ?? '—'),
+                    )),
+              ],
+            ),
           IconButton(
             icon: const Icon(Icons.download_for_offline_outlined),
             tooltip: 'Импорт из меню',
             onPressed: _onImportTap,
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _onAddManualTap, // DIARY_V2
+        icon: const Icon(Icons.add),
+        label: const Text('Добавить'),
       ),
       body: Column(
         children: [
@@ -59,6 +97,24 @@ class _DiaryScreenState extends State<DiaryScreen> {
               _load();
             },
             calendarFormat: CalendarFormat.week,
+          ),
+          _WaterCard( // DIARY_V2
+            onAdd: (delta) {
+              final st = context.read<DiaryBloc>().state;
+              final cur = st is DiaryLoaded ? st.waterMl : 0;
+              context.read<DiaryBloc>().add(DiaryWaterSetRequested(
+                date: DateFormat('yyyy-MM-dd').format(_selected),
+                waterMl: (cur + delta) < 0 ? 0 : (cur + delta),
+                memberId: _memberId,
+              ));
+            },
+            onSet: (ml) {
+              context.read<DiaryBloc>().add(DiaryWaterSetRequested(
+                date: DateFormat('yyyy-MM-dd').format(_selected),
+                waterMl: ml < 0 ? 0 : ml,
+                memberId: _memberId,
+              ));
+            },
           ),
           Expanded(child: _buildBody()),
         ],
@@ -123,6 +179,37 @@ class _DiaryScreenState extends State<DiaryScreen> {
           ),
         );
   }
+
+  // DIARY_V2: manual add dialog.
+  void _onAddManualTap() async {
+    final result = await showDialog<_ManualEntry?>(
+      context: context,
+      builder: (_) => const _AddManualDialog(),
+    );
+    if (result == null) return;
+    if (!mounted) return;
+    final nutrition = <String, dynamic>{};
+    if (result.calories != null) {
+      nutrition['calories'] = {'value': result.calories.toString(), 'unit': 'ккал'};
+    }
+    if (result.proteins != null) {
+      nutrition['proteins'] = {'value': result.proteins.toString(), 'unit': 'г'};
+    }
+    if (result.fats != null) {
+      nutrition['fats'] = {'value': result.fats.toString(), 'unit': 'г'};
+    }
+    if (result.carbs != null) {
+      nutrition['carbs'] = {'value': result.carbs.toString(), 'unit': 'г'};
+    }
+    context.read<DiaryBloc>().add(DiaryAddManualRequested(
+          date: DateFormat('yyyy-MM-dd').format(_selected),
+          mealType: result.mealType,
+          customName: result.name,
+          quantity: result.quantity,
+          nutrition: nutrition,
+        ));
+  }
+
 }
 
 class _LoadedView extends StatelessWidget {
@@ -327,3 +414,198 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
     );
   }
 }
+
+
+// DIARY_V2: water tracker card under calendar.
+class _WaterCard extends StatefulWidget {
+  final void Function(int delta) onAdd;
+  final void Function(int ml) onSet;
+  const _WaterCard({required this.onAdd, required this.onSet});
+  @override
+  State<_WaterCard> createState() => _WaterCardState();
+}
+
+class _WaterCardState extends State<_WaterCard> {
+  static const int _goal = 2000;
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = context.watch<DiaryBloc>().state;
+    final ml = st is DiaryLoaded ? st.waterMl : 0;
+    final pct = (_goal == 0) ? 0.0 : (ml / _goal).clamp(0.0, 1.0);
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('💧 Вода', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('$ml / $_goal мл', style: TextStyle(color: Colors.grey.shade600)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(value: pct, minHeight: 8),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton(onPressed: () => widget.onAdd(250), child: const Text('+250 мл')),
+                OutlinedButton(onPressed: () => widget.onAdd(500), child: const Text('+500 мл')),
+                OutlinedButton(
+                  onPressed: ml <= 0 ? null : () => widget.onAdd(-250),
+                  child: const Text('−250 мл'),
+                ),
+                SizedBox(
+                  width: 90,
+                  child: TextField(
+                    controller: _ctrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(hintText: 'мл', isDense: true),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final v = int.tryParse(_ctrl.text.trim());
+                    if (v != null) {
+                      widget.onSet(v);
+                      _ctrl.clear();
+                      FocusScope.of(context).unfocus();
+                    }
+                  },
+                  child: const Text('Задать'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// DIARY_V2: result of manual-add dialog.
+class _ManualEntry {
+  final MealType mealType;
+  final String name;
+  final double quantity;
+  final num? calories;
+  final num? proteins;
+  final num? fats;
+  final num? carbs;
+  const _ManualEntry({
+    required this.mealType,
+    required this.name,
+    required this.quantity,
+    this.calories,
+    this.proteins,
+    this.fats,
+    this.carbs,
+  });
+}
+
+class _AddManualDialog extends StatefulWidget {
+  const _AddManualDialog();
+  @override
+  State<_AddManualDialog> createState() => _AddManualDialogState();
+}
+
+class _AddManualDialogState extends State<_AddManualDialog> {
+  MealType _meal = MealType.breakfast;
+  final _name = TextEditingController();
+  final _qty = TextEditingController(text: '1');
+  final _cal = TextEditingController();
+  final _prot = TextEditingController();
+  final _fat = TextEditingController();
+  final _carb = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _qty.dispose();
+    _cal.dispose();
+    _prot.dispose();
+    _fat.dispose();
+    _carb.dispose();
+    super.dispose();
+  }
+
+  num? _n(TextEditingController c) {
+    final v = double.tryParse(c.text.trim().replaceAll(',', '.'));
+    return v;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Добавить вручную'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DropdownButtonFormField<MealType>(
+              value: _meal,
+              decoration: const InputDecoration(labelText: 'Приём пищи'),
+              items: MealType.values
+                  .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
+                  .toList(),
+              onChanged: (v) => setState(() => _meal = v ?? MealType.breakfast),
+            ),
+            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Название')),
+            TextField(controller: _qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Количество (порций)')),
+            TextField(controller: _cal, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Калории (ккал)')),
+            TextField(controller: _prot, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Белки (г)')),
+            TextField(controller: _fat, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Жиры (г)')),
+            TextField(controller: _carb, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Углеводы (г)')),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Отмена')),
+        FilledButton(
+          onPressed: () {
+            if (_name.text.trim().isEmpty) {
+              setState(() => _error = 'Укажите название блюда');
+              return;
+            }
+            Navigator.pop(
+              context,
+              _ManualEntry(
+                mealType: _meal,
+                name: _name.text.trim(),
+                quantity: _n(_qty)?.toDouble() ?? 1.0,
+                calories: _n(_cal),
+                proteins: _n(_prot),
+                fats: _n(_fat),
+                carbs: _n(_carb),
+              ),
+            );
+          },
+          child: const Text('Добавить'),
+        ),
+      ],
+    );
+  }
+}
+

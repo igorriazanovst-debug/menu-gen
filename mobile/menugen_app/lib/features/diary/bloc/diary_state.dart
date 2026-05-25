@@ -19,12 +19,14 @@ class DiaryLoaded extends DiaryState {
   final int? memberId;
   final List<DiaryEntry> entries;
   final DiaryDayStats stats;
+  final int waterMl; // DIARY_V2
 
   const DiaryLoaded({
     required this.date,
     required this.memberId,
     required this.entries,
     required this.stats,
+    this.waterMl = 0,
   });
 
   /// Planned entries (came from menu import, may or may not be eaten yet).
@@ -40,17 +42,19 @@ class DiaryLoaded extends DiaryState {
     int? memberId,
     List<DiaryEntry>? entries,
     DiaryDayStats? stats,
+    int? waterMl,
   }) {
     return DiaryLoaded(
       date: date ?? this.date,
       memberId: memberId ?? this.memberId,
       entries: entries ?? this.entries,
       stats: stats ?? this.stats,
+      waterMl: waterMl ?? this.waterMl,
     );
   }
 
   @override
-  List<Object?> get props => [date, memberId, entries, stats];
+  List<Object?> get props => [date, memberId, entries, stats, waterMl];
 }
 
 /// MG-606: backend denied access with 403 from IsFamilyPremiumOrReadOnly.

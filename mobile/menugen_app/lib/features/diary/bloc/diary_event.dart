@@ -70,3 +70,13 @@ class DiaryImportFromMenuRequested extends DiaryEvent {
   @override
   List<Object?> get props => [menuId, date, memberId];
 }
+
+// DIARY_V2: water tracker events.
+class DiaryWaterSetRequested extends DiaryEvent {
+  final String date;
+  final int waterMl;
+  final int? memberId;
+  const DiaryWaterSetRequested({required this.date, required this.waterMl, this.memberId});
+  @override
+  List<Object?> get props => [date, waterMl, memberId];
+}

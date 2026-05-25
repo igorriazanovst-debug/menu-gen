@@ -260,3 +260,29 @@ export interface RecognizePhotoResponse {
   products?: RecognizedProduct[];
   raw_text: string;
 }
+
+// DIARY_V2 types
+export type DiaryNutrition = Partial<Record<'calories' | 'proteins' | 'fats' | 'carbs' | 'sugars' | 'fiber', NutritionValue>>;
+export interface DiaryEntry {
+  id: number;
+  date: string;
+  meal_type: MealType;
+  recipe?: number | null;
+  recipe_title?: string | null;
+  custom_name?: string;
+  nutrition: DiaryNutrition;
+  quantity: number;
+  planned_menu_item?: number | null;
+  is_eaten: boolean;
+  created_at?: string;
+}
+export interface DiaryNutritionBucket {
+  calories: number; proteins: number; fats: number; carbs: number;
+}
+export interface DiaryDayStats {
+  date: string;
+  planned: DiaryNutritionBucket;
+  actual: DiaryNutritionBucket;
+  total: DiaryNutritionBucket;
+}
+export interface DiaryWaterLog { id?: number; date: string; water_ml: number; }
