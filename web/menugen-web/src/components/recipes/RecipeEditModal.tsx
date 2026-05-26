@@ -109,7 +109,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
     setUploading(true);
     setError('');
     try {
-      const { data } = await recipesApi.uploadMedia(file, 'image');
+      const { data } = await recipesApi.uploadMedia(file, type);
       if (type === 'image') setImageUrl(data.url);
       else                  setVideoUrl(data.url);
     } catch (e) {

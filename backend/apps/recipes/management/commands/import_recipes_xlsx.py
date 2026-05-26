@@ -361,7 +361,7 @@ class Command(BaseCommand):
                 portion = d["portion_g"] or 0
                 k100 = d["kcal_per_100g"]
                 # пересчёт на порцию для старых полей
-                def per_portion(x):
+                def per_portion(x):  # noqa: E306
                     if x is None or not portion:
                         return None
                     return Decimal(str(round(float(x) * portion / 100.0, 1)))

@@ -8,6 +8,8 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
+from rest_framework.authentication import SessionAuthentication  # UPLOAD_MEDIA_AUTH
+from rest_framework_simplejwt.authentication import JWTAuthentication  # UPLOAD_MEDIA_AUTH
 from rest_framework.views import APIView
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -18,6 +20,8 @@ MAX_VIDEO_SIZE = 200 * 1024 * 1024  # 200 MB
 
 class RecipeMediaUploadView(APIView):
     parser_classes = [MultiPartParser]
+    # UPLOAD_MEDIA_AUTH: JWT for web client, Session for Django admin
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(

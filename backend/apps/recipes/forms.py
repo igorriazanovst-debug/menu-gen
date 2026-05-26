@@ -149,7 +149,7 @@ class _IngredientsWidget(forms.Widget):
         rows = []
         for it in items:
             rows.append(self._row(name, it.get("name", ""), it.get("quantity", ""),
-                                   it.get("unit", ""), it.get("grams", ""), h_del))
+                                   it.get("unit", ""), it.get("grams", ""), h_del))  # noqa: E127
         empty_row = self._row(name, "", "", "", "", h_del)
         return mark_safe("""
 <div class="mg-ing" data-name="{name}">
@@ -274,6 +274,73 @@ class _PassthroughField(forms.Field):
             json.dumps(data or [], sort_keys=True, ensure_ascii=False)
 
 
+# ── PHOTO_UPLOAD_ADMIN: URL input + local-file upload button ─────────────────
+class _MediaUploadWidget(forms.TextInput):
+    """Text input for a media URL plus a button to upload a local file.
+
+    The file is POSTed to the same API endpoint the web client uses
+    (`/api/v1/recipes/upload-media/`); the returned absolute URL is written
+    back into the text input. No host/url is hardcoded — the path is relative
+    and resolved against the current origin in the browser.
+    """
+
+    class Media:
+        pass
+
+    def __init__(self, media_type="image", attrs=None):
+        self.media_type = media_type
+        super().__init__(attrs)
+
+    def render(self, name, value, attrs=None, renderer=None):
+        base = super().render(name, value, attrs=attrs, renderer=renderer)
+        accept = "image/*" if self.media_type == "image" else "video/mp4,video/webm,video/quicktime"
+        hint = (
+            str(_("JPEG/PNG/WebP/GIF — up to 10 MB"))
+            if self.media_type == "image"
+            else str(_("MP4/WebM/MOV — up to 200 MB"))
+        )
+        btn = str(_("Upload file"))
+        uploading = str(_("Uploading…"))
+        err = str(_("Upload failed"))
+        html = (
+            '<div class="mg-media-upload" style="margin-top:6px;">'
+            '{base}'
+            '<div style="margin-top:6px;">'
+            '<button type="button" class="mg-media-btn" '
+            'style="padding:4px 10px;">{btn}</button>'
+            '<input type="file" class="mg-media-file" accept="{accept}" style="display:none;">'
+            '<span class="mg-media-status" style="margin-left:10px;color:#888;font-size:11px;">{hint}</span>'
+            '</div>'
+            '</div>'
+            '<script>(function(){{'
+            'var root=document.currentScript.previousElementSibling;'
+            'var input=root.querySelector("input[name=\'{name}\']")'
+            '||root.querySelector("input[type=text],input:not([type])");'
+            'var btn=root.querySelector(".mg-media-btn");'
+            'var file=root.querySelector(".mg-media-file");'
+            'var status=root.querySelector(".mg-media-status");'
+            'function csrf(){{var m=document.cookie.match(/csrftoken=([^;]+)/);return m?m[1]:"";}}'
+            'btn.addEventListener("click",function(){{file.click();}});'
+            'file.addEventListener("change",function(){{'
+            'var f=file.files&&file.files[0];if(!f)return;'
+            'status.textContent="{uploading}";'
+            'var fd=new FormData();fd.append("file",f);fd.append("media_type","{mtype}");'
+            'fetch("/api/v1/recipes/upload-media/",{{method:"POST",body:fd,'
+            'headers:{{"X-CSRFToken":csrf()}},credentials:"same-origin"}})'
+            '.then(function(r){{if(!r.ok)throw new Error(r.status);return r.json();}})'
+            '.then(function(d){{if(input&&d&&d.url){{input.value=d.url;}}status.textContent=d&&d.url?d.url:"{err}";}})'
+            '.catch(function(e){{status.textContent="{err}: "+e;}})'
+            '.finally(function(){{file.value="";}});'
+            '}});'
+            '}})();</script>'
+        ).format(
+            base=base, btn=btn, accept=accept, hint=hint, name=name,
+            uploading=uploading, mtype=self.media_type, err=err,
+        )
+        return mark_safe(html)
+# ── /PHOTO_UPLOAD_ADMIN ──────────────────────────────────────────────────────
+
+
 # ── The admin form ────────────────────────────────────────────────────────────
 class RecipeAdminForm(forms.ModelForm):
     ingredients = _PassthroughField(widget=_IngredientsWidget(), label=_("Ingredients"))
@@ -286,6 +353,15 @@ class RecipeAdminForm(forms.ModelForm):
     )
     categories = _PassthroughField(
         widget=_JSONListMultiCheckbox(choices=CATEGORY_CHOICES), label=_("Categories")
+    )
+
+    image_url = forms.URLField(
+        required=False,
+        widget=_MediaUploadWidget(media_type="image"), label=_("Image URL"),
+    )
+    video_url = forms.URLField(
+        required=False,
+        widget=_MediaUploadWidget(media_type="video"), label=_("Video URL"),
     )
 
     class Meta:
