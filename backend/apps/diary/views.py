@@ -383,7 +383,7 @@ class DiaryCopyView(APIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter("member_id", int, description="DIARY_COPY_V3: copy into a family member's diary (HEAD only)"),
+            OpenApiParameter("member_id", int, description="Copy into a member diary (HEAD only)"),  # DIARY_COPY_V3
         ],
         request=DiaryCopySerializer,
         responses={201: DiaryEntrySerializer(many=True)},
