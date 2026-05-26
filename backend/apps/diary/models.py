@@ -30,6 +30,8 @@ class DiaryEntry(models.Model):
         related_name="diary_entry",
     )
     is_eaten = models.BooleanField(default=False)
+    # DIARY_COPY_V3: explicit plan flag, decoupled from planned_menu_item source.
+    is_planned = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

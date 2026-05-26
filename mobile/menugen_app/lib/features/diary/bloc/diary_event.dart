@@ -80,3 +80,17 @@ class DiaryWaterSetRequested extends DiaryEvent {
   @override
   List<Object?> get props => [date, waterMl, memberId];
 }
+
+// DIARY_COPY_V3: copy selected entries into a target day as plan.
+class DiaryCopyRequested extends DiaryEvent {
+  final List<int> entryIds;
+  final String targetDate; // YYYY-MM-DD
+  final int? memberId;
+  const DiaryCopyRequested({
+    required this.entryIds,
+    required this.targetDate,
+    this.memberId,
+  });
+  @override
+  List<Object?> get props => [entryIds, targetDate, memberId];
+}

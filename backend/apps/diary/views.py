@@ -16,6 +16,7 @@ from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 from .models import DiaryEntry, WaterLog
 from .permissions import IsDiaryEntryOwner
 from .serializers import (
+    DiaryCopySerializer,  # DIARY_COPY_V3
     DiaryEntrySerializer,
     DiaryEntryWriteSerializer,
     DiaryImportSerializer,
@@ -234,7 +235,8 @@ class DiaryStatsView(APIView):
                 }
             nutr = _entry_nutrition(entry)
 
-            is_planned = entry.planned_menu_item_id is not None
+            # DIARY_COPY_V3: plan flag = explicit field OR legacy menu link.
+            is_planned = bool(getattr(entry, "is_planned", False)) or (entry.planned_menu_item_id is not None)
             # actual: is_eaten=True ИЛИ запись без плана (manual)
             is_actual = entry.is_eaten or (not is_planned)
 
@@ -315,6 +317,7 @@ class DiaryImportFromMenuView(APIView):
                         "nutrition": getattr(mi.recipe, "nutrition", {}) or {},
                         "quantity": mi.quantity,
                         "is_eaten": False,
+                        "is_planned": True,  # DIARY_COPY_V3
                     },
                 )
                 if was_created:
@@ -357,3 +360,70 @@ class WaterLogView(APIView):
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
         return Response(WaterLogSerializer(obj).data)
+
+
+# DIARY_COPY_V3: copy selected entries from any day into target day as PLAN.
+class DiaryCopyView(APIView):
+    """POST /api/v1/diary/copy/?member_id=
+
+    Body: {"entry_ids": [int, ...], "target_date": "YYYY-MM-DD"}
+
+    Copies the chosen diary entries (which must be visible to the target member)
+    into ``target_date`` as planned entries (is_planned=True, is_eaten=False,
+    planned_menu_item=None). Source entries are left untouched.
+
+    Access:
+    - target member resolved via _resolve_target_member (?member_id=, HEAD-only
+      for other members).
+    - only entries belonging to the target member can be copied; anything else
+      is silently ignored (we never leak existence of other members' rows).
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("member_id", int, description="DIARY_COPY_V3: copy into a family member's diary (HEAD only)"),
+        ],
+        request=DiaryCopySerializer,
+        responses={201: DiaryEntrySerializer(many=True)},
+    )
+    def post(self, request):
+        current = _get_member(request.user)
+        if not current:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+        target = _resolve_target_member(request, current)
+
+        body = DiaryCopySerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        entry_ids = body.validated_data["entry_ids"]
+        target_date = body.validated_data["target_date"]
+
+        # Only entries owned by the target member can be copied.
+        sources = list(
+            DiaryEntry.objects.filter(pk__in=entry_ids, member=target).select_related("recipe")
+        )
+
+        created = []
+        with transaction.atomic():
+            for src in sources:
+                created.append(
+                    DiaryEntry.objects.create(
+                        member=target,
+                        date=target_date,
+                        meal_type=src.meal_type,
+                        recipe=src.recipe,
+                        custom_name=src.custom_name,
+                        nutrition=src.nutrition or {},
+                        quantity=src.quantity,
+                        planned_menu_item=None,
+                        is_eaten=False,
+                        is_planned=True,
+                    )
+                )
+
+        return Response(
+            DiaryEntrySerializer(created, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )

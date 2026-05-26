@@ -53,4 +53,11 @@ export const diaryApi = {
   },
   setWater: (date: string, water_ml: number) =>
     client.post<DiaryWaterLog>('/diary/water/', { date, water_ml }),
+
+  // DIARY_COPY_V3: copy selected entries into target day as plan.
+  copy: (entryIds: number[], targetDate: string, memberId?: number) =>
+    client.post<DiaryEntry[]>('/diary/copy/',
+      { entry_ids: entryIds, target_date: targetDate },
+      { params: memberId ? { member_id: memberId } : undefined },
+    ),
 };

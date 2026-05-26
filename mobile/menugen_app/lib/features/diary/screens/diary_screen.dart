@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
 import '../../../core/premium/premium_gate_cubit.dart';
 import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
@@ -73,6 +74,11 @@ class _DiaryScreenState extends State<DiaryScreen> {
                     )),
               ],
             ),
+          IconButton(
+            icon: const Icon(Icons.copy_all_outlined),
+            tooltip: 'Копировать из дня', // DIARY_COPY_V3
+            onPressed: _onCopyTap,
+          ),
           IconButton(
             icon: const Icon(Icons.download_for_offline_outlined),
             tooltip: 'Импорт из меню',
@@ -208,6 +214,25 @@ class _DiaryScreenState extends State<DiaryScreen> {
           quantity: result.quantity,
           nutrition: nutrition,
         ));
+  }
+
+  // DIARY_COPY_V3: copy-from-day dialog (#4).
+  void _onCopyTap() async {
+    final bloc = context.read<DiaryBloc>();
+    final ids = await showDialog<List<int>?>(
+      context: context,
+      builder: (_) => _CopyFromDayDialog(
+        apiClient: bloc.apiClient,
+        memberId: _memberId,
+      ),
+    );
+    if (ids == null || ids.isEmpty) return;
+    if (!mounted) return;
+    bloc.add(DiaryCopyRequested(
+      entryIds: ids,
+      targetDate: DateFormat('yyyy-MM-dd').format(_selected),
+      memberId: _memberId,
+    ));
   }
 
 }
@@ -560,20 +585,80 @@ class _AddManualDialogState extends State<_AddManualDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // DIARY_COPY_V3: spaced fields — fixes overlapping labels (#3).
             DropdownButtonFormField<MealType>(
               value: _meal,
-              decoration: const InputDecoration(labelText: 'Приём пищи'),
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Приём пищи',
+                isDense: true,
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
               items: MealType.values
                   .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
                   .toList(),
               onChanged: (v) => setState(() => _meal = v ?? MealType.breakfast),
             ),
-            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Название')),
-            TextField(controller: _qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Количество (порций)')),
-            TextField(controller: _cal, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Калории (ккал)')),
-            TextField(controller: _prot, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Белки (г)')),
-            TextField(controller: _fat, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Жиры (г)')),
-            TextField(controller: _carb, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Углеводы (г)')),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(
+                labelText: 'Название',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _qty,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Количество (порций)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _cal,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Калории (ккал)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _prot,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Белки (г)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _fat,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Жиры (г)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _carb,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Углеводы (г)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
@@ -609,3 +694,160 @@ class _AddManualDialogState extends State<_AddManualDialog> {
   }
 }
 
+
+// DIARY_COPY_V3: pick a source day, check entries, return selected ids.
+class _CopyFromDayDialog extends StatefulWidget {
+  final ApiClient apiClient;
+  final int? memberId;
+  const _CopyFromDayDialog({required this.apiClient, required this.memberId});
+  @override
+  State<_CopyFromDayDialog> createState() => _CopyFromDayDialogState();
+}
+
+class _CopyFromDayDialogState extends State<_CopyFromDayDialog> {
+  DateTime _sourceDay = DateTime.now();
+  bool _loading = false;
+  String? _error;
+  List<DiaryEntry> _entries = const [];
+  final Set<int> _selected = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _selected.clear();
+    });
+    try {
+      final params = <String, dynamic>{
+        'date': DateFormat('yyyy-MM-dd').format(_sourceDay),
+      };
+      if (widget.memberId != null) params['member_id'] = widget.memberId;
+      final resp = await widget.apiClient.get('/diary/', params: params);
+      final root = resp is Map ? resp : <String, dynamic>{};
+      final list = (root['results'] ?? const []) as List;
+      final parsed = list
+          .whereType<Map>()
+          .map((e) => DiaryEntry.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _entries = parsed;
+        _loading = false;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _error = err.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _pickDay() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _sourceDay,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() => _sourceDay = picked);
+      _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allChecked = _entries.isNotEmpty && _selected.length == _entries.length;
+    return AlertDialog(
+      title: const Text('Копировать из дня'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickDay,
+              icon: const Icon(Icons.calendar_today, size: 18),
+              label: Text('Источник: ${DateFormat('d MMMM yyyy', 'ru').format(_sourceDay)}'),
+            ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+              )
+            else if (_entries.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: Text('Нет записей за этот день')),
+              )
+            else ...[
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text('Выбрать все (${_entries.length})'),
+                value: allChecked,
+                onChanged: (v) => setState(() {
+                  _selected.clear();
+                  if (v == true) {
+                    _selected.addAll(_entries.map((e) => e.id));
+                  }
+                }),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _entries.length,
+                  itemBuilder: (_, i) {
+                    final e = _entries[i];
+                    final title = e.displayTitle.isNotEmpty ? e.displayTitle : '—';
+                    return CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: _selected.contains(e.id),
+                      onChanged: (v) => setState(() {
+                        if (v == true) {
+                          _selected.add(e.id);
+                        } else {
+                          _selected.remove(e.id);
+                        }
+                      }),
+                      title: Text(title),
+                      subtitle: Text(e.mealType.label),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: _selected.isEmpty
+              ? null
+              : () => Navigator.pop(context, _selected.toList()),
+          child: Text('Копировать (${_selected.length})'),
+        ),
+      ],
+    );
+  }
+}

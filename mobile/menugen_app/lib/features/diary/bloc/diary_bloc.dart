@@ -41,6 +41,7 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     on<DiaryDeleteRequested>(_onDelete);
     on<DiaryImportFromMenuRequested>(_onImportFromMenu);
     on<DiaryWaterSetRequested>(_onWaterSet); // DIARY_V2
+    on<DiaryCopyRequested>(_onCopy); // DIARY_COPY_V3
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────
@@ -272,4 +273,31 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
       emit(_toErrorState(err, isWrite: true));
     }
   }
+
+  // DIARY_COPY_V3: copy selected entries into target day as plan.
+  Future<void> _onCopy(
+    DiaryCopyRequested e,
+    Emitter<DiaryState> emit,
+  ) async {
+    final prev = state;
+    try {
+      final params = <String, dynamic>{};
+      if (e.memberId != null) params['member_id'] = e.memberId;
+      final qs = params.entries
+          .map((kv) => '${kv.key}=${Uri.encodeQueryComponent('${kv.value}')}')
+          .join('&');
+      final path = qs.isEmpty ? '/diary/copy/' : '/diary/copy/?$qs';
+      await apiClient.post(path, data: {
+        'entry_ids': e.entryIds,
+        'target_date': e.targetDate,
+      });
+      add(DiaryLoadRequested(
+        date: e.targetDate,
+        memberId: prev is DiaryLoaded ? prev.memberId : null,
+      ));
+    } catch (err) {
+      emit(_toErrorState(err, isWrite: true));
+    }
+  }
+
 }

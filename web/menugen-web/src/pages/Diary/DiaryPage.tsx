@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { AddDiaryEntryModal } from '../../components/diary/AddDiaryEntryModal';
 import { ImportMenuModal } from '../../components/diary/ImportMenuModal';
+import { CopyFromDayModal } from '../../components/diary/CopyFromDayModal'; // DIARY_COPY_V3
 import { getErrorMessage } from '../../utils/api';
 import { MEAL_LABELS } from '../../types';
 import type { DiaryEntry, DiaryDayStats, FamilyMember } from '../../types';
@@ -41,6 +42,7 @@ export const DiaryPage: React.FC = () => {
 
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showCopy, setShowCopy] = useState(false); // DIARY_COPY_V3
   const [customWater, setCustomWater] = useState('');
 
   // Family (for member switcher; HEAD only).
@@ -105,8 +107,10 @@ export const DiaryPage: React.FC = () => {
     catch (err) { setWaterMl(waterMl); alert(getErrorMessage(err)); }
   };
 
-  const planned = entries.filter((e) => e.planned_menu_item != null);
-  const manual = entries.filter((e) => e.planned_menu_item == null);
+  // DIARY_COPY_V3: plan = is_planned OR legacy planned_menu_item.
+  const isPlan = (e: DiaryEntry) => e.is_planned === true || e.planned_menu_item != null;
+  const planned = entries.filter(isPlan);
+  const manual = entries.filter((e) => !isPlan(e));
 
   const Entry: React.FC<{ e: DiaryEntry; canCheck: boolean }> = ({ e, canCheck }) => (
     <Card className="p-4">
@@ -145,6 +149,7 @@ export const DiaryPage: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-chocolate">Дневник питания</h1>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => setShowCopy(true)}>📋 Копировать</Button>
           <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Импорт</Button>
           <Button onClick={() => setShowAdd(true)}>＋ Добавить</Button>
         </div>
@@ -236,6 +241,10 @@ export const DiaryPage: React.FC = () => {
       {showImport && (
         <ImportMenuModal date={date} memberId={memberId}
           onClose={() => setShowImport(false)} onImported={load} />
+      )}
+      {showCopy && (
+        <CopyFromDayModal targetDate={date} memberId={memberId}
+          onClose={() => setShowCopy(false)} onCopied={load} />
       )}
     </div>
   );

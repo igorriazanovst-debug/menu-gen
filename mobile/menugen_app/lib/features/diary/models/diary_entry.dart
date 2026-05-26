@@ -37,6 +37,7 @@ class DiaryEntry extends Equatable {
   final double quantity;
   final int? plannedMenuItemId; // null = manual entry (фактическое)
   final bool isEaten;           // MG-605.B
+  final bool isPlannedFlag;     // DIARY_COPY_V3 (explicit plan flag)
 
   const DiaryEntry({
     required this.id,
@@ -49,10 +50,11 @@ class DiaryEntry extends Equatable {
     required this.quantity,
     required this.plannedMenuItemId,
     required this.isEaten,
+    this.isPlannedFlag = false, // DIARY_COPY_V3
   });
 
   /// True if this entry was planned (came from menu import).
-  bool get isPlanned => plannedMenuItemId != null;
+  bool get isPlanned => isPlannedFlag || plannedMenuItemId != null; // DIARY_COPY_V3
 
   /// Display title — recipe title, custom name, or empty string.
   String get displayTitle =>
@@ -77,6 +79,7 @@ class DiaryEntry extends Equatable {
       quantity: q,
       plannedMenuItemId: (j['planned_menu_item'] as num?)?.toInt(),
       isEaten: (j['is_eaten'] as bool?) ?? false,
+      isPlannedFlag: (j['is_planned'] as bool?) ?? false, // DIARY_COPY_V3
     );
   }
 

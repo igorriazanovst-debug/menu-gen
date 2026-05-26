@@ -274,6 +274,7 @@ export interface DiaryEntry {
   quantity: number;
   planned_menu_item?: number | null;
   is_eaten: boolean;
+  is_planned?: boolean; // DIARY_COPY_V3
   created_at?: string;
 }
 export interface DiaryNutritionBucket {

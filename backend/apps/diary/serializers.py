@@ -19,6 +19,7 @@ class DiaryEntrySerializer(serializers.ModelSerializer):
             "quantity",
             "planned_menu_item",  # MG_605B_V_serializers
             "is_eaten",  # MG_605B_V_serializers
+            "is_planned",  # DIARY_COPY_V3
             "created_at",
         )
         read_only_fields = ("id", "created_at")
@@ -38,6 +39,7 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
             "quantity",
             "planned_menu_item",
             "is_eaten",
+            "is_planned",  # DIARY_COPY_V3
         )
 
     def validate(self, attrs):
@@ -107,3 +109,11 @@ class WaterLogSerializer(serializers.ModelSerializer):
         obj.water_ml = validated_data["water_ml"]
         obj.save(update_fields=["water_ml"])
         return obj
+
+
+# DIARY_COPY_V3: body for POST /diary/copy/.
+class DiaryCopySerializer(serializers.Serializer):
+    entry_ids = serializers.ListField(
+        child=serializers.IntegerField(), allow_empty=False, max_length=200
+    )
+    target_date = serializers.DateField()
