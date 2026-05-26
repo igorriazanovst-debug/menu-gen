@@ -14,6 +14,7 @@ proteins/fats/carbs на порцию, cook_time, servings*, food_group и пр.
   python manage.py import_recipes_xlsx /path/to/file.xlsx --dry-run
   python manage.py import_recipes_xlsx /path/to/file.xlsx --no-ai
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,8 +25,7 @@ from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
-DISH_TYPES = {"soup", "main", "salad", "side", "dessert", "drink",
-              "bakery", "sauce", "snack", "breakfast_dish"}
+DISH_TYPES = {"soup", "main", "salad", "side", "dessert", "drink", "bakery", "sauce", "snack", "breakfast_dish"}
 FOOD_GROUPS = {"grain", "protein", "vegetable", "fruit", "dairy", "oil", "other"}
 PROTEIN_TYPES = {"animal", "plant", "mixed"}
 GRAIN_TYPES = {"whole", "refined"}
@@ -39,13 +39,38 @@ ALLERG_OK = {"nuts", "eggs", "fish", "shellfish", "milk", "gluten", "soy", "pean
 EXAMPLE_TITLES = {"Борщ классический", "Овсяная каша на молоке"}
 
 COLS = [
-    "row_id", "title", "description", "ingredients", "steps", "cook_time_min",
-    "difficulty", "image_url", "video_url", "portion_g", "kcal_per_100g",
-    "proteins_per_100g", "fats_per_100g", "carbs_per_100g", "sugars_per_100g",
-    "dish_type", "meal_category", "food_group", "protein_type", "grain_type",
-    "is_red_meat", "is_fatty_fish", "has_added_sugar", "cooking_method",
-    "oil_tsp", "is_vegan", "is_vegetarian", "is_gluten_free", "is_lactose_free",
-    "allergens", "source", "country",
+    "row_id",
+    "title",
+    "description",
+    "ingredients",
+    "steps",
+    "cook_time_min",
+    "difficulty",
+    "image_url",
+    "video_url",
+    "portion_g",
+    "kcal_per_100g",
+    "proteins_per_100g",
+    "fats_per_100g",
+    "carbs_per_100g",
+    "sugars_per_100g",
+    "dish_type",
+    "meal_category",
+    "food_group",
+    "protein_type",
+    "grain_type",
+    "is_red_meat",
+    "is_fatty_fish",
+    "has_added_sugar",
+    "cooking_method",
+    "oil_tsp",
+    "is_vegan",
+    "is_vegetarian",
+    "is_gluten_free",
+    "is_lactose_free",
+    "allergens",
+    "source",
+    "country",
 ]
 
 
@@ -106,12 +131,14 @@ def _parse_ingredients(v):
         name, qty, unit, grams = parts[0], parts[1], parts[2], parts[3]
         if not name:
             continue
-        items.append({
-            "name": name,
-            "quantity": qty,
-            "unit": unit,
-            "grams": _num(grams) or 0,
-        })
+        items.append(
+            {
+                "name": name,
+                "quantity": qty,
+                "unit": unit,
+                "grams": _num(grams) or 0,
+            }
+        )
     return items
 
 
@@ -123,6 +150,7 @@ def _parse_steps(v):
             continue
         # убрать ведущий "N. " если есть
         import re
+
         t = re.sub(r"^\d+[\.\)]\s*", "", t)
         steps.append({"order": i, "text": t})
     return steps
@@ -133,10 +161,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("path", help="Путь к .xlsx файлу")
-        parser.add_argument("--dry-run", action="store_true",
-                            help="Только проверить и показать, ничего не писать.")
-        parser.add_argument("--no-ai", action="store_true",
-                            help="Не вызывать AI для подсчёта БЖУ (только Product).")
+        parser.add_argument("--dry-run", action="store_true", help="Только проверить и показать, ничего не писать.")
+        parser.add_argument("--no-ai", action="store_true", help="Не вызывать AI для подсчёта БЖУ (только Product).")
         parser.add_argument("--sheet", default="Recipes", help="Имя листа (default: Recipes)")
 
     # ── чтение xlsx ──────────────────────────────────────────────────────────
@@ -167,6 +193,7 @@ class Command(BaseCommand):
     def _compute_kbju_100g(self, ingredients, kcal_anchor, use_ai):
         """Сумма по ингредиентам (Product -> AI) / суммарный вес, подгонка под kcal."""
         from apps.fridge.models import Product
+
         try:
             from apps.fridge.services import gpt_fill_nutrition
         except Exception:
@@ -181,8 +208,10 @@ class Command(BaseCommand):
                 continue
             name = ing["name"]
             cals100, nut100 = None, {}
-            p = (Product.objects.filter(name__iexact=name).first()
-                 or Product.objects.filter(name__icontains=name[:20]).first())
+            p = (
+                Product.objects.filter(name__iexact=name).first()
+                or Product.objects.filter(name__icontains=name[:20]).first()
+            )
             if p and p.calories_per_100g is not None:
                 cals100 = float(p.calories_per_100g)
                 nut100 = dict(p.nutrition or {})
@@ -242,8 +271,7 @@ class Command(BaseCommand):
             tag = f"строка {row} ({title!r})"
 
             # обязательные
-            req = ["title", "ingredients", "steps", "portion_g",
-                   "dish_type", "meal_category", "food_group"]
+            req = ["title", "ingredients", "steps", "portion_g", "dish_type", "meal_category", "food_group"]
             for f in req:
                 if _s(rec[f]) == "":
                     errors.append(f"{tag}: пусто обязательное '{f}'")
@@ -281,35 +309,42 @@ class Command(BaseCommand):
             if not steps:
                 errors.append(f"{tag}: steps пусты после разбора")
 
-            prepared.append({
-                "tag": tag, "row": row, "title": title,
-                "description": _s(rec["description"]),
-                "ingredients": ingredients, "steps": steps,
-                "cook_time_min": int(_num(rec["cook_time_min"])) if _num(rec["cook_time_min"]) else None,
-                "image_url": _s(rec["image_url"]) or None,
-                "video_url": _s(rec["video_url"]) or None,
-                "portion_g": int(_num(rec["portion_g"])) if _num(rec["portion_g"]) else None,
-                "kcal_per_100g": _dec(rec["kcal_per_100g"]),
-                "proteins_per_100g": _dec(rec["proteins_per_100g"]),
-                "fats_per_100g": _dec(rec["fats_per_100g"]),
-                "carbs_per_100g": _dec(rec["carbs_per_100g"]),
-                "sugars_per_100g": _dec(rec["sugars_per_100g"]),
-                "dish_type": dish_type, "food_group": fg,
-                "protein_type": pt, "grain_type": gt,
-                "is_red_meat": _bool(rec["is_red_meat"]),
-                "is_fatty_fish": _bool(rec["is_fatty_fish"]),
-                "has_added_sugar": _bool(rec["has_added_sugar"]),
-                "cooking_method": cm,
-                "oil_tsp": _dec(rec["oil_tsp"]),
-                "is_vegan": _bool(rec["is_vegan"]),
-                "is_vegetarian": _bool(rec["is_vegetarian"]),
-                "is_gluten_free": _bool(rec["is_gluten_free"]),
-                "is_lactose_free": _bool(rec["is_lactose_free"]),
-                "allergens": allergens,
-                "source": src,
-                "country": _s(rec["country"]) or None,
-                "meal_category": meal_category,
-            })
+            prepared.append(
+                {
+                    "tag": tag,
+                    "row": row,
+                    "title": title,
+                    "description": _s(rec["description"]),
+                    "ingredients": ingredients,
+                    "steps": steps,
+                    "cook_time_min": int(_num(rec["cook_time_min"])) if _num(rec["cook_time_min"]) else None,
+                    "image_url": _s(rec["image_url"]) or None,
+                    "video_url": _s(rec["video_url"]) or None,
+                    "portion_g": int(_num(rec["portion_g"])) if _num(rec["portion_g"]) else None,
+                    "kcal_per_100g": _dec(rec["kcal_per_100g"]),
+                    "proteins_per_100g": _dec(rec["proteins_per_100g"]),
+                    "fats_per_100g": _dec(rec["fats_per_100g"]),
+                    "carbs_per_100g": _dec(rec["carbs_per_100g"]),
+                    "sugars_per_100g": _dec(rec["sugars_per_100g"]),
+                    "dish_type": dish_type,
+                    "food_group": fg,
+                    "protein_type": pt,
+                    "grain_type": gt,
+                    "is_red_meat": _bool(rec["is_red_meat"]),
+                    "is_fatty_fish": _bool(rec["is_fatty_fish"]),
+                    "has_added_sugar": _bool(rec["has_added_sugar"]),
+                    "cooking_method": cm,
+                    "oil_tsp": _dec(rec["oil_tsp"]),
+                    "is_vegan": _bool(rec["is_vegan"]),
+                    "is_vegetarian": _bool(rec["is_vegetarian"]),
+                    "is_gluten_free": _bool(rec["is_gluten_free"]),
+                    "is_lactose_free": _bool(rec["is_lactose_free"]),
+                    "allergens": allergens,
+                    "source": src,
+                    "country": _s(rec["country"]) or None,
+                    "meal_category": meal_category,
+                }
+            )
 
         if errors:
             self.stdout.write(self.style.ERROR(f"\nОШИБКИ ({len(errors)}) — импорт прерван:"))
@@ -319,21 +354,23 @@ class Command(BaseCommand):
 
         # дозаполнить БЖУ где пусто
         for d in prepared:
-            need = (d["proteins_per_100g"] is None or d["fats_per_100g"] is None
-                    or d["carbs_per_100g"] is None)
+            need = d["proteins_per_100g"] is None or d["fats_per_100g"] is None or d["carbs_per_100g"] is None
             if not need:
                 continue
-            kbju, unresolved = self._compute_kbju_100g(
-                d["ingredients"], d["kcal_per_100g"], use_ai)
+            kbju, unresolved = self._compute_kbju_100g(d["ingredients"], d["kcal_per_100g"], use_ai)
             if kbju:
                 if d["kcal_per_100g"] is None and kbju.get("kcal"):
                     from decimal import Decimal as _D
+
                     d["kcal_per_100g"] = _D(str(kbju["kcal"]))  # RB001_import: kcal из ингредиентов
                     _kc = float(kbju["kcal"])
                     if _kc < KCAL_100G_MIN or _kc > KCAL_100G_MAX:
-                        self.stdout.write(self.style.WARNING(
-                            f"  {d['tag']}: ⚠ kcal/100г={_kc} вне нормы "
-                            f"({KCAL_100G_MIN}..{KCAL_100G_MAX}) — проверьте ингредиенты/АI"))
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"  {d['tag']}: ⚠ kcal/100г={_kc} вне нормы "
+                                f"({KCAL_100G_MIN}..{KCAL_100G_MAX}) — проверьте ингредиенты/АI"
+                            )
+                        )
                 if d["proteins_per_100g"] is None:
                     d["proteins_per_100g"] = Decimal(str(kbju["proteins"]))
                 if d["fats_per_100g"] is None:
@@ -345,10 +382,12 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"  {d['tag']}: БЖУ посчитано "
                     f"(Б{kbju['proteins']} Ж{kbju['fats']} У{kbju['carbs']})"
-                    + (f"; не найдены: {unresolved}" if unresolved else ""))
+                    + (f"; не найдены: {unresolved}" if unresolved else "")
+                )
             else:
-                self.stdout.write(self.style.WARNING(
-                    f"  {d['tag']}: БЖУ посчитать не удалось (нет данных по ингредиентам)"))
+                self.stdout.write(
+                    self.style.WARNING(f"  {d['tag']}: БЖУ посчитать не удалось (нет данных по ингредиентам)")
+                )
 
         if dry:
             self.stdout.write(self.style.WARNING("\n--dry-run: ничего не записано."))
@@ -360,6 +399,7 @@ class Command(BaseCommand):
             for d in prepared:
                 portion = d["portion_g"] or 0
                 k100 = d["kcal_per_100g"]
+
                 # пересчёт на порцию для старых полей
                 def per_portion(x):  # noqa: E306
                     if x is None or not portion:

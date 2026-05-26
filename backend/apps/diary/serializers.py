@@ -113,7 +113,5 @@ class WaterLogSerializer(serializers.ModelSerializer):
 
 # DIARY_COPY_V3: body for POST /diary/copy/.
 class DiaryCopySerializer(serializers.Serializer):
-    entry_ids = serializers.ListField(
-        child=serializers.IntegerField(), allow_empty=False, max_length=200
-    )
+    entry_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False, max_length=200)
     target_date = serializers.DateField()

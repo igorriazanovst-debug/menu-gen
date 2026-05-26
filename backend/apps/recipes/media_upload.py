@@ -6,11 +6,11 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
+from rest_framework.authentication import SessionAuthentication  # UPLOAD_MEDIA_AUTH
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
-from rest_framework.authentication import SessionAuthentication  # UPLOAD_MEDIA_AUTH
-from rest_framework_simplejwt.authentication import JWTAuthentication  # UPLOAD_MEDIA_AUTH
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication  # UPLOAD_MEDIA_AUTH
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm", "video/quicktime"}

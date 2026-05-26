@@ -5,6 +5,7 @@ Pure-Django implementation, no extra pip packages.
 - allergens / suitable_for / categories -> multi-select checkbox widgets (JSON list[str])
 All labels / help texts are wrapped in gettext_lazy for RU/EN switching.
 """
+
 import json
 
 from django import forms
@@ -13,7 +14,6 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
 from .models import Recipe
-
 
 # ── Allowed values for the multi-select JSON fields ──────────────────────────
 # (value, human label). Labels are translatable.
@@ -78,24 +78,20 @@ class _JSONListMultiCheckbox(forms.Widget):
         rows = []
         for val, label in self.choices:
             checked = " checked" if str(val) in selected else ""
-            rows.append(
-                self.template_checkbox.format(
-                    name=name, value=val, label=label, checked=checked
-                )
-            )
+            rows.append(self.template_checkbox.format(name=name, value=val, label=label, checked=checked))
         # preserve unknown legacy values
         for extra in sorted(selected - known):
             if not extra:
                 continue
             rows.append(
                 self.template_checkbox.format(
-                    name=name, value=extra,
-                    label="%s (%s)" % (extra, _("legacy")), checked=" checked",
+                    name=name,
+                    value=extra,
+                    label="%s (%s)" % (extra, _("legacy")),
+                    checked=" checked",
                 )
             )
-        return mark_safe(
-            '<div class="mg-multicheck" style="max-width:760px;">%s</div>' % "".join(rows)
-        )
+        return mark_safe('<div class="mg-multicheck" style="max-width:760px;">%s</div>' % "".join(rows))
 
 
 class _IngredientsWidget(forms.Widget):
@@ -120,12 +116,14 @@ class _IngredientsWidget(forms.Widget):
                 g_val = float(g_raw) if str(g_raw).strip() != "" else 0
             except (ValueError, TypeError):
                 g_val = 0
-            out.append({
-                "name": nm,
-                "quantity": (qtys[i] if i < len(qtys) else "").strip(),
-                "unit": (units[i] if i < len(units) else "").strip(),
-                "grams": g_val,
-            })
+            out.append(
+                {
+                    "name": nm,
+                    "quantity": (qtys[i] if i < len(qtys) else "").strip(),
+                    "unit": (units[i] if i < len(units) else "").strip(),
+                    "grams": g_val,
+                }
+            )
         return out
 
     def format_value(self, value):
@@ -148,10 +146,14 @@ class _IngredientsWidget(forms.Widget):
         h_add = str(_("Add ingredient"))
         rows = []
         for it in items:
-            rows.append(self._row(name, it.get("name", ""), it.get("quantity", ""),
-                                   it.get("unit", ""), it.get("grams", ""), h_del))  # noqa: E127
+            rows.append(
+                self._row(
+                    name, it.get("name", ""), it.get("quantity", ""), it.get("unit", ""), it.get("grams", ""), h_del
+                )
+            )  # noqa: E127
         empty_row = self._row(name, "", "", "", "", h_del)
-        return mark_safe("""
+        return mark_safe(
+            """
 <div class="mg-ing" data-name="{name}">
   <table class="mg-ing-table" style="border-collapse:collapse;width:100%;max-width:820px;">
     <thead><tr style="text-align:left;">
@@ -175,22 +177,32 @@ class _IngredientsWidget(forms.Widget):
     var tr=document.createElement('tr');tr.innerHTML=tpl.innerHTML;body.appendChild(tr);bindDel(tr);}});
   bindDel(root);
 }})();</script>
-""".format(name=name, h_name=h_name, h_qty=h_qty, h_unit=h_unit, h_grams=h_grams,
-           h_add=h_add, rows="".join(rows), empty=empty_row))
+""".format(
+                name=name,
+                h_name=h_name,
+                h_qty=h_qty,
+                h_unit=h_unit,
+                h_grams=h_grams,
+                h_add=h_add,
+                rows="".join(rows),
+                empty=empty_row,
+            )
+        )
 
     @staticmethod
     def _row(name, nm, qty, unit, grams, h_del):
         def esc(v):
             return _html_escape("" if v is None else str(v))
+
         return (
-            '<tr>'
+            "<tr>"
             '<td style="padding:2px;"><input type="text" name="{n}_name" value="{nm}" style="width:100%;"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_quantity" value="{q}" style="width:100%;"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_unit" value="{u}" style="width:100%;"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_grams" value="{g}" style="width:100%;"></td>'
             '<td style="padding:2px;text-align:center;">'
             '<button type="button" class="mg-ing-del" title="{d}">✕</button></td>'
-            '</tr>'
+            "</tr>"
         ).format(n=name, nm=esc(nm), q=esc(qty), u=esc(unit), g=esc(grams), d=h_del)
 
 
@@ -229,7 +241,8 @@ class _StepsWidget(forms.Widget):
         for it in items:
             rows.append(self._row(name, it.get("text", ""), h_del))
         empty_row = self._row(name, "", h_del)
-        return mark_safe("""
+        return mark_safe(
+            """
 <div class="mg-steps" data-name="{name}">
   <ol class="mg-steps-body" style="padding-left:20px;max-width:820px;">{rows}</ol>
   <template class="mg-steps-tpl">{empty}</template>
@@ -245,7 +258,10 @@ class _StepsWidget(forms.Widget):
     var li=document.createElement('li');li.innerHTML=tpl.innerHTML;body.appendChild(li);bindDel(li);}});
   bindDel(root);
 }})();</script>
-""".format(name=name, h_add=h_add, h_step=h_step, rows="".join(rows), empty=empty_row))
+""".format(
+                name=name, h_add=h_add, h_step=h_step, rows="".join(rows), empty=empty_row
+            )
+        )
 
     @staticmethod
     def _row(name, text, h_del):
@@ -254,7 +270,7 @@ class _StepsWidget(forms.Widget):
             '<li style="margin:3px 0;">'
             '<textarea name="{n}_text" rows="2" style="width:90%;vertical-align:middle;">{t}</textarea>'
             ' <button type="button" class="mg-step-del" title="{d}">✕</button>'
-            '</li>'
+            "</li>"
         ).format(n=name, t=esc, d=h_del)
 
 
@@ -270,8 +286,9 @@ class _PassthroughField(forms.Field):
         return value if value is not None else []
 
     def has_changed(self, initial, data):
-        return json.dumps(initial or [], sort_keys=True, ensure_ascii=False) != \
-            json.dumps(data or [], sort_keys=True, ensure_ascii=False)
+        return json.dumps(initial or [], sort_keys=True, ensure_ascii=False) != json.dumps(
+            data or [], sort_keys=True, ensure_ascii=False
+        )
 
 
 # ── PHOTO_UPLOAD_ADMIN: URL input + local-file upload button ─────────────────
@@ -304,17 +321,17 @@ class _MediaUploadWidget(forms.TextInput):
         err = str(_("Upload failed"))
         html = (
             '<div class="mg-media-upload" style="margin-top:6px;">'
-            '{base}'
+            "{base}"
             '<div style="margin-top:6px;">'
             '<button type="button" class="mg-media-btn" '
             'style="padding:4px 10px;">{btn}</button>'
             '<input type="file" class="mg-media-file" accept="{accept}" style="display:none;">'
             '<span class="mg-media-status" style="margin-left:10px;color:#888;font-size:11px;">{hint}</span>'
-            '</div>'
-            '</div>'
-            '<script>(function(){{'
-            'var root=document.currentScript.previousElementSibling;'
-            'var input=root.querySelector("input[name=\'{name}\']")'
+            "</div>"
+            "</div>"
+            "<script>(function(){{"
+            "var root=document.currentScript.previousElementSibling;"
+            "var input=root.querySelector(\"input[name='{name}']\")"
             '||root.querySelector("input[type=text],input:not([type])");'
             'var btn=root.querySelector(".mg-media-btn");'
             'var file=root.querySelector(".mg-media-file");'
@@ -322,22 +339,30 @@ class _MediaUploadWidget(forms.TextInput):
             'function csrf(){{var m=document.cookie.match(/csrftoken=([^;]+)/);return m?m[1]:"";}}'
             'btn.addEventListener("click",function(){{file.click();}});'
             'file.addEventListener("change",function(){{'
-            'var f=file.files&&file.files[0];if(!f)return;'
+            "var f=file.files&&file.files[0];if(!f)return;"
             'status.textContent="{uploading}";'
             'var fd=new FormData();fd.append("file",f);fd.append("media_type","{mtype}");'
             'fetch("/api/v1/recipes/upload-media/",{{method:"POST",body:fd,'
             'headers:{{"X-CSRFToken":csrf()}},credentials:"same-origin"}})'
-            '.then(function(r){{if(!r.ok)throw new Error(r.status);return r.json();}})'
+            ".then(function(r){{if(!r.ok)throw new Error(r.status);return r.json();}})"
             '.then(function(d){{if(input&&d&&d.url){{input.value=d.url;}}status.textContent=d&&d.url?d.url:"{err}";}})'
             '.catch(function(e){{status.textContent="{err}: "+e;}})'
             '.finally(function(){{file.value="";}});'
-            '}});'
-            '}})();</script>'
+            "}});"
+            "}})();</script>"
         ).format(
-            base=base, btn=btn, accept=accept, hint=hint, name=name,
-            uploading=uploading, mtype=self.media_type, err=err,
+            base=base,
+            btn=btn,
+            accept=accept,
+            hint=hint,
+            name=name,
+            uploading=uploading,
+            mtype=self.media_type,
+            err=err,
         )
         return mark_safe(html)
+
+
 # ── /PHOTO_UPLOAD_ADMIN ──────────────────────────────────────────────────────
 
 
@@ -345,23 +370,21 @@ class _MediaUploadWidget(forms.TextInput):
 class RecipeAdminForm(forms.ModelForm):
     ingredients = _PassthroughField(widget=_IngredientsWidget(), label=_("Ingredients"))
     steps = _PassthroughField(widget=_StepsWidget(), label=_("Steps"))
-    allergens = _PassthroughField(
-        widget=_JSONListMultiCheckbox(choices=ALLERGEN_CHOICES), label=_("Allergens")
-    )
+    allergens = _PassthroughField(widget=_JSONListMultiCheckbox(choices=ALLERGEN_CHOICES), label=_("Allergens"))
     suitable_for = _PassthroughField(
         widget=_JSONListMultiCheckbox(choices=SUITABLE_FOR_CHOICES), label=_("Suitable for (meal)")
     )
-    categories = _PassthroughField(
-        widget=_JSONListMultiCheckbox(choices=CATEGORY_CHOICES), label=_("Categories")
-    )
+    categories = _PassthroughField(widget=_JSONListMultiCheckbox(choices=CATEGORY_CHOICES), label=_("Categories"))
 
     image_url = forms.URLField(
         required=False,
-        widget=_MediaUploadWidget(media_type="image"), label=_("Image URL"),
+        widget=_MediaUploadWidget(media_type="image"),
+        label=_("Image URL"),
     )
     video_url = forms.URLField(
         required=False,
-        widget=_MediaUploadWidget(media_type="video"), label=_("Video URL"),
+        widget=_MediaUploadWidget(media_type="video"),
+        label=_("Video URL"),
     )
 
     class Meta:

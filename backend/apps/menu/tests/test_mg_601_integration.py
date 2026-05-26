@@ -73,9 +73,15 @@ def rich_pool(db):
     # 5 рецептов на каждую роль, разной калорийности
     for i in range(5):
         # RB001_V_step4: main несёт protein-классификацию (для MG-302/505)
-        _mk_recipe(f"Горячее-жив {i}", "protein", dish_type="main", protein_type="animal", kcal=Decimal(str(250 + i * 20)))  # noqa: E501
-        _mk_recipe(f"Горячее-раст {i}", "protein", dish_type="main", protein_type="plant", kcal=Decimal(str(200 + i * 20)))  # noqa: E501
-        _mk_recipe(f"Завтрак {i}", "grain", dish_type="breakfast_dish", grain_type="whole", kcal=Decimal(str(280 + i * 10)))  # noqa: E501
+        _mk_recipe(
+            f"Горячее-жив {i}", "protein", dish_type="main", protein_type="animal", kcal=Decimal(str(250 + i * 20))
+        )  # noqa: E501
+        _mk_recipe(
+            f"Горячее-раст {i}", "protein", dish_type="main", protein_type="plant", kcal=Decimal(str(200 + i * 20))
+        )  # noqa: E501
+        _mk_recipe(
+            f"Завтрак {i}", "grain", dish_type="breakfast_dish", grain_type="whole", kcal=Decimal(str(280 + i * 10))
+        )  # noqa: E501
         _mk_recipe(f"Суп {i}", "vegetable", dish_type="soup", kcal=Decimal(str(120 + i * 10)))
         _mk_recipe(f"Салат {i}", "vegetable", dish_type="salad", kcal=Decimal(str(80 + i * 10)))
         _mk_recipe(f"Перекус {i}", "fruit", dish_type="snack", kcal=Decimal(str(70 + i * 5)))
@@ -323,7 +329,9 @@ class TestMG302RedMeatWeekly:
 
         # Все protein — красное мясо 200г/порция (3 порции = 600г > 500)
         for i in range(5):
-            _mk_recipe(f"Beef{i}", "protein", dish_type="main", protein_type="animal", is_red_meat=True, servings_normalized=1)  # noqa: E501
+            _mk_recipe(
+                f"Beef{i}", "protein", dish_type="main", protein_type="animal", is_red_meat=True, servings_normalized=1
+            )  # noqa: E501
             _mk_recipe(f"Beans{i}", "protein", dish_type="main", protein_type="plant")
             _mk_recipe(f"Fish{i}", "protein", dish_type="main", protein_type="animal", is_fatty_fish=True)
             _mk_recipe(f"BF{i}", "grain", dish_type="breakfast_dish")
@@ -341,7 +349,9 @@ class TestMG302RedMeatWeekly:
         )
         items = gen.generate()
         # Проверяем что не все белки — красное мясо
-        red_count = sum(1 for it in items if it["recipe"].is_red_meat and it.get("component_role") == "main")  # RB001_V_step4  # noqa: E501
+        red_count = sum(
+            1 for it in items if it["recipe"].is_red_meat and it.get("component_role") == "main"
+        )  # RB001_V_step4  # noqa: E501
         total_protein = sum(1 for it in items if it.get("component_role") == "main")  # RB001_V_step4
         # Хоть один НЕ red_meat protein должен быть выбран на неделе.
         assert (

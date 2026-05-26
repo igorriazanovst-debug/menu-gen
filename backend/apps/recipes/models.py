@@ -112,30 +112,56 @@ class Recipe(models.Model):
 
     # ── RB001_V_schema: новые поля чистой базы рецептов ──────────────────────
     dish_type = models.CharField(
-        max_length=16, choices=DishType.choices, null=True, blank=True,
+        max_length=16,
+        choices=DishType.choices,
+        null=True,
+        blank=True,
         help_text="Тип блюда (первое/второе/десерт...). RB-001.",
     )
     portion_g = models.PositiveIntegerField(
-        null=True, blank=True, help_text="Вес одной порции, г. RB-001.",
+        null=True,
+        blank=True,
+        help_text="Вес одной порции, г. RB-001.",
     )
     kcal_per_100g = models.DecimalField(
-        max_digits=7, decimal_places=1, null=True, blank=True,
+        max_digits=7,
+        decimal_places=1,
+        null=True,
+        blank=True,
         help_text="Калорийность на 100 г готового блюда. RB-001.",
     )
     proteins_per_100g = models.DecimalField(
-        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Белки на 100 г. RB-001.",
+        max_digits=6,
+        decimal_places=1,
+        null=True,
+        blank=True,
+        help_text="Белки на 100 г. RB-001.",
     )
     fats_per_100g = models.DecimalField(
-        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Жиры на 100 г. RB-001.",
+        max_digits=6,
+        decimal_places=1,
+        null=True,
+        blank=True,
+        help_text="Жиры на 100 г. RB-001.",
     )
     carbs_per_100g = models.DecimalField(
-        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Углеводы на 100 г. RB-001.",
+        max_digits=6,
+        decimal_places=1,
+        null=True,
+        blank=True,
+        help_text="Углеводы на 100 г. RB-001.",
     )
     sugars_per_100g = models.DecimalField(
-        max_digits=6, decimal_places=1, null=True, blank=True, help_text="Сахара на 100 г. RB-001.",
+        max_digits=6,
+        decimal_places=1,
+        null=True,
+        blank=True,
+        help_text="Сахара на 100 г. RB-001.",
     )
     cook_time_min = models.PositiveSmallIntegerField(
-        null=True, blank=True, help_text="Время приготовления, мин (число). RB-001.",
+        null=True,
+        blank=True,
+        help_text="Время приготовления, мин (число). RB-001.",
     )
     is_vegan = models.BooleanField(default=False, help_text="Веганское. RB-001.")
     is_vegetarian = models.BooleanField(default=False, help_text="Вегетарианское. RB-001.")
@@ -143,7 +169,9 @@ class Recipe(models.Model):
     is_lactose_free = models.BooleanField(default=False, help_text="Без лактозы. RB-001.")
     allergens = models.JSONField(default=list, blank=True, help_text="Список аллергенов. RB-001.")
     source = models.CharField(
-        max_length=8, choices=Source.choices, default=Source.OWN,
+        max_length=8,
+        choices=Source.choices,
+        default=Source.OWN,
         help_text="Источник рецепта. RB-001.",
     )
 

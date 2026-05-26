@@ -112,6 +112,7 @@ AUTH_USER_MODEL = "users.User"
 LANGUAGE_CODE = "ru-ru"
 # ── RA-001 i18n (admin RU/EN, extensible) ─────────────────────────
 from django.utils.translation import gettext_lazy as _ra_  # noqa: E402
+
 LANGUAGES = [
     ("ru", _ra_("Russian")),
     ("en", _ra_("English")),

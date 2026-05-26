@@ -15,8 +15,8 @@ from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
 from .models import DiaryEntry, WaterLog
 from .permissions import IsDiaryEntryOwner
+from .serializers import DiaryCopySerializer  # DIARY_COPY_V3
 from .serializers import (
-    DiaryCopySerializer,  # DIARY_COPY_V3
     DiaryEntrySerializer,
     DiaryEntryWriteSerializer,
     DiaryImportSerializer,
@@ -401,9 +401,7 @@ class DiaryCopyView(APIView):
         target_date = body.validated_data["target_date"]
 
         # Only entries owned by the target member can be copied.
-        sources = list(
-            DiaryEntry.objects.filter(pk__in=entry_ids, member=target).select_related("recipe")
-        )
+        sources = list(DiaryEntry.objects.filter(pk__in=entry_ids, member=target).select_related("recipe"))
 
         created = []
         with transaction.atomic():
