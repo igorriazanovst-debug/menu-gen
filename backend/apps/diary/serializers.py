@@ -91,6 +91,8 @@ class DiaryImportSerializer(serializers.Serializer):
 
     menu_id = serializers.IntegerField()
     date = serializers.DateField()
+    # FILL_FROM_MENU_V4: optional subset of MenuItem ids to import (empty/None = whole menu).
+    item_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_empty=True)
 
 
 class WaterLogSerializer(serializers.ModelSerializer):

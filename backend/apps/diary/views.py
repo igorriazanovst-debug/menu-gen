@@ -283,10 +283,16 @@ class DiaryImportFromMenuView(APIView):
         target = _resolve_target_member(request, current)
 
         # Валидация query-параметров через сериализатор.
-        params_serializer = DiaryImportSerializer(data=request.query_params)
+        # FILL_FROM_MENU_V4: menu_id/date come via query; item_ids via body.
+        merged = {**request.query_params.dict()}
+        body_item_ids = request.data.get("item_ids") if hasattr(request, "data") else None
+        if body_item_ids is not None:
+            merged["item_ids"] = body_item_ids
+        params_serializer = DiaryImportSerializer(data=merged)
         params_serializer.is_valid(raise_exception=True)
         menu_id = params_serializer.validated_data["menu_id"]
         plan_date = params_serializer.validated_data["date"]
+        sel_item_ids = params_serializer.validated_data.get("item_ids") or []
 
         # Меню должно принадлежать семье target-члена.
         menu = Menu.objects.filter(pk=menu_id, family=target.family).first()
@@ -298,6 +304,9 @@ class DiaryImportFromMenuView(APIView):
             "recipe"
         ) | MenuItem.objects.filter(menu=menu, member__isnull=True).select_related("recipe")
         items_qs = items_qs.distinct()
+        # FILL_FROM_MENU_V4: if a subset was requested, keep only those MenuItems.
+        if sel_item_ids:
+            items_qs = items_qs.filter(id__in=sel_item_ids)
 
         created_count = 0
         skipped_count = 0

@@ -150,7 +150,7 @@ export const DiaryPage: React.FC = () => {
         <h1 className="text-2xl font-bold text-chocolate">Дневник питания</h1>
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={() => setShowCopy(true)}>📋 Копировать</Button>
-          <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Импорт</Button>
+          <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Заполнить из меню</Button>
           <Button onClick={() => setShowAdd(true)}>＋ Добавить</Button>
         </div>
       </div>

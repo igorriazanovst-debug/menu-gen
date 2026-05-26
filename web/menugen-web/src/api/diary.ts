@@ -41,10 +41,12 @@ export const diaryApi = {
     return Array.isArray(data) ? (data as DiaryDayStats[]) : [];
   },
 
-  importFromMenu: (menuId: number, date: string, memberId?: number) => {
+  // FILL_FROM_MENU_V4: itemIds optional (subset of menu items); empty/undefined = whole menu.
+  importFromMenu: (menuId: number, date: string, memberId?: number, itemIds?: number[]) => {
     const params: Record<string, string | number> = { menu_id: menuId, date };
     if (memberId) params.member_id = memberId;
-    return client.post('/diary/import-from-menu/', null, { params });
+    const body = itemIds && itemIds.length ? { item_ids: itemIds } : null;
+    return client.post('/diary/import-from-menu/', body, { params });
   },
 
   getWater: async (date: string): Promise<DiaryWaterLog> => {
