@@ -8,9 +8,10 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { AddDiaryEntryModal } from '../../components/diary/AddDiaryEntryModal';
 import { ImportMenuModal } from '../../components/diary/ImportMenuModal';
 import { CopyFromDayModal } from '../../components/diary/CopyFromDayModal'; // DIARY_COPY_V3
+import { PrintDiaryModal } from '../../components/diary/PrintDiaryModal'; // DIARY_HIER_PRINT_V5
 import { getErrorMessage } from '../../utils/api';
 import { MEAL_LABELS } from '../../types';
-import type { DiaryEntry, DiaryDayStats, FamilyMember } from '../../types';
+import type { DiaryEntry, DiaryDayStats, FamilyMember, MealType } from '../../types';
 
 const today = () => new Date().toISOString().split('T')[0];
 const WATER_GOAL_ML = 2000;
@@ -43,6 +44,9 @@ export const DiaryPage: React.FC = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showCopy, setShowCopy] = useState(false); // DIARY_COPY_V3
+  const [showPrint, setShowPrint] = useState(false); // DIARY_HIER_PRINT_V5
+  // DIARY_HIER_PRINT_V5: per-meal open state, survives reloads (collapsed by default).
+  const [openMeals, setOpenMeals] = useState<Set<MealType>>(new Set());
   const [customWater, setCustomWater] = useState('');
 
   // Family (for member switcher; HEAD only).
@@ -77,10 +81,19 @@ export const DiaryPage: React.FC = () => {
   useEffect(() => { load(); }, [load]);
 
   const toggleEaten = async (e: DiaryEntry) => {
+    const next = !e.is_eaten;
+    // Optimistic: update just this entry so the open/closed sections don't reset.
+    setEntries((prev) => prev.map((x) => (x.id === e.id ? { ...x, is_eaten: next } : x)));
     try {
-      await diaryApi.patch(e.id, { is_eaten: !e.is_eaten });
-      load();
-    } catch (err) { alert(getErrorMessage(err)); }
+      await diaryApi.patch(e.id, { is_eaten: next });
+      // Refresh stats only (entries already reflect the change).
+      const s = await diaryApi.stats(date, date, memberId).catch(() => [] as DiaryDayStats[]);
+      setStats(s[0] ?? { date, planned: emptyBucket, actual: emptyBucket, total: emptyBucket });
+    } catch (err) {
+      // Revert on failure.
+      setEntries((prev) => prev.map((x) => (x.id === e.id ? { ...x, is_eaten: !next } : x)));
+      alert(getErrorMessage(err));
+    }
   };
 
   const remove = async (e: DiaryEntry) => {
@@ -112,6 +125,25 @@ export const DiaryPage: React.FC = () => {
   const planned = entries.filter(isPlan);
   const manual = entries.filter((e) => !isPlan(e));
 
+  // DIARY_HIER_PRINT_V5: group all entries by meal type for hierarchical view.
+  const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const mealGroups = MEAL_ORDER
+    .map((mt) => ({ mt, items: entries.filter((e) => e.meal_type === mt) }))
+    .filter((g) => g.items.length > 0);
+  // DIARY_HIER_PRINT_V5: read a nutrition field that may be flat (number) or {value,unit}.
+  const nutriVal = (e: DiaryEntry, key: 'calories' | 'proteins' | 'fats' | 'carbs'): number => {
+    const raw = (e.nutrition as Record<string, unknown> | undefined)?.[key];
+    let n = 0;
+    if (typeof raw === 'number') n = raw;
+    else if (typeof raw === 'string') n = parseFloat(raw);
+    else if (raw && typeof raw === 'object' && 'value' in (raw as object)) {
+      n = parseFloat(String((raw as { value: unknown }).value));
+    }
+    return Number.isFinite(n) ? n * (e.quantity ?? 1) : 0;
+  };
+  const mealKcal = (items: DiaryEntry[]) =>
+    Math.round(items.reduce((sum, e) => sum + nutriVal(e, 'calories'), 0));
+
   const Entry: React.FC<{ e: DiaryEntry; canCheck: boolean }> = ({ e, canCheck }) => (
     <Card className="p-4">
       <div className="flex items-center justify-between gap-3">
@@ -133,9 +165,9 @@ export const DiaryPage: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          {e.nutrition?.calories && (
+          {nutriVal(e, 'calories') > 0 && (
             <span className="text-sm text-gray-500 whitespace-nowrap">
-              {e.nutrition.calories.value} {e.nutrition.calories.unit}
+              {Math.round(nutriVal(e, 'calories'))} ккал
             </span>
           )}
           <button onClick={() => remove(e)} className="text-gray-400 hover:text-red-600 text-sm" title="Удалить">🗑</button>
@@ -149,6 +181,7 @@ export const DiaryPage: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-chocolate">Дневник питания</h1>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => setShowPrint(true)}>🖨 Печать</Button>
           <Button variant="ghost" onClick={() => setShowCopy(true)}>📋 Копировать</Button>
           <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Заполнить из меню</Button>
           <Button onClick={() => setShowAdd(true)}>＋ Добавить</Button>
@@ -218,19 +251,39 @@ export const DiaryPage: React.FC = () => {
           <p>Нет записей за этот день</p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {planned.length > 0 && (
-            <div className="space-y-3">
-              <div className="text-sm font-semibold text-chocolate">📋 План ({planned.length})</div>
-              {planned.map((e) => <Entry key={e.id} e={e} canCheck />)}
-            </div>
-          )}
-          {manual.length > 0 && (
-            <div className="space-y-3">
-              <div className="text-sm font-semibold text-chocolate">🍽 Факт ({manual.length})</div>
-              {manual.map((e) => <Entry key={e.id} e={e} canCheck={false} />)}
-            </div>
-          )}
+        <div className="space-y-3">
+          {/* DIARY_HIER_PRINT_V5: collapse/expand-all control */}
+          <div className="flex justify-end">
+            <button type="button"
+              onClick={() => setOpenMeals((prev) =>
+                prev.size === mealGroups.length ? new Set() : new Set(mealGroups.map((g) => g.mt)))}
+              className="text-xs text-tomato hover:underline">
+              {openMeals.size === mealGroups.length && mealGroups.length > 0 ? 'Свернуть всё' : 'Развернуть всё'}
+            </button>
+          </div>
+          {mealGroups.map((g) => (
+            <details key={g.mt} open={openMeals.has(g.mt)}
+              onToggle={(ev) => {
+                const isOpen = (ev.target as HTMLDetailsElement).open;
+                setOpenMeals((prev) => {
+                  const n = new Set(prev);
+                  if (isOpen) n.add(g.mt); else n.delete(g.mt);
+                  return n;
+                });
+              }}
+              className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
+              <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between">
+                <span className="font-semibold text-chocolate">
+                  {MEAL_LABELS[g.mt] ?? g.mt}
+                  <span className="text-gray-400 font-normal"> · {g.items.length}</span>
+                </span>
+                <span className="text-sm text-gray-500">{mealKcal(g.items)} ккал</span>
+              </summary>
+              <div className="px-3 pb-3 space-y-2">
+                {g.items.map((e) => <Entry key={e.id} e={e} canCheck={isPlan(e)} />)}
+              </div>
+            </details>
+          ))}
         </div>
       ))}
 
@@ -245,6 +298,10 @@ export const DiaryPage: React.FC = () => {
       {showCopy && (
         <CopyFromDayModal targetDate={date} memberId={memberId}
           onClose={() => setShowCopy(false)} onCopied={load} />
+      )}
+      {showPrint && (
+        <PrintDiaryModal date={date} memberId={memberId}
+          onClose={() => setShowPrint(false)} />
       )}
     </div>
   );

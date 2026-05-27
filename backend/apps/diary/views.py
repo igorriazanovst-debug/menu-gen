@@ -176,8 +176,17 @@ def _entry_nutrition(entry):
     qty = float(entry.quantity or 1)
     out = {}
     for key in _NUTRITION_KEYS:
+        # DIARY_STATS_FLAT_V5: nutrition value may be a flat number, a numeric
+        # string, or a legacy {"value": ...} dict. Support all three.
+        raw = nutr.get(key)
         try:
-            out[key] = float(nutr.get(key, {}).get("value", 0)) * qty
+            if isinstance(raw, dict):
+                val = float(raw.get("value", 0) or 0)
+            elif raw is None:
+                val = 0.0
+            else:
+                val = float(raw)
+            out[key] = val * qty
         except (TypeError, ValueError, AttributeError):
             out[key] = 0.0
     return out
