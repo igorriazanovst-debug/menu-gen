@@ -94,8 +94,24 @@ class _FavoriteStateMixin(serializers.Serializer):
         return bool(f and not f.is_favorite)
 
 
-class RecipeListSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, serializers.ModelSerializer):
+
+
+# MG_FIX_IMAGE_URL_ABSOLUTE
+class _AbsoluteImageUrlMixin:
+    """Converts image_url to an absolute URL using the request context."""
+
+    def get_image_url(self, obj):
+        url = obj.image_url
+        if not url:
+            return None
+        request = self.context.get("request")
+        if request and not url.startswith("http"):
+            return request.build_absolute_uri(url)
+        return url
+
+class RecipeListSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _AbsoluteImageUrlMixin, serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
+    image_url = serializers.SerializerMethodField()  # MG_FIX_IMAGE_URL_ABSOLUTE
     fridge_match_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -128,8 +144,9 @@ class RecipeListSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, serial
         return scores.get(obj.id, 0)
 
 
-class RecipeDetailSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, serializers.ModelSerializer):
+class RecipeDetailSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _AbsoluteImageUrlMixin, serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
+    image_url = serializers.SerializerMethodField()  # MG_FIX_IMAGE_URL_ABSOLUTE
 
     class Meta:
         model = Recipe
