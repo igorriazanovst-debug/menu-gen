@@ -96,7 +96,7 @@ MEAL_CAL_WINDOW_TIERS = (0.15, 0.30, 0.50)
 DAILY_OIL_TSP_LIMIT = 5.0  # ≤ 5 ч.л. масла в сутки на члена семьи
 OIL_TSP_HEAVY_THRESHOLD = 0.5  # рецепт считается «маслянистым» при oil_tsp > 0.5
 SWEET_PER_DAY_LIMIT = 1  # ≤ 1 сладкого перекуса в день
-DESSERT_MAX_PER_DAY = 1  # MG_610_V_generator: ≤ 1 десерта в день на члена семьи
+DESSERT_MAX_PER_DAY = 1  # MG_611_V_generator: ≤ 1 десерта+выпечки в день на члена семьи
 MAIN_MEAL_TYPES = ("breakfast", "lunch", "dinner")  # сладкое запрещено
 
 TIER_FEATURES = {
@@ -126,7 +126,7 @@ class _WeeklyTracker:
         # day_offset -> member_id -> {"plant": int, "animal": int, "mixed": int}
         # MG_502_503_V_generator: добавлены oil_tsp (float) и sweet_count (int)
         self._daily: Dict[int, Dict[int, Dict[str, float]]] = defaultdict(
-            lambda: defaultdict(lambda: {"plant": 0, "animal": 0, "mixed": 0, "oil_tsp": 0.0, "sweet_count": 0, "dessert_count": 0})
+            lambda: defaultdict(lambda: {"plant": 0, "animal": 0, "mixed": 0, "oil_tsp": 0.0, "sweet_count": 0, "dessert_count": 0, "bakery_count": 0})
         )
 
     @staticmethod
@@ -164,9 +164,11 @@ class _WeeklyTracker:
                 pass
         if getattr(recipe, "has_added_sugar", False):
             d["sweet_count"] = int(d.get("sweet_count", 0)) + 1
-        # MG_610_V_generator: track desserts
+        # MG_611_V_generator: track desserts and bakery
         if getattr(recipe, "dish_type", None) == "dessert":
             d["dessert_count"] = int(d.get("dessert_count", 0)) + 1
+        if getattr(recipe, "dish_type", None) == "bakery":
+            d["bakery_count"] = int(d.get("bakery_count", 0)) + 1
 
     # для итоговых warning'ов
     def all_weeks(self) -> Dict[int, Dict[int, Dict[str, float]]]:
@@ -257,10 +259,11 @@ class MenuGenerator:
                         # MG_610_V_generator: soup toggle
                         if role == "soup" and not self.with_soup:
                             continue
-                        # MG_610_V_generator: dessert limit
-                        if role == "dessert":
-                            _d610 = self.tracker.get_day(member.id, day)
-                            if int(_d610.get("dessert_count", 0)) >= DESSERT_MAX_PER_DAY:
+                        # MG_611_V_generator: dessert+bakery combined limit
+                        if role in ("dessert", "bakery"):
+                            _d611 = self.tracker.get_day(member.id, day)
+                            _sweet = int(_d611.get("dessert_count", 0)) + int(_d611.get("bakery_count", 0))
+                            if _sweet >= DESSERT_MAX_PER_DAY:
                                 continue
                         recipe = self._pick_for_role(
                             role=role,
@@ -769,10 +772,11 @@ class MenuGenerator:
                     # MG_610_V_generator: soup toggle
                     if role == "soup" and not self.with_soup:
                         continue
-                    # MG_610_V_generator: dessert limit
-                    if role == "dessert":
-                        _d610f = self.tracker.get_day(0, day)
-                        if int(_d610f.get("dessert_count", 0)) >= DESSERT_MAX_PER_DAY:
+                    # MG_611_V_generator: dessert+bakery combined limit
+                    if role in ("dessert", "bakery"):
+                        _d611f = self.tracker.get_day(0, day)
+                        _sweet_f = int(_d611f.get("dessert_count", 0)) + int(_d611f.get("bakery_count", 0))
+                        if _sweet_f >= DESSERT_MAX_PER_DAY:
                             continue
                     recipe = self._pick_for_role(
                         role=role,
