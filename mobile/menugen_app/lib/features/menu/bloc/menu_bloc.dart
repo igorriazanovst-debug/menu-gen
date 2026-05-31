@@ -139,6 +139,7 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
       if (e.mealPlanType != null) body['meal_plan_type'] = e.mealPlanType;
       if (e.excludeAllergens != null) body['exclude_allergens'] = e.excludeAllergens;
       if (e.excludeDisliked != null) body['exclude_disliked'] = e.excludeDisliked;
+      body['with_soup'] = e.withSoup; // MG_610_V_mobile
       final r = await apiClient.post('/menu/generate/', data: body);
       final m = _asMap(r);
       final id = m['id'];

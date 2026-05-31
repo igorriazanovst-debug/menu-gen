@@ -160,8 +160,19 @@ class MenuGenerateView(APIView):
             filters["calorie_min"] = data["calorie_min"]
         if data.get("calorie_max"):
             filters["calorie_max"] = data["calorie_max"]
+        # MG_610_V_generator: new filters
+        filters["with_soup"] = data.get("with_soup", True)
+        if data.get("countries"):
+            filters["countries"] = data["countries"]
+        if data.get("exclude_allergens") is not None:
+            filters["exclude_allergens"] = data["exclude_allergens"]
+        if data.get("exclude_disliked") is not None:
+            filters["exclude_disliked"] = data["exclude_disliked"]
         if data.get("meal_plan_type"):
             filters["meal_plan_type"] = data["meal_plan_type"]
+        if data.get("mode"):
+            filters["mode"] = data["mode"]
+
         # MG_605A_V_views: проброс mode (per_member | family)
         filters["mode"] = data.get("mode", "family")
         # MG_607_V_views: countries (мульти), exclude_allergens, exclude_disliked

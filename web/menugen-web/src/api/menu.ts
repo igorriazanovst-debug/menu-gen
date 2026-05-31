@@ -30,6 +30,7 @@ export interface GenerateMenuPayload {
   exclude_disliked?: string[];      // MG-607: то же
   member_ids?: number[];
   mode?: 'per_member' | 'family';
+  with_soup?: boolean;             // MG_610_V_web: include soup in lunch
 }
 
 export const menuApi = {

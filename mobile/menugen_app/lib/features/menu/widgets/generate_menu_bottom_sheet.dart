@@ -52,6 +52,7 @@ class _State extends State<GenerateMenuBottomSheet> {
   int? _maxCookTime;
   bool _respectAllergies = true;
   bool _respectDisliked = true;
+  bool _withSoup = true; // MG_610_V_mobile
 
   // loaded data
   List<String> _allCountries = <String>[];
@@ -148,6 +149,7 @@ class _State extends State<GenerateMenuBottomSheet> {
           maxCookTime: _maxCookTime,
           excludeAllergens: _respectAllergies ? null : const <String>[],
           excludeDisliked: _respectDisliked ? null : const <String>[],
+          withSoup: _withSoup, // MG_610_V_mobile
         ));
     Navigator.pop(context);
   }
@@ -264,6 +266,14 @@ class _State extends State<GenerateMenuBottomSheet> {
                     subtitle: _userDisliked.isEmpty
                         ? 'Список пуст'
                         : _userDisliked.join(', '),
+                  ),
+                  const SizedBox(height: 8),
+                  // MG_610_V_mobile: with_soup toggle
+                  _ToggleTile(
+                    value: _withSoup,
+                    onChanged: (v) => setState(() => _withSoup = v),
+                    title: 'Суп на обед',
+                    subtitle: _withSoup ? 'Первое блюдо включено' : 'Обед без супа',
                   ),
                   const SizedBox(height: 24),
 

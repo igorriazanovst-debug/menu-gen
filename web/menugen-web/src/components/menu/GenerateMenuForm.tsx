@@ -69,6 +69,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
   const [maxCookTime, setMaxCookTime] = useState<number | ''>('');
   const [respectAllergies, setRespectAllergies] = useState(true);
   const [respectDisliked, setRespectDisliked] = useState(true);
+  const [withSoup, setWithSoup] = useState(true); // MG_610_V_web
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -121,6 +122,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
       if (maxCookTime !== '' && Number(maxCookTime) > 0) payload.max_cook_time = Number(maxCookTime);
       if (!respectAllergies) payload.exclude_allergens = [];
       if (!respectDisliked) payload.exclude_disliked = [];
+      payload.with_soup = withSoup; // MG_610_V_web
 
       const { data } = await menuApi.generate(payload);
       onCreated(data);
@@ -288,6 +290,13 @@ export const GenerateMenuForm: React.FC<Props> = ({
           title="Учитывать нелюбимые продукты"
           subtitle={userDisliked.length > 0 ? userDisliked.join(', ') : 'Список пуст'}
           disabled={userDisliked.length === 0}
+        />
+        {/* MG_610_V_web: with_soup toggle */}
+        <ToggleRow
+          checked={withSoup}
+          onChange={setWithSoup}
+          title="Суп на обед"
+          subtitle={withSoup ? 'Первое блюдо включено в обед' : 'Обед без супа'}
         />
       </div>
 
