@@ -1,8 +1,9 @@
+# MG_RA002_cuisine_admin
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from .forms import RecipeAdminForm
-from .models import Recipe, RecipeAuthor, RecipeFavorite
+from .forms import RecipeAdminForm, RecipeChangelistForm
+from .models import Cuisine, Recipe, RecipeAuthor, RecipeFavorite
 
 # Human help texts (meaning in DB + allowed values), translatable.
 HELP = {
@@ -14,7 +15,8 @@ HELP = {
     "servings_normalized": _("Normalized servings count used by the generator."),
     "portion_g": _("Weight of one serving, grams."),
     "ingredients": _(
-        "List of ingredients. Each row: name, quantity, unit, grams. " "Grams are used to compute nutrition."
+        "List of ingredients. Each row: name, quantity, unit, grams. "
+        "Grams are used to compute nutrition."
     ),
     "steps": _("Ordered cooking steps. Numbering is assigned automatically."),
     "nutrition": _("Per-100g nutrition object: calories, proteins, fats, carbs, sugars."),
@@ -23,7 +25,8 @@ HELP = {
         "soup, main, salad, side, dessert, drink, bakery, sauce, snack, breakfast_dish."
     ),
     "allergens": _(
-        "Allergens present in the dish. Allowed: eggs, milk, gluten, fish, " "shellfish, nuts, peanuts, soy, sesame."
+        "Allergens present in the dish. Allowed: eggs, milk, gluten, fish, "
+        "shellfish, nuts, peanuts, soy, sesame."
     ),
     "suitable_for": _("Meal slots this dish fits. Allowed: breakfast, lunch, dinner, snack."),
     "dish_type": _("Dish type (first course / main / dessert ...). One value."),
@@ -58,7 +61,6 @@ HELP = {
     "sugars_per_100g": _("Sugars per 100 g."),
 }
 
-# Human field labels, translatable (verbose names for the form).
 LABELS = {
     "title": _("Title"),
     "legacy_id": _("Legacy ID"),
@@ -101,6 +103,14 @@ LABELS = {
 }
 
 
+@admin.register(Cuisine)
+class CuisineAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "sort_order", "is_active")
+    list_editable = ("name", "sort_order", "is_active")
+    search_fields = ("name",)
+    ordering = ("sort_order", "name")
+
+
 @admin.register(Recipe)
 class RecipeAdmin(admin.ModelAdmin):
     form = RecipeAdminForm
@@ -116,6 +126,13 @@ class RecipeAdmin(admin.ModelAdmin):
         "author",
         "created_at",
     )
+    list_editable = ("title", "dish_type", "country", "source")
+
+    # MG_RA002b_country_select_list
+    def get_changelist_form(self, request, **kwargs):
+        kwargs.setdefault("form", RecipeChangelistForm)
+        return super().get_changelist_form(request, **kwargs)
+
     list_filter = (
         "dish_type",
         "source",

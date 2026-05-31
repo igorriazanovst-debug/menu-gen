@@ -278,3 +278,22 @@ class ArchivedRecipe(models.Model):  # RB001_V_schema
 
     def __str__(self):
         return f"Archived({self.original_id}, {self.title[:40]})"
+
+
+# MG_RA002_cuisine_admin
+class Cuisine(models.Model):
+    """Editable list of country/cuisine names used in Recipe.country."""
+
+    name = models.CharField(max_length=100, unique=True, verbose_name="Название")
+    is_active = models.BooleanField(default=True, verbose_name="Активна")
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок")
+
+    class Meta:
+        db_table = "recipe_cuisines"
+        ordering = ["sort_order", "name"]
+        verbose_name = "Кухня / страна"
+        verbose_name_plural = "Кухни / страны"
+
+    def __str__(self):
+        return self.name
+

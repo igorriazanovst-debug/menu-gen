@@ -13,7 +13,7 @@ from django.utils.html import escape as _html_escape
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
-from .models import Recipe
+from .models import Cuisine, Recipe
 
 # ── Allowed values for the multi-select JSON fields ──────────────────────────
 # (value, human label). Labels are translatable.
@@ -366,6 +366,29 @@ class _MediaUploadWidget(forms.TextInput):
 # ── /PHOTO_UPLOAD_ADMIN ──────────────────────────────────────────────────────
 
 
+
+
+class _CuisineSelectWidget(forms.Select):
+    """<select> populated live from Cuisine table (active only, sorted)."""
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs)
+
+    def _get_choices(self):
+        try:
+            qs = Cuisine.objects.filter(is_active=True).order_by("sort_order", "name")
+            opts = [("", "---------")] + [(c.name, c.name) for c in qs]
+        except Exception:
+            opts = [("", "---------")]
+        return opts
+
+    def render(self, name, value, attrs=None, renderer=None):
+        self.choices = self._get_choices()
+        return super().render(name, value, attrs=attrs, renderer=renderer)
+
+    def value_from_datadict(self, data, files, name):
+        return data.get(name, "")
+
 # ── The admin form ────────────────────────────────────────────────────────────
 class RecipeAdminForm(forms.ModelForm):
     ingredients = _PassthroughField(widget=_IngredientsWidget(), label=_("Ingredients"))
@@ -375,6 +398,11 @@ class RecipeAdminForm(forms.ModelForm):
         widget=_JSONListMultiCheckbox(choices=SUITABLE_FOR_CHOICES), label=_("Suitable for (meal)")
     )
     categories = _PassthroughField(widget=_JSONListMultiCheckbox(choices=CATEGORY_CHOICES), label=_("Categories"))
+    country = forms.CharField(
+        required=False,
+        widget=_CuisineSelectWidget(),
+        label=_("Country / cuisine"),
+    )
 
     image_url = forms.URLField(
         required=False,
@@ -390,3 +418,24 @@ class RecipeAdminForm(forms.ModelForm):
     class Meta:
         model = Recipe
         fields = "__all__"
+
+
+# MG_RA002b_country_select_list
+class RecipeChangelistForm(forms.ModelForm):
+    """Form used by RecipeAdmin.get_changelist_form() for list_editable.
+
+    Overrides the country widget to a <select> from the Cuisine table.
+    dish_type and source already have model-level choices so Django renders
+    them as <select> automatically; only country needs the override.
+    """
+
+    country = forms.CharField(
+        required=False,
+        widget=_CuisineSelectWidget(),
+        label=_("Country / cuisine"),
+    )
+
+    class Meta:
+        model = Recipe
+        fields = ("title", "dish_type", "country", "source")
+
