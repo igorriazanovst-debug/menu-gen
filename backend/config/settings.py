@@ -37,6 +37,7 @@ LOCAL_APPS = [
     "apps.fridge",
     "apps.menu",
     "apps.diary",
+    "apps.shopping",
     "apps.specialists",
     "apps.subscriptions",
     "apps.payments",
