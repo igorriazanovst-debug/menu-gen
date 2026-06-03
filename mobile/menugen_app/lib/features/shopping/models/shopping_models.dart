@@ -1,0 +1,241 @@
+import 'package:equatable/equatable.dart';
+
+/// Mirror of backend `ShoppingList.Source`.
+enum ShoppingSource {
+  empty('empty', 'Пустой'),
+  menu('menu', 'Из меню'),
+  fridge('fridge', 'Меню − холодильник'),
+  aiText('ai_text', 'ИИ из текста'),
+  csv('csv', 'CSV');
+
+  final String value;
+  final String label;
+  const ShoppingSource(this.value, this.label);
+
+  static ShoppingSource fromValue(String? raw) {
+    for (final s in ShoppingSource.values) {
+      if (s.value == raw) return s;
+    }
+    return ShoppingSource.empty;
+  }
+}
+
+class ShoppingItem extends Equatable {
+  final int id;
+  final String name;
+  final double? quantity;
+  final String unit;
+  final String category;
+  final bool isPurchased;
+  final String? purchasedByName;
+
+  const ShoppingItem({
+    required this.id,
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.category,
+    required this.isPurchased,
+    this.purchasedByName,
+  });
+
+  factory ShoppingItem.fromJson(Map<String, dynamic> j) {
+    final q = j['quantity'];
+    return ShoppingItem(
+      id: j['id'] as int,
+      name: j['name'] as String? ?? '',
+      quantity: q == null ? null : double.tryParse(q.toString()),
+      unit: j['unit'] as String? ?? '',
+      category: j['category'] as String? ?? '',
+      isPurchased: j['is_purchased'] as bool? ?? false,
+      purchasedByName: j['purchased_by_name'] as String?,
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, name, quantity, unit, category, isPurchased];
+}
+
+class ShoppingCapabilities extends Equatable {
+  final bool read;
+  final bool toggle;
+  final bool export;
+  final bool manage;
+
+  const ShoppingCapabilities({
+    required this.read,
+    required this.toggle,
+    required this.export,
+    required this.manage,
+  });
+
+  factory ShoppingCapabilities.fromJson(Map<String, dynamic>? j) {
+    j ??= const {};
+    return ShoppingCapabilities(
+      read: j['read'] as bool? ?? false,
+      toggle: j['toggle'] as bool? ?? false,
+      export: j['export'] as bool? ?? false,
+      manage: j['manage'] as bool? ?? false,
+    );
+  }
+
+  @override
+  List<Object?> get props => [read, toggle, export, manage];
+}
+
+class ShoppingListBrief extends Equatable {
+  final int id;
+  final String name;
+  final ShoppingSource source;
+  final bool isArchived;
+  final int itemsTotal;
+  final int itemsPurchased;
+
+  const ShoppingListBrief({
+    required this.id,
+    required this.name,
+    required this.source,
+    required this.isArchived,
+    required this.itemsTotal,
+    required this.itemsPurchased,
+  });
+
+  factory ShoppingListBrief.fromJson(Map<String, dynamic> j) => ShoppingListBrief(
+        id: j['id'] as int,
+        name: j['name'] as String? ?? '',
+        source: ShoppingSource.fromValue(j['source'] as String?),
+        isArchived: j['is_archived'] as bool? ?? false,
+        itemsTotal: j['items_total'] as int? ?? 0,
+        itemsPurchased: j['items_purchased'] as int? ?? 0,
+      );
+
+  @override
+  List<Object?> get props => [id, name, source, isArchived, itemsTotal, itemsPurchased];
+}
+
+class ShoppingListDetail extends Equatable {
+  final int id;
+  final String name;
+  final ShoppingSource source;
+  final bool isArchived;
+  final List<ShoppingItem> items;
+  final ShoppingCapabilities capabilities;
+
+  const ShoppingListDetail({
+    required this.id,
+    required this.name,
+    required this.source,
+    required this.isArchived,
+    required this.items,
+    required this.capabilities,
+  });
+
+  factory ShoppingListDetail.fromJson(Map<String, dynamic> j) {
+    final raw = (j['items'] as List? ?? const []);
+    return ShoppingListDetail(
+      id: j['id'] as int,
+      name: j['name'] as String? ?? '',
+      source: ShoppingSource.fromValue(j['source'] as String?),
+      isArchived: j['is_archived'] as bool? ?? false,
+      items: raw
+          .whereType<Map>()
+          .map((e) => ShoppingItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      capabilities: ShoppingCapabilities.fromJson(
+        j['capabilities'] == null ? null : Map<String, dynamic>.from(j['capabilities'] as Map),
+      ),
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, name, source, isArchived, items, capabilities];
+}
+
+class ShoppingAccess extends Equatable {
+  final int id;
+  final String userEmail;
+  final String? userName;
+  final bool canToggle;
+  final bool canExport;
+
+  const ShoppingAccess({
+    required this.id,
+    required this.userEmail,
+    required this.userName,
+    required this.canToggle,
+    required this.canExport,
+  });
+
+  factory ShoppingAccess.fromJson(Map<String, dynamic> j) => ShoppingAccess(
+        id: j['id'] as int,
+        userEmail: j['user_email'] as String? ?? '',
+        userName: j['user_name'] as String?,
+        canToggle: j['can_toggle'] as bool? ?? false,
+        canExport: j['can_export'] as bool? ?? false,
+      );
+
+  @override
+  List<Object?> get props => [id, userEmail, userName, canToggle, canExport];
+}
+
+class ShoppingHistoryEntry extends Equatable {
+  final int id;
+  final String name;
+  final double? quantity;
+  final String unit;
+  final String purchasedAt;
+
+  const ShoppingHistoryEntry({
+    required this.id,
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.purchasedAt,
+  });
+
+  factory ShoppingHistoryEntry.fromJson(Map<String, dynamic> j) {
+    final q = j['quantity'];
+    return ShoppingHistoryEntry(
+      id: j['id'] as int,
+      name: j['name'] as String? ?? '',
+      quantity: q == null ? null : double.tryParse(q.toString()),
+      unit: j['unit'] as String? ?? '',
+      purchasedAt: j['purchased_at'] as String? ?? '',
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, name, quantity, unit, purchasedAt];
+}
+
+class ShoppingExportData {
+  final String title;
+  final List<MapEntry<String, List<ShoppingItem>>> categories;
+
+  ShoppingExportData({required this.title, required this.categories});
+
+  factory ShoppingExportData.fromJson(Map<String, dynamic> j) {
+    final cats = (j['categories'] as List? ?? const []);
+    final out = <MapEntry<String, List<ShoppingItem>>>[];
+    for (final c in cats) {
+      final cm = Map<String, dynamic>.from(c as Map);
+      final items = (cm['items'] as List? ?? const [])
+          .whereType<Map>()
+          .map((e) {
+            final em = Map<String, dynamic>.from(e);
+            final q = em['quantity'];
+            return ShoppingItem(
+              id: 0,
+              name: em['name'] as String? ?? '',
+              quantity: q == null ? null : double.tryParse(q.toString()),
+              unit: em['unit'] as String? ?? '',
+              category: cm['category'] as String? ?? '',
+              isPurchased: em['is_purchased'] as bool? ?? false,
+            );
+          })
+          .toList();
+      out.add(MapEntry(cm['category'] as String? ?? '', items));
+    }
+    return ShoppingExportData(title: j['title'] as String? ?? 'Список', categories: out);
+  }
+}

@@ -53,6 +53,7 @@ class AppRouter {
             GoRoute(path: '/recipes', builder: (_, __) => RecipesScreen(apiClient: apiClient)),
             GoRoute(path: '/fridge',  builder: (_, __) => FridgeScreen(apiClient: apiClient)),
             GoRoute(path: '/diary',   builder: (_, __) => const DiaryScreen()),
+            GoRoute(path: '/shopping', builder: (_, __) => ShoppingListScreen(apiClient: apiClient)),
             GoRoute(path: '/profile', builder: (_, state) => ProfileScreen(apiClient: apiClient)),
           ],
         ),
@@ -61,13 +62,6 @@ class AppRouter {
           builder: (_, __) => BlocProvider(
             create: (_) => FamilyBloc(apiClient: apiClient)..add(const FamilyLoadRequested()),
             child: const FamilyScreen(),
-          ),
-        ),
-        GoRoute(
-          path: '/shopping/:menuId',
-          builder: (_, state) => ShoppingListScreen(
-            apiClient: apiClient,
-            menuId: int.parse(state.pathParameters['menuId']!),
           ),
         ),
       ],

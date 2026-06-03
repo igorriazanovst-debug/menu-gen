@@ -14,6 +14,7 @@ class MainShell extends StatelessWidget {
     (icon: Icons.restaurant_menu, label: 'Меню',       path: '/menu'),
     (icon: Icons.menu_book,        label: 'Рецепты',    path: '/recipes'),
     (icon: Icons.kitchen,          label: 'Холодильник',path: '/fridge'),
+    (icon: Icons.shopping_cart,    label: 'Покупки',    path: '/shopping'),
     (icon: Icons.book,             label: 'Дневник',    path: '/diary'),
     (icon: Icons.person,           label: 'Профиль',    path: '/profile'),
   ];
