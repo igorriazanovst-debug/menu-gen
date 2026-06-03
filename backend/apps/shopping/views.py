@@ -8,12 +8,7 @@ from rest_framework.views import APIView
 
 from apps.menu.models import Menu
 
-from .models import (
-    PurchaseHistoryEntry,
-    ShoppingList,
-    ShoppingListAccess,
-    ShoppingListItem,
-)
+from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, ShoppingListItem
 from .permissions import access_level, get_user_family, is_family_head
 from .serializers import (
     CreateListSerializer,
@@ -83,9 +78,7 @@ class ShoppingListsView(APIView):
                 menu = Menu.objects.get(id=data["menu_id"], family=family)
             except Menu.DoesNotExist:
                 return Response({"detail": "Меню не найдено."}, status=status.HTTP_404_NOT_FOUND)
-            items_data = build_items_from_menu(
-                menu, family, subtract_fridge=(src == ShoppingList.Source.FRIDGE)
-            )
+            items_data = build_items_from_menu(menu, family, subtract_fridge=(src == ShoppingList.Source.FRIDGE))
         elif src == ShoppingList.Source.AI_TEXT:
             items_data = parse_text_with_ai(data["text"])
             if items_data is None:
@@ -94,14 +87,20 @@ class ShoppingListsView(APIView):
             items_data = parse_csv(data["csv_text"])
 
         sl = ShoppingList.objects.create(
-            family=family, name=data["name"], source=src,
-            created_by=user, menu=menu,
+            family=family,
+            name=data["name"],
+            source=src,
+            created_by=user,
+            menu=menu,
         )
         bulk = [
             ShoppingListItem(
-                shopping_list=sl, name=d["name"],
-                quantity=d.get("quantity"), unit=d.get("unit") or "",
-                category=d.get("category") or "", sort_order=i,
+                shopping_list=sl,
+                name=d["name"],
+                quantity=d.get("quantity"),
+                unit=d.get("unit") or "",
+                category=d.get("category") or "",
+                sort_order=i,
             )
             for i, d in enumerate(items_data)
         ]
@@ -229,9 +228,13 @@ class ShoppingItemToggleView(APIView):
             item.purchased_by = request.user
             item.purchased_at = timezone.now()
             PurchaseHistoryEntry.objects.create(
-                family=sl.family, name=item.name, quantity=item.quantity,
-                unit=item.unit, category=item.category,
-                purchased_by=request.user, source_list_id=sl.id,
+                family=sl.family,
+                name=item.name,
+                quantity=item.quantity,
+                unit=item.unit,
+                category=item.category,
+                purchased_by=request.user,
+                source_list_id=sl.id,
             )
         else:
             item.purchased_by = None
@@ -264,16 +267,15 @@ class ShoppingListAccessView(APIView):
         ser.is_valid(raise_exception=True)
         target = ser.resolve_user()
         acc, _ = ShoppingListAccess.objects.update_or_create(
-            shopping_list=sl, user=target,
+            shopping_list=sl,
+            user=target,
             defaults={
                 "can_read": True,
                 "can_toggle": ser.validated_data["can_toggle"],
                 "can_export": ser.validated_data["can_export"],
             },
         )
-        return Response(
-            ShoppingListAccessSerializer(acc).data, status=status.HTTP_201_CREATED
-        )
+        return Response(ShoppingListAccessSerializer(acc).data, status=status.HTTP_201_CREATED)
 
     def delete(self, request, list_id):
         sl, caps = _get_list_for_user(request.user, list_id)
@@ -302,19 +304,21 @@ class ShoppingListExportView(APIView):
         items = ShoppingListItem.objects.filter(shopping_list=sl)
         by_cat = {}
         for it in items:
-            by_cat.setdefault(it.category or "", []).append({
-                "name": it.name,
-                "quantity": str(it.quantity) if it.quantity is not None else None,
-                "unit": it.unit,
-                "is_purchased": it.is_purchased,
-            })
-        return Response({
-            "title": sl.name,
-            "created_at": sl.created_at,
-            "categories": [
-                {"category": cat, "items": its} for cat, its in by_cat.items()
-            ],
-        })
+            by_cat.setdefault(it.category or "", []).append(
+                {
+                    "name": it.name,
+                    "quantity": str(it.quantity) if it.quantity is not None else None,
+                    "unit": it.unit,
+                    "is_purchased": it.is_purchased,
+                }
+            )
+        return Response(
+            {
+                "title": sl.name,
+                "created_at": sl.created_at,
+                "categories": [{"category": cat, "items": its} for cat, its in by_cat.items()],
+            }
+        )
 
 
 class PurchaseHistoryView(APIView):
@@ -337,7 +341,8 @@ class PurchaseHistoryView(APIView):
         if not name:
             return Response({"detail": "name обязателен."}, status=status.HTTP_400_BAD_REQUEST)
         entry = PurchaseHistoryEntry.objects.create(
-            family=family, name=name,
+            family=family,
+            name=name,
             quantity=request.data.get("quantity"),
             unit=request.data.get("unit") or "",
             category=request.data.get("category") or "",

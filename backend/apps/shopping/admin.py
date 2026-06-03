@@ -1,12 +1,7 @@
 # MG_SHOP001_admin
 from django.contrib import admin
 
-from .models import (
-    PurchaseHistoryEntry,
-    ShoppingList,
-    ShoppingListAccess,
-    ShoppingListItem,
-)
+from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, ShoppingListItem
 
 
 class ShoppingListItemInline(admin.TabularInline):

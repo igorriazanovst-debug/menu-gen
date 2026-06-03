@@ -28,9 +28,7 @@ def access_level(user, shopping_list):
     if FamilyMember.objects.filter(family=fam, user=user).exists():
         return {"read": True, "toggle": True, "export": True, "manage": False}
 
-    acc = ShoppingListAccess.objects.filter(
-        shopping_list=shopping_list, user=user
-    ).first()
+    acc = ShoppingListAccess.objects.filter(shopping_list=shopping_list, user=user).first()
     if acc:
         return {
             "read": acc.can_read,

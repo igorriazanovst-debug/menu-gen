@@ -3,25 +3,26 @@ from rest_framework import serializers
 
 from apps.users.models import User
 
-from .models import (
-    PurchaseHistoryEntry,
-    ShoppingList,
-    ShoppingListAccess,
-    ShoppingListItem,
-)
+from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, ShoppingListItem
 
 
 class ShoppingListItemSerializer(serializers.ModelSerializer):
-    purchased_by_name = serializers.CharField(
-        source="purchased_by.name", read_only=True, default=None
-    )
+    purchased_by_name = serializers.CharField(source="purchased_by.name", read_only=True, default=None)
 
     class Meta:
         model = ShoppingListItem
         fields = (
-            "id", "product_id", "name", "quantity", "unit", "category",
-            "is_purchased", "purchased_by", "purchased_by_name",
-            "purchased_at", "sort_order",
+            "id",
+            "product_id",
+            "name",
+            "quantity",
+            "unit",
+            "category",
+            "is_purchased",
+            "purchased_by",
+            "purchased_by_name",
+            "purchased_at",
+            "sort_order",
         )
         read_only_fields = ("purchased_by", "purchased_by_name", "purchased_at")
 
@@ -34,15 +35,19 @@ class ShoppingListItemWriteSerializer(serializers.ModelSerializer):
 
 class ShoppingListAccessSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source="user.email", read_only=True)
-    user_name = serializers.CharField(
-        source="user.name", read_only=True, default=None
-    )
+    user_name = serializers.CharField(source="user.name", read_only=True, default=None)
 
     class Meta:
         model = ShoppingListAccess
         fields = (
-            "id", "user", "user_email", "user_name",
-            "can_read", "can_toggle", "can_export", "granted_at",
+            "id",
+            "user",
+            "user_email",
+            "user_name",
+            "can_read",
+            "can_toggle",
+            "can_export",
+            "granted_at",
         )
         read_only_fields = ("granted_at",)
 
@@ -75,18 +80,26 @@ class GrantAccessSerializer(serializers.Serializer):
 
 class ShoppingListSerializer(serializers.ModelSerializer):
     items = ShoppingListItemSerializer(many=True, read_only=True)
-    created_by_name = serializers.CharField(
-        source="created_by.name", read_only=True, default=None
-    )
+    created_by_name = serializers.CharField(source="created_by.name", read_only=True, default=None)
     items_total = serializers.IntegerField(read_only=True, required=False)
     items_purchased = serializers.IntegerField(read_only=True, required=False)
 
     class Meta:
         model = ShoppingList
         fields = (
-            "id", "name", "source", "menu", "is_archived",
-            "created_by", "created_by_name", "created_at", "updated_at",
-            "archived_at", "items", "items_total", "items_purchased",
+            "id",
+            "name",
+            "source",
+            "menu",
+            "is_archived",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+            "archived_at",
+            "items",
+            "items_total",
+            "items_purchased",
         )
         read_only_fields = ("source", "created_by", "archived_at")
 
@@ -98,21 +111,32 @@ class ShoppingListBriefSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShoppingList
         fields = (
-            "id", "name", "source", "is_archived",
-            "created_at", "updated_at", "items_total", "items_purchased",
+            "id",
+            "name",
+            "source",
+            "is_archived",
+            "created_at",
+            "updated_at",
+            "items_total",
+            "items_purchased",
         )
 
 
 class PurchaseHistoryEntrySerializer(serializers.ModelSerializer):
-    purchased_by_name = serializers.CharField(
-        source="purchased_by.name", read_only=True, default=None
-    )
+    purchased_by_name = serializers.CharField(source="purchased_by.name", read_only=True, default=None)
 
     class Meta:
         model = PurchaseHistoryEntry
         fields = (
-            "id", "name", "quantity", "unit", "category",
-            "purchased_by", "purchased_by_name", "purchased_at", "source_list_id",
+            "id",
+            "name",
+            "quantity",
+            "unit",
+            "category",
+            "purchased_by",
+            "purchased_by_name",
+            "purchased_at",
+            "source_list_id",
         )
 
 
@@ -120,9 +144,7 @@ class CreateListSerializer(serializers.Serializer):
     """Body for POST /shopping/lists/ — covers 1.1/1.2/1.3."""
 
     name = serializers.CharField(max_length=255)
-    source = serializers.ChoiceField(
-        choices=ShoppingList.Source.choices, default=ShoppingList.Source.EMPTY
-    )
+    source = serializers.ChoiceField(choices=ShoppingList.Source.choices, default=ShoppingList.Source.EMPTY)
     menu_id = serializers.IntegerField(required=False)
     subtract_fridge = serializers.BooleanField(default=False)
     text = serializers.CharField(required=False, allow_blank=True)

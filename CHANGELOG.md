@@ -21,4 +21,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Added** 2026-06-03 `MG_SHOP003_shopping_mobile` — Mobile shopping lists: CRUD, sources, access mgmt, history, PDF print (printing pkg), bottom-nav tab — files: `mobile/menugen_app/lib/features/shopping/bloc/shopping_bloc.dart`, `mobile/menugen_app/lib/features/shopping/models/shopping_models.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_list_screen.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_detail_screen.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_create_sheet.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_access_sheet.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_history_view.dart`, `mobile/menugen_app/lib/core/router/app_router.dart`, `mobile/menugen_app/lib/core/widgets/main_shell.dart`, `mobile/menugen_app/pubspec.yaml`
 
+- **Fixed** 2026-06-03 `MG_SHOP004_lint` — Lint fixes in apps/shopping (F401 unused import, E501 long lines), black/isort — files: `backend/apps/shopping/models.py`, `backend/apps/shopping/services.py`, `backend/apps/shopping/urls.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

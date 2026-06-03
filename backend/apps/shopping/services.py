@@ -22,14 +22,11 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):
     subtract_fridge=True → drop items already present in fridge (1.2)."""
     fridge_names = set()
     if subtract_fridge:
-        fridge_names = {
-            i.name.strip().lower()
-            for i in FridgeItem.objects.filter(family=family, is_deleted=False)
-        }
+        fridge_names = {i.name.strip().lower() for i in FridgeItem.objects.filter(family=family, is_deleted=False)}
 
     aggregated = defaultdict(lambda: {"quantity": Decimal(0), "unit": "", "name": ""})
     for menu_item in MenuItem.objects.filter(menu=menu).select_related("recipe"):
-        for ing in (menu_item.recipe.ingredients or []):
+        for ing in menu_item.recipe.ingredients or []:
             name = (ing.get("name") or "").strip()
             if not name:
                 continue
@@ -63,28 +60,43 @@ def parse_csv(text: str):
     if "name" in header:
         idx = {h: header.index(h) for h in ("name", "quantity", "unit", "category") if h in header}
         start = 1
+
+        def cell(row, key):
+            i = idx.get(key)
+            if i is None or i >= len(row):
+                return None
+            return row[i]
+
         for row in rows[start:]:
             if not row:
                 continue
-            name = row[idx["name"]].strip() if "name" in idx and idx["name"] < len(row) else ""
+            raw_name = cell(row, "name")
+            name = (raw_name or "").strip()
             if not name:
                 continue
-            out.append({
-                "name": name,
-                "quantity": _to_decimal(row[idx["quantity"]]) if "quantity" in idx and idx["quantity"] < len(row) else None,
-                "unit": row[idx["unit"]].strip() if "unit" in idx and idx["unit"] < len(row) else "",
-                "category": row[idx["category"]].strip() if "category" in idx and idx["category"] < len(row) else "",
-            })
+            raw_qty = cell(row, "quantity")
+            raw_unit = cell(row, "unit")
+            raw_cat = cell(row, "category")
+            out.append(
+                {
+                    "name": name,
+                    "quantity": _to_decimal(raw_qty) if raw_qty is not None else None,
+                    "unit": (raw_unit or "").strip(),
+                    "category": (raw_cat or "").strip(),
+                }
+            )
     else:
         for row in rows:
             if not row or not row[0].strip():
                 continue
-            out.append({
-                "name": row[0].strip(),
-                "quantity": _to_decimal(row[1]) if len(row) > 1 else None,
-                "unit": row[2].strip() if len(row) > 2 else "",
-                "category": row[3].strip() if len(row) > 3 else "",
-            })
+            out.append(
+                {
+                    "name": row[0].strip(),
+                    "quantity": _to_decimal(row[1]) if len(row) > 1 else None,
+                    "unit": row[2].strip() if len(row) > 2 else "",
+                    "category": row[3].strip() if len(row) > 3 else "",
+                }
+            )
     return out
 
 
@@ -100,9 +112,7 @@ def parse_text_with_ai(text: str):
         "Без пояснений, без markdown."
     )
     try:
-        raw = get_ai_client().complete(
-            prompt=text, system=system, max_tokens=1024, temperature=0.0
-        )
+        raw = get_ai_client().complete(prompt=text, system=system, max_tokens=1024, temperature=0.0)
     except AIRequestError:
         return None
 
@@ -117,10 +127,12 @@ def parse_text_with_ai(text: str):
         name = (d.get("name") or "").strip()
         if not name:
             continue
-        out.append({
-            "name": name,
-            "quantity": _to_decimal(d.get("quantity")),
-            "unit": (d.get("unit") or "").strip(),
-            "category": (d.get("category") or "").strip(),
-        })
+        out.append(
+            {
+                "name": name,
+                "quantity": _to_decimal(d.get("quantity")),
+                "unit": (d.get("unit") or "").strip(),
+                "category": (d.get("category") or "").strip(),
+            }
+        )
     return out
