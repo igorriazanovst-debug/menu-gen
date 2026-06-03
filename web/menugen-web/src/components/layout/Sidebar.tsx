@@ -10,6 +10,7 @@ const NAV = [
   { path: '/family',        icon: '👨‍👩‍👧', label: 'Семья'        },
   { path: '/diary',         icon: '📓', label: 'Дневник'      },
   { path: '/fridge',        icon: '🧊', label: 'Холодильник'  },
+  { path: '/shopping',      icon: '🛒', label: 'Покупки'      },
   { path: '/subscriptions', icon: '💳', label: 'Подписка'     },
   { path: '/profile',       icon: '👤', label: 'Профиль'      },
 ];

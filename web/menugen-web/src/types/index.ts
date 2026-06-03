@@ -287,3 +287,81 @@ export interface DiaryDayStats {
   total: DiaryNutritionBucket;
 }
 export interface DiaryWaterLog { id?: number; date: string; water_ml: number; }
+
+// MG_SHOP002_web_types — shopping lists v2
+export type ShoppingV2Source = 'empty' | 'menu' | 'fridge' | 'ai_text' | 'csv';
+
+export interface ShoppingV2Item {
+  id: number;
+  product_id?: number | null;
+  name: string;
+  quantity?: number | null;
+  unit?: string;
+  category?: string;
+  is_purchased: boolean;
+  purchased_by?: number | null;
+  purchased_by_name?: string | null;
+  purchased_at?: string | null;
+  sort_order?: number;
+}
+
+export interface ShoppingV2Capabilities {
+  read: boolean;
+  toggle: boolean;
+  export: boolean;
+  manage: boolean;
+}
+
+export interface ShoppingV2ListBrief {
+  id: number;
+  name: string;
+  source: ShoppingV2Source;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+  items_total?: number;
+  items_purchased?: number;
+}
+
+export interface ShoppingV2List extends ShoppingV2ListBrief {
+  menu?: number | null;
+  created_by?: number | null;
+  created_by_name?: string | null;
+  archived_at?: string | null;
+  items: ShoppingV2Item[];
+  capabilities?: ShoppingV2Capabilities;
+}
+
+export interface ShoppingV2Access {
+  id: number;
+  user: number;
+  user_email: string;
+  user_name?: string | null;
+  can_read: boolean;
+  can_toggle: boolean;
+  can_export: boolean;
+  granted_at: string;
+}
+
+export interface ShoppingV2ExportCategory {
+  category: string;
+  items: { name: string; quantity: string | null; unit: string; is_purchased: boolean }[];
+}
+
+export interface ShoppingV2ExportData {
+  title: string;
+  created_at: string;
+  categories: ShoppingV2ExportCategory[];
+}
+
+export interface ShoppingV2HistoryEntry {
+  id: number;
+  name: string;
+  quantity?: number | null;
+  unit?: string;
+  category?: string;
+  purchased_by?: number | null;
+  purchased_by_name?: string | null;
+  purchased_at: string;
+  source_list_id?: number | null;
+}
