@@ -256,6 +256,7 @@ class ShoppingExportData {
   final String title;
   final String currency; // MG_SHOPMOB001
   final String? totalPrice; // MG_SHOPMOB001
+  final DateTime? createdAt; // MG_SHOPBUG_MOB_FIX1
   final List<MapEntry<String, List<ShoppingItem>>> categories;
 
   ShoppingExportData({
@@ -263,6 +264,7 @@ class ShoppingExportData {
     required this.categories,
     this.currency = 'RUB',
     this.totalPrice,
+    this.createdAt,
   });
 
   factory ShoppingExportData.fromJson(Map<String, dynamic> j) {
@@ -293,6 +295,7 @@ class ShoppingExportData {
       title: j['title'] as String? ?? 'Список',
       currency: j['currency'] as String? ?? 'RUB',
       totalPrice: j['total_price']?.toString(),
+      createdAt: DateTime.tryParse(j['created_at']?.toString() ?? ''),
       categories: out,
     );
   }
