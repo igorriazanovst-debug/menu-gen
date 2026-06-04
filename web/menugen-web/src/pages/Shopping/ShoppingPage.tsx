@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { shoppingApi, CreateListPayload } from '../../api/shopping';
 import { menuApi } from '../../api/menu';
 import { fridgeApi } from '../../api/fridge';
+import { familyApi } from '../../api/family'; // MG_HISTWEB001
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -394,6 +395,27 @@ const HistoryView: React.FC<{
   history: ShoppingV2HistoryEntry[];
   onReload: () => void;
 }> = ({ history, onReload }) => {
+  // MG_HISTWEB001: family currency for price display.
+  const [currency, setCurrency] = useState('RUB');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await familyApi.get();
+        if (!cancelled) setCurrency(data.currency ?? 'RUB');
+      } catch {
+        /* non-fatal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const fmtMoney = (v: string | number | null | undefined) => {
+    if (v == null || v === '') return '';
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n.toFixed(2) : '';
+  };
   const del = async (id: number) => {
     await shoppingApi.removeHistory(id);
     onReload();
@@ -407,6 +429,9 @@ const HistoryView: React.FC<{
             <span className="flex-1">
               {h.name}
               {h.quantity != null && <span className="text-gray-500"> — {h.quantity}{h.unit ? ` ${h.unit}` : ''}</span>}
+              {h.price_per_unit != null && (
+                <span className="text-gray-500 ml-2">· {fmtMoney(h.price_per_unit)} {currency}</span>
+              )}
               <span className="text-gray-400 ml-2">{new Date(h.purchased_at).toLocaleDateString('ru-RU')}</span>
             </span>
             <button onClick={() => del(h.id)} className="text-gray-300 hover:text-red-500">✕</button>

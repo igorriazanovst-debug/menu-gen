@@ -33,4 +33,8 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Added** 2026-06-04 `MG_SHOPMOB002` — Mobile family: currency selector (head sets family currency via PATCH /family/) — files: `mobile/menugen_app/lib/features/family/bloc/family_bloc.dart`, `mobile/menugen_app/lib/features/family/screens/family_screen.dart`
 
+- **Changed** 2026-06-04 `MG_PRINTWEB001` — Web print: render per-item prices, line totals, grand total and family currency — files: `web/menugen-web/src/types/index.ts`, `web/menugen-web/src/utils/printShoppingList.ts`
+
+- **Changed** 2026-06-04 `MG_HISTWEB001` — Web purchase history: show price_per_unit with family currency — files: `web/menugen-web/src/types/index.ts`, `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

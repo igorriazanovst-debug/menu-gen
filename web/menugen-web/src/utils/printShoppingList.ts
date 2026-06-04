@@ -1,9 +1,32 @@
 // MG_SHOP002_web_print — client-side print (browser → Save as PDF)
+// MG_PRINTWEB001: render prices, per-line totals, grand total and currency.
 import type { ShoppingV2ExportData } from '../types';
+
+function currencySymbol(code?: string): string {
+  switch ((code || 'RUB').toUpperCase()) {
+    case 'RUB':
+      return '₽';
+    case 'USD':
+      return '$';
+    case 'EUR':
+      return '€';
+    case 'GBP':
+      return '£';
+    case 'KZT':
+      return '₸';
+    case 'UAH':
+      return '₴';
+    case 'BYN':
+      return 'Br';
+    default:
+      return code || '';
+  }
+}
 
 export function printShoppingList(data: ShoppingV2ExportData) {
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const sym = currencySymbol(data.currency);
 
   const rows = data.categories
     .map((cat) => {
@@ -16,14 +39,25 @@ export function printShoppingList(data: ShoppingV2ExportData) {
             it.quantity != null
               ? ` — ${esc(String(it.quantity))}${it.unit ? ' ' + esc(it.unit) : ''}`
               : '';
+          const price =
+            it.line_total != null
+              ? `<span class="price">${esc(String(it.line_total))} ${sym}</span>`
+              : it.price_per_unit != null
+                ? `<span class="price">${esc(String(it.price_per_unit))} ${sym}/ед.</span>`
+                : '';
           const mark = it.is_purchased ? '☑' : '☐';
           const cls = it.is_purchased ? ' class="done"' : '';
-          return `<li${cls}>${mark} ${esc(it.name)}${q}</li>`;
+          return `<li${cls}><span>${mark} ${esc(it.name)}${q}</span>${price}</li>`;
         })
         .join('');
       return `${head}<ul>${items}</ul>`;
     })
     .join('');
+
+  const total =
+    data.total_price != null
+      ? `<div class="total">Итого: ${esc(String(data.total_price))} ${sym}</div>`
+      : '';
 
   const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
 <title>${esc(data.title)}</title>
@@ -33,13 +67,16 @@ export function printShoppingList(data: ShoppingV2ExportData) {
   .meta { color: #666; font-size: 13px; margin-bottom: 16px; }
   h2 { font-size: 15px; margin: 16px 0 6px; border-bottom: 1px solid #ddd; padding-bottom: 2px; }
   ul { list-style: none; padding: 0; margin: 0; }
-  li { padding: 3px 0; font-size: 14px; }
+  li { padding: 3px 0; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; }
   li.done { color: #999; text-decoration: line-through; }
+  .price { color: #444; white-space: nowrap; }
+  .total { margin-top: 16px; padding-top: 8px; border-top: 2px solid #333; font-size: 16px; font-weight: 700; text-align: right; }
   @media print { body { padding: 0; } }
 </style></head><body>
 <h1>${esc(data.title)}</h1>
 <div class="meta">${new Date(data.created_at).toLocaleDateString('ru-RU')}</div>
 ${rows}
+${total}
 <script>window.onload = function(){ window.print(); };</script>
 </body></html>`;
 

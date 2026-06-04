@@ -370,12 +370,21 @@ export interface ShoppingV2Access {
 
 export interface ShoppingV2ExportCategory {
   category: string;
-  items: { name: string; quantity: string | null; unit: string; is_purchased: boolean }[];
+  items: {
+    name: string;
+    quantity: string | null;
+    unit: string;
+    price_per_unit?: string | null; // MG_PRINTWEB001
+    line_total?: string | null; // MG_PRINTWEB001
+    is_purchased: boolean;
+  }[];
 }
 
 export interface ShoppingV2ExportData {
   title: string;
   created_at: string;
+  currency?: string; // MG_PRINTWEB001
+  total_price?: string | null; // MG_PRINTWEB001
   categories: ShoppingV2ExportCategory[];
 }
 
@@ -385,6 +394,7 @@ export interface ShoppingV2HistoryEntry {
   quantity?: number | null;
   unit?: string;
   category?: string;
+  price_per_unit?: string | null; // MG_HISTWEB001
   purchased_by?: number | null;
   purchased_by_name?: string | null;
   purchased_at: string;
