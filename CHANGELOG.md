@@ -29,4 +29,8 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Added** 2026-06-04 `MG_RUBRIC006` — Shopping prices: Product.last_price, ShoppingListItem/PurchaseHistory price_per_unit, Family.currency; add-item qty/unit/price + last_price prefill; toggle bumps last_price; list & export totals — files: `backend/apps/fridge/models.py`, `backend/apps/family/models.py`, `backend/apps/family/serializers.py`, `backend/apps/shopping/models.py`, `backend/apps/shopping/serializers.py`, `backend/apps/shopping/views.py`
 
+- **Added** 2026-06-04 `MG_SHOPMOB001` — Mobile shopping: rubricator autocomplete (search/qty/unit/price), category grouping, family currency + grand total, prices in print & history — files: `mobile/menugen_app/lib/features/shopping/models/shopping_models.dart`, `mobile/menugen_app/lib/features/shopping/bloc/shopping_event.dart`, `mobile/menugen_app/lib/features/shopping/bloc/shopping_bloc.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_add_item.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_detail_screen.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_history_view.dart`
+
+- **Added** 2026-06-04 `MG_SHOPMOB002` — Mobile family: currency selector (head sets family currency via PATCH /family/) — files: `mobile/menugen_app/lib/features/family/bloc/family_bloc.dart`, `mobile/menugen_app/lib/features/family/screens/family_screen.dart`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

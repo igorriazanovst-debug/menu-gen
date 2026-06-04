@@ -37,6 +37,14 @@ class FamilyUpdateMemberRequested extends FamilyEvent {
   List<Object?> get props => [memberId, data];
 }
 
+// MG_SHOPMOB002: head changes the family currency (PATCH /family/).
+class FamilyUpdateCurrencyRequested extends FamilyEvent {
+  final String currency;
+  const FamilyUpdateCurrencyRequested(this.currency);
+  @override
+  List<Object?> get props => [currency];
+}
+
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class FamilyState extends Equatable {
@@ -81,6 +89,7 @@ class FamilyBloc extends Bloc<FamilyEvent, FamilyState> {
     on<FamilyInviteMemberRequested>(_onInvite);
     on<FamilyRemoveMemberRequested>(_onRemove);
     on<FamilyUpdateMemberRequested>(_onUpdate);
+    on<FamilyUpdateCurrencyRequested>(_onUpdateCurrency); // MG_SHOPMOB002
   }
 
   dynamic _data(dynamic r) {
@@ -148,6 +157,19 @@ class FamilyBloc extends Bloc<FamilyEvent, FamilyState> {
       add(const FamilyLoadRequested());
     } catch (e) {
       emit(FamilyError(e.toString(), family: current));
+    }
+  }
+
+  // MG_SHOPMOB002
+  Future<void> _onUpdateCurrency(
+      FamilyUpdateCurrencyRequested e, Emitter<FamilyState> emit) async {
+    final current = _currentFamily;
+    if (current != null) emit(FamilyActionInProgress(current));
+    try {
+      await apiClient.patch('/family/', data: {'currency': e.currency});
+      add(const FamilyLoadRequested());
+    } catch (err) {
+      emit(FamilyError(err.toString(), family: current));
     }
   }
 }

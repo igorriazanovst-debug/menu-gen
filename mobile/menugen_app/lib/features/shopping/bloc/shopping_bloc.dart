@@ -15,7 +15,7 @@ part 'shopping_state.dart';
 ///  * create      → POST /shopping/lists/
 ///  * delete      → DELETE /shopping/lists/{id}/
 ///  * archive     → PATCH /shopping/lists/{id}/  {is_archived}
-///  * add item    → POST /shopping/lists/{id}/items/
+///  * add item    → POST /shopping/lists/{id}/items/  (rubricator payload)
 ///  * del item    → DELETE /shopping/lists/{id}/items/{itemId}/
 ///  * toggle      → PATCH /shopping/lists/{id}/items/{itemId}/toggle/
 class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
@@ -104,8 +104,9 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
   Future<void> _onAddItem(
       ShoppingAddItemRequested e, Emitter<ShoppingState> emit) async {
     try {
+      // MG_SHOPMOB001: send full rubricator payload.
       await apiClient.post('/shopping/lists/${e.listId}/items/',
-          data: {'name': e.name});
+          data: e.payload);
       add(ShoppingDetailRequested(e.listId));
     } catch (err) {
       emit(ShoppingError(_msg(err)));

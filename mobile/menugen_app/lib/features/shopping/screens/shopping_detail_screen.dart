@@ -1,3 +1,4 @@
+// MG_SHOPMOB001
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
@@ -7,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../bloc/shopping_bloc.dart';
 import '../models/shopping_models.dart';
 import 'shopping_access_sheet.dart';
+import 'shopping_add_item.dart';
 
 class ShoppingDetailScreen extends StatefulWidget {
   final int listId;
@@ -16,18 +18,10 @@ class ShoppingDetailScreen extends StatefulWidget {
 }
 
 class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
-  final _addCtrl = TextEditingController();
-
   @override
   void initState() {
     super.initState();
     context.read<ShoppingBloc>().add(ShoppingDetailRequested(widget.listId));
-  }
-
-  @override
-  void dispose() {
-    _addCtrl.dispose();
-    super.dispose();
   }
 
   Future<void> _print() async {
@@ -35,6 +29,7 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
     final raw = await api.get('/shopping/lists/${widget.listId}/export/');
     final data = ShoppingExportData.fromJson(
         raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{});
+    final sym = currencySymbol(data.currency);
     final doc = pw.Document();
     doc.addPage(
       pw.MultiPage(
@@ -50,10 +45,22 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                   final q = it.quantity != null
                       ? ' — ${it.quantity}${it.unit.isNotEmpty ? ' ${it.unit}' : ''}'
                       : '';
+                  final price = it.lineTotal != null
+                      ? '   ${it.lineTotal} $sym'
+                      : (it.pricePerUnit != null
+                          ? '   ${it.pricePerUnit} $sym'
+                          : '');
                   final mark = it.isPurchased ? '[x]' : '[ ]';
-                  return pw.Text('$mark ${it.name}$q');
+                  return pw.Text('$mark ${it.name}$q$price');
                 }),
               ]),
+          if (data.totalPrice != null) ...[
+            pw.SizedBox(height: 12),
+            pw.Divider(),
+            pw.Text('Итого: ${data.totalPrice} $sym',
+                style: pw.TextStyle(
+                    fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          ],
         ],
       ),
     );
@@ -70,6 +77,36 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
         listId: widget.listId,
       ),
     );
+  }
+
+  // MG_SHOPMOB001: group items by category, preserving first-seen order.
+  List<MapEntry<String, List<ShoppingItem>>> _grouped(
+      List<ShoppingItem> items) {
+    final buckets = <String, List<ShoppingItem>>{};
+    final names = <String, String>{};
+    for (final it in items) {
+      final key = it.categorySlug ?? '__none__';
+      buckets.putIfAbsent(key, () => []).add(it);
+      names[key] = it.categoryName ??
+          (it.category.isNotEmpty ? it.category : 'Без категории');
+    }
+    return buckets.entries
+        .map((e) => MapEntry(names[e.key] ?? 'Без категории', e.value))
+        .toList();
+  }
+
+  Widget? _itemSubtitle(ShoppingItem it, String sym) {
+    final parts = <String>[];
+    if (it.quantity != null || it.unit.isNotEmpty) {
+      parts.add('${it.quantity ?? ''} ${it.unit}'.trim());
+    }
+    if (it.lineTotal != null) {
+      parts.add('${it.lineTotal} $sym');
+    } else if (it.pricePerUnit != null) {
+      parts.add('${it.pricePerUnit} $sym/ед.');
+    }
+    if (parts.isEmpty) return null;
+    return Text(parts.join('  ·  '));
   }
 
   @override
@@ -91,6 +128,8 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
         }
         final d = state.detail;
         final caps = d.capabilities;
+        final sym = currencySymbol(d.currency);
+        final groups = _grouped(d.items);
         return Scaffold(
           appBar: AppBar(
             title: Text(d.name),
@@ -105,8 +144,7 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                   onSelected: (v) {
                     final bloc = context.read<ShoppingBloc>();
                     if (v == 'archive') {
-                      bloc.add(
-                          ShoppingArchiveRequested(d.id, !d.isArchived));
+                      bloc.add(ShoppingArchiveRequested(d.id, !d.isArchived));
                       Navigator.of(context).pop();
                     } else if (v == 'delete') {
                       bloc.add(ShoppingDeleteRequested(d.id));
@@ -116,9 +154,8 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                   itemBuilder: (_) => [
                     PopupMenuItem(
                         value: 'archive',
-                        child: Text(d.isArchived
-                            ? 'Вернуть из архива'
-                            : 'В архив')),
+                        child: Text(
+                            d.isArchived ? 'Вернуть из архива' : 'В архив')),
                     const PopupMenuItem(
                         value: 'delete', child: Text('Удалить список')),
                   ],
@@ -130,65 +167,69 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
               Expanded(
                 child: d.items.isEmpty
                     ? const Center(child: Text('Список пуст.'))
-                    : ListView.builder(
-                        itemCount: d.items.length,
-                        itemBuilder: (_, i) {
-                          final it = d.items[i];
-                          return CheckboxListTile(
-                            value: it.isPurchased,
-                            onChanged: caps.toggle
-                                ? (v) => context.read<ShoppingBloc>().add(
-                                    ShoppingToggleItemRequested(
-                                        d.id, it.id, v ?? false))
-                                : null,
-                            title: Text(it.name),
-                            subtitle: (it.quantity != null || it.unit.isNotEmpty)
-                                ? Text('${it.quantity ?? ''} ${it.unit}')
-                                : null,
-                            secondary: caps.manage
-                                ? IconButton(
-                                    icon: const Icon(Icons.close, size: 18),
-                                    onPressed: () => context
-                                        .read<ShoppingBloc>()
-                                        .add(ShoppingDeleteItemRequested(
-                                            d.id, it.id)),
-                                  )
-                                : null,
-                          );
-                        },
+                    : ListView(
+                        children: [
+                          for (final g in groups) ...[
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                              child: Text(
+                                g.key,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: Colors.grey),
+                              ),
+                            ),
+                            for (final it in g.value)
+                              CheckboxListTile(
+                                value: it.isPurchased,
+                                onChanged: caps.toggle
+                                    ? (v) => context.read<ShoppingBloc>().add(
+                                        ShoppingToggleItemRequested(
+                                            d.id, it.id, v ?? false))
+                                    : null,
+                                title: Text(it.name),
+                                subtitle: _itemSubtitle(it, sym),
+                                secondary: caps.manage
+                                    ? IconButton(
+                                        icon: const Icon(Icons.close, size: 18),
+                                        onPressed: () => context
+                                            .read<ShoppingBloc>()
+                                            .add(ShoppingDeleteItemRequested(
+                                                d.id, it.id)),
+                                      )
+                                    : null,
+                              ),
+                          ],
+                        ],
                       ),
               ),
-              if (caps.manage)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                      12, 4, 12, MediaQuery.of(context).viewInsets.bottom + 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _addCtrl,
-                          decoration: const InputDecoration(
-                              hintText: 'Добавить позицию…'),
-                          onSubmitted: (_) => _submitAdd(d.id),
-                        ),
-                      ),
-                      IconButton(
-                          icon: const Icon(Icons.add),
-                          onPressed: () => _submitAdd(d.id)),
-                    ],
+              if (d.totalPrice != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  color: Colors.black.withOpacity(0.04),
+                  child: Text(
+                    'Итого: ${d.totalPrice} $sym',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16),
                   ),
+                ),
+              if (caps.manage)
+                ShoppingAddItem(
+                  apiClient: context.read<ShoppingBloc>().apiClient,
+                  currency: d.currency,
+                  onSubmit: (payload) => context
+                      .read<ShoppingBloc>()
+                      .add(ShoppingAddItemRequested(d.id, payload)),
                 ),
             ],
           ),
         );
       },
     );
-  }
-
-  void _submitAdd(int listId) {
-    final name = _addCtrl.text.trim();
-    if (name.isEmpty) return;
-    context.read<ShoppingBloc>().add(ShoppingAddItemRequested(listId, name));
-    _addCtrl.clear();
   }
 }

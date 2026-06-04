@@ -1,3 +1,4 @@
+// MG_SHOPMOB001
 import 'package:equatable/equatable.dart';
 
 /// Mirror of backend `ShoppingList.Source`.
@@ -26,6 +27,10 @@ class ShoppingItem extends Equatable {
   final double? quantity;
   final String unit;
   final String category;
+  final String? categorySlug; // MG_SHOPMOB001
+  final String? categoryName; // MG_SHOPMOB001
+  final String? pricePerUnit; // MG_SHOPMOB001 (DRF Decimal => string|null)
+  final String? lineTotal; // MG_SHOPMOB001
   final bool isPurchased;
   final String? purchasedByName;
 
@@ -35,6 +40,10 @@ class ShoppingItem extends Equatable {
     required this.quantity,
     required this.unit,
     required this.category,
+    this.categorySlug,
+    this.categoryName,
+    this.pricePerUnit,
+    this.lineTotal,
     required this.isPurchased,
     this.purchasedByName,
   });
@@ -47,13 +56,18 @@ class ShoppingItem extends Equatable {
       quantity: q == null ? null : double.tryParse(q.toString()),
       unit: j['unit'] as String? ?? '',
       category: j['category'] as String? ?? '',
+      categorySlug: j['category_slug'] as String?,
+      categoryName: j['category_name'] as String?,
+      pricePerUnit: j['price_per_unit']?.toString(),
+      lineTotal: j['line_total']?.toString(),
       isPurchased: j['is_purchased'] as bool? ?? false,
       purchasedByName: j['purchased_by_name'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [id, name, quantity, unit, category, isPurchased];
+  List<Object?> get props =>
+      [id, name, quantity, unit, category, categorySlug, pricePerUnit, isPurchased];
 }
 
 class ShoppingCapabilities extends Equatable {
@@ -120,6 +134,8 @@ class ShoppingListDetail extends Equatable {
   final bool isArchived;
   final List<ShoppingItem> items;
   final ShoppingCapabilities capabilities;
+  final String currency; // MG_SHOPMOB001
+  final String? totalPrice; // MG_SHOPMOB001
 
   const ShoppingListDetail({
     required this.id,
@@ -128,6 +144,8 @@ class ShoppingListDetail extends Equatable {
     required this.isArchived,
     required this.items,
     required this.capabilities,
+    this.currency = 'RUB',
+    this.totalPrice,
   });
 
   factory ShoppingListDetail.fromJson(Map<String, dynamic> j) {
@@ -144,11 +162,14 @@ class ShoppingListDetail extends Equatable {
       capabilities: ShoppingCapabilities.fromJson(
         j['capabilities'] == null ? null : Map<String, dynamic>.from(j['capabilities'] as Map),
       ),
+      currency: j['currency'] as String? ?? 'RUB',
+      totalPrice: j['total_price']?.toString(),
     );
   }
 
   @override
-  List<Object?> get props => [id, name, source, isArchived, items, capabilities];
+  List<Object?> get props =>
+      [id, name, source, isArchived, items, capabilities, currency, totalPrice];
 }
 
 class ShoppingAccess extends Equatable {
@@ -183,6 +204,8 @@ class ShoppingHistoryEntry extends Equatable {
   final String name;
   final double? quantity;
   final String unit;
+  final String category; // MG_SHOPMOB001
+  final String? pricePerUnit; // MG_SHOPMOB001
   final String purchasedAt;
 
   const ShoppingHistoryEntry({
@@ -190,6 +213,8 @@ class ShoppingHistoryEntry extends Equatable {
     required this.name,
     required this.quantity,
     required this.unit,
+    this.category = '',
+    this.pricePerUnit,
     required this.purchasedAt,
   });
 
@@ -200,19 +225,29 @@ class ShoppingHistoryEntry extends Equatable {
       name: j['name'] as String? ?? '',
       quantity: q == null ? null : double.tryParse(q.toString()),
       unit: j['unit'] as String? ?? '',
+      category: j['category'] as String? ?? '',
+      pricePerUnit: j['price_per_unit']?.toString(),
       purchasedAt: j['purchased_at'] as String? ?? '',
     );
   }
 
   @override
-  List<Object?> get props => [id, name, quantity, unit, purchasedAt];
+  List<Object?> get props =>
+      [id, name, quantity, unit, category, pricePerUnit, purchasedAt];
 }
 
 class ShoppingExportData {
   final String title;
+  final String currency; // MG_SHOPMOB001
+  final String? totalPrice; // MG_SHOPMOB001
   final List<MapEntry<String, List<ShoppingItem>>> categories;
 
-  ShoppingExportData({required this.title, required this.categories});
+  ShoppingExportData({
+    required this.title,
+    required this.categories,
+    this.currency = 'RUB',
+    this.totalPrice,
+  });
 
   factory ShoppingExportData.fromJson(Map<String, dynamic> j) {
     final cats = (j['categories'] as List? ?? const []);
@@ -230,12 +265,67 @@ class ShoppingExportData {
               quantity: q == null ? null : double.tryParse(q.toString()),
               unit: em['unit'] as String? ?? '',
               category: cm['category'] as String? ?? '',
+              pricePerUnit: em['price_per_unit']?.toString(),
+              lineTotal: em['line_total']?.toString(),
               isPurchased: em['is_purchased'] as bool? ?? false,
             );
           })
           .toList();
       out.add(MapEntry(cm['category'] as String? ?? '', items));
     }
-    return ShoppingExportData(title: j['title'] as String? ?? 'Список', categories: out);
+    return ShoppingExportData(
+      title: j['title'] as String? ?? 'Список',
+      currency: j['currency'] as String? ?? 'RUB',
+      totalPrice: j['total_price']?.toString(),
+      categories: out,
+    );
+  }
+}
+
+// MG_SHOPMOB001: a single rubricator search result row.
+class RubricResult {
+  final int productId;
+  final String name;
+  final String unit;
+  final String categorySlug;
+  final String categoryName;
+  final String subcategory;
+  const RubricResult({
+    required this.productId,
+    required this.name,
+    required this.unit,
+    required this.categorySlug,
+    required this.categoryName,
+    required this.subcategory,
+  });
+  factory RubricResult.fromJson(Map<String, dynamic> j) => RubricResult(
+        productId: j['product_id'] as int? ?? 0,
+        name: j['name'] as String? ?? '',
+        unit: j['unit'] as String? ?? '',
+        categorySlug: j['category_slug'] as String? ?? '',
+        categoryName: j['category_name'] as String? ?? '',
+        subcategory: j['subcategory'] as String? ?? '',
+      );
+}
+
+// MG_SHOPMOB001: render a currency code as a short symbol.
+String currencySymbol(String code) {
+  switch (code.toUpperCase()) {
+    case 'RUB':
+      return '₽';
+    case 'USD':
+      return r'$';
+    case 'EUR':
+      return '€';
+    case 'GBP':
+      return '£';
+    case 'KZT':
+      return '₸';
+    case 'UAH':
+      return '₴';
+    case 'BYN':
+      return 'Br';
+    default:
+      return code;
   }
 }

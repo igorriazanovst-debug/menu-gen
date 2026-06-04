@@ -55,6 +55,8 @@ class FamilyScreen extends StatelessWidget {
                         fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
+                  _currencyRow(context, family, isActionInProgress), // MG_SHOPMOB002
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Text(
@@ -140,6 +142,47 @@ class FamilyScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  // MG_SHOPMOB002: family-wide currency. Backend gates the change to the
+  // family head/admin (PATCH /family/); others get a 403 -> error snackbar.
+  static const Map<String, String> _currencies = {
+    'RUB': '\u20bd Рубль',
+    'USD': r'$ Доллар',
+    'EUR': '\u20ac Евро',
+    'GBP': '\u00a3 Фунт',
+    'KZT': '\u20b8 Тенге',
+    'UAH': '\u20b4 Гривна',
+    'BYN': 'Br Бел. рубль',
+  };
+
+  Widget _currencyRow(
+      BuildContext context, Map<String, dynamic> family, bool disabled) {
+    final cur = (family['currency'] as String?) ?? 'RUB';
+    final value = _currencies.containsKey(cur) ? cur : 'RUB';
+    return Row(
+      children: [
+        const Text('Валюта семьи',
+            style: TextStyle(fontWeight: FontWeight.w600)),
+        const Spacer(),
+        DropdownButton<String>(
+          value: value,
+          onChanged: disabled
+              ? null
+              : (v) {
+                  if (v != null && v != cur) {
+                    context
+                        .read<FamilyBloc>()
+                        .add(FamilyUpdateCurrencyRequested(v));
+                  }
+                },
+          items: _currencies.entries
+              .map((e) =>
+                  DropdownMenuItem(value: e.key, child: Text(e.value)))
+              .toList(),
+        ),
+      ],
     );
   }
 

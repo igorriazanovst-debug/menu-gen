@@ -42,12 +42,14 @@ class ShoppingArchiveRequested extends ShoppingEvent {
   List<Object?> get props => [listId, archived];
 }
 
+// MG_SHOPMOB001: add now carries a full payload (name + qty/unit/product_id/
+// category_slug/price_per_unit) instead of just a name string.
 class ShoppingAddItemRequested extends ShoppingEvent {
   final int listId;
-  final String name;
-  const ShoppingAddItemRequested(this.listId, this.name);
+  final Map<String, dynamic> payload;
+  const ShoppingAddItemRequested(this.listId, this.payload);
   @override
-  List<Object?> get props => [listId, name];
+  List<Object?> get props => [listId, payload];
 }
 
 class ShoppingDeleteItemRequested extends ShoppingEvent {
