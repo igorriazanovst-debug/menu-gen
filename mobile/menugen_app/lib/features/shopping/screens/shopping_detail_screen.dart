@@ -1,4 +1,4 @@
-// MG_SHOPMOB001
+// MG_SHOPMOB001 / MG_SHOPBUG_MOB / MG_SHOPBUG_EDITMODE
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
@@ -9,7 +9,7 @@ import '../bloc/shopping_bloc.dart';
 import '../models/shopping_models.dart';
 import 'shopping_access_sheet.dart';
 import 'shopping_add_item.dart';
-import 'shopping_edit_item.dart'; // MG_SHOPBUG_MOB
+import 'shopping_item_edit_row.dart'; // MG_SHOPBUG_EDITMODE
 
 class ShoppingDetailScreen extends StatefulWidget {
   final int listId;
@@ -19,6 +19,9 @@ class ShoppingDetailScreen extends StatefulWidget {
 }
 
 class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
+  // MG_SHOPBUG_EDITMODE: global edit-mode flag.
+  bool _editMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -31,7 +34,7 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
     final data = ShoppingExportData.fromJson(
         raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{});
     final sym = currencySymbol(data.currency);
-    // MG_SHOPBUG_MOB: use Noto Sans for Cyrillic glyphs in the PDF.
+    // MG_SHOPBUG_MOB: Noto Sans for Cyrillic in PDF.
     final baseFont = await PdfGoogleFonts.notoSansRegular();
     final boldFont = await PdfGoogleFonts.notoSansBold();
     final italicFont = await PdfGoogleFonts.notoSansItalic();
@@ -79,21 +82,6 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
     await Printing.layoutPdf(onLayout: (f) => doc.save());
   }
 
-  // MG_SHOPBUG_MOB: open edit sheet for an existing item.
-  void _openEdit(ShoppingListDetail d, ShoppingItem it) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => ShoppingEditItem(
-        initial: it,
-        currency: d.currency,
-        onSubmit: (payload) => context
-            .read<ShoppingBloc>()
-            .add(ShoppingUpdateItemRequested(d.id, it.id, payload)),
-      ),
-    );
-  }
-
   void _openAccess() {
     final bloc = context.read<ShoppingBloc>();
     showModalBottomSheet(
@@ -128,12 +116,29 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
       parts.add('${it.quantity ?? ''} ${it.unit}'.trim());
     }
     if (it.lineTotal != null) {
-      parts.add('${fmtMoney(it.lineTotal)} $sym'); // MG_SHOPBUG_MOB
+      parts.add('${fmtMoney(it.lineTotal)} $sym');
     } else if (it.pricePerUnit != null) {
-      parts.add('${fmtMoney(it.pricePerUnit)} $sym/ед.'); // MG_SHOPBUG_MOB
+      parts.add('${fmtMoney(it.pricePerUnit)} $sym/ед.');
     }
     if (parts.isEmpty) return null;
     return Text(parts.join('  ·  '));
+  }
+
+  void _toggleEditMode() {
+    final wasEditing = _editMode;
+    setState(() => _editMode = !_editMode);
+    // Unfocus any field so its blur listener flushes the silent PATCH.
+    FocusScope.of(context).unfocus();
+    if (wasEditing) {
+      // Exited edit mode: refresh from server (gives updated totals).
+      // Small delay so any in-flight PATCH finishes first.
+      Future<void>.delayed(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        context
+            .read<ShoppingBloc>()
+            .add(ShoppingDetailRequested(widget.listId));
+      });
+    }
   }
 
   @override
@@ -177,12 +182,19 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
               );
             }),
             actions: [
-              if (caps.export)
-                IconButton(icon: const Icon(Icons.print), onPressed: _print),
+              // MG_SHOPBUG_EDITMODE: global edit-mode toggle.
               if (caps.manage)
                 IconButton(
+                  icon: Icon(_editMode ? Icons.check : Icons.edit),
+                  tooltip: _editMode ? 'Готово' : 'Редактировать',
+                  onPressed: _toggleEditMode,
+                ),
+              if (caps.export && !_editMode)
+                IconButton(icon: const Icon(Icons.print), onPressed: _print),
+              if (caps.manage && !_editMode)
+                IconButton(
                     icon: const Icon(Icons.people), onPressed: _openAccess),
-              if (caps.manage)
+              if (caps.manage && !_editMode)
                 PopupMenuButton<String>(
                   onSelected: (v) {
                     final bloc = context.read<ShoppingBloc>();
@@ -225,39 +237,34 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                               ),
                             ),
                             for (final it in g.value)
-                              CheckboxListTile(
-                                value: it.isPurchased,
-                                onChanged: caps.toggle
-                                    ? (v) => context.read<ShoppingBloc>().add(
-                                        ShoppingToggleItemRequested(
-                                            d.id, it.id, v ?? false))
-                                    : null,
-                                title: Text(it.name),
-                                subtitle: _itemSubtitle(it, sym),
-                                secondary: caps.manage
-                                    ? Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          // MG_SHOPBUG_MOB: edit action.
-                                          IconButton(
-                                            icon: const Icon(Icons.edit,
-                                                size: 18),
-                                            tooltip: 'Изменить',
-                                            onPressed: () =>
-                                                _openEdit(d, it),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.close,
-                                                size: 18),
-                                            onPressed: () => context
-                                                .read<ShoppingBloc>()
-                                                .add(ShoppingDeleteItemRequested(
-                                                    d.id, it.id)),
-                                          ),
-                                        ],
-                                      )
-                                    : null,
-                              ),
+                              if (_editMode && caps.manage)
+                                // MG_SHOPBUG_EDITMODE: inline editable row.
+                                ShoppingItemEditRow(
+                                  key: ValueKey('edit-${it.id}'),
+                                  listId: d.id,
+                                  item: it,
+                                  currency: d.currency,
+                                  api: context
+                                      .read<ShoppingBloc>()
+                                      .apiClient,
+                                  onDeleted: () => context
+                                      .read<ShoppingBloc>()
+                                      .add(ShoppingDetailRequested(d.id)),
+                                )
+                              else
+                                // MG_SHOPBUG_EDITMODE: view-mode (no delete).
+                                CheckboxListTile(
+                                  key: ValueKey('view-${it.id}'),
+                                  value: it.isPurchased,
+                                  onChanged: caps.toggle
+                                      ? (v) => context
+                                          .read<ShoppingBloc>()
+                                          .add(ShoppingToggleItemRequested(
+                                              d.id, it.id, v ?? false))
+                                      : null,
+                                  title: Text(it.name),
+                                  subtitle: _itemSubtitle(it, sym),
+                                ),
                           ],
                         ],
                       ),
@@ -269,14 +276,14 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                       horizontal: 16, vertical: 10),
                   color: Colors.black.withOpacity(0.04),
                   child: Text(
-                    // MG_SHOPBUG_MOB: fmtMoney for 2-dp display.
                     'Итого: ${fmtMoney(d.totalPrice)} $sym',
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ),
-              if (caps.manage)
+              // MG_SHOPBUG_EDITMODE: hide add-row in edit mode.
+              if (caps.manage && !_editMode)
                 ShoppingAddItem(
                   apiClient: context.read<ShoppingBloc>().apiClient,
                   currency: d.currency,

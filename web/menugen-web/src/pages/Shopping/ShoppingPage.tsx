@@ -197,6 +197,9 @@ const ListDetail: React.FC<{
   onManageAccess: () => void;
 }> = ({ detail, caps, onToggle, onReload, onDelete, onArchive, onPrint, onManageAccess }) => {
   // MG_RUBRIC005_state_removed: add-item state moved into ItemAutocomplete.
+  // MG_SHOPBUG_EDITMODE: global edit mode (delete + inline fields gated).
+  const [editMode, setEditMode] = useState(false);
+  const UNITS = ['шт','г','кг','мл','л','упак','банка','пучок','головка','бутылка','тюбик'];
 
   // MG_RUBRIC011_fmt: money formatter (2 decimals).
   const fmtMoney = (v: string | number | null | undefined) => {
@@ -237,6 +240,18 @@ const ListDetail: React.FC<{
     onReload();
   };
 
+  // MG_SHOPBUG_EDITMODE: inline name edit.
+  const setName = async (itemId: number, raw: string) => {
+    const v = raw.trim();
+    if (!v) return;
+    await shoppingApi.updateItem(detail.id, itemId, { name: v });
+    onReload();
+  };
+  // MG_SHOPBUG_EDITMODE: inline unit edit.
+  const setUnit = async (itemId: number, raw: string) => {
+    await shoppingApi.updateItem(detail.id, itemId, { unit: raw });
+    onReload();
+  };
   // MG_RUBRIC010_setQty: inline quantity edit.
   const setQuantity = async (itemId: number, raw: string) => {
     const n = raw.trim() ? parseFloat(raw.replace(',', '.')) : null;
@@ -280,10 +295,17 @@ const ListDetail: React.FC<{
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-bold text-lg">{detail.name}</h2>
         <div className="flex gap-2 flex-wrap">
-          {caps?.export && (
+          {/* MG_SHOPBUG_EDITMODE: edit-mode toggle */}
+          {caps?.manage && (
+            <Button
+              variant={editMode ? 'primary' : 'secondary'}
+              onClick={() => { setEditMode((v) => !v); if (editMode) onReload(); }}
+            >{editMode ? '✓ Готово' : '✎ Редактировать'}</Button>
+          )}
+          {caps?.export && !editMode && (
             <Button variant="secondary" onClick={onPrint}>🖨 Печать</Button>
           )}
-          {caps?.manage && (
+          {caps?.manage && !editMode && (
             <>
               <Button variant="secondary" onClick={onManageAccess}>👥 Доступ</Button>
               {!detail.is_archived ? (
@@ -312,22 +334,35 @@ const ListDetail: React.FC<{
             <ul className="space-y-1">
               {g.items.map((it) => (
                 <li key={it.id} className="flex items-center gap-2 py-1 bg-white/60 rounded-lg px-2">
-                  <input
-                    type="checkbox"
-                    checked={it.is_purchased}
-                    disabled={!caps?.toggle}
-                    onChange={(e) => onToggle(it.id, e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className={it.is_purchased ? 'line-through text-gray-400 flex-1' : 'flex-1'}>
-                    {it.name}
-                    {/* MG_RUBRIC010_qty_input */}
-                    {!caps?.manage && it.quantity != null && (
-                      <span className="text-gray-500 text-sm"> — {it.quantity}{it.unit ? ` ${it.unit}` : ''}</span>
-                    )}
-                  </span>
-                  {caps?.manage && (
-                    <span className="flex items-center gap-1">
+                  {/* MG_SHOPBUG_EDITMODE: hide checkbox in edit mode */}
+                  {!editMode && (
+                    <input
+                      type="checkbox"
+                      checked={it.is_purchased}
+                      disabled={!caps?.toggle}
+                      onChange={(e) => onToggle(it.id, e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                  )}
+                  {editMode && caps?.manage ? (
+                    /* MG_SHOPBUG_EDITMODE: editable name */
+                    <input
+                      defaultValue={it.name}
+                      onBlur={(e) => { if (e.target.value !== it.name) setName(it.id, e.target.value); }}
+                      placeholder="Продукт"
+                      className="flex-1 rounded-lg border border-gray-200 px-2 py-0.5 text-sm"
+                    />
+                  ) : (
+                    <span className={it.is_purchased ? 'line-through text-gray-400 flex-1' : 'flex-1'}>
+                      {it.name}
+                      {it.quantity != null && (
+                        <span className="text-gray-500 text-sm"> — {it.quantity}{it.unit ? ` ${it.unit}` : ''}</span>
+                      )}
+                    </span>
+                  )}
+                  {editMode && caps?.manage && (
+                    <>
+                      {/* MG_SHOPBUG_EDITMODE: qty + unit + price inputs */}
                       <input
                         defaultValue={it.quantity ?? ''}
                         onBlur={(e) => {
@@ -335,35 +370,41 @@ const ListDetail: React.FC<{
                           if (e.target.value !== String(cur)) setQuantity(it.id, e.target.value);
                         }}
                         inputMode="decimal"
-                        placeholder="кол-во"
+                        placeholder="кол."
                         className="w-14 rounded-lg border border-gray-200 px-2 py-0.5 text-xs text-right"
                       />
-                      {it.unit && <span className="text-xs text-gray-400">{it.unit}</span>}
-                    </span>
+                      <select
+                        defaultValue={it.unit ?? ''}
+                        onChange={(e) => { if (e.target.value !== (it.unit ?? '')) setUnit(it.id, e.target.value); }}
+                        className="rounded-lg border border-gray-200 px-1 py-0.5 text-xs"
+                      >
+                        {(UNITS.includes(it.unit ?? '') ? UNITS : [it.unit ?? '', ...UNITS]).map((u) => (
+                          <option key={u} value={u}>{u || '—'}</option>
+                        ))}
+                      </select>
+                      <input
+                        defaultValue={fmtMoney(it.price_per_unit)}
+                        onBlur={(e) => {
+                          const cur = fmtMoney(it.price_per_unit);
+                          if (e.target.value !== cur) setPrice(it.id, e.target.value);
+                        }}
+                        inputMode="decimal"
+                        placeholder="цена"
+                        className="w-16 rounded-lg border border-gray-200 px-2 py-0.5 text-xs text-right"
+                      />
+                    </>
                   )}
-                  {caps?.manage ? (
-                    <input
-                      defaultValue={fmtMoney(it.price_per_unit) /* MG_RUBRIC011_price_default */}
-                      onBlur={(e) => {
-                        const cur = fmtMoney(it.price_per_unit);
-                        if (e.target.value !== cur) setPrice(it.id, e.target.value);
-                      }}
-                      inputMode="decimal"
-                      placeholder="цена"
-                      className="w-16 rounded-lg border border-gray-200 px-2 py-0.5 text-xs text-right"
-                    />
-                  ) : (
-                    it.price_per_unit != null && (
-                      <span className="text-xs text-gray-500">{fmtMoney(it.price_per_unit)} {currency}</span>
-                    )
+                  {!editMode && it.price_per_unit != null && (
+                    <span className="text-xs text-gray-500">{fmtMoney(it.price_per_unit)} {currency}</span>
                   )}
                   {it.line_total != null && (
                     <span className="text-xs text-chocolate font-medium w-20 text-right">
                       {fmtMoney(it.line_total)} {currency}
                     </span>
                   )}
-                  {caps?.manage && (
-                    <button onClick={() => delItem(it.id)} className="text-gray-300 hover:text-red-500 text-sm">✕</button>
+                  {/* MG_SHOPBUG_EDITMODE: delete only in edit mode */}
+                  {editMode && caps?.manage && (
+                    <button onClick={() => delItem(it.id)} className="text-red-400 hover:text-red-600 text-sm">✕</button>
                   )}
                 </li>
               ))}
@@ -381,7 +422,7 @@ const ListDetail: React.FC<{
         </div>
       )}
 
-      {caps?.manage && (
+      {caps?.manage && !editMode && (
         <div className="mt-3">
           <ItemAutocomplete onAdd={handleAdd} currency={currency} /> {/* MG_RUBRIC009_currency_prop */}
         </div>
