@@ -120,10 +120,14 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
                           itemCount: state.lists.length,
                           itemBuilder: (_, i) {
                             final l = state.lists[i];
+                            // MG_SHOPBUG_MOB: include creation date.
+                            final dateStr = fmtListDate(l.createdAt);
+                            final sub = dateStr.isEmpty
+                                ? '${l.source.label} · ${l.itemsPurchased}/${l.itemsTotal}'
+                                : '${l.source.label} · $dateStr · ${l.itemsPurchased}/${l.itemsTotal}';
                             return ListTile(
                               title: Text(l.name),
-                              subtitle: Text(
-                                  '${l.source.label} · ${l.itemsPurchased}/${l.itemsTotal}'),
+                              subtitle: Text(sub),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => _openDetail(l.id),
                             );

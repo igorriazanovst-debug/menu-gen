@@ -30,6 +30,7 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
     on<ShoppingAddItemRequested>(_onAddItem);
     on<ShoppingDeleteItemRequested>(_onDeleteItem);
     on<ShoppingToggleItemRequested>(_onToggle);
+    on<ShoppingUpdateItemRequested>(_onUpdateItem); // MG_SHOPBUG_MOB
   }
 
   Map<String, dynamic> _asMap(dynamic d) =>
@@ -129,6 +130,19 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
       await apiClient.patch(
           '/shopping/lists/${e.listId}/items/${e.itemId}/toggle/',
           data: {'is_purchased': e.isPurchased});
+      add(ShoppingDetailRequested(e.listId));
+    } catch (err) {
+      emit(ShoppingError(_msg(err)));
+    }
+  }
+
+  // MG_SHOPBUG_MOB: PATCH item then refresh detail.
+  Future<void> _onUpdateItem(
+      ShoppingUpdateItemRequested e, Emitter<ShoppingState> emit) async {
+    try {
+      await apiClient.patch(
+          '/shopping/lists/${e.listId}/items/${e.itemId}/',
+          data: e.payload);
       add(ShoppingDetailRequested(e.listId));
     } catch (err) {
       emit(ShoppingError(_msg(err)));

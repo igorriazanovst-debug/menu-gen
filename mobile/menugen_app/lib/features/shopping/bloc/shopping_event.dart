@@ -68,3 +68,13 @@ class ShoppingToggleItemRequested extends ShoppingEvent {
   @override
   List<Object?> get props => [listId, itemId, isPurchased];
 }
+
+// MG_SHOPBUG_MOB: edit existing item (PATCH /items/{id}/).
+class ShoppingUpdateItemRequested extends ShoppingEvent {
+  final int listId;
+  final int itemId;
+  final Map<String, dynamic> payload;
+  const ShoppingUpdateItemRequested(this.listId, this.itemId, this.payload);
+  @override
+  List<Object?> get props => [listId, itemId, payload];
+}

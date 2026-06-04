@@ -37,4 +37,10 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Changed** 2026-06-04 `MG_HISTWEB001` — Web purchase history: show price_per_unit with family currency — files: `web/menugen-web/src/types/index.ts`, `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`
 
+- **Fixed** 2026-06-04 `MG_SHOPBUG_BE` — Backend: quantize shopping line_total and total_price to 2 decimal places — files: `backend/apps/shopping/serializers.py`, `backend/apps/shopping/views.py`
+
+- **Fixed** 2026-06-04 `MG_SHOPBUG_MOB` — Mobile shopping: edit existing item, 2-dp money display, Cyrillic PDF font, list creation date — files: `mobile/menugen_app/lib/features/shopping/models/shopping_models.dart`, `mobile/menugen_app/lib/features/shopping/bloc/shopping_event.dart`, `mobile/menugen_app/lib/features/shopping/bloc/shopping_bloc.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_list_screen.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_detail_screen.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_edit_item.dart`
+
+- **Fixed** 2026-06-04 `MG_SHOPBUG_WEB` — Web print: 2-dp money formatting for line totals, prices, grand total — files: `web/menugen-web/src/utils/printShoppingList.ts`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

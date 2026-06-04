@@ -104,6 +104,7 @@ class ShoppingListBrief extends Equatable {
   final bool isArchived;
   final int itemsTotal;
   final int itemsPurchased;
+  final DateTime? createdAt; // MG_SHOPBUG_MOB
 
   const ShoppingListBrief({
     required this.id,
@@ -112,6 +113,7 @@ class ShoppingListBrief extends Equatable {
     required this.isArchived,
     required this.itemsTotal,
     required this.itemsPurchased,
+    this.createdAt,
   });
 
   factory ShoppingListBrief.fromJson(Map<String, dynamic> j) => ShoppingListBrief(
@@ -121,10 +123,12 @@ class ShoppingListBrief extends Equatable {
         isArchived: j['is_archived'] as bool? ?? false,
         itemsTotal: j['items_total'] as int? ?? 0,
         itemsPurchased: j['items_purchased'] as int? ?? 0,
+        createdAt: DateTime.tryParse(j['created_at']?.toString() ?? ''),
       );
 
   @override
-  List<Object?> get props => [id, name, source, isArchived, itemsTotal, itemsPurchased];
+  List<Object?> get props =>
+      [id, name, source, isArchived, itemsTotal, itemsPurchased, createdAt];
 }
 
 class ShoppingListDetail extends Equatable {
@@ -136,6 +140,7 @@ class ShoppingListDetail extends Equatable {
   final ShoppingCapabilities capabilities;
   final String currency; // MG_SHOPMOB001
   final String? totalPrice; // MG_SHOPMOB001
+  final DateTime? createdAt; // MG_SHOPBUG_MOB
 
   const ShoppingListDetail({
     required this.id,
@@ -146,6 +151,7 @@ class ShoppingListDetail extends Equatable {
     required this.capabilities,
     this.currency = 'RUB',
     this.totalPrice,
+    this.createdAt,
   });
 
   factory ShoppingListDetail.fromJson(Map<String, dynamic> j) {
@@ -164,12 +170,22 @@ class ShoppingListDetail extends Equatable {
       ),
       currency: j['currency'] as String? ?? 'RUB',
       totalPrice: j['total_price']?.toString(),
+      createdAt: DateTime.tryParse(j['created_at']?.toString() ?? ''),
     );
   }
 
   @override
-  List<Object?> get props =>
-      [id, name, source, isArchived, items, capabilities, currency, totalPrice];
+  List<Object?> get props => [
+        id,
+        name,
+        source,
+        isArchived,
+        items,
+        capabilities,
+        currency,
+        totalPrice,
+        createdAt,
+      ];
 }
 
 class ShoppingAccess extends Equatable {
@@ -306,6 +322,21 @@ class RubricResult {
         categoryName: j['category_name'] as String? ?? '',
         subcategory: j['subcategory'] as String? ?? '',
       );
+}
+
+// MG_SHOPBUG_MOB: format a Decimal-string as money (2 dp). Defensive.
+String fmtMoney(String? raw) {
+  if (raw == null) return '';
+  final n = double.tryParse(raw);
+  if (n == null) return raw;
+  return n.toStringAsFixed(2);
+}
+
+// MG_SHOPBUG_MOB: format a date as dd.MM.yyyy (locale-independent).
+String fmtListDate(DateTime? d) {
+  if (d == null) return '';
+  String p(int v) => v.toString().padLeft(2, '0');
+  return '${p(d.day)}.${p(d.month)}.${d.year}';
 }
 
 // MG_SHOPMOB001: render a currency code as a short symbol.

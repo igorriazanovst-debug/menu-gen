@@ -9,6 +9,7 @@ import '../bloc/shopping_bloc.dart';
 import '../models/shopping_models.dart';
 import 'shopping_access_sheet.dart';
 import 'shopping_add_item.dart';
+import 'shopping_edit_item.dart'; // MG_SHOPBUG_MOB
 
 class ShoppingDetailScreen extends StatefulWidget {
   final int listId;
@@ -30,12 +31,23 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
     final data = ShoppingExportData.fromJson(
         raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{});
     final sym = currencySymbol(data.currency);
-    final doc = pw.Document();
+    // MG_SHOPBUG_MOB: use Noto Sans for Cyrillic glyphs in the PDF.
+    final baseFont = await PdfGoogleFonts.notoSansRegular();
+    final boldFont = await PdfGoogleFonts.notoSansBold();
+    final italicFont = await PdfGoogleFonts.notoSansItalic();
+    final theme = pw.ThemeData.withFont(
+        base: baseFont, bold: boldFont, italic: italicFont);
+    final doc = pw.Document(theme: theme);
+    final createdStr = fmtListDate(data.createdAt);
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         build: (ctx) => [
           pw.Header(level: 0, text: data.title),
+          if (createdStr.isNotEmpty)
+            pw.Text('Создан: $createdStr',
+                style: pw.TextStyle(
+                    fontSize: 11, color: PdfColors.grey700)),
           ...data.categories.expand((cat) => [
                 pw.SizedBox(height: 8),
                 pw.Text(cat.key.isEmpty ? 'Без категории' : cat.key,
@@ -46,9 +58,9 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                       ? ' — ${it.quantity}${it.unit.isNotEmpty ? ' ${it.unit}' : ''}'
                       : '';
                   final price = it.lineTotal != null
-                      ? '   ${it.lineTotal} $sym'
+                      ? '   ${fmtMoney(it.lineTotal)} $sym'
                       : (it.pricePerUnit != null
-                          ? '   ${it.pricePerUnit} $sym'
+                          ? '   ${fmtMoney(it.pricePerUnit)} $sym'
                           : '');
                   final mark = it.isPurchased ? '[x]' : '[ ]';
                   return pw.Text('$mark ${it.name}$q$price');
@@ -57,7 +69,7 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
           if (data.totalPrice != null) ...[
             pw.SizedBox(height: 12),
             pw.Divider(),
-            pw.Text('Итого: ${data.totalPrice} $sym',
+            pw.Text('Итого: ${fmtMoney(data.totalPrice)} $sym',
                 style: pw.TextStyle(
                     fontSize: 14, fontWeight: pw.FontWeight.bold)),
           ],
@@ -65,6 +77,21 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
       ),
     );
     await Printing.layoutPdf(onLayout: (f) => doc.save());
+  }
+
+  // MG_SHOPBUG_MOB: open edit sheet for an existing item.
+  void _openEdit(ShoppingListDetail d, ShoppingItem it) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ShoppingEditItem(
+        initial: it,
+        currency: d.currency,
+        onSubmit: (payload) => context
+            .read<ShoppingBloc>()
+            .add(ShoppingUpdateItemRequested(d.id, it.id, payload)),
+      ),
+    );
   }
 
   void _openAccess() {
@@ -101,9 +128,9 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
       parts.add('${it.quantity ?? ''} ${it.unit}'.trim());
     }
     if (it.lineTotal != null) {
-      parts.add('${it.lineTotal} $sym');
+      parts.add('${fmtMoney(it.lineTotal)} $sym'); // MG_SHOPBUG_MOB
     } else if (it.pricePerUnit != null) {
-      parts.add('${it.pricePerUnit} $sym/ед.');
+      parts.add('${fmtMoney(it.pricePerUnit)} $sym/ед.'); // MG_SHOPBUG_MOB
     }
     if (parts.isEmpty) return null;
     return Text(parts.join('  ·  '));
@@ -132,7 +159,23 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
         final groups = _grouped(d.items);
         return Scaffold(
           appBar: AppBar(
-            title: Text(d.name),
+            // MG_SHOPBUG_MOB: title shows list name + creation date.
+            title: Builder(builder: (_) {
+              final ds = fmtListDate(d.createdAt);
+              if (ds.isEmpty) return Text(d.name);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(d.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 17)),
+                  Text(ds,
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.normal)),
+                ],
+              );
+            }),
             actions: [
               if (caps.export)
                 IconButton(icon: const Icon(Icons.print), onPressed: _print),
@@ -192,12 +235,26 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                 title: Text(it.name),
                                 subtitle: _itemSubtitle(it, sym),
                                 secondary: caps.manage
-                                    ? IconButton(
-                                        icon: const Icon(Icons.close, size: 18),
-                                        onPressed: () => context
-                                            .read<ShoppingBloc>()
-                                            .add(ShoppingDeleteItemRequested(
-                                                d.id, it.id)),
+                                    ? Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // MG_SHOPBUG_MOB: edit action.
+                                          IconButton(
+                                            icon: const Icon(Icons.edit,
+                                                size: 18),
+                                            tooltip: 'Изменить',
+                                            onPressed: () =>
+                                                _openEdit(d, it),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.close,
+                                                size: 18),
+                                            onPressed: () => context
+                                                .read<ShoppingBloc>()
+                                                .add(ShoppingDeleteItemRequested(
+                                                    d.id, it.id)),
+                                          ),
+                                        ],
                                       )
                                     : null,
                               ),
@@ -212,7 +269,8 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                       horizontal: 16, vertical: 10),
                   color: Colors.black.withOpacity(0.04),
                   child: Text(
-                    'Итого: ${d.totalPrice} $sym',
+                    // MG_SHOPBUG_MOB: fmtMoney for 2-dp display.
+                    'Итого: ${fmtMoney(d.totalPrice)} $sym',
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 16),

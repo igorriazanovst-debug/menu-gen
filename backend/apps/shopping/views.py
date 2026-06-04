@@ -352,7 +352,7 @@ class ShoppingListExportView(APIView):
         if not caps["export"]:
             return Response({"detail": "Нет прав на экспорт."}, status=status.HTTP_403_FORBIDDEN)
         # MG_RUBRIC006_export
-        from decimal import Decimal
+        from decimal import Decimal, ROUND_HALF_UP  # MG_SHOPBUG_BE
 
         items = ShoppingListItem.objects.filter(shopping_list=sl)
         by_cat = {}
@@ -363,7 +363,8 @@ class ShoppingListExportView(APIView):
             if it.price_per_unit is not None:
                 any_price = True
                 qty = it.quantity if it.quantity is not None else 1
-                line = it.price_per_unit * qty
+                # MG_SHOPBUG_BE: quantize line.
+                line = (it.price_per_unit * qty).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 grand += line
             by_cat.setdefault(it.category or "", []).append(
                 {
@@ -380,7 +381,8 @@ class ShoppingListExportView(APIView):
                 "title": sl.name,
                 "created_at": sl.created_at,
                 "currency": sl.family.currency,
-                "total_price": str(grand) if any_price else None,
+                # MG_SHOPBUG_BE
+                "total_price": str(grand.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if any_price else None,
                 "categories": [{"category": cat, "items": its} for cat, its in by_cat.items()],
             }
         )

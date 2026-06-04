@@ -2,6 +2,14 @@
 // MG_PRINTWEB001: render prices, per-line totals, grand total and currency.
 import type { ShoppingV2ExportData } from '../types';
 
+// MG_SHOPBUG_WEB: format Decimal-string as money with 2 decimal places.
+function fmtMoney(raw: string | number | null | undefined): string {
+  if (raw == null || raw === '') return '';
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return String(raw);
+  return n.toFixed(2);
+}
+
 function currencySymbol(code?: string): string {
   switch ((code || 'RUB').toUpperCase()) {
     case 'RUB':
@@ -39,11 +47,12 @@ export function printShoppingList(data: ShoppingV2ExportData) {
             it.quantity != null
               ? ` — ${esc(String(it.quantity))}${it.unit ? ' ' + esc(it.unit) : ''}`
               : '';
+          // MG_SHOPBUG_WEB: format money to 2 decimal places.
           const price =
             it.line_total != null
-              ? `<span class="price">${esc(String(it.line_total))} ${sym}</span>`
+              ? `<span class="price">${esc(fmtMoney(it.line_total))} ${sym}</span>`
               : it.price_per_unit != null
-                ? `<span class="price">${esc(String(it.price_per_unit))} ${sym}/ед.</span>`
+                ? `<span class="price">${esc(fmtMoney(it.price_per_unit))} ${sym}/ед.</span>`
                 : '';
           const mark = it.is_purchased ? '☑' : '☐';
           const cls = it.is_purchased ? ' class="done"' : '';
@@ -56,7 +65,7 @@ export function printShoppingList(data: ShoppingV2ExportData) {
 
   const total =
     data.total_price != null
-      ? `<div class="total">Итого: ${esc(String(data.total_price))} ${sym}</div>`
+      ? `<div class="total">Итого: ${esc(fmtMoney(data.total_price))} ${sym}</div>` // MG_SHOPBUG_WEB
       : '';
 
   const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">

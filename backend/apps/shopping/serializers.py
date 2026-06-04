@@ -18,7 +18,9 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
         if obj.price_per_unit is None:
             return None
         qty = obj.quantity if obj.quantity is not None else 1
-        return str(obj.price_per_unit * qty)
+        # MG_SHOPBUG_BE: quantize line total to 2 dp.
+        from decimal import Decimal, ROUND_HALF_UP
+        return str((obj.price_per_unit * qty).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
     class Meta:
         model = ShoppingListItem
@@ -120,7 +122,7 @@ class ShoppingListSerializer(serializers.ModelSerializer):
     total_price = serializers.SerializerMethodField()
 
     def get_total_price(self, obj):
-        from decimal import Decimal
+        from decimal import Decimal, ROUND_HALF_UP  # MG_SHOPBUG_BE
 
         total = Decimal(0)
         any_price = False
@@ -130,7 +132,8 @@ class ShoppingListSerializer(serializers.ModelSerializer):
             any_price = True
             qty = it.quantity if it.quantity is not None else 1
             total += it.price_per_unit * qty
-        return str(total) if any_price else None
+        # MG_SHOPBUG_BE: quantize grand total to 2 dp.
+        return str(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if any_price else None
 
     class Meta:
         model = ShoppingList
