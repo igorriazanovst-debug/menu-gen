@@ -23,4 +23,10 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-03 `MG_SHOP004_lint` — Lint fixes in apps/shopping (F401 unused import, E501 long lines), black/isort — files: `backend/apps/shopping/models.py`, `backend/apps/shopping/services.py`, `backend/apps/shopping/urls.py`
 
+- **Fixed** 2026-06-04 `MG_RUBRIC003` — Resolve product field clash: legacy product_id renamed to legacy_product_id (db_column kept); FK product/category_fk on ShoppingListItem — files: `backend/apps/shopping/models.py`, `backend/apps/shopping/views.py`, `backend/apps/shopping/serializers.py`
+
+- **Added** 2026-06-04 `MG_RUBRIC004` — Web: rubricator autocomplete on add-item (search + AI category suggest with override) — files: `web/menugen-web/src/api/shopping.ts`, `web/menugen-web/src/types/index.ts`, `web/menugen-web/src/pages/Shopping/ItemAutocomplete.tsx`, `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`
+
+- **Added** 2026-06-04 `MG_RUBRIC006` — Shopping prices: Product.last_price, ShoppingListItem/PurchaseHistory price_per_unit, Family.currency; add-item qty/unit/price + last_price prefill; toggle bumps last_price; list & export totals — files: `backend/apps/fridge/models.py`, `backend/apps/family/models.py`, `backend/apps/family/serializers.py`, `backend/apps/shopping/models.py`, `backend/apps/shopping/serializers.py`, `backend/apps/shopping/views.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

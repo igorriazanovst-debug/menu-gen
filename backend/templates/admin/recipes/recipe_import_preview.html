@@ -1,0 +1,96 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.import-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.import-table th, .import-table td {
+  border: 1px solid #ccc; padding: 6px 8px; vertical-align: top; white-space: nowrap;
+}
+.import-table th { background: #f0f0f0; position: sticky; top: 0; }
+.import-table tr:nth-child(even) td { background: #fafafa; }
+.warn-box { background:#fffbe6;border:1px solid #f0a500;padding:10px;border-radius:4px;margin-bottom:16px }
+.ok-badge { color: #388e3c; font-weight: bold; }
+.missing { color: #aaa; }
+.action-bar { display:flex; gap:12px; align-items:center; margin-bottom:16px }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+{% if warnings %}
+<div class="warn-box">
+  <strong>Предупреждения ({{ warnings|length }}):</strong>
+  <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+  <div class="action-bar">
+    <input type="submit" name="action" value="confirm" class="default"
+           style="background:#2e7d32;color:#fff;font-size:14px;padding:8px 20px;border:none;border-radius:4px;cursor:pointer"
+           onclick="return confirm('Импортировать {{ recipes|length }} рецептов в базу?')">
+    <span style="font-size:14px">← Нажмите для сохранения {{ recipes|length }} рецептов</span>
+    <input type="submit" name="action" value="cancel"
+           style="margin-left:auto;font-size:14px;padding:8px 16px;cursor:pointer"
+           onclick="return confirm('Отменить импорт?')">
+  </div>
+</form>
+
+<div style="overflow-x:auto">
+<table class="import-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Название</th>
+      <th>Тип блюда</th>
+      <th>Приём пищи</th>
+      <th>Ккал/100г</th>
+      <th>Б/Ж/У</th>
+      <th>Порция, г</th>
+      <th>Ингредиентов</th>
+      <th>Шагов</th>
+      <th>Источник</th>
+      <th>Страна</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in recipes %}
+    <tr>
+      <td>{{ forloop.counter }}</td>
+      <td><strong>{{ r.title }}</strong></td>
+      <td>{{ r.dish_type|default:"—" }}</td>
+      <td>{{ r.meal_category|join:", "|default:"—" }}</td>
+      <td>
+        {% if r.kcal_per_100g %}
+          <span class="ok-badge">{{ r.kcal_per_100g|floatformat:1 }}</span>
+        {% else %}
+          <span class="missing">—</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if r.proteins_per_100g %}
+          {{ r.proteins_per_100g|floatformat:1 }} /
+          {{ r.fats_per_100g|floatformat:1 }} /
+          {{ r.carbs_per_100g|floatformat:1 }}
+        {% else %}
+          <span class="missing">—</span>
+        {% endif %}
+      </td>
+      <td>{{ r.portion_g|default:"—" }}</td>
+      <td>{{ r.ingredients|length }}</td>
+      <td>{{ r.steps|length }}</td>
+      <td>{{ r.source }}</td>
+      <td>{{ r.country|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<p style="margin-top:16px"><a href="../../">← Назад к списку сессий</a></p>
+{% endblock %}

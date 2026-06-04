@@ -49,7 +49,25 @@ class ShoppingList(models.Model):
 
 class ShoppingListItem(models.Model):
     shopping_list = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="items")
-    product_id = models.BigIntegerField(null=True, blank=True)
+    # MG_RUBRIC003: renamed from product_id to free the attribute for the FK below.
+    legacy_product_id = models.BigIntegerField(null=True, blank=True, db_column="product_id")
+    # MG_RUBRIC001: strong FK links to the product rubricator.
+    product = models.ForeignKey(
+        "fridge.Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="shopping_items",
+        db_column="product_fk_id",
+    )
+    category_fk = models.ForeignKey(
+        "fridge.ProductCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="shopping_items",
+        db_column="category_id",
+    )
     name = models.CharField(max_length=255)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     unit = models.CharField(max_length=50, blank=True)
@@ -64,6 +82,8 @@ class ShoppingListItem(models.Model):
     )
     purchased_at = models.DateTimeField(null=True, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
+    # MG_RUBRIC006: per-unit price snapshot for this list.
+    price_per_unit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = "shopping_v2_items"
@@ -115,6 +135,8 @@ class PurchaseHistoryEntry(models.Model):
     )
     purchased_at = models.DateTimeField(auto_now_add=True)
     source_list_id = models.BigIntegerField(null=True, blank=True)
+    # MG_RUBRIC006: price at purchase time.
+    price_per_unit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = "shopping_v2_history"

@@ -8,6 +8,7 @@ import type {
   ShoppingV2ExportData,
   ShoppingV2HistoryEntry,
   ShoppingV2Source,
+  ShoppingV2RubricResponse,
 } from '../types';
 
 export interface CreateListPayload {
@@ -17,6 +18,16 @@ export interface CreateListPayload {
   subtract_fridge?: boolean;
   text?: string;
   csv_text?: string;
+}
+
+// MG_RUBRIC004: add-item payload with rubricator links.
+export interface AddItemPayload {
+  name: string;
+  quantity?: number | null;
+  unit?: string;
+  product_id?: number | null;
+  category_slug?: string;
+  price_per_unit?: number | null; // MG_RUBRIC008
 }
 
 export interface GrantAccessPayload {
@@ -45,7 +56,8 @@ export const shoppingApi = {
 
   remove: (listId: number) => client.delete(`/shopping/lists/${listId}/`),
 
-  addItem: (listId: number, item: Partial<ShoppingV2Item>) =>
+  // MG_RUBRIC004_addItem
+  addItem: (listId: number, item: AddItemPayload) =>
     client.post<ShoppingV2Item>(`/shopping/lists/${listId}/items/`, item),
 
   updateItem: (listId: number, itemId: number, item: Partial<ShoppingV2Item>) =>
@@ -79,4 +91,10 @@ export const shoppingApi = {
 
   removeHistory: (entryId: number) =>
     client.delete('/shopping/history/', { data: { entry_id: entryId } }),
+
+  // MG_RUBRIC004: rubricator search; classify=1 asks AI for a category when no match.
+  rubricSearch: (q: string, classify = false) =>
+    client.get<ShoppingV2RubricResponse>('/shopping/rubric/search/', {
+      params: { q, classify: classify ? '1' : undefined },
+    }),
 };

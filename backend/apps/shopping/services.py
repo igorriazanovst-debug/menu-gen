@@ -136,3 +136,83 @@ def parse_text_with_ai(text: str):
             }
         )
     return out
+
+
+# ── MG_RUBRIC002: product rubricator search + AI classify ───────────────────
+def search_rubric(query: str, limit: int = 20):
+    """Search the Product rubricator by name (icontains), ranked by popularity.
+    Returns list of dicts {product_id, name, unit, category_slug, category_name,
+    subcategory}. Empty query -> []."""
+    from apps.fridge.models import Product
+
+    q = (query or "").strip()
+    if len(q) < 1:
+        return []
+
+    pop_rank = {"часто": 0, "средне": 1, "редко": 2, "": 3}
+    qs = Product.objects.select_related("category_fk").filter(name__icontains=q)[:200]
+    rows = []
+    for p in qs:
+        cat = p.category_fk
+        rows.append(
+            {
+                "product_id": p.id,
+                "name": p.name,
+                "unit": p.default_unit or "",
+                "category_slug": cat.slug if cat else "",
+                "category_name": cat.name_ru if cat else "",
+                "subcategory": getattr(p, "subcategory", "") or "",
+                "_starts": 0 if p.name.lower().startswith(q.lower()) else 1,
+                "_pop": pop_rank.get(getattr(p, "popularity", "") or "", 3),
+            }
+        )
+    rows.sort(key=lambda r: (r["_starts"], r["_pop"], r["name"]))
+    for r in rows:
+        r.pop("_starts", None)
+        r.pop("_pop", None)
+    return rows[:limit]
+
+
+def classify_new_product(name: str):
+    """For a product NOT in the rubricator, ask AI for a category slug.
+    Returns dict {category_slug, category_name} (slug may be 'other')."""
+    from apps.fridge.models import ProductCategory
+    from apps.fridge.services import gpt_pick_category_slug
+
+    slug = gpt_pick_category_slug(name) or "other"
+    cat = ProductCategory.objects.filter(slug=slug).first()
+    if cat is None:
+        cat = ProductCategory.objects.filter(slug="other").first()
+    return {
+        "category_slug": cat.slug if cat else "other",
+        "category_name": cat.name_ru if cat else "Прочее",
+    }
+
+
+def ensure_product(name: str, category_slug: str = "", unit: str = ""):
+    """Find a Product by name; if absent, create it under the given category
+    (or AI-classified if slug missing). Returns the Product instance."""
+    from apps.fridge.models import Product, ProductCategory
+    from apps.fridge.services import gpt_pick_category_slug
+
+    name = (name or "").strip()
+    if not name:
+        return None
+    existing = Product.objects.filter(name__iexact=name).select_related("category_fk").first()
+    if existing:
+        return existing
+
+    slug = (category_slug or "").strip().lower()
+    if not slug:
+        slug = gpt_pick_category_slug(name) or "other"
+    cat = ProductCategory.objects.filter(slug=slug).first()
+    if cat is None:
+        cat = ProductCategory.objects.filter(slug="other").first()
+    return Product.objects.create(
+        name=name,
+        category_fk=cat,
+        category=cat.name_ru if cat else "",
+        default_unit=unit or "",
+        is_seed=False,
+        nutrition={},
+    )

@@ -15,6 +15,8 @@ class ProductCategory(models.Model):
     icon = models.CharField(max_length=16, blank=True, help_text="Emoji or short symbol")
     color = models.CharField(max_length=16, blank=True, help_text="Hex color, e.g. #FFE082")
     sort_order = models.PositiveIntegerField(default=100)
+    # MG_RUBRIC001: store department (магазинный отдел) for print routing.
+    department = models.CharField(max_length=64, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -45,6 +47,12 @@ class Product(models.Model):
     barcode = models.CharField(max_length=64, null=True, blank=True, unique=True)
     image_url = models.URLField(max_length=1024, null=True, blank=True)
     is_seed = models.BooleanField(default=False, help_text="True for built-in basic products")
+    # MG_RUBRIC001: rubricator metadata.
+    subcategory = models.CharField(max_length=128, blank=True)
+    popularity = models.CharField(max_length=16, blank=True, help_text="часто|средне|редко")
+    # MG_RUBRIC006: last known price per unit (auto-updated on purchase).
+    last_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    last_price_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "products"

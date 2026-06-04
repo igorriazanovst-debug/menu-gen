@@ -8,16 +8,33 @@ from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, Shop
 
 class ShoppingListItemSerializer(serializers.ModelSerializer):
     purchased_by_name = serializers.CharField(source="purchased_by.name", read_only=True, default=None)
+    # MG_RUBRIC002: expose rubricator category via FK.
+    category_slug = serializers.CharField(source="category_fk.slug", read_only=True, default=None)
+    category_name = serializers.CharField(source="category_fk.name_ru", read_only=True, default=None)
+    # MG_RUBRIC006_read_price: line total = quantity * price_per_unit.
+    line_total = serializers.SerializerMethodField()
+
+    def get_line_total(self, obj):
+        if obj.price_per_unit is None:
+            return None
+        qty = obj.quantity if obj.quantity is not None else 1
+        return str(obj.price_per_unit * qty)
 
     class Meta:
         model = ShoppingListItem
+        # MG_RUBRIC002_read_fields
+        # MG_RUBRIC003_read_legacy
         fields = (
             "id",
-            "product_id",
+            "legacy_product_id",
             "name",
             "quantity",
             "unit",
             "category",
+            "category_slug",
+            "category_name",
+            "price_per_unit",  # MG_RUBRIC006_read_fields_price
+            "line_total",
             "is_purchased",
             "purchased_by",
             "purchased_by_name",
@@ -28,9 +45,24 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
 
 
 class ShoppingListItemWriteSerializer(serializers.ModelSerializer):
+    # MG_RUBRIC002: optional rubricator links.
+    category_slug = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    product_id = serializers.IntegerField(required=False, allow_null=True)
+    # MG_RUBRIC006_write_price
+    price_per_unit = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+
     class Meta:
         model = ShoppingListItem
-        fields = ("name", "quantity", "unit", "category", "sort_order")
+        fields = (
+            "name",
+            "quantity",
+            "unit",
+            "category",
+            "category_slug",
+            "product_id",
+            "price_per_unit",
+            "sort_order",
+        )
 
 
 class ShoppingListAccessSerializer(serializers.ModelSerializer):
@@ -83,6 +115,22 @@ class ShoppingListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source="created_by.name", read_only=True, default=None)
     items_total = serializers.IntegerField(read_only=True, required=False)
     items_purchased = serializers.IntegerField(read_only=True, required=False)
+    # MG_RUBRIC006_list_total
+    currency = serializers.CharField(source="family.currency", read_only=True, default="RUB")
+    total_price = serializers.SerializerMethodField()
+
+    def get_total_price(self, obj):
+        from decimal import Decimal
+
+        total = Decimal(0)
+        any_price = False
+        for it in obj.items.all():
+            if it.price_per_unit is None:
+                continue
+            any_price = True
+            qty = it.quantity if it.quantity is not None else 1
+            total += it.price_per_unit * qty
+        return str(total) if any_price else None
 
     class Meta:
         model = ShoppingList
@@ -100,6 +148,8 @@ class ShoppingListSerializer(serializers.ModelSerializer):
             "items",
             "items_total",
             "items_purchased",
+            "currency",  # MG_RUBRIC006_detail_fields
+            "total_price",
         )
         read_only_fields = ("source", "created_by", "archived_at")
 
@@ -127,12 +177,14 @@ class PurchaseHistoryEntrySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PurchaseHistoryEntry
+        # MG_RUBRIC006_history_price
         fields = (
             "id",
             "name",
             "quantity",
             "unit",
             "category",
+            "price_per_unit",
             "purchased_by",
             "purchased_by_name",
             "purchased_at",

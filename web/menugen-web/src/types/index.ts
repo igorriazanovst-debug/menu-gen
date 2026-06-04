@@ -117,6 +117,7 @@ export interface FamilyMember {
 }
 export interface Family {
   id: number; name: string; owner_name: string;
+  currency?: string; // MG_RUBRIC007
   members: FamilyMember[]; created_at: string;
 }
 export interface SubscriptionPlan {
@@ -291,13 +292,35 @@ export interface DiaryWaterLog { id?: number; date: string; water_ml: number; }
 // MG_SHOP002_web_types — shopping lists v2
 export type ShoppingV2Source = 'empty' | 'menu' | 'fridge' | 'ai_text' | 'csv';
 
+// MG_RUBRIC004: rubricator search types.
+export interface ShoppingV2RubricResult {
+  product_id: number;
+  name: string;
+  unit: string;
+  category_slug: string;
+  category_name: string;
+  subcategory: string;
+}
+export interface ShoppingV2RubricSuggestion {
+  category_slug: string;
+  category_name: string;
+}
+export interface ShoppingV2RubricResponse {
+  query: string;
+  results: ShoppingV2RubricResult[];
+  suggestion: ShoppingV2RubricSuggestion | null;
+}
 export interface ShoppingV2Item {
   id: number;
   product_id?: number | null;
+  category_slug?: string | null;
+  category_name?: string | null;
   name: string;
   quantity?: number | null;
   unit?: string;
   category?: string;
+  price_per_unit?: string | null; // MG_RUBRIC008
+  line_total?: string | null;
   is_purchased: boolean;
   purchased_by?: number | null;
   purchased_by_name?: string | null;
@@ -324,6 +347,8 @@ export interface ShoppingV2ListBrief {
 }
 
 export interface ShoppingV2List extends ShoppingV2ListBrief {
+  currency?: string; // MG_RUBRIC008
+  total_price?: string | null; // MG_RUBRIC008
   menu?: number | null;
   created_by?: number | null;
   created_by_name?: string | null;

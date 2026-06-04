@@ -3,13 +3,27 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAppSelector, useAppDispatch } from '../../hooks/useAppDispatch';
 import { setUser } from '../../store/slices/authSlice';
 import { authApi } from '../../api/auth';
+import { familyApi } from '../../api/family';
 import { usersApi } from '../../api/users';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { TargetField, type TargetLoader } from '../../components/profile/TargetField';
 import { getErrorMessage } from '../../utils/api';
-import type { MealPlan, NutritionTargets, UserProfile, TargetField as TF, TargetsMeta } from '../../types';
+import type {
+  MealPlan,
+  NutritionTargets,
+  UserProfile,
+  TargetField as TF,
+  TargetsMeta,
+  Family, // MG_RUBRIC007
+} from '../../types';
+
+const CURRENCY_OPTIONS = [
+  { value: 'RUB', label: '₽ Рубль (RUB)' },
+  { value: 'USD', label: '$ Доллар (USD)' },
+  { value: 'EUR', label: '€ Евро (EUR)' },
+];
 
 const MEAL_PLAN_OPTIONS: { value: MealPlan; label: string; hint: string }[] = [
   { value: '3', label: '3 приёма', hint: 'завтрак / обед / ужин' },
@@ -22,6 +36,11 @@ export const ProfilePage: React.FC = () => {
 
   const [name, setName]   = useState(user?.name ?? '');
   const [mealPlan, setMealPlan] = useState<MealPlan>(user?.profile?.meal_plan_type ?? '3');
+  // MG_RUBRIC007_state: family currency.
+  const [family, setFamily] = useState<Family | null>(null);
+  const [currency, setCurrency] = useState('RUB');
+  const [curSaving, setCurSaving] = useState(false);
+  const [curMsg, setCurMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError]     = useState('');
@@ -30,6 +49,40 @@ export const ProfilePage: React.FC = () => {
     setName(user?.name ?? '');
     setMealPlan(user?.profile?.meal_plan_type ?? '3');
   }, [user?.id, user?.name, user?.profile?.meal_plan_type]);
+
+  // MG_RUBRIC007_load: fetch family to read/set its currency.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await familyApi.get();
+        if (cancelled) return;
+        setFamily(data);
+        setCurrency(data.currency ?? 'RUB');
+      } catch {
+        /* non-fatal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  const isOwner = !!family && !!user && family.owner_name === user.name;
+
+  const saveCurrency = async () => {
+    setCurSaving(true);
+    setCurMsg('');
+    try {
+      const { data } = await familyApi.update({ currency });
+      setFamily(data);
+      setCurMsg('Валюта обновлена!');
+    } catch (e) {
+      setCurMsg(getErrorMessage(e));
+    } finally {
+      setCurSaving(false);
+    }
+  };
 
   const targets: NutritionTargets | null = useMemo(() => {
     const p = user?.profile;
@@ -129,6 +182,34 @@ export const ProfilePage: React.FC = () => {
 
           <Button type="submit" loading={saving}>Сохранить</Button>
         </form>
+
+        {/* MG_RUBRIC007_ui: family currency */}
+        <div className="mt-6 pt-6 border-t border-gray-100">
+          <label className="block text-sm font-medium text-chocolate mb-2">
+            Валюта семьи (для списков покупок)
+          </label>
+          <div className="flex items-center gap-2">
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              disabled={!isOwner}
+              className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              {CURRENCY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {isOwner && (
+              <Button type="button" onClick={saveCurrency} loading={curSaving}>
+                Сохранить
+              </Button>
+            )}
+          </div>
+          {!isOwner && (
+            <p className="text-xs text-gray-400 mt-1">Менять валюту может только глава семьи.</p>
+          )}
+          {curMsg && <p className="text-xs text-gray-500 mt-1">{curMsg}</p>}
+        </div>
       </Card>
 
       <Card className="p-6">

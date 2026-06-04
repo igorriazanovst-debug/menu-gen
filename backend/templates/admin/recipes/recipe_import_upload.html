@@ -1,0 +1,36 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+{% if parse_errors %}
+<div style="background:#fff0f0;border:1px solid #e00;padding:12px;border-radius:4px;margin-bottom:16px">
+  <strong>Ошибки в файле ({{ parse_errors|length }}):</strong>
+  <ul>{% for e in parse_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div style="background:#f8f8f8;border:1px solid #ddd;padding:20px;border-radius:4px;max-width:600px">
+  <p style="margin-top:0">
+    Загрузите <strong>xlsx-шаблон</strong> (лист <code>Recipes</code>, 32 колонки).
+    После загрузки система рассчитает КБЖУ через AI и покажет превью для проверки.
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <table>
+      {{ form.as_table }}
+    </table>
+    <p style="margin-top:16px">
+      <input type="submit" value="📤 Загрузить и разобрать" class="default" style="font-size:14px;padding:8px 16px">
+    </p>
+  </form>
+</div>
+
+<p style="margin-top:24px">
+  <a href="../">← Назад к списку сессий</a>
+</p>
+{% endblock %}

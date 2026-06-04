@@ -6,6 +6,8 @@ from apps.users.models import User
 class Family(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_families")
     name = models.CharField(max_length=255, blank=True)
+    # MG_RUBRIC006: family currency (used for shopping prices/totals).
+    currency = models.CharField(max_length=8, default="RUB")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

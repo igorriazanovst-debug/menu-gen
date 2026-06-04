@@ -12,6 +12,9 @@ export interface FamilyMemberUpdatePayload {
 export const familyApi = {
   get: () => client.get<Family>('/family/'),
   rename: (name: string) => client.patch<Family>('/family/', { name }),
+  // MG_RUBRIC007_update: patch family fields (currency, name).
+  update: (payload: { name?: string; currency?: string }) =>
+    client.patch<Family>('/family/', payload),
   invite: (email?: string, phone?: string) =>
     client.post('/family/invite/', { email, phone }),
   removeMember: (memberId: number) =>

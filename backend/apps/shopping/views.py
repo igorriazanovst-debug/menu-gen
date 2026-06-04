@@ -20,7 +20,16 @@ from .serializers import (
     ShoppingListItemWriteSerializer,
     ShoppingListSerializer,
 )
-from .services import build_items_from_menu, parse_csv, parse_text_with_ai
+
+# MG_RUBRIC002_views_import
+from .services import (
+    build_items_from_menu,
+    classify_new_product,
+    ensure_product,
+    parse_csv,
+    parse_text_with_ai,
+    search_rubric,
+)
 
 
 def _annotate(qs):
@@ -164,9 +173,42 @@ class ShoppingItemsView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         if not caps["manage"]:
             return Response({"detail": "Нет прав."}, status=status.HTTP_403_FORBIDDEN)
+        # MG_RUBRIC002: resolve / create the rubricator product, set FK + cached fields.
         ser = ShoppingListItemWriteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        item = ShoppingListItem.objects.create(shopping_list=sl, **ser.validated_data)
+        data = dict(ser.validated_data)
+        category_slug = data.pop("category_slug", "")
+        product_id = data.pop("product_id", None)
+        from apps.fridge.models import Product, ProductCategory
+
+        product = None
+        if product_id:
+            product = Product.objects.select_related("category_fk").filter(id=product_id).first()
+        if product is None:
+            product = ensure_product(
+                data.get("name", ""),
+                category_slug=category_slug,
+                unit=data.get("unit", ""),
+            )
+        cat = product.category_fk if product else None
+        if cat is None and category_slug:
+            cat = ProductCategory.objects.filter(slug=category_slug).first()
+        # MG_RUBRIC006_prefill: provided price, else product's last known price.
+        price = data.get("price_per_unit")
+        if price is None and product is not None:
+            price = product.last_price
+        item = ShoppingListItem.objects.create(
+            shopping_list=sl,
+            product=product,
+            legacy_product_id=(product.id if product else None),
+            price_per_unit=price,
+            category_fk=cat,
+            category=(cat.name_ru if cat else data.get("category", "")),
+            name=data.get("name", ""),
+            quantity=data.get("quantity"),
+            unit=data.get("unit") or (product.default_unit if product else ""),
+            sort_order=data.get("sort_order", 0),
+        )
         return Response(ShoppingListItemSerializer(item).data, status=status.HTTP_201_CREATED)
 
 
@@ -227,15 +269,23 @@ class ShoppingItemToggleView(APIView):
         if item.is_purchased:
             item.purchased_by = request.user
             item.purchased_at = timezone.now()
+            # MG_RUBRIC006_toggle_price
             PurchaseHistoryEntry.objects.create(
                 family=sl.family,
                 name=item.name,
                 quantity=item.quantity,
                 unit=item.unit,
                 category=item.category,
+                price_per_unit=item.price_per_unit,
                 purchased_by=request.user,
                 source_list_id=sl.id,
             )
+            if item.price_per_unit is not None and item.product_id:
+                from apps.fridge.models import Product
+
+                Product.objects.filter(id=item.product_id).update(
+                    last_price=item.price_per_unit, last_price_at=timezone.now()
+                )
         else:
             item.purchased_by = None
             item.purchased_at = None
@@ -301,14 +351,27 @@ class ShoppingListExportView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         if not caps["export"]:
             return Response({"detail": "Нет прав на экспорт."}, status=status.HTTP_403_FORBIDDEN)
+        # MG_RUBRIC006_export
+        from decimal import Decimal
+
         items = ShoppingListItem.objects.filter(shopping_list=sl)
         by_cat = {}
+        grand = Decimal(0)
+        any_price = False
         for it in items:
+            line = None
+            if it.price_per_unit is not None:
+                any_price = True
+                qty = it.quantity if it.quantity is not None else 1
+                line = it.price_per_unit * qty
+                grand += line
             by_cat.setdefault(it.category or "", []).append(
                 {
                     "name": it.name,
                     "quantity": str(it.quantity) if it.quantity is not None else None,
                     "unit": it.unit,
+                    "price_per_unit": str(it.price_per_unit) if it.price_per_unit is not None else None,
+                    "line_total": str(line) if line is not None else None,
                     "is_purchased": it.is_purchased,
                 }
             )
@@ -316,6 +379,8 @@ class ShoppingListExportView(APIView):
             {
                 "title": sl.name,
                 "created_at": sl.created_at,
+                "currency": sl.family.currency,
+                "total_price": str(grand) if any_price else None,
                 "categories": [{"category": cat, "items": its} for cat, its in by_cat.items()],
             }
         )
@@ -340,12 +405,14 @@ class PurchaseHistoryView(APIView):
         name = (request.data.get("name") or "").strip()
         if not name:
             return Response({"detail": "name обязателен."}, status=status.HTTP_400_BAD_REQUEST)
+        # MG_RUBRIC006_history_post
         entry = PurchaseHistoryEntry.objects.create(
             family=family,
             name=name,
             quantity=request.data.get("quantity"),
             unit=request.data.get("unit") or "",
             category=request.data.get("category") or "",
+            price_per_unit=request.data.get("price_per_unit"),
             purchased_by=request.user,
             source_list_id=request.data.get("source_list_id"),
         )
@@ -358,3 +425,23 @@ class PurchaseHistoryView(APIView):
             return Response({"detail": "entry_id обязателен."}, status=status.HTTP_400_BAD_REQUEST)
         PurchaseHistoryEntry.objects.filter(id=entry_id, family=family).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── MG_RUBRIC002: rubricator endpoints ──────────────────────────────────────
+class RubricSearchView(APIView):
+    """GET /shopping/rubric/search/?q=<text>
+
+    Searches the shared Product rubricator. If matches exist, returns them.
+    If none and ?classify=1, returns an AI-suggested category for a NEW product
+    so the client can pre-fill (user may override before adding).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        q = request.query_params.get("q", "")
+        results = search_rubric(q)
+        payload = {"query": q, "results": results, "suggestion": None}
+        if not results and request.query_params.get("classify") in ("1", "true") and q.strip():
+            payload["suggestion"] = classify_new_product(q.strip())
+        return Response(payload)

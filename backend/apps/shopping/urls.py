@@ -3,6 +3,7 @@ from django.urls import path
 
 from .views import (
     PurchaseHistoryView,
+    RubricSearchView,
     ShoppingItemDetailView,
     ShoppingItemsView,
     ShoppingItemToggleView,
@@ -25,4 +26,6 @@ urlpatterns = [
     path("lists/<int:list_id>/access/", ShoppingListAccessView.as_view(), name="shopping-list-access"),
     path("lists/<int:list_id>/export/", ShoppingListExportView.as_view(), name="shopping-list-export"),
     path("history/", PurchaseHistoryView.as_view(), name="shopping-history"),
+    # MG_RUBRIC002
+    path("rubric/search/", RubricSearchView.as_view(), name="shopping-rubric-search"),
 ]

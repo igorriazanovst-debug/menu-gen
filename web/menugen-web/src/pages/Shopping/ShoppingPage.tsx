@@ -1,12 +1,15 @@
 // MG_SHOP002_web_page — Shopping lists page
-import React, { useCallback, useEffect, useState } from 'react';
+// MG_RUBRIC009_imports
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { shoppingApi, CreateListPayload } from '../../api/shopping';
 import { menuApi } from '../../api/menu';
+import { fridgeApi } from '../../api/fridge';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { printShoppingList } from '../../utils/printShoppingList';
+import { ItemAutocomplete } from './ItemAutocomplete';
 import type {
   ShoppingV2ListBrief,
   ShoppingV2List,
@@ -14,6 +17,7 @@ import type {
   ShoppingV2HistoryEntry,
   ShoppingV2Source,
   Menu,
+  ProductCategory, // MG_RUBRIC009
 } from '../../types';
 
 const SOURCE_LABEL: Record<ShoppingV2Source, string> = {
@@ -191,20 +195,79 @@ const ListDetail: React.FC<{
   onPrint: () => void;
   onManageAccess: () => void;
 }> = ({ detail, caps, onToggle, onReload, onDelete, onArchive, onPrint, onManageAccess }) => {
-  const [newName, setNewName] = useState('');
-  const [adding, setAdding] = useState(false);
+  // MG_RUBRIC005_state_removed: add-item state moved into ItemAutocomplete.
 
-  const addItem = async () => {
-    if (!newName.trim()) return;
-    setAdding(true);
-    try {
-      await shoppingApi.addItem(detail.id, { name: newName.trim() });
-      setNewName('');
-      onReload();
-    } finally {
-      setAdding(false);
-    }
+  // MG_RUBRIC011_fmt: money formatter (2 decimals).
+  const fmtMoney = (v: string | number | null | undefined) => {
+    if (v == null || v === '') return '';
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n.toFixed(2) : '';
   };
+  // MG_RUBRIC009_cats: category metadata for colored zones.
+  const [cats, setCats] = useState<ProductCategory[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await fridgeApi.categories();
+        if (!cancelled) setCats(data ?? []);
+      } catch {
+        /* non-fatal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const currency = detail.currency ?? 'RUB';
+
+  // MG_RUBRIC005_addItem: add via rubricator autocomplete payload.
+  const handleAdd = async (payload: import('../../api/shopping').AddItemPayload) => {
+    await shoppingApi.addItem(detail.id, payload);
+    onReload();
+  };
+
+  // MG_RUBRIC009: inline price edit.
+  const setPrice = async (itemId: number, raw: string) => {
+    // MG_RUBRIC009b: send as string|null (DRF DecimalField accepts both).
+    const n = raw.trim() ? parseFloat(raw.replace(',', '.')) : null;
+    const v = n != null && Number.isFinite(n) ? String(n) : null;
+    await shoppingApi.updateItem(detail.id, itemId, { price_per_unit: v });
+    onReload();
+  };
+
+  // MG_RUBRIC010_setQty: inline quantity edit.
+  const setQuantity = async (itemId: number, raw: string) => {
+    const n = raw.trim() ? parseFloat(raw.replace(',', '.')) : null;
+    const v = n != null && Number.isFinite(n) ? n : null;
+    await shoppingApi.updateItem(detail.id, itemId, { quantity: v });
+    onReload();
+  };
+
+  // MG_RUBRIC009: group items by category, ordered by category sort_order.
+  const grouped = useMemo(() => {
+    const order = new Map<string, number>();
+    const meta = new Map<string, ProductCategory>();
+    cats.forEach((c, i) => {
+      order.set(c.slug, c.sort_order ?? i);
+      meta.set(c.slug, c);
+    });
+    const buckets = new Map<string, ShoppingV2List['items']>();
+    for (const it of detail.items) {
+      const key = it.category_slug ?? '__none__';
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)!.push(it);
+    }
+    return Array.from(buckets.entries())
+      .map(([slug, items]) => ({
+        slug,
+        meta: meta.get(slug) ?? null,
+        name: meta.get(slug)?.name_ru ?? (items[0]?.category || 'Без категории'),
+        items,
+        ord: order.get(slug) ?? 9999,
+      }))
+      .sort((a, b) => a.ord - b.ord);
+  }, [detail.items, cats]);
 
   const delItem = async (itemId: number) => {
     await shoppingApi.removeItem(detail.id, itemId);
@@ -233,40 +296,93 @@ const ListDetail: React.FC<{
         </div>
       </div>
 
-      <ul className="space-y-1">
-        {detail.items.map((it) => (
-          <li key={it.id} className="flex items-center gap-2 py-1">
-            <input
-              type="checkbox"
-              checked={it.is_purchased}
-              disabled={!caps?.toggle}
-              onChange={(e) => onToggle(it.id, e.target.checked)}
-              className="w-4 h-4"
-            />
-            <span className={it.is_purchased ? 'line-through text-gray-400 flex-1' : 'flex-1'}>
-              {it.name}
-              {it.quantity != null && (
-                <span className="text-gray-500 text-sm"> — {it.quantity}{it.unit ? ` ${it.unit}` : ''}</span>
-              )}
-            </span>
-            {caps?.manage && (
-              <button onClick={() => delItem(it.id)} className="text-gray-300 hover:text-red-500 text-sm">✕</button>
-            )}
-          </li>
+      {/* MG_RUBRIC009_zones: grouped colored category zones */}
+      <div className="space-y-3">
+        {grouped.map((g) => (
+          <div
+            key={g.slug}
+            className="rounded-xl p-2"
+            style={{ background: g.meta?.color || '#F5F5F5' }}
+          >
+            <div className="flex items-center gap-1 px-1 pb-1 text-xs font-semibold text-chocolate/80">
+              <span>{g.meta?.icon || '📦'}</span>
+              <span>{g.name}</span>
+            </div>
+            <ul className="space-y-1">
+              {g.items.map((it) => (
+                <li key={it.id} className="flex items-center gap-2 py-1 bg-white/60 rounded-lg px-2">
+                  <input
+                    type="checkbox"
+                    checked={it.is_purchased}
+                    disabled={!caps?.toggle}
+                    onChange={(e) => onToggle(it.id, e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span className={it.is_purchased ? 'line-through text-gray-400 flex-1' : 'flex-1'}>
+                    {it.name}
+                    {/* MG_RUBRIC010_qty_input */}
+                    {!caps?.manage && it.quantity != null && (
+                      <span className="text-gray-500 text-sm"> — {it.quantity}{it.unit ? ` ${it.unit}` : ''}</span>
+                    )}
+                  </span>
+                  {caps?.manage && (
+                    <span className="flex items-center gap-1">
+                      <input
+                        defaultValue={it.quantity ?? ''}
+                        onBlur={(e) => {
+                          const cur = it.quantity ?? '';
+                          if (e.target.value !== String(cur)) setQuantity(it.id, e.target.value);
+                        }}
+                        inputMode="decimal"
+                        placeholder="кол-во"
+                        className="w-14 rounded-lg border border-gray-200 px-2 py-0.5 text-xs text-right"
+                      />
+                      {it.unit && <span className="text-xs text-gray-400">{it.unit}</span>}
+                    </span>
+                  )}
+                  {caps?.manage ? (
+                    <input
+                      defaultValue={fmtMoney(it.price_per_unit) /* MG_RUBRIC011_price_default */}
+                      onBlur={(e) => {
+                        const cur = fmtMoney(it.price_per_unit);
+                        if (e.target.value !== cur) setPrice(it.id, e.target.value);
+                      }}
+                      inputMode="decimal"
+                      placeholder="цена"
+                      className="w-16 rounded-lg border border-gray-200 px-2 py-0.5 text-xs text-right"
+                    />
+                  ) : (
+                    it.price_per_unit != null && (
+                      <span className="text-xs text-gray-500">{fmtMoney(it.price_per_unit)} {currency}</span>
+                    )
+                  )}
+                  {it.line_total != null && (
+                    <span className="text-xs text-chocolate font-medium w-20 text-right">
+                      {fmtMoney(it.line_total)} {currency}
+                    </span>
+                  )}
+                  {caps?.manage && (
+                    <button onClick={() => delItem(it.id)} className="text-gray-300 hover:text-red-500 text-sm">✕</button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
         {detail.items.length === 0 && <p className="text-sm text-gray-400">Список пуст.</p>}
-      </ul>
+      </div>
+
+      {/* MG_RUBRIC009: grand total */}
+      {detail.total_price != null && (
+        <div className="mt-3 pt-2 border-t border-gray-100 flex justify-between items-center">
+          <span className="text-sm text-gray-500">Итого</span>
+          <span className="text-lg font-bold text-chocolate">{fmtMoney(detail.total_price)} {currency}</span>
+        </div>
+      )}
 
       {caps?.manage && (
-        <div className="flex gap-2 mt-3">
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addItem()}
-            placeholder="Добавить позицию…"
-            className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-tomato/40 focus:border-tomato"
-          />
-          <Button onClick={addItem} disabled={adding}>+</Button>
+        <div className="mt-3">
+          <ItemAutocomplete onAdd={handleAdd} currency={currency} /> {/* MG_RUBRIC009_currency_prop */}
         </div>
       )}
     </Card>

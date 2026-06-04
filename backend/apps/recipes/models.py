@@ -297,3 +297,42 @@ class Cuisine(models.Model):
     def __str__(self):
         return self.name
 
+
+# MG_IMPORT_TOOL_V1_session_model
+class RecipeImportSession(models.Model):
+    """Временная сессия импорта рецептов через Django Admin."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Загружен"
+        PREVIEW = "preview", "Превью готово"
+        DONE = "done", "Импортировано"
+        ERROR = "error", "Ошибка"
+
+    uploaded_file = models.FileField(upload_to="recipe_imports/", verbose_name="Файл xlsx")
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name="Статус"
+    )
+    preview_data = models.JSONField(default=list, blank=True, verbose_name="Данные превью")
+    parse_errors = models.JSONField(default=list, blank=True, verbose_name="Ошибки парсинга")
+    warnings = models.JSONField(default=list, blank=True, verbose_name="Предупреждения")
+    recipes_count = models.PositiveIntegerField(default=0, verbose_name="Рецептов к импорту")
+    imported_count = models.PositiveIntegerField(default=0, verbose_name="Импортировано")
+    created_by = models.ForeignKey(
+        "users.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        verbose_name="Загрузил",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+
+    class Meta:
+        db_table = "recipe_import_sessions"
+        verbose_name = "Сессия импорта рецептов"
+        verbose_name_plural = "Импорт рецептов (сессии)"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"ImportSession #{self.pk} [{self.status}] {self.created_at:%Y-%m-%d %H:%M}"
+

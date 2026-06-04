@@ -290,3 +290,52 @@ class RecipeFavoriteAdmin(admin.ModelAdmin):
     list_filter = ("is_favorite",)
     raw_id_fields = ("user", "recipe")
     search_fields = ("recipe__title", "user__email", "user__name")
+
+# MG_IMPORT_TOOL_V1_admin
+from django.urls import path as _url_path
+
+from .admin_import_views import ImportPreviewView, ImportUploadView
+from .models import RecipeImportSession
+
+
+@admin.register(RecipeImportSession)
+class RecipeImportSessionAdmin(admin.ModelAdmin):
+    change_list_template = "admin/recipes/recipeimportsession_changelist.html"
+    list_display = ("id", "status", "recipes_count", "imported_count", "created_by", "created_at")
+    list_filter = ("status",)
+    readonly_fields = (
+        "status", "preview_data", "parse_errors", "warnings",
+        "recipes_count", "imported_count", "created_by", "created_at", "updated_at",
+    )
+    ordering = ("-created_at",)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            _url_path(
+                "upload/",
+                self.admin_site.admin_view(ImportUploadView.as_view()),
+                name="recipes_recipeimportsession_upload",
+            ),
+            _url_path(
+                "<int:session_pk>/preview/",
+                self.admin_site.admin_view(
+                    lambda req, session_pk: ImportPreviewView.as_view()(req, session_pk=session_pk)
+                ),
+                name="recipes_recipeimportsession_preview",
+            ),
+        ]
+        return custom + urls
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["upload_url"] = "upload/"
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        obj = self.get_object(request, object_id)
+        if obj and obj.status == RecipeImportSession.Status.PREVIEW:
+            extra_context["preview_url"] = f"../{object_id}/preview/"
+        return super().change_view(request, object_id, form_url, extra_context)
+
