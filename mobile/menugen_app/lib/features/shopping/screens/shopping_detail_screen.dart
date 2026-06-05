@@ -1,4 +1,4 @@
-// MG_SHOPMOB001 / MG_SHOPBUG_MOB / MG_SHOPBUG_EDITMODE
+// MG_SHOPMOB001 / MG_SHOPBUG_MOB / MG_SHOPBUG_EDITMODE / MG_SHOPMOB_GROUP
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
@@ -22,10 +22,47 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
   // MG_SHOPBUG_EDITMODE: global edit-mode flag.
   bool _editMode = false;
 
+  // MG_SHOPMOB_GROUP: category metadata (color/icon/sort_order) for zones.
+  List<Map<String, dynamic>> _cats = const [];
+
   @override
   void initState() {
     super.initState();
     context.read<ShoppingBloc>().add(ShoppingDetailRequested(widget.listId));
+    _loadCategories();
+  }
+
+  // MG_SHOPMOB_GROUP: fetch rubricator categories for colored zones.
+  Future<void> _loadCategories() async {
+    try {
+      final api = context.read<ShoppingBloc>().apiClient;
+      final raw = await api.get('/fridge/categories/');
+      final list = (raw is List)
+          ? raw
+          : (raw is Map && raw['results'] is List)
+              ? raw['results'] as List
+              : const [];
+      final parsed = list
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+      if (!mounted) return;
+      setState(() => _cats = parsed);
+    } catch (_) {
+      // Non-fatal: fall back to neutral zones.
+    }
+  }
+
+  // MG_SHOPMOB_GROUP: parse '#RRGGBB' or '#AARRGGBB' to Color.
+  Color _parseColor(String? hex) {
+    if (hex == null || hex.isEmpty) return const Color(0xFFECEFF1);
+    var h = hex.replaceFirst('#', '');
+    if (h.length == 6) h = 'FF$h';
+    try {
+      return Color(int.parse(h, radix: 16));
+    } catch (_) {
+      return const Color(0xFFECEFF1);
+    }
   }
 
   Future<void> _print() async {
@@ -94,20 +131,40 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
     );
   }
 
-  // MG_SHOPMOB001: group items by category, preserving first-seen order.
-  List<MapEntry<String, List<ShoppingItem>>> _grouped(
-      List<ShoppingItem> items) {
+  // MG_SHOPMOB_GROUP: group items by category, with color/icon/sort_order
+  // metadata from /fridge/categories/. Sort by sort_order (matches web).
+  List<_CatGroup> _grouped(List<ShoppingItem> items) {
+    final meta = <String, Map<String, dynamic>>{};
+    final order = <String, int>{};
+    for (var i = 0; i < _cats.length; i++) {
+      final c = _cats[i];
+      final slug = c['slug'] as String? ?? '';
+      meta[slug] = c;
+      order[slug] = (c['sort_order'] as int?) ?? i;
+    }
     final buckets = <String, List<ShoppingItem>>{};
     final names = <String, String>{};
     for (final it in items) {
       final key = it.categorySlug ?? '__none__';
       buckets.putIfAbsent(key, () => []).add(it);
-      names[key] = it.categoryName ??
+      final m = meta[key];
+      names[key] = (m?['name_ru'] as String?) ??
+          it.categoryName ??
           (it.category.isNotEmpty ? it.category : 'Без категории');
     }
-    return buckets.entries
-        .map((e) => MapEntry(names[e.key] ?? 'Без категории', e.value))
-        .toList();
+    final groups = buckets.entries.map((e) {
+      final m = meta[e.key];
+      return _CatGroup(
+        slug: e.key,
+        name: names[e.key] ?? 'Без категории',
+        color: _parseColor(m?['color'] as String?),
+        icon: (m?['icon'] as String?) ?? '📦',
+        sortOrder: order[e.key] ?? 9999,
+        items: e.value,
+      );
+    }).toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return groups;
   }
 
   Widget? _itemSubtitle(ShoppingItem it, String sym) {
@@ -224,48 +281,91 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                     ? const Center(child: Text('Список пуст.'))
                     : ListView(
                         children: [
-                          for (final g in groups) ...[
-                            Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                              child: Text(
-                                g.key,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                    color: Colors.grey),
+                          // MG_SHOPMOB_GROUP: colored category zones.
+                          for (final g in groups)
+                            Container(
+                              margin: const EdgeInsets.fromLTRB(
+                                  12, 8, 12, 4),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: g.color,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.stretch,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        6, 2, 6, 6),
+                                    child: Row(
+                                      children: [
+                                        Text(g.icon,
+                                            style: const TextStyle(
+                                                fontSize: 16)),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            g.name,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.white.withOpacity(0.7),
+                                      borderRadius:
+                                          BorderRadius.circular(12),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        for (final it in g.items)
+                                          if (_editMode && caps.manage)
+                                            // MG_SHOPBUG_EDITMODE: inline editable row.
+                                            ShoppingItemEditRow(
+                                              key: ValueKey(
+                                                  'edit-${it.id}'),
+                                              listId: d.id,
+                                              item: it,
+                                              currency: d.currency,
+                                              api: context
+                                                  .read<ShoppingBloc>()
+                                                  .apiClient,
+                                              onDeleted: () => context
+                                                  .read<ShoppingBloc>()
+                                                  .add(ShoppingDetailRequested(
+                                                      d.id)),
+                                            )
+                                          else
+                                            // MG_SHOPBUG_EDITMODE: view-mode (no delete).
+                                            CheckboxListTile(
+                                              key: ValueKey(
+                                                  'view-${it.id}'),
+                                              value: it.isPurchased,
+                                              onChanged: caps.toggle
+                                                  ? (v) => context
+                                                      .read<ShoppingBloc>()
+                                                      .add(ShoppingToggleItemRequested(
+                                                          d.id,
+                                                          it.id,
+                                                          v ?? false))
+                                                  : null,
+                                              title: Text(it.name),
+                                              subtitle:
+                                                  _itemSubtitle(it, sym),
+                                            ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            for (final it in g.value)
-                              if (_editMode && caps.manage)
-                                // MG_SHOPBUG_EDITMODE: inline editable row.
-                                ShoppingItemEditRow(
-                                  key: ValueKey('edit-${it.id}'),
-                                  listId: d.id,
-                                  item: it,
-                                  currency: d.currency,
-                                  api: context
-                                      .read<ShoppingBloc>()
-                                      .apiClient,
-                                  onDeleted: () => context
-                                      .read<ShoppingBloc>()
-                                      .add(ShoppingDetailRequested(d.id)),
-                                )
-                              else
-                                // MG_SHOPBUG_EDITMODE: view-mode (no delete).
-                                CheckboxListTile(
-                                  key: ValueKey('view-${it.id}'),
-                                  value: it.isPurchased,
-                                  onChanged: caps.toggle
-                                      ? (v) => context
-                                          .read<ShoppingBloc>()
-                                          .add(ShoppingToggleItemRequested(
-                                              d.id, it.id, v ?? false))
-                                      : null,
-                                  title: Text(it.name),
-                                  subtitle: _itemSubtitle(it, sym),
-                                ),
-                          ],
                         ],
                       ),
               ),
@@ -297,4 +397,22 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
       },
     );
   }
+}
+
+// MG_SHOPMOB_GROUP: rich group descriptor for colored category zones.
+class _CatGroup {
+  final String slug;
+  final String name;
+  final Color color;
+  final String icon;
+  final int sortOrder;
+  final List<ShoppingItem> items;
+  const _CatGroup({
+    required this.slug,
+    required this.name,
+    required this.color,
+    required this.icon,
+    required this.sortOrder,
+    required this.items,
+  });
 }
