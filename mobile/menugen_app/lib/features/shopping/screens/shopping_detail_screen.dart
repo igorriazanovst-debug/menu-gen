@@ -1,4 +1,4 @@
-// MG_SHOPMOB001 / MG_SHOPBUG_MOB / MG_SHOPBUG_EDITMODE / MG_SHOPMOB_GROUP
+// MG_SHOPMOB001 / MG_SHOPBUG_MOB / MG_SHOPBUG_EDITMODE / MG_SHOPMOB_GROUP / MG_SHOPMOB_STRIKE
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
@@ -178,7 +178,16 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
       parts.add('${fmtMoney(it.pricePerUnit)} $sym/ед.');
     }
     if (parts.isEmpty) return null;
-    return Text(parts.join('  ·  '));
+    // MG_SHOPMOB_STRIKE: strikethrough subtitle for purchased items.
+    return Text(
+      parts.join('  ·  '),
+      style: it.isPurchased
+          ? const TextStyle(
+              decoration: TextDecoration.lineThrough,
+              color: Colors.grey,
+            )
+          : null,
+    );
   }
 
   void _toggleEditMode() {
@@ -356,7 +365,17 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                                           it.id,
                                                           v ?? false))
                                                   : null,
-                                              title: Text(it.name),
+                                              // MG_SHOPMOB_STRIKE: line-through when purchased.
+                                              title: Text(
+                                                it.name,
+                                                style: it.isPurchased
+                                                    ? const TextStyle(
+                                                        decoration: TextDecoration
+                                                            .lineThrough,
+                                                        color: Colors.grey,
+                                                      )
+                                                    : null,
+                                              ),
                                               subtitle:
                                                   _itemSubtitle(it, sym),
                                             ),

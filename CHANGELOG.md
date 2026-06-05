@@ -47,4 +47,8 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Changed** 2026-06-04 `MG_SHOPBUG_EDITMODE` — Shopping list: global edit-mode (web+mobile): inline name/qty/unit/price, delete gated by edit mode — files: `mobile/menugen_app/lib/features/shopping/screens/shopping_detail_screen.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_item_edit_row.dart`, `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`
 
+- **Added** 2026-06-05 `MG_SHOPMOB_GROUP` — Mobile shopping detail: colored category zones with sort_order (parity with web ListDetail) — files: `mobile/menugen_app/lib/features/shopping/screens/shopping_detail_screen.dart`
+
+- **Fixed** 2026-06-05 `MG_SHOPMOB_STRIKE` — Mobile shopping detail: line-through styling for purchased items (parity with web) — files: `mobile/menugen_app/lib/features/shopping/screens/shopping_detail_screen.dart`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
