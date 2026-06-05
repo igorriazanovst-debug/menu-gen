@@ -96,16 +96,35 @@ class _FavoriteStateMixin(serializers.Serializer):
 
 
 
-# MG_FIX_IMAGE_URL_ABSOLUTE
+# MG_FIX_IMAGE_URL_ABSOLUTE / MG_PUBLIC_BACKEND_URL
+import os as _mg_os
+
+
+def _mg_public_backend_url():
+    return (_mg_os.environ.get("BACKEND_PUBLIC_URL") or "").rstrip("/")
+
+
 class _AbsoluteImageUrlMixin:
-    """Converts image_url to an absolute URL using the request context."""
+    """image_url -> absolute URL.
+    Priority:
+      1) если url уже абсолютный (http/https) — отдаём как есть.
+      2) если задан env BACKEND_PUBLIC_URL — префикс оттуда (фиксирован, не зависит
+         от Host текущего запроса). Это решает кейс когда фронт ходит на один порт,
+         а статика должна грузиться с публичного backend на другом.
+      3) иначе fall back на request.build_absolute_uri.
+    """
 
     def get_image_url(self, obj):
         url = obj.image_url
         if not url:
             return None
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+        public = _mg_public_backend_url()
+        if public and url.startswith("/"):
+            return public + url
         request = self.context.get("request")
-        if request and not url.startswith("http"):
+        if request:
             return request.build_absolute_uri(url)
         return url
 

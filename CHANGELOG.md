@@ -51,4 +51,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-05 `MG_SHOPMOB_STRIKE` — Mobile shopping detail: line-through styling for purchased items (parity with web) — files: `mobile/menugen_app/lib/features/shopping/screens/shopping_detail_screen.dart`
 
+- **Fixed** 2026-06-05 `MG_PUBLIC_BACKEND_URL` — Use BACKEND_PUBLIC_URL env var for absolute media URLs in API. Image URLs no longer depend on request Host, web and mobile now load images directly from backend regardless of frontend host. — files: `backend/apps/recipes/serializers.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
