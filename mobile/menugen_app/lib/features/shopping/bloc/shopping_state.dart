@@ -35,3 +35,11 @@ class ShoppingError extends ShoppingState {
   @override
   List<Object?> get props => [message];
 }
+
+// MG_SHAREACCEPT
+class ShoppingPendingLoaded extends ShoppingState {
+  final List<ShoppingPendingList> pending;
+  const ShoppingPendingLoaded(this.pending);
+  @override
+  List<Object?> get props => [pending];
+}

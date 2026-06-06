@@ -215,6 +215,42 @@ class ShoppingAccess extends Equatable {
   List<Object?> get props => [id, userEmail, userName, canToggle, canExport];
 }
 
+// MG_SHAREACCEPT: a list shared TO the current user, awaiting accept/reject.
+class ShoppingPendingList extends Equatable {
+  final int id;
+  final String name;
+  final ShoppingSource source;
+  final int itemsTotal;
+  final int itemsPurchased;
+  final String? sharedByName;
+  final DateTime? grantedAt;
+
+  const ShoppingPendingList({
+    required this.id,
+    required this.name,
+    required this.source,
+    required this.itemsTotal,
+    required this.itemsPurchased,
+    this.sharedByName,
+    this.grantedAt,
+  });
+
+  factory ShoppingPendingList.fromJson(Map<String, dynamic> j) =>
+      ShoppingPendingList(
+        id: j['id'] as int,
+        name: j['name'] as String? ?? '',
+        source: ShoppingSource.fromValue(j['source'] as String?),
+        itemsTotal: j['items_total'] as int? ?? 0,
+        itemsPurchased: j['items_purchased'] as int? ?? 0,
+        sharedByName: j['shared_by_name'] as String?,
+        grantedAt: DateTime.tryParse(j['granted_at']?.toString() ?? ''),
+      );
+
+  @override
+  List<Object?> get props =>
+      [id, name, source, itemsTotal, itemsPurchased, sharedByName, grantedAt];
+}
+
 class ShoppingHistoryEntry extends Equatable {
   final int id;
   final String name;

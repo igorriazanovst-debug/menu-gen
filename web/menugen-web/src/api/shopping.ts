@@ -9,6 +9,7 @@ import type {
   ShoppingV2HistoryEntry,
   ShoppingV2Source,
   ShoppingV2RubricResponse,
+  ShoppingV2PendingList,
 } from '../types';
 
 export interface CreateListPayload {
@@ -80,6 +81,12 @@ export const shoppingApi = {
 
   revokeAccess: (listId: number, accessId: number) =>
     client.delete(`/shopping/lists/${listId}/access/`, { data: { access_id: accessId } }),
+
+  // MG_SHAREACCEPT: shares awaiting the current user's decision.
+  pending: () => client.get<ShoppingV2PendingList[]>('/shopping/pending/'),
+
+  respond: (listId: number, action: 'accept' | 'reject') =>
+    client.post(`/shopping/lists/${listId}/respond/`, { action }),
 
   exportData: (listId: number) =>
     client.get<ShoppingV2ExportData>(`/shopping/lists/${listId}/export/`),

@@ -57,4 +57,8 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Added** 2026-06-06 `MG_207` — Калькулятор КБЖУ (Mobile/Flutter). Порт web MG_206: 4 системы (Mifflin/Harris-Benedict/Роспотребнадзор/EFSA) + custom (граммы или % + дельта). 3 пресета диет. Кнопка на экране профиля → POST /users/me/calculator/{preview,apply}/. Дисклеймер про справочный характер. — files: `mobile/menugen_app/lib/features/profile/screens/kbju_calculator_screen.dart`, `mobile/menugen_app/lib/features/profile/screens/profile_screen.dart`, `mobile/menugen_app/lib/core/router/app_router.dart`
 
+- **Added** 2026-06-06 `MG_SHAREACCEPT` — Общие списки покупок требуют принятия получателем: раздел «Ожидают» (pending/accept/reject), внешний доступ выдаётся как pending, до принятия — только просмотр — files: `backend/apps/shopping/models.py`, `backend/apps/shopping/permissions.py`, `backend/apps/shopping/serializers.py`, `backend/apps/shopping/views.py`, `backend/apps/shopping/urls.py`, `backend/apps/shopping/migrations/0005_shoppinglistaccess_status.py`, `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`, `web/menugen-web/src/api/shopping.ts`, `web/menugen-web/src/types/index.ts`, `mobile/menugen_app/lib/features/shopping/bloc/shopping_bloc.dart`, `mobile/menugen_app/lib/features/shopping/models/shopping_models.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_list_screen.dart`
+
+- **Fixed** 2026-06-06 `MG_TOKENFIX` — Mobile: при ротации refresh-токена сохраняется новый refresh + single-flight refresh — устранены ложные «токен просрочен, войдите заново» — files: `mobile/menugen_app/lib/core/api/dio_api_client.dart`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

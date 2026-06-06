@@ -195,6 +195,39 @@ class PurchaseHistoryEntrySerializer(serializers.ModelSerializer):
         )
 
 
+class PendingSharedListSerializer(serializers.ModelSerializer):
+    """MG_SHAREACCEPT: a list shared TO the current user, awaiting accept/reject."""
+
+    items_total = serializers.IntegerField(read_only=True, required=False)
+    items_purchased = serializers.IntegerField(read_only=True, required=False)
+    shared_by_name = serializers.SerializerMethodField()
+    granted_at = serializers.SerializerMethodField()
+
+    def _my_access(self, obj):
+        user = self.context.get("user")
+        uid = getattr(user, "id", None)
+        return next((a for a in obj.accesses.all() if a.user_id == uid), None)
+
+    def get_shared_by_name(self, obj):
+        return obj.created_by.name if obj.created_by_id else None
+
+    def get_granted_at(self, obj):
+        acc = self._my_access(obj)
+        return acc.granted_at if acc else None
+
+    class Meta:
+        model = ShoppingList
+        fields = (
+            "id",
+            "name",
+            "source",
+            "items_total",
+            "items_purchased",
+            "shared_by_name",
+            "granted_at",
+        )
+
+
 class CreateListSerializer(serializers.Serializer):
     """Body for POST /shopping/lists/ — covers 1.1/1.2/1.3."""
 

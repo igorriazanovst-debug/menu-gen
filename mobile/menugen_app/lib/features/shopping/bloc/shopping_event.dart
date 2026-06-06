@@ -78,3 +78,17 @@ class ShoppingUpdateItemRequested extends ShoppingEvent {
   @override
   List<Object?> get props => [listId, itemId, payload];
 }
+
+// MG_SHAREACCEPT: load shares awaiting my decision.
+class ShoppingPendingRequested extends ShoppingEvent {
+  const ShoppingPendingRequested();
+}
+
+// MG_SHAREACCEPT: accept (true) or reject (false) a pending share.
+class ShoppingRespondRequested extends ShoppingEvent {
+  final int listId;
+  final bool accept;
+  const ShoppingRespondRequested(this.listId, this.accept);
+  @override
+  List<Object?> get props => [listId, accept];
+}

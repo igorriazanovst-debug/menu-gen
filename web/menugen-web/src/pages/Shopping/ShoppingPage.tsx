@@ -15,6 +15,7 @@ import type {
   ShoppingV2ListBrief,
   ShoppingV2List,
   ShoppingV2Access,
+  ShoppingV2PendingList, // MG_SHAREACCEPT
   ShoppingV2HistoryEntry,
   ShoppingV2Source,
   Menu,
@@ -29,7 +30,7 @@ const SOURCE_LABEL: Record<ShoppingV2Source, string> = {
   csv: 'CSV',
 };
 
-type Tab = 'active' | 'archived' | 'history';
+type Tab = 'active' | 'pending' | 'archived' | 'history'; // MG_SHAREACCEPT
 
 export const ShoppingPage: React.FC = () => {
   const [tab, setTab] = useState<Tab>('active');
@@ -37,6 +38,7 @@ export const ShoppingPage: React.FC = () => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<ShoppingV2List | null>(null);
   const [history, setHistory] = useState<ShoppingV2HistoryEntry[]>([]);
+  const [pending, setPending] = useState<ShoppingV2PendingList[]>([]); // MG_SHAREACCEPT
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showAccess, setShowAccess] = useState(false);
@@ -47,6 +49,9 @@ export const ShoppingPage: React.FC = () => {
       if (t === 'history') {
         const { data } = await shoppingApi.history();
         setHistory(data);
+      } else if (t === 'pending') {
+        const { data } = await shoppingApi.pending(); // MG_SHAREACCEPT
+        setPending(data);
       } else {
         const { data } = await shoppingApi.lists(t === 'archived');
         setLists(data);
@@ -104,7 +109,7 @@ export const ShoppingPage: React.FC = () => {
       </div>
 
       <div className="flex gap-2 mb-4">
-        {(['active', 'archived', 'history'] as Tab[]).map((t) => (
+        {(['active', 'pending', 'archived', 'history'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => {
@@ -117,13 +122,15 @@ export const ShoppingPage: React.FC = () => {
               tab === t ? 'bg-tomato/10 text-tomato font-semibold' : 'text-gray-600 hover:bg-gray-50',
             ].join(' ')}
           >
-            {t === 'active' ? 'Активные' : t === 'archived' ? 'Архив' : 'История'}
+            {t === 'active' ? 'Активные' : t === 'pending' ? 'Ожидают' : t === 'archived' ? 'Архив' : 'История'}
           </button>
         ))}
       </div>
 
       {loading ? (
         <PageSpinner />
+      ) : tab === 'pending' ? (
+        <PendingView pending={pending} onReload={() => loadLists('pending')} />
       ) : tab === 'history' ? (
         <HistoryView history={history} onReload={() => loadLists('history')} />
       ) : (
@@ -479,6 +486,92 @@ const HistoryView: React.FC<{
           </li>
         ))}
       </ul>
+    </Card>
+  );
+};
+
+// ── MG_SHAREACCEPT: ожидающие принятия общие списки ──────────────────────────
+const PendingView: React.FC<{ pending: ShoppingV2PendingList[]; onReload: () => void }> = ({
+  pending,
+  onReload,
+}) => {
+  if (pending.length === 0) {
+    return <p className="text-sm text-gray-400">Нет списков, ожидающих принятия.</p>;
+  }
+  return (
+    <div className="space-y-3 max-w-2xl">
+      {pending.map((p) => (
+        <PendingCard key={p.id} p={p} onReload={onReload} />
+      ))}
+    </div>
+  );
+};
+
+const PendingCard: React.FC<{ p: ShoppingV2PendingList; onReload: () => void }> = ({ p, onReload }) => {
+  const [preview, setPreview] = useState<ShoppingV2List | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const togglePreview = async () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    if (!preview) {
+      const { data } = await shoppingApi.get(p.id);
+      setPreview(data);
+    }
+    setOpen(true);
+  };
+
+  const respond = async (action: 'accept' | 'reject') => {
+    setBusy(true);
+    try {
+      await shoppingApi.respond(p.id, action);
+      onReload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="font-semibold">{p.name}</div>
+      <div className="text-xs text-gray-500 mt-0.5">
+        {p.shared_by_name ? `Поделился: ${p.shared_by_name}` : 'Общий список'}
+        {' · '}
+        {p.items_total ?? 0} поз.
+        {p.granted_at ? ` · ${new Date(p.granted_at).toLocaleDateString('ru-RU')}` : ''}
+      </div>
+
+      {open && preview && (
+        <ul className="mt-3 border-t border-gray-100 pt-2 space-y-1 max-h-60 overflow-auto">
+          {preview.items.length === 0 && <li className="text-sm text-gray-400">Список пуст.</li>}
+          {preview.items.map((it) => (
+            <li key={it.id} className="text-sm flex gap-2">
+              <span className="flex-1">{it.name}</span>
+              {it.quantity != null && (
+                <span className="text-gray-500">
+                  {it.quantity}
+                  {it.unit ? ` ${it.unit}` : ''}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex gap-2 mt-3">
+        <Button variant="secondary" onClick={togglePreview} disabled={busy}>
+          {open ? 'Скрыть' : 'Просмотреть'}
+        </Button>
+        <Button onClick={() => respond('accept')} disabled={busy}>
+          Принять
+        </Button>
+        <Button variant="secondary" onClick={() => respond('reject')} disabled={busy}>
+          Отклонить
+        </Button>
+      </div>
     </Card>
   );
 };

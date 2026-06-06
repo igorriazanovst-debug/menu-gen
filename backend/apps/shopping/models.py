@@ -100,12 +100,22 @@ class ShoppingListItem(models.Model):
 class ShoppingListAccess(models.Model):
     """Доступ к списку: член семьи или любой пользователь по email."""
 
+    # MG_SHAREACCEPT: lifecycle of an external share invitation.
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает принятия"
+        ACCEPTED = "accepted", "Принят"
+        REJECTED = "rejected", "Отклонён"
+
     shopping_list = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="accesses")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="shopping_list_accesses")
     can_read = models.BooleanField(default=True)
     can_toggle = models.BooleanField(default=False)
     can_export = models.BooleanField(default=False)
     granted_at = models.DateTimeField(auto_now_add=True)
+    # MG_SHAREACCEPT: ACCEPTED default backfills existing rows; new external
+    # grants are set to PENDING explicitly in the view.
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACCEPTED)
+    responded_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "shopping_v2_access"

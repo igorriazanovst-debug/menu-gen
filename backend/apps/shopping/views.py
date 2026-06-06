@@ -14,6 +14,7 @@ from .serializers import (
     CreateListSerializer,
     GrantAccessSerializer,
     PurchaseHistoryEntrySerializer,
+    PendingSharedListSerializer,  # MG_SHAREACCEPT
     ShoppingListAccessSerializer,
     ShoppingListBriefSerializer,
     ShoppingListItemSerializer,
@@ -61,7 +62,8 @@ class ShoppingListsView(APIView):
         archived = request.query_params.get("archived") == "true"
 
         own = Q(family=family) if family else Q(pk__in=[])
-        shared = Q(accesses__user=user)
+        # MG_SHAREACCEPT: only ACCEPTED external shares show in the main list.
+        shared = Q(accesses__user=user, accesses__status=ShoppingListAccess.Status.ACCEPTED)
         qs = ShoppingList.objects.filter(own | shared, is_archived=archived).distinct()
         qs = _annotate(qs)
         return Response(ShoppingListBriefSerializer(qs, many=True).data)
@@ -316,15 +318,26 @@ class ShoppingListAccessView(APIView):
         ser = GrantAccessSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         target = ser.resolve_user()
-        acc, _ = ShoppingListAccess.objects.update_or_create(
+        # MG_SHAREACCEPT: new grant starts PENDING (recipient must accept).
+        acc, created = ShoppingListAccess.objects.get_or_create(
             shopping_list=sl,
             user=target,
             defaults={
                 "can_read": True,
                 "can_toggle": ser.validated_data["can_toggle"],
                 "can_export": ser.validated_data["can_export"],
+                "status": ShoppingListAccess.Status.PENDING,
             },
         )
+        if not created:
+            acc.can_read = True
+            acc.can_toggle = ser.validated_data["can_toggle"]
+            acc.can_export = ser.validated_data["can_export"]
+            # Re-granting a previously rejected share re-issues it as pending.
+            if acc.status == ShoppingListAccess.Status.REJECTED:
+                acc.status = ShoppingListAccess.Status.PENDING
+                acc.responded_at = None
+            acc.save()
         return Response(ShoppingListAccessSerializer(acc).data, status=status.HTTP_201_CREATED)
 
     def delete(self, request, list_id):
@@ -447,3 +460,49 @@ class RubricSearchView(APIView):
         if not results and request.query_params.get("classify") in ("1", "true") and q.strip():
             payload["suggestion"] = classify_new_product(q.strip())
         return Response(payload)
+
+
+# ── MG_SHAREACCEPT: pending shares (accept / reject) ─────────────────────────
+class PendingSharedListsView(APIView):
+    """GET lists shared TO me that await my accept/reject."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        qs = (
+            ShoppingList.objects.filter(
+                accesses__user=request.user,
+                accesses__status=ShoppingListAccess.Status.PENDING,
+                is_archived=False,
+            )
+            .distinct()
+            .prefetch_related("accesses")
+        )
+        qs = _annotate(qs)
+        ser = PendingSharedListSerializer(qs, many=True, context={"user": request.user})
+        return Response(ser.data)
+
+
+class SharedAccessRespondView(APIView):
+    """POST {"action": "accept"|"reject"} for the current user's pending share."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, list_id):
+        action = (request.data.get("action") or "").lower()
+        if action not in ("accept", "reject"):
+            return Response(
+                {"detail": "action должен быть accept или reject."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        acc = ShoppingListAccess.objects.filter(shopping_list_id=list_id, user=request.user).first()
+        if not acc:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        acc.status = (
+            ShoppingListAccess.Status.ACCEPTED
+            if action == "accept"
+            else ShoppingListAccess.Status.REJECTED
+        )
+        acc.responded_at = timezone.now()
+        acc.save(update_fields=["status", "responded_at"])
+        return Response(ShoppingListAccessSerializer(acc).data)

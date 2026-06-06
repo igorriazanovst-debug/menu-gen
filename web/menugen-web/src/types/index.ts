@@ -333,6 +333,7 @@ export interface ShoppingV2Capabilities {
   toggle: boolean;
   export: boolean;
   manage: boolean;
+  pending?: boolean; // MG_SHAREACCEPT
 }
 
 export interface ShoppingV2ListBrief {
@@ -365,7 +366,19 @@ export interface ShoppingV2Access {
   can_read: boolean;
   can_toggle: boolean;
   can_export: boolean;
+  status?: 'pending' | 'accepted' | 'rejected'; // MG_SHAREACCEPT
   granted_at: string;
+}
+
+// MG_SHAREACCEPT: a list shared TO the current user, awaiting accept/reject.
+export interface ShoppingV2PendingList {
+  id: number;
+  name: string;
+  source: ShoppingV2Source;
+  items_total?: number;
+  items_purchased?: number;
+  shared_by_name?: string | null;
+  granted_at?: string | null;
 }
 
 export interface ShoppingV2ExportCategory {

@@ -31,6 +31,8 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
     on<ShoppingDeleteItemRequested>(_onDeleteItem);
     on<ShoppingToggleItemRequested>(_onToggle);
     on<ShoppingUpdateItemRequested>(_onUpdateItem); // MG_SHOPBUG_MOB
+    on<ShoppingPendingRequested>(_onPending); // MG_SHAREACCEPT
+    on<ShoppingRespondRequested>(_onRespond); // MG_SHAREACCEPT
   }
 
   Map<String, dynamic> _asMap(dynamic d) =>
@@ -144,6 +146,36 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
           '/shopping/lists/${e.listId}/items/${e.itemId}/',
           data: e.payload);
       add(ShoppingDetailRequested(e.listId));
+    } catch (err) {
+      emit(ShoppingError(_msg(err)));
+    }
+  }
+
+  // MG_SHAREACCEPT: load pending shares.
+  Future<List<ShoppingPendingList>> _fetchPending() async {
+    final raw = await apiClient.get('/shopping/pending/');
+    return (raw is List ? raw : const [])
+        .whereType<Map>()
+        .map((m) => ShoppingPendingList.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
+  }
+
+  Future<void> _onPending(
+      ShoppingPendingRequested e, Emitter<ShoppingState> emit) async {
+    emit(const ShoppingLoading());
+    try {
+      emit(ShoppingPendingLoaded(await _fetchPending()));
+    } catch (err) {
+      emit(ShoppingError(_msg(err)));
+    }
+  }
+
+  Future<void> _onRespond(
+      ShoppingRespondRequested e, Emitter<ShoppingState> emit) async {
+    try {
+      await apiClient.post('/shopping/lists/${e.listId}/respond/',
+          data: {'action': e.accept ? 'accept' : 'reject'});
+      emit(ShoppingPendingLoaded(await _fetchPending()));
     } catch (err) {
       emit(ShoppingError(_msg(err)));
     }

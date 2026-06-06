@@ -17,6 +17,8 @@ import 'token_storage.dart';
 class DioApiClient implements ApiClient {
   late final Dio _dio;
   final TokenStorage tokenStorage;
+  // MG_TOKENFIX: single-flight guard so concurrent 401s share one refresh.
+  Future<bool>? _refreshing;
 
   final StreamController<ApiException> _errors =
       StreamController<ApiException>.broadcast();
@@ -42,29 +44,55 @@ class DioApiClient implements ApiClient {
         handler.next(options);
       },
       onError: (error, handler) async {
-        // 401 refresh-once path (preserves prior behaviour).
-        if (error.response?.statusCode == 401) {
-          final refresh = await tokenStorage.getRefreshToken();
-          if (refresh != null) {
+        // MG_TOKENFIX: refresh once per request, sharing a single in-flight
+        // refresh across concurrent 401s (otherwise parallel refreshes rotate
+        // the token against each other and blacklist it -> spurious logout).
+        final alreadyRetried = error.requestOptions.extra['__retried'] == true;
+        if (error.response?.statusCode == 401 && !alreadyRetried) {
+          _refreshing ??= _refreshTokens();
+          final ok = await _refreshing!;
+          _refreshing = null;
+          if (ok) {
+            final newAccess = await tokenStorage.getAccessToken();
+            final opts = error.requestOptions;
+            opts.extra['__retried'] = true;
+            opts.headers['Authorization'] = 'Bearer $newAccess';
             try {
-              final resp = await Dio().post(
-                '${AppConfig.apiBaseUrl}/auth/refresh/',
-                data: {'refresh': refresh},
-              );
-              final newAccess = resp.data['access'] as String;
-              await tokenStorage.saveTokens(
-                  access: newAccess, refresh: refresh);
-              error.requestOptions.headers['Authorization'] =
-                  'Bearer $newAccess';
-              return handler.resolve(await _dio.fetch(error.requestOptions));
-            } catch (_) {
-              await tokenStorage.clearTokens();
+              return handler.resolve(await _dio.fetch(opts));
+            } on DioException catch (e) {
+              return handler.next(e);
             }
+          } else {
+            await tokenStorage.clearTokens();
           }
         }
         handler.next(error);
       },
     ));
+  }
+
+  /// MG_TOKENFIX: refresh the access token and PERSIST the rotated refresh
+  /// token. The backend uses ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION,
+  /// so reusing the old refresh on the next cycle fails; keeping the new one
+  /// lets the session live until the refresh lifetime (days), not minutes.
+  Future<bool> _refreshTokens() async {
+    final refresh = await tokenStorage.getRefreshToken();
+    if (refresh == null) return false;
+    try {
+      final resp = await Dio().post(
+        '${AppConfig.apiBaseUrl}/auth/refresh/',
+        data: {'refresh': refresh},
+      );
+      final data = resp.data;
+      final newAccess = data is Map ? data['access'] as String? : null;
+      if (newAccess == null) return false;
+      final newRefresh =
+          (data is Map ? data['refresh'] as String? : null) ?? refresh;
+      await tokenStorage.saveTokens(access: newAccess, refresh: newRefresh);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void dispose() {

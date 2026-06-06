@@ -2,8 +2,10 @@
 from django.urls import path
 
 from .views import (
+    PendingSharedListsView,  # MG_SHAREACCEPT
     PurchaseHistoryView,
     RubricSearchView,
+    SharedAccessRespondView,  # MG_SHAREACCEPT
     ShoppingItemDetailView,
     ShoppingItemsView,
     ShoppingItemToggleView,
@@ -28,4 +30,7 @@ urlpatterns = [
     path("history/", PurchaseHistoryView.as_view(), name="shopping-history"),
     # MG_RUBRIC002
     path("rubric/search/", RubricSearchView.as_view(), name="shopping-rubric-search"),
+    # MG_SHAREACCEPT
+    path("pending/", PendingSharedListsView.as_view(), name="shopping-pending"),
+    path("lists/<int:list_id>/respond/", SharedAccessRespondView.as_view(), name="shopping-respond"),
 ]
