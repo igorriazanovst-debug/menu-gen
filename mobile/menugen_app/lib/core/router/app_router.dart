@@ -11,6 +11,7 @@ import '../../features/fridge/screens/fridge_screen.dart';
 import '../../features/fridge/screens/fridge_item_detail_screen.dart';
 import '../../features/menu/screens/menu_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
+import '../../features/profile/screens/kbju_calculator_screen.dart'; // MG_207_V_route
 import '../../features/recipes/screens/recipe_detail_screen.dart';
 import '../../features/recipes/screens/recipes_screen.dart';
 import '../../features/shopping/screens/shopping_list_screen.dart';
@@ -44,6 +45,16 @@ class AppRouter {
           builder: (_, state) => RecipeDetailScreen(
             apiClient: apiClient,
             recipeId: int.parse(state.pathParameters['id']!),
+          ),
+        ),
+        // MG_207_V_route: калькулятор КБЖУ (full-screen, push c extra=profile).
+        GoRoute(
+          path: '/profile/kbju-calculator',
+          builder: (_, state) => KbjuCalculatorScreen(
+            apiClient: apiClient,
+            initialProfile: state.extra is Map
+                ? Map<String, dynamic>.from(state.extra as Map)
+                : null,
           ),
         ),
         ShellRoute(

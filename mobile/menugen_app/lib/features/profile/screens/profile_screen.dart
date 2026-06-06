@@ -1,5 +1,6 @@
 // MG_204m_V_profile = 1
 // MG_205UI_V_profile = 1
+// MG_207_V_profile_btn = 1
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -82,6 +83,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  // MG_207_V_profile_btn: открыть калькулятор КБЖУ, по возврату — перезагрузить профиль.
+  Future<void> _openCalculator(Map<String, dynamic>? profile) async {
+    await context.push('/profile/kbju-calculator', extra: profile);
+    if (mounted) _load();
   }
 
   @override
@@ -188,6 +195,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             'Не удалось рассчитать цели — проверьте параметры профиля.',
                             style: TextStyle(fontSize: 13, color: Colors.grey),
                           ),
+                        // MG_207_V_profile_btn: вход в калькулятор КБЖУ.
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _openCalculator(profile),
+                            icon: const Icon(Icons.calculate_outlined, size: 18),
+                            label: const Text('Открыть калькулятор КБЖУ'),
+                          ),
+                        ),
                       ],
                     ),
                   ),
