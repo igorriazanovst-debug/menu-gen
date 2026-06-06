@@ -53,4 +53,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-05 `MG_PUBLIC_BACKEND_URL` — Use BACKEND_PUBLIC_URL env var for absolute media URLs in API. Image URLs no longer depend on request Host, web and mobile now load images directly from backend regardless of frontend host. — files: `backend/apps/recipes/serializers.py`
 
+- **Added** 2026-06-06 `MG_206` — Калькулятор КБЖУ (Web). 4 системы расчёта (Mifflin-St Jeor / Harris-Benedict / Роспотребнадзор / EFSA) + custom (граммы или % + дельта от TDEE). 3 пресета диет: сбалансированный (20/30/50), высокобелковый (35/25/40), низкоуглеводный (30/45/25). Кнопка на странице профиля → POST /users/me/calculator/{preview,apply}/. Дисклеймер про справочный характер. Прежний flow (заполнение в Django Admin) заменён. — files: `backend/apps/users/calculator.py`, `backend/apps/users/serializers.py`, `backend/apps/users/views.py`, `backend/apps/users/urls/users.py`, `web/menugen-web/src/types/index.ts`, `web/menugen-web/src/api/users.ts`, `web/menugen-web/src/App.tsx`, `web/menugen-web/src/pages/Profile/ProfilePage.tsx`, `web/menugen-web/src/pages/Profile/KBJUCalculatorPage.tsx`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
