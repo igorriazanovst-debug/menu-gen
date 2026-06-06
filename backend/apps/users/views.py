@@ -192,3 +192,87 @@ class TargetResetView(APIView):
 
         # Возвращаем обновлённого юзера (как и UserMeView)
         return Response(UserMeSerializer(request.user).data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MG_206_V_views = 1
+# KBJU calculator: preview (без сохранения) + apply (сохранение в Profile)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class CalculatorPreviewView(APIView):
+    """POST /users/me/calculator/preview/ — расчёт без сохранения."""
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        from apps.users.calculator import calculate
+        from apps.users.serializers import CalculatorRequestSerializer, CalculatorResultSerializer
+
+        ser = CalculatorRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            result = calculate(ser.validated_data)
+        except (ValueError, KeyError) as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(CalculatorResultSerializer(result).data)
+
+
+class CalculatorApplyView(APIView):
+    """POST /users/me/calculator/apply/ — расчёт + сохранение в Profile + аудит.
+    Сохраняет в Profile как сами параметры (height/weight/birth_year/...),
+    так и целевые КБЖУ. Аудит пишется с source='user'.
+    """
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        from apps.users.audit import record_target_change
+        from apps.users.calculator import calculate
+        from apps.users.models import Profile, ProfileTargetAudit
+        from apps.users.serializers import CalculatorRequestSerializer
+
+        ser = CalculatorRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            result = calculate(ser.validated_data)
+        except (ValueError, KeyError) as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+
+        # 1) Сохранить input-параметры (если переданы)
+        params_fields = ("height_cm", "weight_kg", "birth_year",
+                         "gender", "activity_level", "goal")
+        for f in params_fields:
+            v = ser.validated_data.get(f)
+            if v not in (None, ""):
+                setattr(profile, f, v)
+
+        # 2) Сохранить целевые КБЖУ + аудит с source='user'
+        target_field_map = {
+            "calorie_target":   result["calorie_target"],
+            "protein_target_g": result["protein_target_g"],
+            "fat_target_g":     result["fat_target_g"],
+            "carb_target_g":    result["carb_target_g"],
+            "fiber_target_g":   result["fiber_target_g"],
+        }
+        old_values = {f: getattr(profile, f, None) for f in target_field_map}
+        for f, new_v in target_field_map.items():
+            setattr(profile, f, new_v)
+        profile.save()
+
+        # Записать аудит для каждого изменённого поля
+        sys_code = ser.validated_data.get("system")
+        diet_code = ser.validated_data.get("diet")
+        reason = f"calculator: system={sys_code}, diet={diet_code or '-'}"
+        for f, new_v in target_field_map.items():
+            record_target_change(
+                profile=profile,
+                field=f,
+                new_value=new_v,
+                source=ProfileTargetAudit.Source.USER,
+                by_user=request.user,
+                old_value=old_values.get(f),
+                reason=reason,
+            )
+
+        return Response(UserMeSerializer(request.user).data)

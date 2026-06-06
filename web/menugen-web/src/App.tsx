@@ -15,6 +15,7 @@ import { FridgePage }        from './pages/Fridge/FridgePage';
 import { ShoppingPage }      from './pages/Shopping/ShoppingPage';
 import { SubscriptionsPage } from './pages/Subscriptions/SubscriptionsPage';
 import { ProfilePage }       from './pages/Profile/ProfilePage';
+import { KBJUCalculatorPage } from './pages/Profile/KBJUCalculatorPage'; // MG_206_V_app_route
 import { SpecialistDashboardPage } from './pages/specialist/SpecialistDashboardPage';
 import { SpecialistRegisterPage }  from './pages/specialist/SpecialistRegisterPage';
 import { ClientDetailPage }        from './pages/specialist/ClientDetailPage';
@@ -48,6 +49,7 @@ const AppRoutes: React.FC = () => {
         <Route path="shopping"      element={<ShoppingPage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="profile"       element={<ProfilePage />} />
+        <Route path="profile/kbju-calculator" element={<KBJUCalculatorPage />} />
         <Route path="specialist"                                          element={<SpecialistDashboardPage />} />
         <Route path="specialist/register"                                 element={<SpecialistRegisterPage />} />
         <Route path="specialist/clients/:familyId"                        element={<ClientDetailPage />} />

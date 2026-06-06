@@ -1,5 +1,6 @@
 // MG_205UI_V_profile_page = 1
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom'; // MG_206_V_profile_btn
 import { useAppSelector, useAppDispatch } from '../../hooks/useAppDispatch';
 import { setUser } from '../../store/slices/authSlice';
 import { authApi } from '../../api/auth';
@@ -32,6 +33,7 @@ const MEAL_PLAN_OPTIONS: { value: MealPlan; label: string; hint: string }[] = [
 
 export const ProfilePage: React.FC = () => {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate(); // MG_206_V_profile_btn
   const user = useAppSelector((s) => s.auth.user);
 
   const [name, setName]   = useState(user?.name ?? '');
@@ -221,9 +223,24 @@ export const ProfilePage: React.FC = () => {
           Нажмите на бейдж, чтобы увидеть историю и сбросить к авто.
         </p>
 
+        {/* MG_206_V_profile_btn: кнопка калькулятора КБЖУ */}
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => navigate('/profile/kbju-calculator')}
+            className="px-4 py-2 rounded-xl bg-avocado text-white text-sm font-semibold hover:bg-green-700 transition"
+          >
+            🧮 Открыть калькулятор КБЖУ
+          </button>
+          <p className="text-xs text-gray-500 mt-2">
+            Подберите свои целевые калории и БЖУ по выбранной системе (Mifflin-St Jeor, Harris-Benedict,
+            Роспотребнадзор, EFSA) или введите значения вручную.
+          </p>
+        </div>
+
         {!profileFilled && (
           <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-yellow-800 text-sm">
-            Заполните рост, вес и год рождения в Django Admin — после этого появятся целевые КБЖУ.
+            Заполните параметры через калькулятор — после этого появятся целевые КБЖУ.
           </div>
         )}
 

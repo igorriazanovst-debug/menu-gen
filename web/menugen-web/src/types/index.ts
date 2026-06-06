@@ -400,3 +400,54 @@ export interface ShoppingV2HistoryEntry {
   purchased_at: string;
   source_list_id?: number | null;
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MG_206_V_types: KBJU calculator
+// ─────────────────────────────────────────────────────────────────────────────
+export type KBJUSystem =
+  | 'mifflin'
+  | 'harris_benedict'
+  | 'rospotrebnadzor'
+  | 'efsa'
+  | 'custom';
+
+export type KBJUDiet = 'balanced' | 'high_protein' | 'low_carb';
+
+export type KBJUCustomMode = 'grams' | 'percents';
+
+export interface KBJURequest {
+  system: KBJUSystem;
+  diet?: KBJUDiet | null;
+  // base inputs
+  height_cm?: number;
+  weight_kg?: number | string;
+  birth_year?: number;
+  gender?: 'male' | 'female' | 'other';
+  activity_level?: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
+  goal?: 'lose_weight' | 'maintain' | 'gain_weight' | 'healthy';
+  // custom
+  custom_mode?: KBJUCustomMode | null;
+  custom_calorie_target?: number;
+  custom_protein_g?: number | string;
+  custom_fat_g?: number | string;
+  custom_carb_g?: number | string;
+  custom_fiber_g?: number | string;
+  custom_calorie_delta?: number;
+  custom_protein_pct?: number;
+  custom_fat_pct?: number;
+  custom_carb_pct?: number;
+}
+
+export interface KBJUResult {
+  system: KBJUSystem;
+  diet?: KBJUDiet | null;
+  age?: number | null;
+  bmr?: number | null;
+  tdee?: number | null;
+  calorie_target: number;
+  protein_target_g: string;
+  fat_target_g: string;
+  carb_target_g: string;
+  fiber_target_g: string;
+}
