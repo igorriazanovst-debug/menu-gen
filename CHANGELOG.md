@@ -73,4 +73,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-09 `MG_IMPORTTRUNC` — Shopping list import (menu/fridge/csv/ai): clamp item fields to column max_length so a long ingredient name no longer 500s the whole import — files: `backend/apps/shopping/views.py`
 
+- **Added** 2026-06-09 `MG_AICLEAN` — Shopping list import from menu: AI-normalize ingredient names (drop non-product noise, canonical merge of variants, dedup with unit conversion). Recipes untouched; raw fallback on AI failure — files: `backend/apps/shopping/services.py`, `backend/apps/shopping/views.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

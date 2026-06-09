@@ -90,6 +90,9 @@ class ShoppingListsView(APIView):
             except Menu.DoesNotExist:
                 return Response({"detail": "Меню не найдено."}, status=status.HTTP_404_NOT_FOUND)
             items_data = build_items_from_menu(menu, family, subtract_fridge=(src == ShoppingList.Source.FRIDGE))
+            # MG_AICLEAN: normalize ingredient names from the menu.
+            from .services import ai_clean_item_names
+            items_data = ai_clean_item_names(items_data)
         elif src == ShoppingList.Source.AI_TEXT:
             items_data = parse_text_with_ai(data["text"])
             if items_data is None:
