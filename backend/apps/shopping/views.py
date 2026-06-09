@@ -104,13 +104,18 @@ class ShoppingListsView(APIView):
             created_by=user,
             menu=menu,
         )
+        # MG_IMPORTTRUNC: clamp to column max_length so a long ingredient
+        # name (>255) does not 500 the whole import.
+        def _mx(f):
+            return ShoppingListItem._meta.get_field(f).max_length
+        _nm, _un, _ct = _mx("name"), _mx("unit"), _mx("category")
         bulk = [
             ShoppingListItem(
                 shopping_list=sl,
-                name=d["name"],
+                name=(d["name"] or "")[:_nm],
                 quantity=d.get("quantity"),
-                unit=d.get("unit") or "",
-                category=d.get("category") or "",
+                unit=(d.get("unit") or "")[:_un],
+                category=(d.get("category") or "")[:_ct],
                 sort_order=i,
             )
             for i, d in enumerate(items_data)

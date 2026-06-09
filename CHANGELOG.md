@@ -71,4 +71,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-09 `MG_RUBRICUNIT` — Shopping add-item: unit dropdown tolerates product units outside preset list (fixes Flutter DropdownButton assertion crash on units like 'упаковка') — files: `mobile/menugen_app/lib/features/shopping/screens/shopping_add_item.dart`, `web/menugen-web/src/pages/Shopping/ItemAutocomplete.tsx`
 
+- **Fixed** 2026-06-09 `MG_IMPORTTRUNC` — Shopping list import (menu/fridge/csv/ai): clamp item fields to column max_length so a long ingredient name no longer 500s the whole import — files: `backend/apps/shopping/views.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
