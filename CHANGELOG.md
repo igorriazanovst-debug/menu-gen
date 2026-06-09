@@ -61,4 +61,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-06 `MG_TOKENFIX` — Mobile: при ротации refresh-токена сохраняется новый refresh + single-flight refresh — устранены ложные «токен просрочен, войдите заново» — files: `mobile/menugen_app/lib/core/api/dio_api_client.dart`
 
+- **Changed** 2026-06-09 `MG_208` — Минимальная длина пароля снижена с 8 до 5 символов (web + backend) — files: `web/menugen-web/src/pages/Auth/LoginPage.tsx`, `web/menugen-web/src/pages/Auth/LoginPage.test.tsx`, `backend/apps/users/serializers.py`, `backend/config/settings.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

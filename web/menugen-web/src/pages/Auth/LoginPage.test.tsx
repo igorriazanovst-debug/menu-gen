@@ -36,9 +36,9 @@ describe('LoginPage — validation', () => {
   it('password error', async () => {
     renderLogin();
     await userEvent.type(screen.getByLabelText(/email/i), 'test@example.com');
-    await userEvent.type(screen.getByLabelText('Пароль'), 'short');
+    await userEvent.type(screen.getByLabelText('Пароль'), 'abcd'); /* MG_208_V_web_login_test: <5 символов */
     fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
-    await waitFor(() => expect(screen.getByText(/минимум 8 символов/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/минимум 5 символов/i)).toBeInTheDocument());
   });
 });
 describe('LoginPage — state', () => {

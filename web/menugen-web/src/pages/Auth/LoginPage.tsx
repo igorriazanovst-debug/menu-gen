@@ -10,7 +10,7 @@ import { Button } from '../../components/ui/Button';
 
 const schema = z.object({
   email: z.string().email('Введите корректный email'),
-  password: z.string().min(8, 'Минимум 8 символов'),
+  password: z.string().min(5, 'Минимум 5 символов'), // MG_208_V_web_login
 });
 type FormData = z.infer<typeof schema>;
 
