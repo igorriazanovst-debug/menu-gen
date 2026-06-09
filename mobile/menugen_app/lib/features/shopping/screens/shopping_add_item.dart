@@ -1,4 +1,4 @@
-// MG_SHOPMOB001: rubricator-aware add-item widget for shopping lists.
+// MG_SHOPMOB001 + MG_RUBRICBROWSE: rubricator-aware add-item widget (search + catalog browse).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -98,10 +98,11 @@ class _ShoppingAddItemState extends State<ShoppingAddItem> {
     }
   }
 
+  // MG_RUBRICBROWSE: use shopping rubric categories (not premium-gated).
   Future<void> _ensureCategories() async {
     if (_categories.isNotEmpty) return;
     try {
-      final raw = await widget.apiClient.get('/fridge/categories/');
+      final raw = await widget.apiClient.get('/shopping/rubric/categories/');
       if (raw is List) {
         _categories = raw
             .whereType<Map>()
@@ -139,6 +140,23 @@ class _ShoppingAddItemState extends State<ShoppingAddItem> {
       _categorySlug = chosen;
       _results = const [];
     });
+  }
+
+  // MG_RUBRICBROWSE: open catalog browse sheet, then stage selected product.
+  Future<void> _openBrowse() async {
+    await _ensureCategories();
+    if (!mounted) return;
+    final r = await showModalBottomSheet<RubricResult>(
+      context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.78),
+      builder: (_) => _RubricBrowseSheet(
+        apiClient: widget.apiClient,
+        categories: _categories,
+      ),
+    );
+    if (r != null) _pickExisting(r);
   }
 
   void _cancelStage() {
@@ -310,27 +328,164 @@ class _ShoppingAddItemState extends State<ShoppingAddItem> {
                 ],
               ),
             ),
-          TextField(
-            controller: _search,
-            decoration: InputDecoration(
-              hintText: 'Поиск товара…',
-              suffixIcon: _searching
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : null,
-            ),
-            onChanged: _onQueryChanged,
-            onSubmitted: (v) {
-              if (v.trim().isNotEmpty) _pickNew(v.trim());
-            },
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _search,
+                  decoration: InputDecoration(
+                    hintText: 'Поиск товара…',
+                    suffixIcon: _searching
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : null,
+                  ),
+                  onChanged: _onQueryChanged,
+                  onSubmitted: (v) {
+                    if (v.trim().isNotEmpty) _pickNew(v.trim());
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              // MG_RUBRICBROWSE: open catalog browse
+              IconButton(
+                tooltip: 'Каталог товаров',
+                icon: const Icon(Icons.grid_view),
+                onPressed: _openBrowse,
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// MG_RUBRICBROWSE: catalog browse sheet — categories + products, returns selected RubricResult.
+class _RubricBrowseSheet extends StatefulWidget {
+  final ApiClient apiClient;
+  final List<Map<String, dynamic>> categories;
+  const _RubricBrowseSheet({
+    required this.apiClient,
+    required this.categories,
+  });
+
+  @override
+  State<_RubricBrowseSheet> createState() => _RubricBrowseSheetState();
+}
+
+class _RubricBrowseSheetState extends State<_RubricBrowseSheet> {
+  String? _slug;
+  List<RubricResult> _items = const [];
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.categories.isNotEmpty) {
+      final s = widget.categories.first['slug'] as String?;
+      if (s != null) _load(s);
+    }
+  }
+
+  Future<void> _load(String slug) async {
+    setState(() {
+      _slug = slug;
+      _loading = true;
+    });
+    try {
+      final raw = await widget.apiClient
+          .get('/shopping/rubric/browse/', params: {'category': slug});
+      final map =
+          raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+      final res = (map['results'] as List? ?? const [])
+          .whereType<Map>()
+          .map((e) => RubricResult.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _items = res;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Каталог товаров',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+            SizedBox(
+              height: 48,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  for (final c in widget.categories)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text((c['name_ru'] as String?) ??
+                            (c['slug'] as String? ?? '')),
+                        selected: _slug == c['slug'],
+                        onSelected: (_) => _load(c['slug'] as String),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: _loading
+                  ? const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : _items.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('Нет товаров в категории.'),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _items.length,
+                          itemBuilder: (_, i) {
+                            final r = _items[i];
+                            return ListTile(
+                              dense: true,
+                              title: Text(r.name),
+                              subtitle:
+                                  r.unit.isNotEmpty ? Text(r.unit) : null,
+                              onTap: () => Navigator.of(context).pop(r),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
       ),
     );
   }

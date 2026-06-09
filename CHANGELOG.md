@@ -63,4 +63,10 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Changed** 2026-06-09 `MG_208` — Минимальная длина пароля снижена с 8 до 5 символов (web + backend) — files: `web/menugen-web/src/pages/Auth/LoginPage.tsx`, `web/menugen-web/src/pages/Auth/LoginPage.test.tsx`, `backend/apps/users/serializers.py`, `backend/config/settings.py`
 
+- **Added** 2026-06-09 `MG_RUBRICBROWSE_be` — Shopping: rubricator browse-by-category endpoints (IsAuthenticated): /shopping/rubric/categories/ and /shopping/rubric/browse/ — files: `backend/apps/shopping/services.py`, `backend/apps/shopping/views.py`, `backend/apps/shopping/urls.py`
+
+- **Added** 2026-06-09 `MG_RUBRICBROWSE_web` — Web shopping: '+ Каталог' button opens category browser to add existing rubricator products without typing — files: `web/menugen-web/src/api/shopping.ts`, `web/menugen-web/src/pages/Shopping/ItemAutocomplete.tsx`
+
+- **Added** 2026-06-09 `MG_RUBRICBROWSE_mob` — Mobile shopping: catalog browse sheet to add existing rubricator products by category; categories via /shopping/rubric/categories/ — files: `mobile/menugen_app/lib/features/shopping/screens/shopping_add_item.dart`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

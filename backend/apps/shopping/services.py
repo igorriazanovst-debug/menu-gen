@@ -216,3 +216,47 @@ def ensure_product(name: str, category_slug: str = "", unit: str = ""):
         is_seed=False,
         nutrition={},
     )
+
+
+# MG_RUBRICBROWSE: browse rubricator by category (same row shape as search_rubric)
+def browse_rubric(category_slug: str = "", limit: int = 500):
+    from apps.fridge.models import Product
+
+    pop_rank = {"часто": 0, "средне": 1, "редко": 2, "": 3}
+    qs = Product.objects.select_related("category_fk")
+    slug = (category_slug or "").strip()
+    if slug:
+        qs = qs.filter(category_fk__slug=slug)
+    rows = []
+    for p in qs[:1000]:
+        cat = p.category_fk
+        rows.append(
+            {
+                "product_id": p.id,
+                "name": p.name,
+                "unit": p.default_unit or "",
+                "category_slug": cat.slug if cat else "",
+                "category_name": cat.name_ru if cat else "",
+                "subcategory": getattr(p, "subcategory", "") or "",
+                "_pop": pop_rank.get(getattr(p, "popularity", "") or "", 3),
+            }
+        )
+    rows.sort(key=lambda r: (r["_pop"], r["name"]))
+    for r in rows:
+        r.pop("_pop", None)
+    return rows[:limit]
+
+
+def list_rubric_categories():
+    from apps.fridge.models import ProductCategory
+
+    return [
+        {
+            "slug": c.slug,
+            "name_ru": c.name_ru,
+            "icon": c.icon,
+            "color": c.color,
+            "sort_order": c.sort_order,
+        }
+        for c in ProductCategory.objects.filter(is_active=True).order_by("sort_order", "name_ru")
+    ]

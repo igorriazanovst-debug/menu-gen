@@ -34,3 +34,19 @@ urlpatterns = [
     path("pending/", PendingSharedListsView.as_view(), name="shopping-pending"),
     path("lists/<int:list_id>/respond/", SharedAccessRespondView.as_view(), name="shopping-respond"),
 ]
+
+# MG_RUBRICBROWSE
+from . import views as _mg_browse_views  # noqa: E402
+
+urlpatterns += [
+    path(
+        "rubric/categories/",
+        _mg_browse_views.RubricCategoriesView.as_view(),
+        name="shopping-rubric-categories",
+    ),
+    path(
+        "rubric/browse/",
+        _mg_browse_views.RubricBrowseView.as_view(),
+        name="shopping-rubric-browse",
+    ),
+]

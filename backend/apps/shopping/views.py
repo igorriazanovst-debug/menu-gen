@@ -506,3 +506,27 @@ class SharedAccessRespondView(APIView):
         acc.responded_at = timezone.now()
         acc.save(update_fields=["status", "responded_at"])
         return Response(ShoppingListAccessSerializer(acc).data)
+
+
+# MG_RUBRICBROWSE: browse rubricator (IsAuthenticated, no premium gate)
+class RubricCategoriesView(APIView):
+    """GET /shopping/rubric/categories/ - active categories for the browse picker."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .services import list_rubric_categories
+
+        return Response(list_rubric_categories())
+
+
+class RubricBrowseView(APIView):
+    """GET /shopping/rubric/browse/?category=<slug> - products in a category."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .services import browse_rubric
+
+        slug = request.query_params.get("category", "")
+        return Response({"category": slug, "results": browse_rubric(slug)})

@@ -1,7 +1,6 @@
-// MG_RUBRIC004/008 — rubricator autocomplete + qty/unit/price staging.
+// MG_RUBRICBROWSE + MG_RUBRIC004/008 — rubricator autocomplete + qty/unit/price staging + catalog browse.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { shoppingApi, AddItemPayload } from '../../api/shopping';
-import { fridgeApi } from '../../api/fridge';
 import { Button } from '../../components/ui/Button';
 import type {
   ShoppingV2RubricResult,
@@ -25,6 +24,13 @@ interface Staged {
   price: string; // string for input; '' = none
 }
 
+// MG_RUBRICBROWSE
+interface BrowseCat {
+  slug: string;
+  name: string;
+  icon?: string;
+}
+
 export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) => {
   const [text, setText] = useState('');
   const [results, setResults] = useState<ShoppingV2RubricResult[]>([]);
@@ -41,16 +47,23 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
   const [staged, setStaged] = useState<Staged | null>(null);
   const [qty, setQty] = useState('1');
 
+  // MG_RUBRICBROWSE: catalog browse modal
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseCats, setBrowseCats] = useState<BrowseCat[]>([]);
+  const [browseCat, setBrowseCat] = useState('');
+  const [browseProducts, setBrowseProducts] = useState<ShoppingV2RubricResult[]>([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+
   const boxRef = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const knownCats = useRef<Map<string, string>>(new Map());
 
-  // full category list for override + new-product flow
+  // full category list for override + new-product flow + browse (shopping rubric, not premium-gated)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await fridgeApi.categories();
+        const { data } = await shoppingApi.rubricCategories();
         if (cancelled) return;
         (data ?? []).forEach((c) => knownCats.current.set(c.slug, c.name_ru));
         setCategories(
@@ -58,6 +71,7 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
             .map(([slug, name]) => ({ slug, name }))
             .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
         );
+        setBrowseCats((data ?? []).map((c) => ({ slug: c.slug, name: c.name_ru, icon: c.icon })));
       } catch {
         /* non-fatal */
       }
@@ -155,6 +169,30 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
     } finally {
       setBusy(false);
     }
+  };
+
+  // MG_RUBRICBROWSE: catalog browse
+  const loadBrowse = useCallback(async (slug: string) => {
+    setBrowseCat(slug);
+    setBrowseLoading(true);
+    try {
+      const { data } = await shoppingApi.rubricBrowse(slug);
+      data.results.forEach((r) => knownCats.current.set(r.category_slug, r.category_name));
+      setBrowseProducts(data.results);
+    } finally {
+      setBrowseLoading(false);
+    }
+  }, []);
+
+  const openBrowse = async () => {
+    setBrowseOpen(true);
+    const first = browseCat || browseCats[0]?.slug || '';
+    if (first) await loadBrowse(first);
+  };
+
+  const pickFromBrowse = (r: ShoppingV2RubricResult) => {
+    setBrowseOpen(false);
+    pick(r);
   };
 
   const confirmAdd = async () => {
@@ -256,6 +294,10 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
           placeholder="Добавить позицию…"
           className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-tomato/40 focus:border-tomato"
         />
+        {/* MG_RUBRICBROWSE: open catalog */}
+        <Button onClick={openBrowse} disabled={busy} title="Каталог товаров">
+          Каталог
+        </Button>
         <Button
           onClick={() => (results.length > 0 ? pick(results[0]) : startNew())}
           disabled={busy || !text.trim()}
@@ -296,6 +338,65 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
           >
             + Добавить «{text.trim()}» как новый товар
           </button>
+        </div>
+      )}
+
+      {/* MG_RUBRICBROWSE: catalog modal */}
+      {browseOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setBrowseOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h3 className="font-bold text-chocolate">Каталог товаров</h3>
+              <button
+                onClick={() => setBrowseOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-1 min-h-0">
+              <div className="w-44 shrink-0 border-r border-gray-100 overflow-auto">
+                {browseCats.map((c) => (
+                  <button
+                    key={c.slug}
+                    onClick={() => loadBrowse(c.slug)}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-tomato/5 ${
+                      browseCat === c.slug ? 'bg-tomato/10 text-tomato font-medium' : ''
+                    }`}
+                  >
+                    {c.icon ? `${c.icon} ` : ''}
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-auto">
+                {browseLoading ? (
+                  <div className="p-4 text-sm text-gray-400">Загрузка…</div>
+                ) : browseProducts.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-400">Нет товаров в категории.</div>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {browseProducts.map((r) => (
+                      <li
+                        key={r.product_id}
+                        onClick={() => pickFromBrowse(r)}
+                        className="px-4 py-2 text-sm hover:bg-tomato/5 cursor-pointer flex items-center justify-between"
+                      >
+                        <span>{r.name}</span>
+                        {r.unit ? <span className="text-xs text-gray-400">{r.unit}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

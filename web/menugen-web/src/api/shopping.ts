@@ -9,6 +9,7 @@ import type {
   ShoppingV2HistoryEntry,
   ShoppingV2Source,
   ShoppingV2RubricResponse,
+  ShoppingV2RubricResult,
   ShoppingV2PendingList,
 } from '../types';
 
@@ -36,6 +37,15 @@ export interface GrantAccessPayload {
   email?: string;
   can_toggle?: boolean;
   can_export?: boolean;
+}
+
+// MG_RUBRICBROWSE
+export interface RubricCategory {
+  slug: string;
+  name_ru: string;
+  icon?: string;
+  color?: string;
+  sort_order?: number;
 }
 
 export const shoppingApi = {
@@ -104,4 +114,15 @@ export const shoppingApi = {
     client.get<ShoppingV2RubricResponse>('/shopping/rubric/search/', {
       params: { q, classify: classify ? '1' : undefined },
     }),
+
+  // MG_RUBRICBROWSE: active categories for the browse picker (not premium-gated).
+  rubricCategories: () =>
+    client.get<RubricCategory[]>('/shopping/rubric/categories/'),
+
+  // MG_RUBRICBROWSE: products in a category for the browse picker.
+  rubricBrowse: (categorySlug: string) =>
+    client.get<{ category: string; results: ShoppingV2RubricResult[] }>(
+      '/shopping/rubric/browse/',
+      { params: { category: categorySlug || undefined } },
+    ),
 };
