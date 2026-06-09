@@ -197,6 +197,13 @@ class _ShoppingAddItemState extends State<ShoppingAddItem> {
     return qty * price;
   }
 
+  // MG_RUBRICUNIT: preset units plus the staged unit if it is not preset.
+  List<String> get _unitOptions {
+    final opts = <String>[...kShoppingUnits];
+    if (_unit.isNotEmpty && !opts.contains(_unit)) opts.add(_unit);
+    return opts;
+  }
+
   @override
   Widget build(BuildContext context) {
     final sym = currencySymbol(widget.currency);
@@ -254,7 +261,8 @@ class _ShoppingAddItemState extends State<ShoppingAddItem> {
                     value: _unit,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Ед.'),
-                    items: kShoppingUnits
+                    // MG_RUBRICUNIT: include current unit if outside preset list
+                    items: _unitOptions
                         .map((u) =>
                             DropdownMenuItem(value: u, child: Text(u)))
                         .toList(),

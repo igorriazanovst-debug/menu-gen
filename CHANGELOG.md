@@ -69,4 +69,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Added** 2026-06-09 `MG_RUBRICBROWSE_mob` — Mobile shopping: catalog browse sheet to add existing rubricator products by category; categories via /shopping/rubric/categories/ — files: `mobile/menugen_app/lib/features/shopping/screens/shopping_add_item.dart`
 
+- **Fixed** 2026-06-09 `MG_RUBRICUNIT` — Shopping add-item: unit dropdown tolerates product units outside preset list (fixes Flutter DropdownButton assertion crash on units like 'упаковка') — files: `mobile/menugen_app/lib/features/shopping/screens/shopping_add_item.dart`, `web/menugen-web/src/pages/Shopping/ItemAutocomplete.tsx`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

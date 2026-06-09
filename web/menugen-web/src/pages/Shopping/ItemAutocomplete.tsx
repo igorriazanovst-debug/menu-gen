@@ -258,7 +258,10 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
             onChange={(e) => setStaged({ ...staged, unit: e.target.value })}
             className="rounded-lg border border-gray-300 px-2 py-1 text-sm"
           >
-            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+            {/* MG_RUBRICUNIT: include staged unit if outside preset list */}
+            {(UNITS.includes(staged.unit) ? UNITS : [staged.unit, ...UNITS]).map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
           </select>
           <span className="text-gray-400 text-sm">×</span>
           <input
