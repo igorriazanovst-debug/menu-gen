@@ -17,35 +17,90 @@ def _to_decimal(v):
         return None
 
 
-def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):
-    """Aggregate recipe ingredients across a menu.
-    subtract_fridge=True → drop items already present in fridge (1.2)."""
+def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECIPELINK_BUILD
+    """MG_RECIPELINK: prefer precomputed RecipeProduct links (canonical name,
+    category, qty). Recipes without links fall back to raw ingredients + AI
+    cleanup (ai_clean_item_names). Returns dicts with category_slug /
+    category_fk_id / product_id so the import can colour by section."""
+    from apps.recipes.models import RecipeProduct
+
     fridge_names = set()
     if subtract_fridge:
         fridge_names = {i.name.strip().lower() for i in FridgeItem.objects.filter(family=family, is_deleted=False)}
 
-    aggregated = defaultdict(lambda: {"quantity": Decimal(0), "unit": "", "name": ""})
-    for menu_item in MenuItem.objects.filter(menu=menu).select_related("recipe"):
-        for ing in menu_item.recipe.ingredients or []:
-            name = (ing.get("name") or "").strip()
-            if not name:
-                continue
-            if subtract_fridge and name.lower() in fridge_names:
-                continue
-            key = name.lower()
-            qty = _to_decimal(ing.get("quantity")) or Decimal(0)
-            aggregated[key]["quantity"] += qty
-            aggregated[key]["unit"] = ing.get("unit") or ""
-            aggregated[key]["name"] = name
+    recipe_ids = list(MenuItem.objects.filter(menu=menu).values_list("recipe_id", flat=True))
+    linked_ids = set(
+        RecipeProduct.objects.filter(recipe_id__in=recipe_ids).values_list("recipe_id", flat=True).distinct()
+    )
+    links_by_recipe = {}
+    for rp in RecipeProduct.objects.filter(recipe_id__in=list(linked_ids)).select_related("category_fk"):
+        links_by_recipe.setdefault(rp.recipe_id, []).append(rp)
 
-    return [
-        {
-            "name": v["name"],
-            "quantity": (v["quantity"] or None) if v["quantity"] != 0 else None,
-            "unit": v["unit"],
-        }
-        for v in aggregated.values()
-    ]
+    agg = {}
+
+    def _add(name, qty, unit, slug, cat_id, pid):
+        key = (name or "").strip().lower()
+        if not key:
+            return
+        if subtract_fridge and key in fridge_names:
+            return
+        q = _to_decimal(qty) or Decimal(0)
+        cur = agg.get(key)
+        if cur is None:
+            agg[key] = {
+                "name": name,
+                "quantity": q,
+                "unit": unit or "",
+                "category_slug": slug or "",
+                "category_fk_id": cat_id,
+                "product_id": pid,
+            }
+        else:
+            cur["quantity"] += q
+            if not cur["unit"]:
+                cur["unit"] = unit or ""
+            if not cur["category_slug"] and slug:
+                cur["category_slug"] = slug
+                cur["category_fk_id"] = cat_id
+            if cur["product_id"] is None and pid is not None:
+                cur["product_id"] = pid
+
+    raw_items = []
+    for mi in MenuItem.objects.filter(menu=menu).select_related("recipe"):
+        rid = mi.recipe_id
+        if rid in linked_ids:
+            for rp in links_by_recipe.get(rid, []):
+                name = rp.name_canonical or rp.name_raw
+                qty = rp.grams if rp.grams is not None else rp.quantity
+                _add(name, qty, rp.unit, rp.category_slug, rp.category_fk_id, rp.product_id)
+        else:
+            for ing in (mi.recipe.ingredients or []):
+                nm = (ing.get("name") or "").strip()
+                if not nm:
+                    continue
+                raw_items.append(
+                    {"name": nm, "quantity": _to_decimal(ing.get("quantity")), "unit": ing.get("unit") or ""}
+                )
+
+    if raw_items:
+        cleaned = ai_clean_item_names(raw_items)
+        for d in cleaned:
+            _add(d.get("name") or "", d.get("quantity"), d.get("unit") or "", "", None, None)
+
+    out = []
+    for v in agg.values():
+        q = v["quantity"]
+        out.append(
+            {
+                "name": v["name"],
+                "quantity": (q if q != 0 else None),
+                "unit": v["unit"],
+                "category_slug": v["category_slug"],
+                "category_fk_id": v["category_fk_id"],
+                "product_id": v["product_id"],
+            }
+        )
+    return out
 
 
 def parse_csv(text: str):

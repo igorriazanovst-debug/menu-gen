@@ -89,10 +89,9 @@ class ShoppingListsView(APIView):
                 menu = Menu.objects.get(id=data["menu_id"], family=family)
             except Menu.DoesNotExist:
                 return Response({"detail": "Меню не найдено."}, status=status.HTTP_404_NOT_FOUND)
+            # MG_RECIPELINK_VIEW_A: build uses precomputed product links (category + qty);
+            # AI cleanup happens inside build only for link-less recipes.
             items_data = build_items_from_menu(menu, family, subtract_fridge=(src == ShoppingList.Source.FRIDGE))
-            # MG_AICLEAN: normalize ingredient names from the menu.
-            from .services import ai_clean_item_names
-            items_data = ai_clean_item_names(items_data)
         elif src == ShoppingList.Source.AI_TEXT:
             items_data = parse_text_with_ai(data["text"])
             if items_data is None:
@@ -109,20 +108,30 @@ class ShoppingListsView(APIView):
         )
         # MG_IMPORTTRUNC: clamp to column max_length so a long ingredient
         # name (>255) does not 500 the whole import.
+        # MG_RECIPELINK_VIEW_B: set category cache string + FK + product FK so the
+        # imported list is grouped/coloured by section.
+        from apps.fridge.models import ProductCategory
+        _cat_name = {c.id: c.name_ru for c in ProductCategory.objects.all()}
+
         def _mx(f):
             return ShoppingListItem._meta.get_field(f).max_length
         _nm, _un, _ct = _mx("name"), _mx("unit"), _mx("category")
-        bulk = [
-            ShoppingListItem(
-                shopping_list=sl,
-                name=(d["name"] or "")[:_nm],
-                quantity=d.get("quantity"),
-                unit=(d.get("unit") or "")[:_un],
-                category=(d.get("category") or "")[:_ct],
-                sort_order=i,
+        bulk = []
+        for i, d in enumerate(items_data):
+            _cid = d.get("category_fk_id")
+            _cstr = d.get("category") or _cat_name.get(_cid, "")
+            bulk.append(
+                ShoppingListItem(
+                    shopping_list=sl,
+                    name=(d["name"] or "")[:_nm],
+                    quantity=d.get("quantity"),
+                    unit=(d.get("unit") or "")[:_un],
+                    category=(_cstr or "")[:_ct],
+                    category_fk_id=_cid,
+                    product_id=d.get("product_id"),
+                    sort_order=i,
+                )
             )
-            for i, d in enumerate(items_data)
-        ]
         if bulk:
             ShoppingListItem.objects.bulk_create(bulk)
 

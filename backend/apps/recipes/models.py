@@ -336,3 +336,44 @@ class RecipeImportSession(models.Model):
     def __str__(self):
         return f"ImportSession #{self.pk} [{self.status}] {self.created_at:%Y-%m-%d %H:%M}"
 
+
+
+# ── MG_RECIPELINK: recipe <-> rubricator product link ───────────────────────
+class RecipeProduct(models.Model):
+    recipe = models.ForeignKey(
+        "recipes.Recipe", on_delete=models.CASCADE, related_name="product_links"
+    )
+    product = models.ForeignKey(
+        "fridge.Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recipe_links",
+    )
+    category_fk = models.ForeignKey(
+        "fridge.ProductCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recipe_links",
+        db_column="category_id",
+    )
+    name_raw = models.CharField(max_length=255)
+    name_canonical = models.CharField(max_length=255, blank=True)
+    category_slug = models.CharField(max_length=64, blank=True)
+    quantity = models.CharField(max_length=64, blank=True)
+    unit = models.CharField(max_length=50, blank=True)
+    grams = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "recipe_products"
+        indexes = [
+            models.Index(fields=["recipe"], name="recipe_prod_recipe_idx"),
+            models.Index(fields=["product"], name="recipe_prod_product_idx"),
+            models.Index(fields=["category_slug"], name="recipe_prod_catslug_idx"),
+        ]
+
+    def __str__(self):
+        return "%s -> %s" % (self.name_raw, self.product_id)
