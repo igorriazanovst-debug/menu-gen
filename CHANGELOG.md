@@ -75,4 +75,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Added** 2026-06-09 `MG_AICLEAN` — Shopping list import from menu: AI-normalize ingredient names (drop non-product noise, canonical merge of variants, dedup with unit conversion). Recipes untouched; raw fallback on AI failure — files: `backend/apps/shopping/services.py`, `backend/apps/shopping/views.py`
 
+- **Added** 2026-06-10 `MG_RECIPELINK` — MG_RECIPELINK — recipe<->product link table (RecipeProduct): AI canonicalize + match rubricator + categorize once; shopping import from menu reads links (category/colour + qty, no per-import AI); post_save hook builds links for new recipes; backfill command — files: `backend/apps/recipes/models.py`, `backend/apps/recipes/recipe_products.py`, `backend/apps/recipes/signals.py`, `backend/apps/recipes/apps.py`, `backend/apps/recipes/migrations/0015_recipeproduct.py`, `backend/apps/recipes/management/commands/mg_backfill_recipe_products.py`, `backend/apps/shopping/services.py`, `backend/apps/shopping/views.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
