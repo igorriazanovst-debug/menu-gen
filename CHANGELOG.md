@@ -77,4 +77,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Added** 2026-06-10 `MG_RECIPELINK` — MG_RECIPELINK — recipe<->product link table (RecipeProduct): AI canonicalize + match rubricator + categorize once; shopping import from menu reads links (category/colour + qty, no per-import AI); post_save hook builds links for new recipes; backfill command — files: `backend/apps/recipes/models.py`, `backend/apps/recipes/recipe_products.py`, `backend/apps/recipes/signals.py`, `backend/apps/recipes/apps.py`, `backend/apps/recipes/migrations/0015_recipeproduct.py`, `backend/apps/recipes/management/commands/mg_backfill_recipe_products.py`, `backend/apps/shopping/services.py`, `backend/apps/shopping/views.py`
 
+- **Changed** 2026-06-10 `MG_RECIPELINK2` — Canonicalizer quality: mechanical split of compound/alt ingredient lines (фета или брынза -> 2 items), AI resolution to rubricator product (synonyms томат/томаты/помидор -> Помидоры), curated alias map, drop fat-% and nullish canon, empty slug -> other, hard singular+Capitalize, per-chunk/per-recipe progress log. linked_to_product 32.6% -> 48.5%. — files: `backend/apps/recipes/recipe_products.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
