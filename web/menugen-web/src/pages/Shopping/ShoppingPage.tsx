@@ -302,12 +302,9 @@ const ListDetail: React.FC<{
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-bold text-lg">{detail.name}</h2>
         <div className="flex gap-2 flex-wrap">
-          {/* MG_SHOPBUG_EDITMODE: edit-mode toggle */}
-          {caps?.manage && (
-            <Button
-              variant={editMode ? 'primary' : 'secondary'}
-              onClick={() => { setEditMode((v) => !v); if (editMode) onReload(); }}
-            >{editMode ? '✓ Готово' : '✎ Редактировать'}</Button>
+          {/* MG_SHOPADDEDIT3: enter-edit only; Готово lives in add-bar */}
+          {caps?.manage && !editMode && (
+            <Button variant="secondary" onClick={() => setEditMode(true)}>✎ Редактировать</Button>
           )}
           {caps?.export && !editMode && (
             <Button variant="secondary" onClick={onPrint}>🖨 Печать</Button>
