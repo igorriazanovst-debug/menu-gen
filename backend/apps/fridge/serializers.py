@@ -124,8 +124,10 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         nutrition = nutrition if isinstance(nutrition, dict) else {}
         has_label_kbju = bool(nutrition) or calories is not None
 
-        # 1) reuse an existing product that already carries nutrition
-        existing = Product.objects.filter(name__iexact=name).order_by("id").first()
+        # 1) reuse an existing product (alias-aware). MG_PRODALIAS
+        from .aliases import resolve_product
+
+        existing = resolve_product(name) or Product.objects.filter(name__iexact=name).order_by("id").first()
         if existing is not None:
             updates = []
             if cat is not None and existing.category_fk_id != cat.id:

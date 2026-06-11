@@ -64,17 +64,25 @@ def _fr_unit_factor(unit):
     return (u, Decimal(1))
 
 
-def _subtract_fridge(agg, fridge_rows):
+def _subtract_fridge(agg, fridge_rows, pidx=None):  # MG_PRODALIAS
     """Match by product_id, else canonical name; subtract fridge qty (unit
     conversion within same dimension); drop item if remaining <= 0."""
+    from apps.fridge.aliases import normalize_alias, product_ref_index, resolve_ref
+
+    if pidx is None:
+        pidx = product_ref_index()
     frs = []
     for it in fridge_rows:
         dim, base = _fr_base(it.quantity, it.unit)
-        frs.append({"pid": it.product_id, "canon": _fr_canon(it.name), "dim": dim, "base": base, "used": False})
+        ref = resolve_ref(it.name, pidx)
+        fpid = it.product_id or (ref["id"] if ref else None)
+        fcanon = normalize_alias(ref["name"]) if ref else _fr_canon(it.name)
+        frs.append({"pid": fpid, "canon": fcanon, "dim": dim, "base": base, "used": False})
     for key in list(agg.keys()):
         v = agg[key]
         pid = v.get("product_id")
-        vcanon = _fr_canon(v.get("name"))
+        vref = resolve_ref(v.get("name"), pidx)
+        vcanon = normalize_alias(vref["name"]) if vref else _fr_canon(v.get("name"))
         agg_dim, agg_factor = _fr_unit_factor(v.get("unit"))
         matches = [f for f in frs if not f["used"] and pid and f["pid"] == pid]
         if not matches:
@@ -102,7 +110,10 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
     category, qty). Recipes without links fall back to raw ingredients + AI
     cleanup (ai_clean_item_names). Returns dicts with category_slug /
     category_fk_id / product_id so the import can colour by section."""
+    from apps.fridge.aliases import product_ref_index, resolve_ref  # MG_PRODALIAS
     from apps.recipes.models import RecipeProduct
+
+    pidx = product_ref_index()
 
     fridge_rows = []
     if subtract_fridge:
@@ -118,15 +129,24 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
 
     agg = {}
 
-    def _add(name, qty, unit, slug, cat_id, pid):
-        key = (name or "").strip().lower()
+    def _add(name, qty, unit, slug, cat_id, pid):  # MG_PRODALIAS
+        disp = name
+        ref = resolve_ref(name, pidx) if name else None
+        if ref is not None:
+            disp = ref["name"]
+            if pid is None:
+                pid = ref["id"]
+            if not slug and ref["slug"]:
+                slug = ref["slug"]
+                cat_id = ref["cat_id"]
+        key = (disp or name or "").strip().lower()
         if not key:
             return
         q = _to_decimal(qty) or Decimal(0)
         cur = agg.get(key)
         if cur is None:
             agg[key] = {
-                "name": name,
+                "name": disp,
                 "quantity": q,
                 "unit": unit or "",
                 "category_slug": slug or "",
@@ -306,6 +326,23 @@ def search_rubric(query: str, limit: int = 20):
     for r in rows:
         r.pop("_starts", None)
         r.pop("_pop", None)
+    # MG_PRODALIAS: surface alias-resolved canonical product if missing.
+    from apps.fridge.aliases import resolve_product
+
+    rp = resolve_product(q)
+    if rp is not None and all(r["product_id"] != rp.id for r in rows):
+        rcat = rp.category_fk
+        rows.insert(
+            0,
+            {
+                "product_id": rp.id,
+                "name": rp.name,
+                "unit": rp.default_unit or "",
+                "category_slug": rcat.slug if rcat else "",
+                "category_name": rcat.name_ru if rcat else "",
+                "subcategory": getattr(rp, "subcategory", "") or "",
+            },
+        )
     return rows[:limit]
 
 

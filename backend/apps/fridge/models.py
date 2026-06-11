@@ -90,3 +90,18 @@ class FridgeItem(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.family})"
+
+
+class ProductAlias(models.Model):
+    """MG_PRODALIAS — synonym/spelling variant -> canonical Product."""
+
+    alias_norm = models.CharField(max_length=255, unique=True)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="aliases")
+    source = models.CharField(max_length=16, default="manual", help_text="manual|auto")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "product_aliases"
+
+    def __str__(self):
+        return f"{self.alias_norm} -> {self.product_id}"

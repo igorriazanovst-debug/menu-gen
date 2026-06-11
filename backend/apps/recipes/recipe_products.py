@@ -203,7 +203,7 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
     return out
 
 
-def _resolve_segment(canon, ai_slug, prod_name, prod_index, cat_id_by_slug):
+def _resolve_segment(canon, ai_slug, prod_name, prod_index, cat_id_by_slug, ref_index=None):  # MG_PRODALIAS
     """-> (product_id, canon_display, slug, cat_id). Honors decisions:
     name from rubricator product; category from product if present, else AI slug;
     curated synonym alias folds variants to a rubricator product; empty slug -> 'other'."""
@@ -225,11 +225,25 @@ def _resolve_segment(canon, ai_slug, prod_name, prod_index, cat_id_by_slug):
             return product_id, _cap(canon), dslug, dcat_id
         slug, cid = _slug_or_other(ai_slug, cat_id_by_slug)
         return product_id, _cap(canon), slug, cid
+    # MG_PRODALIAS: alias-aware last resort fold to canonical Product.
+    if ref_index is not None:
+        from apps.fridge.aliases import normalize_alias
+
+        for cand in (prod_name, canon):
+            if not cand:
+                continue
+            ref = ref_index.get(normalize_alias(cand))
+            if ref:
+                rslug = ref["slug"] or _slug_or_other(ai_slug, cat_id_by_slug)[0]
+                rcid = ref["cat_id"] or cat_id_by_slug.get(rslug)
+                return ref["id"], _cap(ref["name"]), rslug, rcid
     slug, cid = _slug_or_other(ai_slug, cat_id_by_slug)
     return None, _cap(canon), slug, cid
 
 
-def rebuild_recipe_links(recipe, canon_map=None, prod_index=None, cat_id_by_slug=None, force=False):
+def rebuild_recipe_links(
+    recipe, canon_map=None, prod_index=None, cat_id_by_slug=None, force=False, ref_index=None
+):  # MG_PRODALIAS
     """(Re)build RecipeProduct rows for one recipe. Idempotent (replace).
     MG_RECIPELINK2: each ingredient name is split into segments -> N links.
     Returns number of links created."""
@@ -256,6 +270,10 @@ def rebuild_recipe_links(recipe, canon_map=None, prod_index=None, cat_id_by_slug
         prod_index = _product_index()
     if cat_id_by_slug is None:
         cat_id_by_slug = {s: cid for s, _, cid in _allowed_categories()}
+    if ref_index is None:  # MG_PRODALIAS
+        from apps.fridge.aliases import product_ref_index
+
+        ref_index = product_ref_index()
 
     rows = []
     seen = set()  # dedup by norm(canon) within one recipe
@@ -277,7 +295,7 @@ def rebuild_recipe_links(recipe, canon_map=None, prod_index=None, cat_id_by_slug
             if not canon:
                 continue  # noise -> no link
             product_id, canon_disp, slug, cat_id = _resolve_segment(
-                canon, ai_slug, prod_name, prod_index, cat_id_by_slug
+                canon, ai_slug, prod_name, prod_index, cat_id_by_slug, ref_index=ref_index
             )
             key = _norm(canon_disp)
             if not key or key in seen:
@@ -339,11 +357,19 @@ def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print):
     log(">>> AI done; building links ...")
     prod_index = _product_index()
     cat_id_by_slug = {s: cid for s, _, cid in _allowed_categories()}
+    from apps.fridge.aliases import product_ref_index  # MG_PRODALIAS
+
+    ref_index = product_ref_index()
 
     links = 0
     for n, r in enumerate(todo, 1):
         links += rebuild_recipe_links(
-            r, canon_map=canon_map, prod_index=prod_index, cat_id_by_slug=cat_id_by_slug, force=True
+            r,
+            canon_map=canon_map,
+            prod_index=prod_index,
+            cat_id_by_slug=cat_id_by_slug,
+            force=True,
+            ref_index=ref_index,
         )
         if n % 25 == 0 or n == len(todo):
             log("  rebuilt %d/%d recipes (links=%d)" % (n, len(todo), links))
