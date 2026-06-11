@@ -79,4 +79,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Changed** 2026-06-10 `MG_RECIPELINK2` — Canonicalizer quality: mechanical split of compound/alt ingredient lines (фета или брынза -> 2 items), AI resolution to rubricator product (synonyms томат/томаты/помидор -> Помидоры), curated alias map, drop fat-% and nullish canon, empty slug -> other, hard singular+Capitalize, per-chunk/per-recipe progress log. linked_to_product 32.6% -> 48.5%. — files: `backend/apps/recipes/recipe_products.py`
 
+- **Fixed** 2026-06-11 `MG_FRIDGESUB` — Shopping import menu-fridge: quantity-aware fridge subtraction (match by product_id else canonical name with %/brand strip + unit conversion); drop item only when remaining<=0 instead of binary raw-name match — files: `backend/apps/shopping/services.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

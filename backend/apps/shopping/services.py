@@ -17,6 +17,86 @@ def _to_decimal(v):
         return None
 
 
+# MG_FRIDGESUB: quantity-aware fridge subtraction helpers.
+def _fr_canon(name):
+    import re as _re
+
+    s = (name or "").strip()
+    s = _re.sub(r"\s*\d+(?:[.,]\d+)?\s*%", "", s)  # drop fat %
+    s = _re.sub(r'["\u201c\u201d\u00ab\u00bb]', " ", s)  # drop quotes (brand)
+    s = _re.sub(r"\s+", " ", s).strip().lower().replace("\u0451", "\u0435")  # ё->е
+    return s
+
+
+def _fr_base(qty, unit):
+    """-> (dim, base_qty). dim: 'mass'|'vol'|'шт'|''|<unit>. base in г/мл or raw."""
+    if qty is None:
+        return (None, None)
+    try:
+        q = qty if isinstance(qty, Decimal) else Decimal(str(qty))
+    except Exception:
+        return (None, None)
+    mass, vol, clove = _mg_unit_tables()
+    u = (unit or "").strip().lower()
+    if u in clove:
+        return ("шт", q)
+    if u in mass:
+        return ("mass", q * mass[u])
+    if u in vol:
+        return ("vol", q * vol[u])
+    if u == "":
+        return ("", q)
+    return (u, q)
+
+
+def _fr_unit_factor(unit):
+    """-> (dim, factor) for converting a base back into `unit`."""
+    mass, vol, clove = _mg_unit_tables()
+    u = (unit or "").strip().lower()
+    if u in mass:
+        return ("mass", mass[u])
+    if u in vol:
+        return ("vol", vol[u])
+    if u in clove:
+        return ("шт", Decimal(1))
+    if u == "":
+        return ("", Decimal(1))
+    return (u, Decimal(1))
+
+
+def _subtract_fridge(agg, fridge_rows):
+    """Match by product_id, else canonical name; subtract fridge qty (unit
+    conversion within same dimension); drop item if remaining <= 0."""
+    frs = []
+    for it in fridge_rows:
+        dim, base = _fr_base(it.quantity, it.unit)
+        frs.append({"pid": it.product_id, "canon": _fr_canon(it.name), "dim": dim, "base": base, "used": False})
+    for key in list(agg.keys()):
+        v = agg[key]
+        pid = v.get("product_id")
+        vcanon = _fr_canon(v.get("name"))
+        agg_dim, agg_factor = _fr_unit_factor(v.get("unit"))
+        matches = [f for f in frs if not f["used"] and pid and f["pid"] == pid]
+        if not matches:
+            matches = [f for f in frs if not f["used"] and vcanon and f["canon"] == vcanon]
+        consumed = [f for f in matches if f["base"] is not None and f["dim"] == agg_dim]
+        if not consumed:
+            continue
+        for f in consumed:
+            f["used"] = True
+        total_base = sum((f["base"] for f in consumed), Decimal(0))
+        try:
+            need = v["quantity"] if isinstance(v["quantity"], Decimal) else Decimal(str(v["quantity"]))
+        except Exception:
+            continue
+        deduct = (total_base / agg_factor) if agg_factor else total_base
+        remaining = need - deduct
+        if remaining <= 0:
+            agg.pop(key, None)
+        else:
+            v["quantity"] = remaining
+
+
 def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECIPELINK_BUILD
     """MG_RECIPELINK: prefer precomputed RecipeProduct links (canonical name,
     category, qty). Recipes without links fall back to raw ingredients + AI
@@ -24,9 +104,9 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
     category_fk_id / product_id so the import can colour by section."""
     from apps.recipes.models import RecipeProduct
 
-    fridge_names = set()
+    fridge_rows = []
     if subtract_fridge:
-        fridge_names = {i.name.strip().lower() for i in FridgeItem.objects.filter(family=family, is_deleted=False)}
+        fridge_rows = list(FridgeItem.objects.filter(family=family, is_deleted=False))  # MG_FRIDGESUB
 
     recipe_ids = list(MenuItem.objects.filter(menu=menu).values_list("recipe_id", flat=True))
     linked_ids = set(
@@ -41,8 +121,6 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
     def _add(name, qty, unit, slug, cat_id, pid):
         key = (name or "").strip().lower()
         if not key:
-            return
-        if subtract_fridge and key in fridge_names:
             return
         q = _to_decimal(qty) or Decimal(0)
         cur = agg.get(key)
@@ -74,7 +152,7 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
                 qty = rp.grams if rp.grams is not None else rp.quantity
                 _add(name, qty, rp.unit, rp.category_slug, rp.category_fk_id, rp.product_id)
         else:
-            for ing in (mi.recipe.ingredients or []):
+            for ing in mi.recipe.ingredients or []:
                 nm = (ing.get("name") or "").strip()
                 if not nm:
                     continue
@@ -86,6 +164,9 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
         cleaned = ai_clean_item_names(raw_items)
         for d in cleaned:
             _add(d.get("name") or "", d.get("quantity"), d.get("unit") or "", "", None, None)
+
+    if subtract_fridge and fridge_rows:  # MG_FRIDGESUB
+        _subtract_fridge(agg, fridge_rows)
 
     out = []
     for v in agg.values():
@@ -327,11 +408,15 @@ def _mg_unit_tables():
     global _MG_MASS, _MG_VOL, _MG_CLOVE
     if _MG_MASS is None:
         from decimal import Decimal as _D
+
         _MG_MASS = {"г": _D(1), "кг": _D(1000)}
         _MG_VOL = {
-            "мл": _D(1), "л": _D(1000),
-            "ст.л.": _D(15), "ст. л.": _D(15),
-            "ч.л.": _D(5), "ч. л.": _D(5),
+            "мл": _D(1),
+            "л": _D(1000),
+            "ст.л.": _D(15),
+            "ст. л.": _D(15),
+            "ч.л.": _D(5),
+            "ч. л.": _D(5),
             "стакан": _D(200),
         }
         _MG_CLOVE = {"зуб.", "зуб", "зубчик", "зубчика", "зубчиков", "зубец", "зубка"}
@@ -347,6 +432,7 @@ def _mg_norm_unit(u):
 def _mg_merge_qty(contribs):
     """contribs: list of (Decimal|None qty, raw unit). Returns (unit, quantity)."""
     from decimal import Decimal
+
     mass, vol, _ = _mg_unit_tables()
     norm = [(q, _mg_norm_unit(u)) for (q, u) in contribs]
     numeric = [(q, u) for (q, u) in norm if q is not None]
@@ -424,6 +510,7 @@ def ai_clean_item_names(items, chunk_size=20):
 
     try:
         from apps.common.ai_provider import get_ai_client
+
         client = get_ai_client()
     except Exception:
         client = None
@@ -440,7 +527,7 @@ def ai_clean_item_names(items, chunk_size=20):
         if client is None or _parse_json_loose is None:
             return
         for base in range(0, len(indices), chunk_size):
-            grp = indices[base:base + chunk_size]
+            grp = indices[base : base + chunk_size]
             payload = json.dumps([{"i": idx, "name": names[idx]} for idx in grp], ensure_ascii=False)
             try:
                 raw = client.complete(prompt=payload, system=_MG_SYS_CLEAN, max_tokens=2000, temperature=0.0)
@@ -481,10 +568,11 @@ def ai_clean_item_names(items, chunk_size=20):
     if client is not None and _parse_json_loose is not None:
         uniq = sorted({nm for _, nm in stage}, key=lambda s: s.lower())
         for base in range(0, len(uniq), 80):
-            grp = uniq[base:base + 80]
+            grp = uniq[base : base + 80]
             try:
-                raw = client.complete(prompt=json.dumps(grp, ensure_ascii=False),
-                                      system=_MG_SYS_CLUSTER, max_tokens=3000, temperature=0.0)
+                raw = client.complete(
+                    prompt=json.dumps(grp, ensure_ascii=False), system=_MG_SYS_CLUSTER, max_tokens=3000, temperature=0.0
+                )
                 data = _parse_json_loose(raw)
             except Exception:
                 data = None
