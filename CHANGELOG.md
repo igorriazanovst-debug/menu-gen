@@ -15,6 +15,8 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 ### Fixed
 
+- **Fixed** 2026-06-11 `MG_SHOPADDEDIT` — Веб, редактирование списка покупок: добавление товара доступно в edit-mode; add-bar (поле + Каталог + «Готово») закреплён над списком, зоны списка скроллятся внутри (max-h, фикс сломанного sticky из-за layout overflow-auto/min-h-screen); из шапки убран дубль «Готово» (MG_SHOPADDEDIT/2/3) — files: `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`
+
 - **Fixed** 2026-06-11 `MG_B02CAT` — Веб: при добавлении в холодильник выбранная категория не применялась (товар уходил в «Прочее»). `fridgeApi.create` теперь шлёт `category_slug`; оба call-site (ручной submit + батч фото-распознавания) — files: `web/menugen-web/src/api/fridge.ts`, `web/menugen-web/src/components/fridge/AddFridgeItemModal.tsx`
 
 - **Fixed** 2026-06-11 `MG_ALIASDEDUP` — Алиасы продуктов: «Сыр Фета»→«Фета» (id 69, cheese), «Филе куриное»/«Куриное филе»→«Курица (филе)» (id 11, meat). Миграция fridge 0010 (seed, идемпотентно; FridgeItem-репойнт не требовался) — files: `backend/apps/fridge/migrations/0010_seed_aliases_feta_chicken.py`
