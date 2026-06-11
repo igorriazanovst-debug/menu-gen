@@ -19,6 +19,7 @@ export const fridgeApi = {
     unit: string;
     expiry_date: string;
     product?: number | null;
+    category_slug?: string; // MG_B02CAT
   }) => client.post<FridgeItem>('/fridge/', data),
 
   delete: (id: number) => client.delete(`/fridge/${id}/`),

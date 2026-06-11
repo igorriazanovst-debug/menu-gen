@@ -638,8 +638,7 @@ const CreateModal: React.FC<{
           <option value="empty">Пустой</option>
           <option value="menu">Из меню</option>
           <option value="fridge">Из меню (минус холодильник)</option>
-          <option value="ai_text">Импорт из текста (ИИ)</option>
-          <option value="csv">Импорт CSV</option>
+          {/* MG_NOIMPORT: ai_text & csv removed from create UI */}
         </select>
 
         {(source === 'menu' || source === 'fridge') && (

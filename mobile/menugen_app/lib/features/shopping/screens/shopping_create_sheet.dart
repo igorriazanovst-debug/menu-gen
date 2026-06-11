@@ -97,6 +97,9 @@ class _ShoppingCreateSheetState extends State<ShoppingCreateSheet> {
               value: _source,
               decoration: const InputDecoration(labelText: 'Источник'),
               items: ShoppingSource.values
+                  // MG_NOIMPORT: hide ai_text & csv in create UI
+                  .where((s) =>
+                      s != ShoppingSource.aiText && s != ShoppingSource.csv)
                   .map((s) =>
                       DropdownMenuItem(value: s, child: Text(s.label)))
                   .toList(),

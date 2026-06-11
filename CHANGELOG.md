@@ -13,6 +13,12 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 ### Fixed
 
+- **Fixed** 2026-06-11 `MG_B02CAT` — Веб: при добавлении в холодильник выбранная категория не применялась (товар уходил в «Прочее»). `fridgeApi.create` теперь шлёт `category_slug`; оба call-site (ручной submit + батч фото-распознавания) — files: `web/menugen-web/src/api/fridge.ts`, `web/menugen-web/src/components/fridge/AddFridgeItemModal.tsx`
+
+- **Fixed** 2026-06-11 `MG_ALIASDEDUP` — Алиасы продуктов: «Сыр Фета»→«Фета» (id 69, cheese), «Филе куриное»/«Куриное филе»→«Курица (филе)» (id 11, meat). Миграция fridge 0010 (seed, идемпотентно; FridgeItem-репойнт не требовался) — files: `backend/apps/fridge/migrations/0010_seed_aliases_feta_chicken.py`
+
+- **Removed** 2026-06-11 `MG_NOIMPORT` — Создание списка покупок: убраны источники «Импорт из текста (ИИ)» и «Импорт CSV» (web `<select>` + mobile dropdown). Backend choices/enum сохранены для отображения старых списков — files: `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`, `mobile/menugen_app/lib/features/shopping/screens/shopping_create_sheet.dart`
+
 - **Added** 2026-06-03 `MG_CHANGELOG001` — Introduce CHANGELOG.md + add_changelog.py helper — files: `CHANGELOG.md`, `scripts/add_changelog.py`
 
 - **Added** 2026-06-03 `MG_SHOP001_shopping_app` — Shopping lists domain: multiple lists, edit, access levels, history, AI/CSV/menu import, export data — files: `backend/apps/shopping/models.py`, `backend/apps/shopping/views.py`, `backend/apps/shopping/serializers.py`, `backend/apps/shopping/services.py`, `backend/apps/shopping/permissions.py`, `backend/apps/shopping/urls.py`, `backend/apps/shopping/admin.py`, `config/settings.py`, `config/urls.py`

@@ -115,6 +115,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
           unit: UNITS[0],
           expiry_date: exp,
           product: null,
+          category_slug: prod.category_slug ?? selectedCat?.slug ?? undefined, // MG_B02CAT
         });
         onAdded(data);
       }
@@ -265,6 +266,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
         unit,
         expiry_date: expiry,
         product: productId,
+        category_slug: selectedCat?.slug, // MG_B02CAT
       });
       onAdded(data);
       onClose();
