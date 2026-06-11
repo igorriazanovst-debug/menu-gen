@@ -83,4 +83,6 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-11 `MG_PRODALIAS` — Синонимы продуктов сводятся к одному товару: новая таблица ProductAlias + normalize_alias (ё/е, латиница→кириллица, сорт С1, число-префикс); резолв в холодильнике, канонизации рецептов, агрегации списка и поиске. Слит дубль «Яйца куриные C1»→«Яйца куриные». — files: `backend/apps/fridge/aliases.py`, `backend/apps/fridge/models.py`, `backend/apps/fridge/serializers.py`, `backend/apps/fridge/migrations/0008_productalias.py`, `backend/apps/fridge/migrations/0009_merge_eggs_seed_aliases.py`, `backend/apps/recipes/recipe_products.py`, `backend/apps/shopping/services.py`
 
+- **Fixed** 2026-06-11 `MG_T06RELINK` — T-06: one-time no-AI relink of 86 stale unlinked egg RecipeProduct rows to canonical Product 41 (set product_id + name_canonical + category).
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
