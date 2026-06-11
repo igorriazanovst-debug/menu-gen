@@ -326,6 +326,12 @@ const ListDetail: React.FC<{
         </div>
       </div>
 
+      {/* MG_SHOPADDEDIT: add-item in edit-mode, pinned (sticky) for long lists */}
+      {caps?.manage && editMode && (
+        <div className="sticky top-0 z-30 bg-white -mx-4 px-4 pt-1 pb-3 mb-2 border-b border-gray-100">
+          <ItemAutocomplete onAdd={handleAdd} currency={currency} />
+        </div>
+      )}
       {/* MG_RUBRIC009_zones: grouped colored category zones */}
       <div className="space-y-3">
         {grouped.map((g) => (
@@ -429,11 +435,6 @@ const ListDetail: React.FC<{
         </div>
       )}
 
-      {caps?.manage && !editMode && (
-        <div className="mt-3">
-          <ItemAutocomplete onAdd={handleAdd} currency={currency} /> {/* MG_RUBRIC009_currency_prop */}
-        </div>
-      )}
     </Card>
   );
 };
@@ -648,16 +649,11 @@ const CreateModal: React.FC<{
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
           >
             <option value="">— выберите меню —</option>
-            {/* MG_MENULABEL: creator + date range (DD.MM–DD.MM) */}
-            {menus.map((m: any) => {
-              const dm = (s: string) => (s && s.length >= 10 ? `${s.slice(8, 10)}.${s.slice(5, 7)}` : '');
-              const label = `${m.creator_name || ''} ${dm(m.start_date)}–${dm(m.end_date)}`.trim();
-              return (
-                <option key={m.id} value={m.id}>
-                  {label || `#${m.id}`}
-                </option>
-              );
-            })}
+            {menus.map((m: any) => (
+              <option key={m.id} value={m.id}>
+                {m.title || `Меню #${m.id}`}
+              </option>
+            ))}
           </select>
         )}
 

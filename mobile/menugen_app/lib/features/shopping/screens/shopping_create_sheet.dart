@@ -115,14 +115,7 @@ class _ShoppingCreateSheetState extends State<ShoppingCreateSheet> {
                     .map((m) => DropdownMenuItem(
                           value: m['id'] as int,
                           child: Text(
-                              (() {
-                                String dm(String? s) => (s == null || s.length < 10)
-                                    ? ''
-                                    : '${s.substring(8, 10)}.${s.substring(5, 7)}';
-                                final nm = (m['creator_name'] as String?) ?? '';
-                                final lbl = '$nm ${dm(m['start_date'] as String?)}–${dm(m['end_date'] as String?)}'.trim();
-                                return lbl.isEmpty ? '#${m['id']}' : lbl; // MG_MENULABEL
-                              })()),
+                              (m['title'] as String?) ?? 'Меню #${m['id']}'),
                         ))
                     .toList(),
                 onChanged: (v) => setState(() => _menuId = v),

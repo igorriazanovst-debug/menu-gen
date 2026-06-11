@@ -101,7 +101,6 @@ export interface Menu {
   id: number; start_date: string; end_date: string; period_days: number;
   status: string; filters_used: Record<string, unknown>;
   generated_at: string; updated_at: string; items: MenuItem[];
-  creator_name?: string; // MG_MENULABEL
 }
 export interface ShoppingItem {
   id: number; name: string; quantity?: number; unit?: string;
