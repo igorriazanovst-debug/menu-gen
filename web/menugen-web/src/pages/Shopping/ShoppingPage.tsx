@@ -648,11 +648,16 @@ const CreateModal: React.FC<{
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
           >
             <option value="">— выберите меню —</option>
-            {menus.map((m: any) => (
-              <option key={m.id} value={m.id}>
-                {m.title || `Меню #${m.id}`}
-              </option>
-            ))}
+            {/* MG_MENULABEL: creator + date range (DD.MM–DD.MM) */}
+            {menus.map((m: any) => {
+              const dm = (s: string) => (s && s.length >= 10 ? `${s.slice(8, 10)}.${s.slice(5, 7)}` : '');
+              const label = `${m.creator_name || ''} ${dm(m.start_date)}–${dm(m.end_date)}`.trim();
+              return (
+                <option key={m.id} value={m.id}>
+                  {label || `#${m.id}`}
+                </option>
+              );
+            })}
           </select>
         )}
 

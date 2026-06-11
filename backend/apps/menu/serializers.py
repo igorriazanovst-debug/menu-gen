@@ -62,9 +62,16 @@ class MenuItemSwapSerializer(serializers.Serializer):
 
 
 class MenuListSerializer(serializers.ModelSerializer):
+    # MG_MENULABEL: creator display name for shopping/menu pickers
+    creator_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Menu
-        fields = ("id", "start_date", "end_date", "period_days", "status", "generated_at")
+        fields = ("id", "start_date", "end_date", "period_days", "status", "generated_at", "creator_name")
+
+    def get_creator_name(self, obj):  # MG_MENULABEL
+        from apps.users.models import User
+        return User.objects.filter(id=obj.creator_id).values_list("name", flat=True).first() or ""
 
 
 class MenuDetailSerializer(serializers.ModelSerializer):

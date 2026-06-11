@@ -11,6 +11,8 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 ### Changed
 
+- **Changed** 2026-06-11 `MG_MENULABEL` — Пикер меню в создании списка покупок (из меню / меню-холодильник): лейбл «{имя создателя} DD.MM–DD.MM» вместо #id; MenuListSerializer отдаёт creator_name — files: `backend/apps/menu/serializers.py`, `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`, `web/menugen-web/src/types/index.ts`, `mobile/menugen_app/lib/features/shopping/screens/shopping_create_sheet.dart`
+
 ### Fixed
 
 - **Fixed** 2026-06-11 `MG_B02CAT` — Веб: при добавлении в холодильник выбранная категория не применялась (товар уходил в «Прочее»). `fridgeApi.create` теперь шлёт `category_slug`; оба call-site (ручной submit + батч фото-распознавания) — files: `web/menugen-web/src/api/fridge.ts`, `web/menugen-web/src/components/fridge/AddFridgeItemModal.tsx`
