@@ -62,9 +62,21 @@ class MenuItemSwapSerializer(serializers.Serializer):
 
 
 class MenuListSerializer(serializers.ModelSerializer):
+
+    # MG_B09: expose creator display name (creator_id -> User.name)
+    creator_name = serializers.SerializerMethodField()
+
+    def get_creator_name(self, obj):
+        from django.contrib.auth import get_user_model
+        U = get_user_model()
+        cid = getattr(obj, 'creator_id', None)
+        if not cid:
+            return ''
+        u = U.objects.filter(pk=cid).only('name').first()
+        return (getattr(u, 'name', '') or '') if u else ''
     class Meta:
         model = Menu
-        fields = ("id", "start_date", "end_date", "period_days", "status", "generated_at")
+        fields = ("id", "start_date", "end_date", "period_days", "status", "generated_at", "creator_name")  # MG_B09
 
 
 class MenuDetailSerializer(serializers.ModelSerializer):

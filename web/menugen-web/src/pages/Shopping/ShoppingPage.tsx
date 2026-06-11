@@ -651,7 +651,13 @@ const CreateModal: React.FC<{
             <option value="">— выберите меню —</option>
             {menus.map((m: any) => (
               <option key={m.id} value={m.id}>
-                {m.title || `Меню #${m.id}`}
+                {/* MG_B09 */(() => {
+                  const dm = (iso?: string) => (iso && iso.length >= 10) ? `${iso.slice(8,10)}.${iso.slice(5,7)}` : '';
+                  const name = (m.creator_name || '').trim();
+                  const a = dm(m.start_date), b = dm(m.end_date);
+                  const dates = a && b ? `${a}–${b}` : '';
+                  return [name, dates].filter(Boolean).join(' ') || `Меню #${m.id}`;
+                })()}
               </option>
             ))}
           </select>

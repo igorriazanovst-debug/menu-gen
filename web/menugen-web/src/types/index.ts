@@ -98,6 +98,7 @@ export interface MenuItem {
   is_cheat_meal?: boolean; // MG_505_V_types
 }
 export interface Menu {
+  creator_name?: string; // MG_B09
   id: number; start_date: string; end_date: string; period_days: number;
   status: string; filters_used: Record<string, unknown>;
   generated_at: string; updated_at: string; items: MenuItem[];

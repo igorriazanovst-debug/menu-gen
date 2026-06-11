@@ -20,6 +20,21 @@ class _ShoppingCreateSheetState extends State<ShoppingCreateSheet> {
   bool _busy = false;
   String? _err;
 
+  // MG_B09
+  String _menuLabel(Map<String, dynamic> m) {
+    String dm(Object? iso) {
+      final s = iso?.toString() ?? '';
+      if (s.length < 10) return '';
+      return '${s.substring(8, 10)}.${s.substring(5, 7)}';
+    }
+    final name = (m['creator_name'] as String?)?.trim() ?? '';
+    final a = dm(m['start_date']);
+    final b = dm(m['end_date']);
+    final dates = (a.isNotEmpty && b.isNotEmpty) ? '$a\u2013$b' : '';
+    final parts = [name, dates].where((e) => e.isNotEmpty).toList();
+    return parts.isEmpty ? 'Меню #${m['id']}' : parts.join(' ');
+  }
+
   @override
   void dispose() {
     _name.dispose();
@@ -111,11 +126,11 @@ class _ShoppingCreateSheetState extends State<ShoppingCreateSheet> {
               DropdownButtonFormField<int>(
                 value: _menuId,
                 decoration: const InputDecoration(labelText: 'Меню'),
+                // MG_B09: label = {creator_name} DD.MM–DD.MM (parse ISO via substring, TZ-safe)
                 items: _menus
                     .map((m) => DropdownMenuItem(
                           value: m['id'] as int,
-                          child: Text(
-                              (m['title'] as String?) ?? 'Меню #${m['id']}'),
+                          child: Text(_menuLabel(m)),
                         ))
                     .toList(),
                 onChanged: (v) => setState(() => _menuId = v),
