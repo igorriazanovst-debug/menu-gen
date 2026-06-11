@@ -326,14 +326,17 @@ const ListDetail: React.FC<{
         </div>
       </div>
 
-      {/* MG_SHOPADDEDIT: add-item in edit-mode, pinned (sticky) for long lists */}
+      {/* MG_SHOPADDEDIT2: add-item bar pinned above an internally-scrolling list */}
       {caps?.manage && editMode && (
-        <div className="sticky top-0 z-30 bg-white -mx-4 px-4 pt-1 pb-3 mb-2 border-b border-gray-100">
-          <ItemAutocomplete onAdd={handleAdd} currency={currency} />
+        <div className="mb-2 pb-3 border-b border-gray-100 flex gap-2 items-start">
+          <div className="flex-1 min-w-0">
+            <ItemAutocomplete onAdd={handleAdd} currency={currency} />
+          </div>
+          <Button onClick={() => { setEditMode(false); onReload(); }}>✓ Готово</Button>
         </div>
       )}
       {/* MG_RUBRIC009_zones: grouped colored category zones */}
-      <div className="space-y-3">
+      <div className={editMode ? 'space-y-3 max-h-[60vh] overflow-y-auto pr-1' : 'space-y-3'}>
         {grouped.map((g) => (
           <div
             key={g.slug}
