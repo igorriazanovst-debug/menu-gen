@@ -38,6 +38,14 @@ class _FridgeItemDetailScreenState extends State<FridgeItemDetailScreen> {
     }
   }
 
+  // MG_B03: open the edit sheet, refresh this card on save.
+  Future<void> _openEdit() async {
+    final item = (_data?['item'] as Map?)?.cast<String, dynamic>();
+    if (item == null) return;
+    final ok = await EditFridgeItemSheet.show(context, widget.apiClient, item);
+    if (ok == true && mounted) _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
