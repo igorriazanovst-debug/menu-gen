@@ -24,6 +24,19 @@ export const fridgeApi = {
 
   delete: (id: number) => client.delete(`/fridge/${id}/`),
 
+  // MG_B03: edit an existing fridge item (PATCH).
+  update: (
+    id: number,
+    data: {
+      name?: string;
+      quantity?: number;
+      unit?: string;
+      expiry_date?: string;
+      category_slug?: string;
+      product?: number | null;
+    },
+  ) => client.patch<FridgeItem>(`/fridge/${id}/`, data),
+
   details: (id: number) =>
     client.get<FridgeItemDetailsResponse>(`/fridge/${id}/details/`),
 

@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { AddFridgeItemModal } from '../../components/fridge/AddFridgeItemModal';
 import { FridgeItemDetailModal } from '../../components/fridge/FridgeItemDetailModal';
 import { HistoryEditorModal } from '../../components/fridge/HistoryEditorModal';
+import { EditFridgeItemModal } from '../../components/fridge/EditFridgeItemModal'; // MG_B03
 import type { FridgeItem, ProductCategory } from '../../types';
 
 function daysUntil(d: string | null | undefined): number | null {
@@ -32,6 +33,7 @@ export const FridgePage: React.FC = () => {
   const [loading, setLoading]       = useState(false);
   const [showAdd, setShowAdd]       = useState(false);
   const [detailId, setDetailId]     = useState<number | null>(null);
+  const [editItem, setEditItem]     = useState<FridgeItem | null>(null); // MG_B03
   const [viewMode, setViewMode]     = useState<ViewMode>('groups');
   const [showHistory, setShowHistory] = useState(false);
 
@@ -191,11 +193,19 @@ export const FridgePage: React.FC = () => {
           )}
         </div>
         {!selecting && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(it.id); }}
-            className="text-gray-400 hover:text-red-600 text-sm"
-            title="Удалить"
-          >🗑</button>
+          <div className="flex flex-col gap-1">
+            {/* MG_B03: edit */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setEditItem(it); }}
+              className="text-gray-400 hover:text-tomato text-sm"
+              title="Редактировать"
+            >✎</button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(it.id); }}
+              className="text-gray-400 hover:text-red-600 text-sm"
+              title="Удалить"
+            >🗑</button>
+          </div>
         )}
       </Card>
     );
@@ -295,6 +305,15 @@ export const FridgePage: React.FC = () => {
 
       {detailId != null && (
         <FridgeItemDetailModal itemId={detailId} onClose={() => setDetailId(null)} />
+      )}
+
+      {editItem && (
+        <EditFridgeItemModal
+          item={editItem}
+          categories={categories}
+          onClose={() => setEditItem(null)}
+          onSaved={load}
+        />
       )}
 
       {showAdd && (

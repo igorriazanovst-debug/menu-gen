@@ -176,6 +176,27 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
             added_by_id=user.id,
         )
 
+    # MG_B03: edit an existing item. Mirrors create()'s product resolution so
+    # changing the category re-resolves/updates the Product (category_fk lives
+    # on Product, not FridgeItem) and keeps the grouped view correct.
+    def update(self, instance, validated_data):
+        category_slug = validated_data.pop("category_slug", None)
+        calories = validated_data.pop("calories_per_100g", None)
+        nutrition = validated_data.pop("nutrition", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if category_slug is not None and not validated_data.get("product"):
+            product = self._resolve_product(
+                instance.name, category_slug, calories, nutrition
+            )
+            if product is not None:
+                instance.product = product
+
+        instance.save()
+        return instance
+
 
 class BarcodeLookupSerializer(serializers.Serializer):
     barcode = serializers.CharField(max_length=64)
