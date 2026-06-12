@@ -105,4 +105,8 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-11 `MG_T06RELINK` — T-06: one-time no-AI relink of 86 stale unlinked egg RecipeProduct rows to canonical Product 41 (set product_id + name_canonical + category).
 
+- **Fixed** 2026-06-12 `MG_T01_MAYO` — Слияние дубля Product «Майонез» (id=44→122, sauces): репойнт FK (FridgeItem/ShoppingListItem/RecipeProduct/ProductAlias), удаление дубля, seed alias 'майонез'→122. Миграция fridge 0011 (идемпотентна). — files: `backend/apps/fridge/migrations/0011_merge_mayo_seed_alias.py`
+
+- **Fixed** 2026-06-12 `MG_T07` — Per-item категория холодильника без мутации общего Product (снимает caveat B-03): новое поле FridgeItem.category_fk + property effective_category; category_slug на записи кладётся на item; _resolve_product больше не перезаписывает категорию существующего общего Product (fill-only); read-сериализатор product_category_* читает effective_category (item-override → иначе product). Бэкенд-онли, клиенты без изменений. Миграция fridge 0012. — files: `backend/apps/fridge/models.py`, `backend/apps/fridge/serializers.py`, `backend/apps/fridge/views.py`, `backend/apps/fridge/migrations/0012_fridgeitem_category_fk.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
