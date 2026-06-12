@@ -401,8 +401,11 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                         fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ),
-              // MG_SHOPBUG_EDITMODE: hide add-row in edit mode.
-              if (caps.manage && !_editMode)
+              // MG_B08: show the add-bar in edit-mode too (replica of web
+              // B-07). The list scrolls independently (Expanded > ListView),
+              // «Готово» is the check action in the AppBar, and this bar
+              // stays pinned below the list in both modes.
+              if (caps.manage)
                 ShoppingAddItem(
                   apiClient: context.read<ShoppingBloc>().apiClient,
                   currency: d.currency,
