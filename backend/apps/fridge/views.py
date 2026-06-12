@@ -48,7 +48,7 @@ class FridgeListCreateView(generics.ListCreateAPIView):
             return FridgeItem.objects.none()
         qs = (
             FridgeItem.objects.filter(family=family, is_deleted=False)
-            .select_related("product")
+            .select_related("product", "product__category_fk", "category_fk")  # MG_T07
             .order_by("expiry_date", "name")
         )
         expiring = self.request.query_params.get("expiring_days")

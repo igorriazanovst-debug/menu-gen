@@ -70,6 +70,14 @@ class Product(models.Model):
 class FridgeItem(models.Model):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="fridge_items")
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True)
+    # MG_T07: per-item category override; does NOT mutate the shared Product.
+    category_fk = models.ForeignKey(
+        ProductCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fridge_items",
+    )
     name = models.CharField(max_length=255)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     unit = models.CharField(max_length=50, blank=True)
@@ -87,6 +95,14 @@ class FridgeItem(models.Model):
             models.Index(fields=["expiry_date"]),
             models.Index(fields=["is_deleted"]),
         ]
+
+    @property
+    def effective_category(self):  # MG_T07
+        if self.category_fk_id:
+            return self.category_fk
+        if self.product_id and self.product and self.product.category_fk_id:
+            return self.product.category_fk
+        return None
 
     def __str__(self):
         return f"{self.name} ({self.family})"

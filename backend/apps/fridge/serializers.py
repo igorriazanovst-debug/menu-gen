@@ -45,11 +45,11 @@ class ProductSerializer(serializers.ModelSerializer):
 class FridgeItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True, default=None)
     product_category = serializers.CharField(source="product.category", read_only=True, default=None)
-    product_category_id = serializers.IntegerField(source="product.category_fk_id", read_only=True, default=None)
-    product_category_slug = serializers.CharField(source="product.category_fk.slug", read_only=True, default=None)
-    product_category_name = serializers.CharField(source="product.category_fk.name_ru", read_only=True, default=None)
-    product_category_icon = serializers.CharField(source="product.category_fk.icon", read_only=True, default=None)
-    product_category_color = serializers.CharField(source="product.category_fk.color", read_only=True, default=None)
+    product_category_id = serializers.IntegerField(source="effective_category.id", read_only=True, default=None)
+    product_category_slug = serializers.CharField(source="effective_category.slug", read_only=True, default=None)
+    product_category_name = serializers.CharField(source="effective_category.name_ru", read_only=True, default=None)
+    product_category_icon = serializers.CharField(source="effective_category.icon", read_only=True, default=None)
+    product_category_color = serializers.CharField(source="effective_category.color", read_only=True, default=None)
     product_image_url = serializers.CharField(source="product.image_url", read_only=True, default=None)
 
     class Meta:
@@ -130,7 +130,8 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         existing = resolve_product(name) or Product.objects.filter(name__iexact=name).order_by("id").first()
         if existing is not None:
             updates = []
-            if cat is not None and existing.category_fk_id != cat.id:
+            # MG_T07: fill only; never override a shared Product category.
+            if cat is not None and existing.category_fk_id is None:
                 existing.category_fk = cat
                 updates.append("category_fk")
             # fill KBJU only if product lacks it and we have it from the label
@@ -155,12 +156,23 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
             nutrition=nutrition,
         )
 
+    @staticmethod
+    def _cat_from_slug(category_slug):  # MG_T07
+        from .models import ProductCategory
+
+        slug = (category_slug or "").strip()
+        if not slug:
+            return None
+        return ProductCategory.objects.filter(is_active=True, slug=slug).first()
+
     def create(self, validated_data):
         family = self.context["family"]
         user = self.context["request"].user
         category_slug = validated_data.pop("category_slug", "")
         calories = validated_data.pop("calories_per_100g", None)
         nutrition = validated_data.pop("nutrition", None)
+        # MG_T07: per-item category on the item (no shared Product mutation).
+        validated_data["category_fk"] = self._cat_from_slug(category_slug)
 
         # If the client did not pass an explicit product FK, try to build one
         # from the recognized category/KBJU so the item is categorized + has
@@ -187,12 +199,16 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
-        if category_slug is not None and not validated_data.get("product"):
-            product = self._resolve_product(
-                instance.name, category_slug, calories, nutrition
-            )
-            if product is not None:
-                instance.product = product
+        # MG_T07: per-item category override; never mutate the shared
+        # Product. Empty slug clears the override (fall back to product).
+        if category_slug is not None:
+            instance.category_fk = self._cat_from_slug(category_slug)
+            if not validated_data.get("product"):
+                product = self._resolve_product(
+                    instance.name, category_slug, calories, nutrition
+                )
+                if product is not None:
+                    instance.product = product
 
         instance.save()
         return instance
