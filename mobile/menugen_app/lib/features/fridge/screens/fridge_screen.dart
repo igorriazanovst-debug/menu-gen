@@ -525,7 +525,7 @@ class _FridgeScreenState extends State<FridgeScreen>
         '${item['quantity'] ?? ''} ${item['unit'] ?? ''}',
         style: const TextStyle(fontSize: 13),
       ),
-      onTap: () {
+      onTap: () async {
         if (selectable) {
           if (id == null) return;
           setState(() {
@@ -533,7 +533,13 @@ class _FridgeScreenState extends State<FridgeScreen>
           });
           return;
         }
-        if (id != null) context.push('/fridge/$id/details');
+        if (id != null) {
+          // MG_B03: reload list on return so edits reflect immediately.
+          await context.push('/fridge/$id/details');
+          if (mounted) {
+            context.read<FridgeBloc>().add(const FridgeLoadRequested());
+          }
+        }
       },
       onLongPress: _selecting
           ? null

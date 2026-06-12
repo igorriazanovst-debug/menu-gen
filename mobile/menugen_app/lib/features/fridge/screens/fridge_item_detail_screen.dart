@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
+import 'edit_fridge_item_sheet.dart'; // MG_B03
 
 class FridgeItemDetailScreen extends StatefulWidget {
   final ApiClient apiClient;
@@ -40,7 +41,18 @@ class _FridgeItemDetailScreenState extends State<FridgeItemDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Карточка продукта')),
+      appBar: AppBar(
+        title: const Text('Карточка продукта'),
+        actions: [
+          // MG_B03: edit this item.
+          if (!_loading && _error == null && _data != null)
+            IconButton(
+              tooltip: 'Редактировать',
+              icon: const Icon(Icons.edit),
+              onPressed: _openEdit,
+            ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
