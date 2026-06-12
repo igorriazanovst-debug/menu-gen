@@ -15,6 +15,8 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 ### Fixed
 
+- **Fixed** 2026-06-11 `MG_B09` — Пикер меню в создании списка покупок: лейбл «{creator_name} DD.MM–DD.MM» реально заработал (web и mobile читали несуществующий `m.title`/`m['title']`, а backend `MenuListSerializer` не отдавал `creator_name` — правка MG_MENULABEL по факту не была подключена). Добавлен `creator_name` в сериализатор (`creator_id`→`User.name`); web `<option>` и mobile `_menuLabel` строят имя+даты (ISO через slice/substring, TZ-safe, fallback «Меню #id»). Восстанавливает B-06. — files: `backend/apps/menu/serializers.py`, `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`, `web/menugen-web/src/types/index.ts`, `mobile/menugen_app/lib/features/shopping/screens/shopping_create_sheet.dart`
+
 - **Fixed** 2026-06-11 `MG_SHOPADDEDIT` — Веб, редактирование списка покупок: добавление товара доступно в edit-mode; add-bar (поле + Каталог + «Готово») закреплён над списком, зоны списка скроллятся внутри (max-h, фикс сломанного sticky из-за layout overflow-auto/min-h-screen); из шапки убран дубль «Готово» (MG_SHOPADDEDIT/2/3) — files: `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`
 
 - **Fixed** 2026-06-11 `MG_B02CAT` — Веб: при добавлении в холодильник выбранная категория не применялась (товар уходил в «Прочее»). `fridgeApi.create` теперь шлёт `category_slug`; оба call-site (ручной submit + батч фото-распознавания) — files: `web/menugen-web/src/api/fridge.ts`, `web/menugen-web/src/components/fridge/AddFridgeItemModal.tsx`
