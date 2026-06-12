@@ -74,10 +74,13 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
 
   Future<void> _onCreate(
       ShoppingCreateRequested e, Emitter<ShoppingState> emit) async {
+    // MG_B10: after create, reload the active lists so the new list appears
+    // immediately. Previously emitted ShoppingDetailLoaded, which left the
+    // list screen blank until the user switched tabs.
     try {
-      final raw = await apiClient.post('/shopping/lists/', data: e.payload);
-      final detail = ShoppingListDetail.fromJson(_asMap(raw));
-      emit(ShoppingDetailLoaded(detail));
+      await apiClient.post('/shopping/lists/', data: e.payload);
+      _archived = false;
+      await _reloadLists(emit);
     } catch (err) {
       emit(ShoppingError(_msg(err)));
     }
@@ -128,11 +131,24 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
 
   Future<void> _onToggle(
       ShoppingToggleItemRequested e, Emitter<ShoppingState> emit) async {
+    final cur = state; // MG_B11: capture current detail for in-place update.
     try {
       await apiClient.patch(
           '/shopping/lists/${e.listId}/items/${e.itemId}/toggle/',
           data: {'is_purchased': e.isPurchased});
-      add(ShoppingDetailRequested(e.listId));
+      // MG_B11: flip the toggled item in place instead of re-fetching the
+      // whole detail. The full reload emitted ShoppingLoading (full-screen
+      // spinner) and rebuilt the ListView from scratch, resetting the scroll.
+      if (cur is ShoppingDetailLoaded && cur.detail.id == e.listId) {
+        final items = cur.detail.items
+            .map((it) => it.id == e.itemId
+                ? it.copyWith(isPurchased: e.isPurchased)
+                : it)
+            .toList();
+        emit(ShoppingDetailLoaded(cur.detail.copyWith(items: items)));
+      } else {
+        add(ShoppingDetailRequested(e.listId));
+      }
     } catch (err) {
       emit(ShoppingError(_msg(err)));
     }

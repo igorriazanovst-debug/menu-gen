@@ -65,6 +65,21 @@ class ShoppingItem extends Equatable {
     );
   }
 
+  // MG_B11: copyWith for optimistic in-place toggle updates.
+  ShoppingItem copyWith({bool? isPurchased}) => ShoppingItem(
+        id: id,
+        name: name,
+        quantity: quantity,
+        unit: unit,
+        category: category,
+        categorySlug: categorySlug,
+        categoryName: categoryName,
+        pricePerUnit: pricePerUnit,
+        lineTotal: lineTotal,
+        isPurchased: isPurchased ?? this.isPurchased,
+        purchasedByName: purchasedByName,
+      );
+
   @override
   List<Object?> get props =>
       [id, name, quantity, unit, category, categorySlug, pricePerUnit, isPurchased];
@@ -173,6 +188,20 @@ class ShoppingListDetail extends Equatable {
       createdAt: DateTime.tryParse(j['created_at']?.toString() ?? ''),
     );
   }
+
+  // MG_B11: copyWith for in-place item-list updates.
+  ShoppingListDetail copyWith({List<ShoppingItem>? items}) =>
+      ShoppingListDetail(
+        id: id,
+        name: name,
+        source: source,
+        isArchived: isArchived,
+        items: items ?? this.items,
+        capabilities: capabilities,
+        currency: currency,
+        totalPrice: totalPrice,
+        createdAt: createdAt,
+      );
 
   @override
   List<Object?> get props => [

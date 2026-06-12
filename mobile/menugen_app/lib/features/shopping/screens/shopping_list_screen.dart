@@ -56,7 +56,10 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
       ),
     );
     if (created == true) {
-      _selectTab(0);
+      // MG_B10: switch to the active tab WITHOUT a second list reload — the
+      // bloc's _onCreate already reloads, avoiding the race that blanked the
+      // screen (a stale GET overwriting/clashing with the create result).
+      setState(() => _tab = 0);
     }
   }
 
