@@ -47,6 +47,8 @@ class Product(models.Model):
     barcode = models.CharField(max_length=64, null=True, blank=True, unique=True)
     image_url = models.URLField(max_length=1024, null=True, blank=True)
     is_seed = models.BooleanField(default=False, help_text="True for built-in basic products")
+    # MG_T04C: provenance — manual catalog vs auto-created from recipe ingredients.
+    source = models.CharField(max_length=16, default="manual", help_text="manual|auto|import")
     # MG_RUBRIC001: rubricator metadata.
     subcategory = models.CharField(max_length=128, blank=True)
     popularity = models.CharField(max_length=16, blank=True, help_text="часто|средне|редко")

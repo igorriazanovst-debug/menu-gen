@@ -241,8 +241,19 @@ def _resolve_segment(canon, ai_slug, prod_name, prod_index, cat_id_by_slug, ref_
     return None, _cap(canon), slug, cid
 
 
+# MG_T04C: guard for inline auto-creation of missing products from recipes.
+def _is_seedable(canon_disp, cat_id):
+    s = (canon_disp or "").strip()
+    if len(s) < 2 or _norm(s) in _NULLISH:
+        return False
+    if re.match(r"^\d+([.,]\d+)?$", _norm(s)):
+        return False
+    return cat_id is not None
+
+
 def rebuild_recipe_links(
-    recipe, canon_map=None, prod_index=None, cat_id_by_slug=None, force=False, ref_index=None
+    recipe, canon_map=None, prod_index=None, cat_id_by_slug=None, force=False, ref_index=None,
+    create_missing=False,  # MG_T04C
 ):  # MG_PRODALIAS
     """(Re)build RecipeProduct rows for one recipe. Idempotent (replace).
     MG_RECIPELINK2: each ingredient name is split into segments -> N links.
@@ -297,6 +308,13 @@ def rebuild_recipe_links(
             product_id, canon_disp, slug, cat_id = _resolve_segment(
                 canon, ai_slug, prod_name, prod_index, cat_id_by_slug, ref_index=ref_index
             )
+            if product_id is None and create_missing and _is_seedable(canon_disp, cat_id):  # MG_T04C
+                from apps.fridge.models import Product
+
+                obj, _created = Product.objects.get_or_create(
+                    name=canon_disp, defaults={"category_fk_id": cat_id, "source": "auto"}
+                )
+                product_id = obj.id
             key = _norm(canon_disp)
             if not key or key in seen:
                 continue
@@ -370,6 +388,7 @@ def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print):
             cat_id_by_slug=cat_id_by_slug,
             force=True,
             ref_index=ref_index,
+            create_missing=True,  # MG_T04C
         )
         if n % 25 == 0 or n == len(todo):
             log("  rebuilt %d/%d recipes (links=%d)" % (n, len(todo), links))

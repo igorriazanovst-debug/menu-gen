@@ -36,9 +36,9 @@ def _fr_base(qty, unit):
         q = qty if isinstance(qty, Decimal) else Decimal(str(qty))
     except Exception:
         return (None, None)
-    mass, vol, clove = _mg_unit_tables()
-    u = (unit or "").strip().lower()
-    if u in clove:
+    mass, vol, _clove = _mg_unit_tables()
+    u = _mg_norm_unit(unit)  # MG_T05: синонимы/ё/пробелы/мусор + clove->шт
+    if u == "шт":
         return ("шт", q)
     if u in mass:
         return ("mass", q * mass[u])
@@ -51,13 +51,13 @@ def _fr_base(qty, unit):
 
 def _fr_unit_factor(unit):
     """-> (dim, factor) for converting a base back into `unit`."""
-    mass, vol, clove = _mg_unit_tables()
-    u = (unit or "").strip().lower()
+    mass, vol, _clove = _mg_unit_tables()
+    u = _mg_norm_unit(unit)  # MG_T05
     if u in mass:
         return ("mass", mass[u])
     if u in vol:
         return ("vol", vol[u])
-    if u in clove:
+    if u == "шт":
         return ("шт", Decimal(1))
     if u == "":
         return ("", Decimal(1))
@@ -460,8 +460,33 @@ def _mg_unit_tables():
     return _MG_MASS, _MG_VOL, _MG_CLOVE
 
 
-def _mg_norm_unit(u):
-    u = (u or "").strip().lower()
+# MG_T05: spelling synonyms for units (one physical unit -> one canonical token).
+# Spelling only — never merge DIFFERENT units (упаковка != шт).
+_MG_UNIT_SYN = {
+    "г.": "г", "гр": "г", "гр.": "г", "грамм": "г", "грамма": "г", "граммов": "г",
+    "килограмм": "кг", "кг.": "кг",
+    "л.": "л", "литр": "л", "литра": "л", "литров": "л",
+    "мл.": "мл", "миллилитр": "мл",
+    "ст. л.": "ст.л.", "ст л": "ст.л.", "ст.ложка": "ст.л.",
+    "столовая ложка": "ст.л.", "столовые ложки": "ст.л.", "столовых ложек": "ст.л.",
+    "ч. л.": "ч.л.", "ч л": "ч.л.", "ч.ложка": "ч.л.",
+    "чайная ложка": "ч.л.", "чайные ложки": "ч.л.", "чайных ложек": "ч.л.",
+    "стакана": "стакан", "стаканов": "стакан",
+    "штука": "шт", "штуки": "шт", "штук": "шт", "шт.": "шт",
+    "упак": "упаковка", "упак.": "упаковка", "уп": "упаковка", "уп.": "упаковка",
+    "ломтика": "ломтик", "ломтики": "ломтик", "ломтиков": "ломтик",
+    "дольки": "долька", "дольку": "долька", "долек": "долька", "дольках": "долька",
+    "пучка": "пучок", "пучки": "пучок", "пучков": "пучок",
+}
+
+
+def _mg_norm_unit(u):  # MG_T05
+    import re as _re
+    u = (u or "").strip().lower().replace("\u0451", "\u0435")  # ё->е
+    u = _re.sub(r"\s+", " ", u)
+    if _re.match(r"^\d+([.,]\d+)?$", u):  # MG_T05: числовой мусор -> без единицы
+        return ""
+    u = _MG_UNIT_SYN.get(u, u)
     _, _, clove = _mg_unit_tables()
     return "шт" if u in clove else u
 

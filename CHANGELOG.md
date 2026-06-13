@@ -109,4 +109,14 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-12 `MG_T07` — Per-item категория холодильника без мутации общего Product (снимает caveat B-03): новое поле FridgeItem.category_fk + property effective_category; category_slug на записи кладётся на item; _resolve_product больше не перезаписывает категорию существующего общего Product (fill-only); read-сериализатор product_category_* читает effective_category (item-override → иначе product). Бэкенд-онли, клиенты без изменений. Миграция fridge 0012. — files: `backend/apps/fridge/models.py`, `backend/apps/fridge/serializers.py`, `backend/apps/fridge/views.py`, `backend/apps/fridge/migrations/0012_fridgeitem_category_fk.py`
 
+- **Fixed** 2026-06-13 `MG_T04RELINK` — T-04: no-AI релинк 57 NULL RecipeProduct -> Product через product_ref_index (только product_id; name_canonical не трогаем). 51.9%->54.1%.
+
+- **Fixed** 2026-06-13 `MG_T04SEED` — T-04: наполнение рубрикатора по выверенному воркшиту (freq>=3): +83 Product (с категориями), +11 ProductAlias (порядок слов), +9 FOLD (внутр. дубли: Яичные белки->Яичный белок, Маслины->Оливки, Замороженный шпинат->Шпинат, Тыква запечённая->Тыква, Казеин/Протеин->Протеин сывороточный), релинк 732. 54.1%->82.9%.
+
+- **Fixed** 2026-06-13 `MG_T04C` — T-04 вариант C (новые рецепты): поле Product.source (manual|auto|import); rebuild_recipe_links(create_missing) + guard _is_seedable + инлайн get_or_create(Product, source=auto); backfill create_missing=True (покрывает bulk-импорт, минующий post_save); signals.post_save create_missing=True. Миграция fridge 0013. — files: `backend/apps/fridge/models.py`, `backend/apps/recipes/recipe_products.py`, `backend/apps/recipes/signals.py`, `backend/apps/fridge/migrations/0013_product_source.py`
+
+- **Fixed** 2026-06-13 `MG_T05` — T-05: единый рантайм-нормализатор единиц _mg_norm_unit + _MG_UNIT_SYN (упак->упаковка, мн.формы кусочков, ложки/стакан/штука/грамм, числовой мусор->'', зубчик->шт); _fr_base/_fr_unit_factor прогоняются через него. Разные счётные единицы не сводятся; приблизительные изолированы. synonyms.yaml рантайм не использует. — files: `backend/apps/shopping/services.py`
+
+- **Fixed** 2026-06-13 `MG_T05CLEAN` — T-05: чистка числового мусора в RecipeProduct.unit ('5'->'') — 2 строки.
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->

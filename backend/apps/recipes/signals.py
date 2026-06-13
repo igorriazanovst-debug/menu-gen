@@ -12,7 +12,7 @@ def _mg_recipelink_on_recipe_save(sender, instance, **kwargs):
     try:
         from .recipe_products import rebuild_recipe_links
 
-        rebuild_recipe_links(instance, force=True)
+        rebuild_recipe_links(instance, force=True, create_missing=True)  # MG_T04C
     except Exception:
         # Never block recipe save on link/AI failure.
         pass
