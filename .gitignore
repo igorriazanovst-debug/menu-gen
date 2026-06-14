@@ -144,3 +144,4 @@ patch_vision_*
 /backend/scripts/yc_ai_*.sh
 *.pre_rollback.*
 web-dist.bak.*
+*.bak.MG_T09.*
