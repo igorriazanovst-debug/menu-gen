@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../bloc/fridge_bloc.dart';
 import 'add_fridge_item_sheet.dart';
 import 'fridge_history_screen.dart';
@@ -212,6 +213,12 @@ class _FridgeScreenState extends State<FridgeScreen>
             return const Center(child: CircularProgressIndicator());
           }
           if (state is FridgeError) {
+            // MG_T10: offline -> only the global banner, no error body.
+            if (context.watch<ConnectivityCubit>().state ==
+                ConnectivityStatus.offline) {
+              return const Center(
+                  child: Icon(Icons.cloud_off, size: 48, color: Colors.black26));
+            }
             return ListView(children: [
               const SizedBox(height: 80),
               Center(child: Text(state.message)),

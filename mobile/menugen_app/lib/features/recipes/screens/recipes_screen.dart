@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../bloc/recipes_bloc.dart';
 import '../models/recipe_filters.dart';
 import '../widgets/filter_sheet.dart';
@@ -196,9 +197,13 @@ class _RecipesScreenState extends State<RecipesScreen> {
             });
           } else if (state is RecipesError) {
             setState(() => _loadingMore = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
+            // MG_T10: offline -> only the global banner, no error snackbar.
+            if (context.read<ConnectivityCubit>().state !=
+                ConnectivityStatus.offline) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.message)),
+              );
+            }
           }
         },
         child: Column(

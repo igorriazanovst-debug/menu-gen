@@ -151,7 +151,10 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
                   )
                 : BlocConsumer<ShoppingBloc, ShoppingState>(
                     listener: (context, state) {
-                      if (state is ShoppingError) {
+                      // MG_T10: offline -> only the global banner.
+                      if (state is ShoppingError &&
+                          context.read<ConnectivityCubit>().state !=
+                              ConnectivityStatus.offline) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text(state.message)),
                         );

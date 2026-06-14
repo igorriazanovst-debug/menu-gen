@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/theme/app_theme.dart';
 import '../bloc/menu_bloc.dart';
 import '../widgets/generate_menu_bottom_sheet.dart';
@@ -205,6 +206,12 @@ class _MenuScreenState extends State<MenuScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (state is MenuError) {
+            // MG_T10: offline -> only the global banner, no error view.
+            if (context.watch<ConnectivityCubit>().state ==
+                ConnectivityStatus.offline) {
+              return const Center(
+                  child: Icon(Icons.cloud_off, size: 48, color: Colors.black26));
+            }
             return _ErrorView(
               message: state.message,
               onRetry: () =>

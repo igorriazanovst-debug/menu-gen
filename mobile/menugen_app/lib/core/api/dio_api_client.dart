@@ -120,7 +120,9 @@ class DioApiClient implements ApiClient {
     } else if (body is String && body.isNotEmpty) {
       message = body;
     } else {
-      message = e.message ?? 'Сетевая ошибка';
+      // MG_T10: friendly text for network/timeout errors (no HTTP response)
+      // instead of Dio's raw English "The connection errored..." string.
+      message = 'Нет подключения к интернету';
     }
 
     final ex = ApiException(

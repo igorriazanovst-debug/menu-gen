@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
+import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/premium/premium_gate_cubit.dart';
 import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
@@ -138,6 +139,12 @@ class _DiaryScreenState extends State<DiaryScreen> {
           return _PremiumLockView(message: state.message, isWrite: state.isWrite);
         }
         if (state is DiaryError) {
+          // MG_T10: offline -> only the global banner, no error view.
+          if (context.watch<ConnectivityCubit>().state ==
+              ConnectivityStatus.offline) {
+            return const Center(
+                child: Icon(Icons.cloud_off, size: 48, color: Colors.black26));
+          }
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,

@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../bloc/shopping_bloc.dart';
+import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../models/shopping_models.dart';
 import 'shopping_access_sheet.dart';
 import 'shopping_add_item.dart';
@@ -219,9 +220,17 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
         }
         if (state is! ShoppingDetailLoaded) {
           if (state is ShoppingError) {
+            // MG_T10: offline -> quiet icon instead of the error text.
+            final offline = context.watch<ConnectivityCubit>().state ==
+                ConnectivityStatus.offline;
             return Scaffold(
               appBar: AppBar(),
-              body: Center(child: Text(state.message)),
+              body: Center(
+                child: offline
+                    ? const Icon(Icons.cloud_off,
+                        size: 48, color: Colors.black26)
+                    : Text(state.message),
+              ),
             );
           }
           return const Scaffold(body: SizedBox.shrink());
