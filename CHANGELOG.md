@@ -119,4 +119,10 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Fixed** 2026-06-13 `MG_T05CLEAN` — T-05: чистка числового мусора в RecipeProduct.unit ('5'->'') — 2 строки.
 
+- **Changed** 2026-06-14 `MG_T08_idempotent` — Shopping toggle endpoint made idempotent: same-value PATCH is a no-op (no duplicate PurchaseHistoryEntry / Product price update) so the offline queue can replay safely — files: `backend/apps/shopping/views.py`
+
+- **Added** 2026-06-14 `MG_T08_web` — Offline-first shopping toggle (web): optimistic update, localStorage LWW queue (last action wins), online/offline status indicator (green/amber/red) in header, flush on reconnect — files: `web/menugen-web/src/hooks/useOnlineStatus.ts`, `web/menugen-web/src/utils/syncQueue.ts`, `web/menugen-web/src/components/layout/SyncIndicator.tsx`, `web/menugen-web/src/components/layout/AppLayout.tsx`, `web/menugen-web/src/pages/Shopping/ShoppingPage.tsx`
+
+- **Added** 2026-06-14 `MG_T08_mobile` — Offline-first shopping toggle (mobile, NOT verified — needs rework): in-memory LWW queue in ShoppingBloc, global PendingSyncCubit, SyncIndicator strip, connectivity banner text -> 'Нет подключения', flush on reconnect — files: `mobile/menugen_app/lib/core/sync/pending_sync_cubit.dart`, `mobile/menugen_app/lib/core/widgets/sync_indicator.dart`, `mobile/menugen_app/lib/core/widgets/connectivity_banner.dart`, `mobile/menugen_app/lib/core/widgets/main_shell.dart`, `mobile/menugen_app/lib/main.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_list_screen.dart`, `mobile/menugen_app/lib/features/shopping/bloc/shopping_bloc.dart`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
