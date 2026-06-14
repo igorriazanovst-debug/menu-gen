@@ -69,6 +69,21 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
       (err is ApiException && err.isNetwork) ||
       connectivity?.state == ConnectivityStatus.offline;
 
+  // MG_CACHE2: overlay still-queued offline toggles onto a fresh server
+  // response so an un-synced toggle isn't reverted by the GET.
+  void _applyPending(int listId, Map<String, dynamic> m) {
+    final pending = offlineQueue?.pendingForList(listId);
+    if (pending == null || pending.isEmpty) return;
+    final items = m['items'];
+    if (items is List) {
+      for (final it in items) {
+        if (it is Map && pending.containsKey(it['id'])) {
+          it['is_purchased'] = pending[it['id']];
+        }
+      }
+    }
+  }
+
   bool _archived = false;
 
   Future<void> _reloadLists(Emitter<ShoppingState> emit) async {
@@ -109,6 +124,7 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
     try {
       final raw = await apiClient.get('/shopping/lists/${e.listId}/');
       final m = _asMap(raw);
+      _applyPending(e.listId, m); // MG_CACHE2: keep unsynced toggles
       await cache?.saveDetail(e.listId, m); // MG_CACHE write-through
       emit(ShoppingDetailLoaded(ShoppingListDetail.fromJson(m)));
     } catch (err) {

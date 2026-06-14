@@ -26,6 +26,7 @@ class OfflineToggleQueue {
   final Map<String, _PendingToggle> _queue = {}; // 'listId:itemId' -> latest
   final StreamController<int> _flushed = StreamController<int>.broadcast();
   StreamSubscription<ConnectivityStatus>? _sub;
+  Timer? _retry; // MG_CACHE2
   bool _flushing = false;
 
   /// Emits a listId whenever its queued toggles were just flushed to the server.
@@ -49,11 +50,24 @@ class OfflineToggleQueue {
     pendingSync.set(_queue.length);
   }
 
+  /// MG_CACHE2: pending desired states for a list, by itemId (for overlay on
+  /// a fresh server GET so an un-synced toggle isn't reverted).
+  Map<int, bool> pendingForList(int listId) {
+    final out = <int, bool>{};
+    for (final t in _queue.values) {
+      if (t.listId == listId) out[t.itemId] = t.isPurchased;
+    }
+    return out;
+  }
+
   /// Push queued toggles to the server; emit each touched listId on success.
   Future<void> flush() async {
     if (_flushing) return;
     if (connectivity.state == ConnectivityStatus.offline) return;
-    if (_queue.isEmpty) return;
+    if (_queue.isEmpty) {
+      _retry?.cancel(); // MG_CACHE2
+      return;
+    }
     _flushing = true;
     final touched = <int>{};
     try {
@@ -79,9 +93,17 @@ class OfflineToggleQueue {
         }
       }
     }
+    // MG_CACHE2: the connectivity 'online' edge can fire before the network is
+    // actually usable, so the first flush may fail; retry until drained.
+    _retry?.cancel();
+    if (_queue.isNotEmpty &&
+        connectivity.state != ConnectivityStatus.offline) {
+      _retry = Timer(const Duration(seconds: 3), flush);
+    }
   }
 
   Future<void> dispose() async {
+    _retry?.cancel(); // MG_CACHE2
     await _sub?.cancel();
     await _flushed.close();
   }
