@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // MG_CACHE
 
 import 'core/api/dio_api_client.dart';
 import 'core/api/token_storage.dart';
@@ -11,6 +12,7 @@ import 'core/premium/premium_gate_cubit.dart';
 import 'core/router/app_router.dart';
 import 'core/sync/pending_sync_cubit.dart'; // MG_T08
 import 'core/sync/offline_toggle_queue.dart'; // MG_T09
+import 'core/cache/shopping_cache.dart'; // MG_CACHE
 import 'core/sync/sync_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/bloc/auth_bloc.dart';
@@ -41,6 +43,9 @@ void main() async {
     pendingSync: pendingSync,
   );
 
+  // MG_CACHE: lightweight offline cache for shopping lists/details.
+  final shoppingCache = ShoppingCache(await SharedPreferences.getInstance());
+
   syncService.start();
   runApp(MenuGenApp(
     tokenStorage: tokenStorage,
@@ -51,6 +56,7 @@ void main() async {
     connectivity: connectivity, // MG_T09
     pendingSync: pendingSync, // MG_T09
     offlineToggleQueue: offlineToggleQueue, // MG_T09
+    shoppingCache: shoppingCache, // MG_CACHE
   ));
 }
 
@@ -63,6 +69,7 @@ class MenuGenApp extends StatelessWidget {
   final ConnectivityCubit connectivity; // MG_T09
   final PendingSyncCubit pendingSync; // MG_T09
   final OfflineToggleQueue offlineToggleQueue; // MG_T09
+  final ShoppingCache shoppingCache; // MG_CACHE
 
   const MenuGenApp({
     super.key,
@@ -74,11 +81,14 @@ class MenuGenApp extends StatelessWidget {
     required this.connectivity, // MG_T09
     required this.pendingSync, // MG_T09
     required this.offlineToggleQueue, // MG_T09
+    required this.shoppingCache, // MG_CACHE
   });
 
   @override
   Widget build(BuildContext context) {
-    return RepositoryProvider<OfflineToggleQueue>.value( // MG_T09
+    return RepositoryProvider<ShoppingCache>.value( // MG_CACHE
+      value: shoppingCache,
+      child: RepositoryProvider<OfflineToggleQueue>.value( // MG_T09
       value: offlineToggleQueue,
       child: MultiBlocProvider(
       providers: [
@@ -119,6 +129,7 @@ class MenuGenApp extends StatelessWidget {
         },
       ),
     ),
-    ); // MG_T09: close RepositoryProvider.value
+    ),
+    ); // MG_CACHE + MG_T09: close RepositoryProvider.value
   }
 }

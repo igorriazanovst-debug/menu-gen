@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T08
 import '../../../core/sync/offline_toggle_queue.dart'; // MG_T09
+import '../../../core/cache/shopping_cache.dart'; // MG_CACHE
 import '../bloc/shopping_bloc.dart';
 import '../models/shopping_models.dart';
 import 'shopping_detail_screen.dart';
@@ -22,6 +23,7 @@ class ShoppingListScreen extends StatelessWidget {
         apiClient: apiClient,
         connectivity: ctx.read<ConnectivityCubit>(), // MG_T08
         offlineQueue: ctx.read<OfflineToggleQueue>(), // MG_T09
+        cache: ctx.read<ShoppingCache>(), // MG_CACHE
       )..add(const ShoppingListsRequested()),
       child: const _ShoppingListView(),
     );

@@ -7,6 +7,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T08
 import '../../../core/sync/offline_toggle_queue.dart'; // MG_T09
+import '../../../core/cache/shopping_cache.dart'; // MG_CACHE
 import '../models/shopping_models.dart';
 
 part 'shopping_event.dart';
@@ -29,12 +30,14 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
   // survive leaving the shopping tab; this bloc only enqueues + resyncs.
   final ConnectivityCubit? connectivity;
   final OfflineToggleQueue? offlineQueue; // MG_T09
+  final ShoppingCache? cache; // MG_CACHE
   StreamSubscription<int>? _flushedSub; // MG_T09
 
   ShoppingBloc({
     required this.apiClient,
     this.connectivity, // MG_T08
     this.offlineQueue, // MG_T09
+    this.cache, // MG_CACHE
   }) : super(const ShoppingInitial()) {
     on<ShoppingListsRequested>(_onLists);
     on<ShoppingDetailRequested>(_onDetail);
@@ -61,12 +64,19 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
   Map<String, dynamic> _asMap(dynamic d) =>
       d is Map ? Map<String, dynamic>.from(d) : <String, dynamic>{};
 
+  // MG_CACHE: offline = network ApiException or offline connectivity.
+  bool _isOffline(Object err) =>
+      (err is ApiException && err.isNetwork) ||
+      connectivity?.state == ConnectivityStatus.offline;
+
   bool _archived = false;
 
   Future<void> _reloadLists(Emitter<ShoppingState> emit) async {
     final raw = await apiClient.get('/shopping/lists/',
         params: _archived ? {'archived': 'true'} : null);
-    final list = (raw is List ? raw : const [])
+    final rawList = (raw is List ? raw : const []);
+    await cache?.saveLists(_archived, rawList); // MG_CACHE write-through
+    final list = rawList
         .whereType<Map>()
         .map((e) => ShoppingListBrief.fromJson(Map<String, dynamic>.from(e)))
         .toList();
@@ -80,7 +90,16 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
     try {
       await _reloadLists(emit);
     } catch (err) {
-      emit(ShoppingError(_msg(err)));
+      // MG_CACHE: offline -> serve cached lists if present.
+      final cached = cache?.readLists(_archived);
+      if (_isOffline(err) && cached != null) {
+        emit(ShoppingListsLoaded(
+          lists: cached.map(ShoppingListBrief.fromJson).toList(),
+          archived: _archived,
+        ));
+      } else {
+        emit(ShoppingError(_msg(err)));
+      }
     }
   }
 
@@ -89,9 +108,17 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
     emit(const ShoppingLoading());
     try {
       final raw = await apiClient.get('/shopping/lists/${e.listId}/');
-      emit(ShoppingDetailLoaded(ShoppingListDetail.fromJson(_asMap(raw))));
+      final m = _asMap(raw);
+      await cache?.saveDetail(e.listId, m); // MG_CACHE write-through
+      emit(ShoppingDetailLoaded(ShoppingListDetail.fromJson(m)));
     } catch (err) {
-      emit(ShoppingError(_msg(err)));
+      // MG_CACHE: offline -> serve cached detail if present.
+      final cached = cache?.readDetail(e.listId);
+      if (_isOffline(err) && cached != null) {
+        emit(ShoppingDetailLoaded(ShoppingListDetail.fromJson(cached)));
+      } else {
+        emit(ShoppingError(_msg(err)));
+      }
     }
   }
 
@@ -166,6 +193,8 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
       emit(ShoppingDetailLoaded(cur.detail.copyWith(items: items)));
     }
     if (connectivity?.state == ConnectivityStatus.offline) {
+      await cache?.patchDetailItemPurchased(
+          e.listId, e.itemId, e.isPurchased); // MG_CACHE
       offlineQueue?.enqueue(e.listId, e.itemId, e.isPurchased); // MG_T09
       return;
     }
@@ -175,6 +204,8 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
           data: {'is_purchased': e.isPurchased});
     } on ApiException catch (err) {
       if (err.isNetwork) {
+        await cache?.patchDetailItemPurchased(
+            e.listId, e.itemId, e.isPurchased); // MG_CACHE
         offlineQueue?.enqueue(e.listId, e.itemId, e.isPurchased); // MG_T09
       } else {
         emit(ShoppingError(err.message));
