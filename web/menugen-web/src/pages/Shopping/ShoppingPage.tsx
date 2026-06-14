@@ -10,6 +10,7 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { printShoppingList } from '../../utils/printShoppingList';
+import { enqueueToggle, flushQueue, SYNC_FLUSHED_EVENT } from '../../utils/syncQueue'; // MG_T08
 import { ItemAutocomplete } from './ItemAutocomplete';
 import type {
   ShoppingV2ListBrief,
@@ -71,12 +72,42 @@ export const ShoppingPage: React.FC = () => {
     setSelectedId(id);
   }, []);
 
+  // MG_T08: flush queued offline toggles on (re)connect and on mount; reload
+  // the open list after a successful flush so it reflects the server state.
+  useEffect(() => {
+    const onOnline = () => void flushQueue();
+    const onFlushed = () => {
+      if (selectedId != null) loadDetail(selectedId);
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener(SYNC_FLUSHED_EVENT, onFlushed);
+    void flushQueue();
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener(SYNC_FLUSHED_EVENT, onFlushed);
+    };
+  }, [selectedId, loadDetail]);
+
   const caps = detail?.capabilities;
 
   const onToggle = async (itemId: number, val: boolean) => {
     if (!detail) return;
-    await shoppingApi.toggleItem(detail.id, itemId, val);
-    await loadDetail(detail.id);
+    // MG_T08: optimistic local update first (instant UI, offline-first).
+    setDetail((d) =>
+      d
+        ? { ...d, items: d.items.map((it) => (it.id === itemId ? { ...it, is_purchased: val } : it)) }
+        : d,
+    );
+    if (navigator.onLine) {
+      try {
+        await shoppingApi.toggleItem(detail.id, itemId, val);
+        await loadDetail(detail.id);
+      } catch {
+        enqueueToggle(detail.id, itemId, val); // request failed mid-flight -> queue (LWW)
+      }
+    } else {
+      enqueueToggle(detail.id, itemId, val); // offline -> queue, sync on reconnect
+    }
   };
 
   const onDeleteList = async () => {

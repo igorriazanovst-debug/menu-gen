@@ -9,6 +9,7 @@ import 'core/connectivity/connectivity_cubit.dart';
 import 'core/db/app_database.dart';
 import 'core/premium/premium_gate_cubit.dart';
 import 'core/router/app_router.dart';
+import 'core/sync/pending_sync_cubit.dart'; // MG_T08
 import 'core/sync/sync_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/bloc/auth_bloc.dart';
@@ -61,6 +62,7 @@ class MenuGenApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider(create: (_) => ConnectivityCubit()),
+        BlocProvider(create: (_) => PendingSyncCubit()), // MG_T08
         BlocProvider.value(value: premiumGate),
         BlocProvider(
           create: (_) => AuthBloc(

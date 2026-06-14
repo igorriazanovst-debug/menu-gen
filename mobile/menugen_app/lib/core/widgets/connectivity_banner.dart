@@ -19,7 +19,7 @@ class ConnectivityBanner extends StatelessWidget {
             children: const [
               Icon(Icons.wifi_off, color: Colors.white, size: 16),
               SizedBox(width: 8),
-              Text('Офлайн-режим', style: TextStyle(color: Colors.white, fontSize: 13)),
+              Text('Нет подключения', style: TextStyle(color: Colors.white, fontSize: 13)),
             ],
           ),
         );

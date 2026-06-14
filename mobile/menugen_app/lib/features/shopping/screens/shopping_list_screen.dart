@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T08
+import '../../../core/sync/pending_sync_cubit.dart'; // MG_T08
 import '../bloc/shopping_bloc.dart';
 import '../models/shopping_models.dart';
 import 'shopping_detail_screen.dart';
@@ -16,8 +18,11 @@ class ShoppingListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => ShoppingBloc(apiClient: apiClient)
-        ..add(const ShoppingListsRequested()),
+      create: (ctx) => ShoppingBloc(
+        apiClient: apiClient,
+        connectivity: ctx.read<ConnectivityCubit>(), // MG_T08
+        pendingSync: ctx.read<PendingSyncCubit>(), // MG_T08
+      )..add(const ShoppingListsRequested()),
       child: const _ShoppingListView(),
     );
   }

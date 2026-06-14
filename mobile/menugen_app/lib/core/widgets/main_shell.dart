@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../connectivity/connectivity_cubit.dart';
 import '../premium/paywall_banner.dart';
 import 'connectivity_banner.dart';
+import 'sync_indicator.dart'; // MG_T08
 
 class MainShell extends StatelessWidget {
   final Widget child;
@@ -30,6 +31,7 @@ class MainShell extends StatelessWidget {
     return Scaffold(
       body: Column(
         children: [
+          const SyncIndicator(), // MG_T08
           const ConnectivityBanner(),
           const PaywallBanner(),
           Expanded(child: child),

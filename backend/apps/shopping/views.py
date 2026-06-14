@@ -283,9 +283,14 @@ class ShoppingItemToggleView(APIView):
         except ShoppingListItem.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
+        # MG_T08_idempotent: compute target; no-op (and no history dup) if unchanged.
         new_val = request.data.get("is_purchased")
-        item.is_purchased = (not item.is_purchased) if new_val is None else bool(new_val)
-        if item.is_purchased:
+        prev = item.is_purchased
+        target = (not prev) if new_val is None else bool(new_val)
+        if target == prev:
+            return Response(ShoppingListItemSerializer(item).data)
+        item.is_purchased = target
+        if target:
             item.purchased_by = request.user
             item.purchased_at = timezone.now()
             # MG_RUBRIC006_toggle_price
