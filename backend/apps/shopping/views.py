@@ -50,6 +50,44 @@ def _get_list_for_user(user, list_id):
     return (sl, caps) if caps and caps["read"] else (None, None)
 
 
+class ShoppingCountsView(APIView):
+    """MG_T09: list counts per tab (active/pending/archived/history)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        family = get_user_family(user)
+        own = Q(family=family) if family else Q(pk__in=[])
+        accepted = Q(
+            accesses__user=user,
+            accesses__status=ShoppingListAccess.Status.ACCEPTED,
+        )
+        base = ShoppingList.objects.filter(own | accepted).distinct()
+        active = base.filter(is_archived=False).count()
+        archived = base.filter(is_archived=True).count()
+        pending = (
+            ShoppingList.objects.filter(
+                accesses__user=user,
+                accesses__status=ShoppingListAccess.Status.PENDING,
+                is_archived=False,
+            )
+            .distinct()
+            .count()
+        )
+        history = (
+            PurchaseHistoryEntry.objects.filter(family=family).count() if family else 0
+        )
+        return Response(
+            {
+                "active": active,
+                "pending": pending,
+                "archived": archived,
+                "history": history,
+            }
+        )
+
+
 class ShoppingListsView(APIView):
     """GET list (own + shared), POST create (1.1/1.2/1.3)."""
 

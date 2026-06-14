@@ -13,9 +13,11 @@ from .views import (
     ShoppingListDetailView,
     ShoppingListExportView,
     ShoppingListsView,
+    ShoppingCountsView,  # MG_T09
 )
 
 urlpatterns = [
+    path("counts/", ShoppingCountsView.as_view(), name="shopping-counts"),  # MG_T09
     path("lists/", ShoppingListsView.as_view(), name="shopping-lists"),
     path("lists/<int:list_id>/", ShoppingListDetailView.as_view(), name="shopping-list-detail"),
     path("lists/<int:list_id>/items/", ShoppingItemsView.as_view(), name="shopping-items"),

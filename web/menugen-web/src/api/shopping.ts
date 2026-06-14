@@ -54,6 +54,12 @@ export const shoppingApi = {
       params: { archived: archived ? 'true' : undefined },
     }),
 
+  // MG_T09: per-tab list counts.
+  counts: () =>
+    client.get<{ active: number; pending: number; archived: number; history: number }>(
+      '/shopping/counts/',
+    ),
+
   get: (listId: number) =>
     client.get<ShoppingV2List & { capabilities: ShoppingV2List['capabilities'] }>(
       `/shopping/lists/${listId}/`,

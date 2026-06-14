@@ -29,14 +29,16 @@ class MainShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: SafeArea( // MG_T09: keep indicator/banners below the status bar
+        bottom: false,
+        child: Column(
         children: [
           const SyncIndicator(), // MG_T08
           const ConnectivityBanner(),
           const PaywallBanner(),
           Expanded(child: child),
         ],
-      ),
+      )), // MG_T09: close SafeArea
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex(context),
         onTap: (i) => context.go(_tabs[i].path),

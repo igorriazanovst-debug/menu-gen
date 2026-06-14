@@ -43,6 +43,18 @@ export const ShoppingPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showAccess, setShowAccess] = useState(false);
+  // MG_T09: per-tab list counts.
+  const [counts, setCounts] = useState<{ active: number; pending: number; archived: number; history: number }>(
+    { active: 0, pending: 0, archived: 0, history: 0 },
+  );
+  const loadCounts = useCallback(async () => {
+    try {
+      const { data } = await shoppingApi.counts();
+      setCounts(data);
+    } catch {
+      /* non-fatal */
+    }
+  }, []);
 
   const loadLists = useCallback(async (t: Tab) => {
     setLoading(true);
@@ -64,7 +76,8 @@ export const ShoppingPage: React.FC = () => {
 
   useEffect(() => {
     loadLists(tab);
-  }, [tab, loadLists]);
+    loadCounts(); // MG_T09
+  }, [tab, loadLists, loadCounts]);
 
   const loadDetail = useCallback(async (id: number) => {
     const { data } = await shoppingApi.get(id);
@@ -116,6 +129,7 @@ export const ShoppingPage: React.FC = () => {
     setDetail(null);
     setSelectedId(null);
     loadLists(tab);
+    loadCounts(); // MG_T09
   };
 
   const onArchive = async (archived: boolean) => {
@@ -124,6 +138,7 @@ export const ShoppingPage: React.FC = () => {
     setDetail(null);
     setSelectedId(null);
     loadLists(tab);
+    loadCounts(); // MG_T09
   };
 
   const onPrint = async () => {
@@ -154,6 +169,7 @@ export const ShoppingPage: React.FC = () => {
             ].join(' ')}
           >
             {t === 'active' ? 'Активные' : t === 'pending' ? 'Ожидают' : t === 'archived' ? 'Архив' : 'История'}
+            {counts[t] > 0 ? ` (${counts[t]})` : ''}
           </button>
         ))}
       </div>
@@ -211,6 +227,7 @@ export const ShoppingPage: React.FC = () => {
             setShowCreate(false);
             setTab('active');
             loadLists('active');
+            loadCounts(); // MG_T09
             loadDetail(id);
           }}
         />
@@ -237,6 +254,7 @@ const ListDetail: React.FC<{
   // MG_RUBRIC005_state_removed: add-item state moved into ItemAutocomplete.
   // MG_SHOPBUG_EDITMODE: global edit mode (delete + inline fields gated).
   const [editMode, setEditMode] = useState(false);
+  const [onlyUnpurchased, setOnlyUnpurchased] = useState(false); // MG_T09
   const UNITS = ['шт','г','кг','мл','л','упак','банка','пучок','головка','бутылка','тюбик'];
 
   // MG_RUBRIC011_fmt: money formatter (2 decimals).
@@ -307,7 +325,11 @@ const ListDetail: React.FC<{
       meta.set(c.slug, c);
     });
     const buckets = new Map<string, ShoppingV2List['items']>();
-    for (const it of detail.items) {
+    // MG_T09: in view-mode optionally show only unpurchased items.
+    const src = !editMode && onlyUnpurchased
+      ? detail.items.filter((it) => !it.is_purchased)
+      : detail.items;
+    for (const it of src) {
       const key = it.category_slug ?? '__none__';
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key)!.push(it);
@@ -321,7 +343,7 @@ const ListDetail: React.FC<{
         ord: order.get(slug) ?? 9999,
       }))
       .sort((a, b) => a.ord - b.ord);
-  }, [detail.items, cats]);
+  }, [detail.items, cats, editMode, onlyUnpurchased]);
 
   const delItem = async (itemId: number) => {
     await shoppingApi.removeItem(detail.id, itemId);
@@ -333,6 +355,12 @@ const ListDetail: React.FC<{
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-bold text-lg">{detail.name}</h2>
         <div className="flex gap-2 flex-wrap">
+          {/* MG_T09: filter to unpurchased items (view-mode) */}
+          {!editMode && detail.items.length > 0 && (
+            <Button variant="secondary" onClick={() => setOnlyUnpurchased((v) => !v)}>
+              {onlyUnpurchased ? '☑ Только некупленные' : '☐ Только некупленные'}
+            </Button>
+          )}
           {/* MG_SHOPADDEDIT3: enter-edit only; Готово lives in add-bar */}
           {caps?.manage && !editMode && (
             <Button variant="secondary" onClick={() => setEditMode(true)}>✎ Редактировать</Button>
@@ -456,6 +484,9 @@ const ListDetail: React.FC<{
           </div>
         ))}
         {detail.items.length === 0 && <p className="text-sm text-gray-400">Список пуст.</p>}
+        {detail.items.length > 0 && grouped.length === 0 && (
+          <p className="text-sm text-gray-400">Все товары куплены.</p>
+        )}
       </div>
 
       {/* MG_RUBRIC009: grand total */}

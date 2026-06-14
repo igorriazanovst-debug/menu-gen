@@ -10,6 +10,7 @@ import 'core/db/app_database.dart';
 import 'core/premium/premium_gate_cubit.dart';
 import 'core/router/app_router.dart';
 import 'core/sync/pending_sync_cubit.dart'; // MG_T08
+import 'core/sync/offline_toggle_queue.dart'; // MG_T09
 import 'core/sync/sync_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/bloc/auth_bloc.dart';
@@ -31,6 +32,15 @@ void main() async {
   // an individual bloc swallows the error in its own state.
   premiumGate.attachErrorStream(apiClient.errorStream);
 
+  // MG_T09: app-lifetime connectivity + pending counter + offline queue.
+  final connectivity = ConnectivityCubit();
+  final pendingSync = PendingSyncCubit();
+  final offlineToggleQueue = OfflineToggleQueue(
+    apiClient: apiClient,
+    connectivity: connectivity,
+    pendingSync: pendingSync,
+  );
+
   syncService.start();
   runApp(MenuGenApp(
     tokenStorage: tokenStorage,
@@ -38,6 +48,9 @@ void main() async {
     apiClient: apiClient,
     syncService: syncService,
     premiumGate: premiumGate,
+    connectivity: connectivity, // MG_T09
+    pendingSync: pendingSync, // MG_T09
+    offlineToggleQueue: offlineToggleQueue, // MG_T09
   ));
 }
 
@@ -47,6 +60,9 @@ class MenuGenApp extends StatelessWidget {
   final DioApiClient apiClient;
   final SyncService syncService;
   final PremiumGateCubit premiumGate;
+  final ConnectivityCubit connectivity; // MG_T09
+  final PendingSyncCubit pendingSync; // MG_T09
+  final OfflineToggleQueue offlineToggleQueue; // MG_T09
 
   const MenuGenApp({
     super.key,
@@ -55,14 +71,19 @@ class MenuGenApp extends StatelessWidget {
     required this.apiClient,
     required this.syncService,
     required this.premiumGate,
+    required this.connectivity, // MG_T09
+    required this.pendingSync, // MG_T09
+    required this.offlineToggleQueue, // MG_T09
   });
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
+    return RepositoryProvider<OfflineToggleQueue>.value( // MG_T09
+      value: offlineToggleQueue,
+      child: MultiBlocProvider(
       providers: [
-        BlocProvider(create: (_) => ConnectivityCubit()),
-        BlocProvider(create: (_) => PendingSyncCubit()), // MG_T08
+        BlocProvider.value(value: connectivity), // MG_T09
+        BlocProvider.value(value: pendingSync), // MG_T09
         BlocProvider.value(value: premiumGate),
         BlocProvider(
           create: (_) => AuthBloc(
@@ -97,6 +118,7 @@ class MenuGenApp extends StatelessWidget {
           );
         },
       ),
-    );
+    ),
+    ); // MG_T09: close RepositoryProvider.value
   }
 }

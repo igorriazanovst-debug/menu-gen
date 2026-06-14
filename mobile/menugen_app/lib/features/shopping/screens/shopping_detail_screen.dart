@@ -21,6 +21,8 @@ class ShoppingDetailScreen extends StatefulWidget {
 class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
   // MG_SHOPBUG_EDITMODE: global edit-mode flag.
   bool _editMode = false;
+  // MG_T09: show only not-purchased items (view-mode).
+  bool _onlyUnpurchased = false;
 
   // MG_SHOPMOB_GROUP: category metadata (color/icon/sort_order) for zones.
   List<Map<String, dynamic>> _cats = const [];
@@ -227,7 +229,11 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
         final d = state.detail;
         final caps = d.capabilities;
         final sym = currencySymbol(d.currency);
-        final groups = _grouped(d.items);
+        // MG_T09: optional 'unpurchased only' filter.
+        final visibleItems = _onlyUnpurchased
+            ? d.items.where((it) => !it.isPurchased).toList()
+            : d.items;
+        final groups = _grouped(visibleItems);
         return Scaffold(
           appBar: AppBar(
             // MG_SHOPBUG_MOB: title shows list name + creation date.
@@ -248,6 +254,18 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
               );
             }),
             actions: [
+              // MG_T09: filter to unpurchased items (view-mode only).
+              if (!_editMode && d.items.isNotEmpty)
+                IconButton(
+                  icon: Icon(_onlyUnpurchased
+                      ? Icons.filter_alt
+                      : Icons.filter_alt_outlined),
+                  tooltip: _onlyUnpurchased
+                      ? 'Показать все'
+                      : 'Только некупленные',
+                  onPressed: () =>
+                      setState(() => _onlyUnpurchased = !_onlyUnpurchased),
+                ),
               // MG_SHOPBUG_EDITMODE: global edit-mode toggle.
               if (caps.manage)
                 IconButton(
@@ -288,7 +306,10 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
               Expanded(
                 child: d.items.isEmpty
                     ? const Center(child: Text('Список пуст.'))
-                    : ListView(
+                    : visibleItems.isEmpty
+                        ? const Center(
+                            child: Text('Все товары куплены.')) // MG_T09
+                        : ListView(
                         children: [
                           // MG_SHOPMOB_GROUP: colored category zones.
                           for (final g in groups)

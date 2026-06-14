@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T08
-import '../../../core/sync/pending_sync_cubit.dart'; // MG_T08
+import '../../../core/sync/offline_toggle_queue.dart'; // MG_T09
 import '../bloc/shopping_bloc.dart';
 import '../models/shopping_models.dart';
 import 'shopping_detail_screen.dart';
@@ -21,7 +21,7 @@ class ShoppingListScreen extends StatelessWidget {
       create: (ctx) => ShoppingBloc(
         apiClient: apiClient,
         connectivity: ctx.read<ConnectivityCubit>(), // MG_T08
-        pendingSync: ctx.read<PendingSyncCubit>(), // MG_T08
+        offlineQueue: ctx.read<OfflineToggleQueue>(), // MG_T09
       )..add(const ShoppingListsRequested()),
       child: const _ShoppingListView(),
     );
@@ -36,9 +36,41 @@ class _ShoppingListView extends StatefulWidget {
 
 class _ShoppingListViewState extends State<_ShoppingListView> {
   int _tab = 0; // 0 active, 1 archived, 2 history
+  Map<String, int> _counts = const {}; // MG_T09: list counts per tab
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCounts();
+  }
+
+  // MG_T09: fetch counts for all tabs (active/pending/archived/history).
+  Future<void> _loadCounts() async {
+    try {
+      final raw =
+          await context.read<ShoppingBloc>().apiClient.get('/shopping/counts/');
+      if (!mounted) return;
+      final m = raw is Map ? Map<String, dynamic>.from(raw) : const {};
+      setState(() => _counts = {
+            'active': (m['active'] as int?) ?? 0,
+            'pending': (m['pending'] as int?) ?? 0,
+            'archived': (m['archived'] as int?) ?? 0,
+            'history': (m['history'] as int?) ?? 0,
+          });
+    } catch (_) {
+      // non-fatal
+    }
+  }
+
+  // MG_T09: ' (n)' suffix, or '' when zero/unknown.
+  String _cnt(String key) {
+    final n = _counts[key] ?? 0;
+    return n > 0 ? ' ($n)' : '';
+  }
 
   void _selectTab(int t) {
     setState(() => _tab = t);
+    _loadCounts(); // MG_T09: keep tab counts fresh
     if (t == 0) {
       context.read<ShoppingBloc>().add(const ShoppingListsRequested());
     } else if (t == 1) {
@@ -65,6 +97,7 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
       // bloc's _onCreate already reloads, avoiding the race that blanked the
       // screen (a stale GET overwriting/clashing with the create result).
       setState(() => _tab = 0);
+      _loadCounts(); // MG_T09
     }
   }
 
@@ -95,11 +128,11 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
           Padding(
             padding: const EdgeInsets.all(8),
             child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Активные')),
-                ButtonSegment(value: 3, label: Text('Ожидают')), // MG_SHAREACCEPT
-                ButtonSegment(value: 1, label: Text('Архив')),
-                ButtonSegment(value: 2, label: Text('История')),
+              segments: [
+                ButtonSegment(value: 0, label: Text('Активные${_cnt('active')}')),
+                ButtonSegment(value: 3, label: Text('Ожидают${_cnt('pending')}')), // MG_SHAREACCEPT
+                ButtonSegment(value: 1, label: Text('Архив${_cnt('archived')}')),
+                ButtonSegment(value: 2, label: Text('История${_cnt('history')}')),
               ],
               selected: {_tab},
               onSelectionChanged: (s) => _selectTab(s.first),
