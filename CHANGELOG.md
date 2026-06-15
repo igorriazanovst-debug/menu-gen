@@ -126,6 +126,15 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 - **Added** 2026-06-14 `MG_T08_mobile` — Offline-first shopping toggle (mobile, NOT verified — needs rework): in-memory LWW queue in ShoppingBloc, global PendingSyncCubit, SyncIndicator strip, connectivity banner text -> 'Нет подключения', flush on reconnect — files: `mobile/menugen_app/lib/core/sync/pending_sync_cubit.dart`, `mobile/menugen_app/lib/core/widgets/sync_indicator.dart`, `mobile/menugen_app/lib/core/widgets/connectivity_banner.dart`, `mobile/menugen_app/lib/core/widgets/main_shell.dart`, `mobile/menugen_app/lib/main.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_list_screen.dart`, `mobile/menugen_app/lib/features/shopping/bloc/shopping_bloc.dart`
 
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
+
+## [2026-06-15] MG_STRAT — Стратегии генерации меню (s1/s2/s3)
+
+- **Payload `strategy`** (`"1"|"2"|"3"`, default `"1"`) в `GenerateMenuSerializer`; проброс в `filters`; ветвление в `MenuGenerator.generate()` (per_member для s2/s3).
+- **MG_STRAT_PLATE:** `Recipe.plate_component` (`protein|carb|veg`, nullable) + миграция `0016` + admin; `apps/menu/macro_roles.py` — `MACRO_ROLES` (категория продукта → макро-роли) + `recipe_roles()` (presence по `product_links`).
+- **strategy=2** (состав приёма по макро-ролям, presence): завтрак `protein+fat+carb+fiber`, обед `protein+carb_complex+fiber`, ужин `protein+fiber` (+carb-гарнир, если не было в обед); основной рецепт через `_pick_for_role` (MG-302/303/502/503/611), добор ролей отдельными рецептами; `raise` при непокрытии; перекусы-добор по КБЖУ ±5% (безусловно при `calorie_target`); `meal_plan_type` игнор; MG-304 off.
+- **strategy=3** (тарелка): 3 компонента, доли `portion_g` `25/25/50` ±10%, масштаб тарелки `k∈[0.5,2.0]` под целевые калории приёма (`дневной/3`); MG-303/304 off, MG-302 как warnings; перекусы — позже. `MG_STRAT3_PICK2`: подбор тройки случайным сэмплингом (`MAX_TRIES=300`).
+- **Открыто:** ручная разметка `plate_component` по базе (s3 на проде падает `empty_role_pool` до разметки); web/mobile селектор `strategy` + скрытие 3/5 для s2/s3; перекусы-опция в s3; тесты; вынос `macro_roles` в админку.
+
 ## chat-76 — Mobile: офлайн-кэш списков покупок (MG_CACHE / MG_CACHE2)
 
 - **MG_CACHE** — кэширование списков и детализации в `shared_preferences` (write-through, TTL 7 дней; успешный онлайн-GET затирает запись). В офлайне `ShoppingBloc._onLists`/`_onDetail` отдают данные из кэша вместо `cloud_off`; офлайн-тоггл «куплено» пишется в кэш (`patchDetailItemPurchased`) и переживает уход с экрана. Новый `lib/core/cache/shopping_cache.dart`; правки `shopping_bloc.dart`, `main.dart`, `shopping_list_screen.dart`.
