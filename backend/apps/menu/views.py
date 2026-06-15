@@ -170,6 +170,8 @@ class MenuGenerateView(APIView):
             filters["exclude_disliked"] = data["exclude_disliked"]
         if data.get("meal_plan_type"):
             filters["meal_plan_type"] = data["meal_plan_type"]
+        if data.get("strategy"):
+            filters["strategy"] = data["strategy"]  # MG_STRAT
         if data.get("mode"):
             filters["mode"] = data["mode"]
 

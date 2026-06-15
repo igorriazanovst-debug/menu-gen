@@ -18,6 +18,7 @@ class GenerateMenuSerializer(serializers.Serializer):
     calorie_max = serializers.IntegerField(required=False, min_value=0)
     meal_plan_type = serializers.ChoiceField(choices=["3", "5"], default="3", required=False)
     with_soup = serializers.BooleanField(default=True, required=False)  # MG_610_V_generator
+    strategy = serializers.ChoiceField(choices=["1", "2", "3"], default="1", required=False)  # MG_STRAT
     # MG_605A_V_serializers: mode мульти-член (per_member | family)
     mode = serializers.ChoiceField(choices=["per_member", "family"], default="family", required=False)
     # MG_607_V_serializers: мульти-выбор стран + per-request override allergens/disliked

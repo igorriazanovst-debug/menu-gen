@@ -145,3 +145,4 @@ patch_vision_*
 *.pre_rollback.*
 web-dist.bak.*
 *.bak.MG_T09.*
+*.bak.MG_*

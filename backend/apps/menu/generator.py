@@ -32,6 +32,7 @@ from apps.recipes.models import Recipe
 
 from .exceptions import EmptyRolePoolError
 from .portions import daily_target_grams, recipe_portion_grams  # MG_304_V_generator
+from . import macro_roles as _mr  # MG_STRAT
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +203,8 @@ class MenuGenerator:
         # MG_610_V_generator: with_soup
         _with_soup = self.filters.get("with_soup", True)
         self.with_soup: bool = (_with_soup is not False)
+        # MG_STRAT: 1=current, 2=composition, 3=plate
+        self.strategy = str(self.filters.get("strategy", "1") or "1")
         # MG_605A_V_generator: режим мульти-член
         self.mode = str(self.filters.get("mode", "family"))
         if self.mode not in ("per_member", "family"):
@@ -221,6 +224,11 @@ class MenuGenerator:
         _wd = self.start_date.weekday()
         if _wd != 0:
             self.start_date = self.start_date - _td610(days=_wd)
+        # MG_STRAT: alternative strategies (per_member only for now)
+        if self.strategy == "2":
+            return self._generate_strategy2()
+        if self.strategy == "3":
+            return self._generate_strategy3()
         # MG_605A_V_generator: режим family — один прогон, дублирование под членов
         if self.mode == "family" and len(self.members) > 1:
             return self._generate_family()
@@ -962,6 +970,355 @@ class MenuGenerator:
             )
         except Exception:  # noqa: BLE001
             logger.exception("MG-301: audit log write failed (non-fatal)")
+
+
+    # ── MG_STRAT: helpers & alternative strategies ────────────────────────────
+    _MACRO_ROLE_RU = {
+        "protein": "белковый компонент",
+        "fat": "жировой компонент (сыр/масло)",
+        "carb_complex": "сложный углевод (крупа/хлеб)",
+        "carb_simple": "простой углевод",
+        "fiber": "клетчатка (овощи/фрукты)",
+        "carb": "углевод",
+    }
+
+    def _recipe_kcal_portion(self, recipe):
+        """MG_STRAT: калории одной порции (надёжный источник: kcal -> kcal_per_100g*portion_g -> nutrition)."""
+        k = getattr(recipe, "kcal", None)
+        if k is not None:
+            try:
+                return float(k)
+            except (TypeError, ValueError):
+                pass
+        try:
+            k100 = getattr(recipe, "kcal_per_100g", None)
+            pg = getattr(recipe, "portion_g", None)
+            if k100 is not None and pg:
+                return float(k100) * float(pg) / 100.0
+        except (TypeError, ValueError):
+            pass
+        return self._recipe_cal(recipe)
+
+    def _build_role_pools_s2(self, recipes):
+        """MG_STRAT: macro-role -> [recipes] (presence по ингредиентам)."""
+        pools = {r: [] for r in (_mr.PROTEIN, _mr.FAT, _mr.CARB_COMPLEX, _mr.CARB_SIMPLE, _mr.FIBER)}
+        for rec in recipes:
+            for role in _mr.recipe_roles(rec):
+                if role in pools:
+                    pools[role].append(rec)
+        return pools
+
+    def _pick_role_addon_s2(self, role, meal_type, role_pools, used, hard_exclude, fridge_ids):
+        """MG_STRAT: добор рецепта, закрывающего макро-роль (без калорийного фильтра)."""
+        if role == "carb":
+            primary = role_pools.get(_mr.CARB_COMPLEX, []) + role_pools.get(_mr.CARB_SIMPLE, [])
+        else:
+            primary = role_pools.get(role, [])
+        cands = []
+        for r in primary:
+            if r.id in used:
+                continue
+            if not self._recipe_passes_hard(r, hard_exclude):
+                continue
+            sf = getattr(r, "suitable_for", None)
+            if sf and meal_type not in sf:
+                continue
+            cands.append(r)
+        if not cands:
+            cands = [r for r in primary if r.id not in used and self._recipe_passes_hard(r, hard_exclude)]
+        if not cands:
+            return None
+        if fridge_ids:
+            cands.sort(key=lambda r: self._fridge_score(r, fridge_ids), reverse=True)
+            cands = cands[:10]
+        return random.choice(cands)
+
+    def _place_s2(self, items, member, db_meal_type, meal_slot, day, recipe, used):
+        """MG_STRAT: положить выбранный рецепт в items + учёт в tracker/калориях."""
+        used.add(recipe.id)
+        self.tracker.add(member.id, day, recipe)
+        rcal = self._recipe_cal(recipe)
+        if rcal is not None:
+            self._meal_cal_actual[(member.id, day, meal_slot)] += float(rcal)
+        items.append(
+            {
+                "member": member,
+                "meal_type": db_meal_type,
+                "meal_slot": meal_slot,
+                "day_offset": day,
+                "recipe": recipe,
+                "component_role": getattr(recipe, "dish_type", None) or "other",
+                "is_cheat_meal": False,
+            }
+        )
+
+    def _fill_snacks_s2(self, items, member, day, used, hard_exclude, fridge_ids, pools, target_cal):
+        """MG_STRAT: добор перекусов до дневного КБЖУ (±5% по калориям)."""
+        day_sum = 0.0
+        for it in items:
+            if it["member"].id == member.id and it["day_offset"] == day:
+                k = self._recipe_kcal_portion(it["recipe"])
+                if k:
+                    day_sum += float(k)
+        snack_pool = list(pools.get("snack", []))
+        lo = target_cal * 0.95
+        added = 0
+        MAX_ADD = 5
+        while day_sum < lo and added < MAX_ADD:
+            remaining = target_cal - day_sum
+            cands = [r for r in snack_pool if r.id not in used and self._recipe_passes_hard(r, hard_exclude)]
+            if not cands:
+                break
+            fit = [
+                r for r in cands
+                if 0 < (self._recipe_kcal_portion(r) or 0) <= remaining * 1.05
+            ]
+            rec = random.choice(fit if fit else cands)
+            self.tracker.add(member.id, day, rec)
+            used.add(rec.id)
+            items.append(
+                {
+                    "member": member,
+                    "meal_type": "snack",
+                    "meal_slot": f"snack{added + 1}",
+                    "day_offset": day,
+                    "recipe": rec,
+                    "component_role": getattr(rec, "dish_type", None) or "snack",
+                    "is_cheat_meal": False,
+                }
+            )
+            day_sum += float(self._recipe_kcal_portion(rec) or 0)
+            added += 1
+
+    def _generate_strategy2(self):
+        """MG_STRAT strategy=2: состав приёма по макро-ролям (presence) + добор перекусов.
+        per_member; MG-302/303/304/502/503 поверх; raise при непокрытой обязательной роли."""
+        all_recipes = self._build_recipe_pool()
+        # prefetch ролевых данных одним заходом
+        _ids = [r.id for r in all_recipes]
+        _pf = Recipe.objects.filter(id__in=_ids).prefetch_related("product_links__product__category_fk")
+        _by = {r.id: r for r in _pf}
+        all_recipes = [_by[i] for i in _ids if i in _by]
+
+        pools = self._build_pools_by_role(all_recipes)
+        role_pools = self._build_role_pools_s2(all_recipes)
+        fridge_ids = self._get_fridge_ingredient_names()
+        items = []
+        used_per_member = {m.id: set() for m in self.members}
+
+        MEALS = ["breakfast", "lunch", "dinner"]
+        MEAL_ROLES = {
+            "breakfast": (_mr.PROTEIN, _mr.FAT, "carb", _mr.FIBER),
+            "lunch": (_mr.PROTEIN, _mr.CARB_COMPLEX, _mr.FIBER),
+            "dinner": (_mr.PROTEIN, _mr.FIBER),
+        }
+        ANCHOR_DT = {"breakfast": "breakfast_dish", "lunch": "main", "dinner": "main"}
+
+        for day in range(self.period_days):
+            for member in self.members:
+                target_cal = self._get_calorie_target(member)
+                hard_exclude = self._get_hard_exclude(member)
+                used = used_per_member[member.id]
+                lunch_has_carb = False
+
+                for meal_slot in MEALS:
+                    db_meal_type = MEAL_TYPE_DB[meal_slot]
+                    per_meal_cal = self._meal_target_cal(target_cal, meal_slot)
+                    self._meal_cal_target[(member.id, day, meal_slot)] = per_meal_cal
+
+                    anchor_dt = ANCHOR_DT[meal_slot]
+                    anchor = self._pick_for_role(
+                        role=anchor_dt,
+                        meal_type=db_meal_type,
+                        pools=pools,
+                        used=used,
+                        hard_exclude=hard_exclude,
+                        fridge_ids=fridge_ids,
+                        target_cal=per_meal_cal,
+                        member_id=member.id,
+                        day_offset=day,
+                    )
+                    if anchor is None:
+                        raise EmptyRolePoolError(
+                            role=anchor_dt, meal_slot=meal_slot, day_offset=day,
+                            member_name=self._member_display_name(member),
+                        )
+                    self._place_s2(items, member, db_meal_type, meal_slot, day, anchor, used)
+                    covered = set(_mr.recipe_roles(anchor))
+
+                    for role in MEAL_ROLES[meal_slot]:
+                        if role == "carb":
+                            if covered & _mr.CARB_ANY:
+                                continue
+                        elif role in covered:
+                            continue
+                        rec = self._pick_role_addon_s2(role, db_meal_type, role_pools, used, hard_exclude, fridge_ids)
+                        if rec is None:
+                            raise EmptyRolePoolError(
+                                role=role, meal_slot=meal_slot, day_offset=day,
+                                member_name=self._member_display_name(member),
+                                reason_hint=f"Не хватает рецептов: {self._MACRO_ROLE_RU.get(role, role)}.",
+                            )
+                        self._place_s2(items, member, db_meal_type, meal_slot, day, rec, used)
+                        covered |= _mr.recipe_roles(rec)
+
+                    if meal_slot == "lunch":
+                        lunch_has_carb = bool(covered & _mr.CARB_ANY)
+                    elif meal_slot == "dinner" and not lunch_has_carb and not (covered & {_mr.CARB_COMPLEX}):
+                        rec = self._pick_role_addon_s2(
+                            _mr.CARB_COMPLEX, db_meal_type, role_pools, used, hard_exclude, fridge_ids
+                        )
+                        if rec is not None:
+                            self._place_s2(items, member, db_meal_type, meal_slot, day, rec, used)
+
+                if target_cal:  # MG_STRAT3: перекусы-добор по КБЖУ безусловны
+                    self._fill_snacks_s2(items, member, day, used, hard_exclude, fridge_ids, pools, float(target_cal))
+
+        warnings = []
+        # MG_STRAT3: MG-304 (овощной добор) отключён для s2
+        warnings.extend(self._collect_weekly_warnings())
+        warnings.extend(self._collect_daily_plant_warnings())
+        warnings.extend(self._collect_meal_calorie_warnings())
+        warnings.extend(self._collect_daily_oil_warnings())
+        warnings.extend(self._collect_daily_sweet_warnings())
+        self.last_warnings = warnings
+        return items
+
+    # ── MG_STRAT3: strategy=3 (plate 25/25/50) ────────────────────────────────
+    PLATE_RATIO_TOL = 0.10
+    PLATE_SCALE_MIN = 0.5
+    PLATE_SCALE_MAX = 2.0
+
+    def _build_plate_pools_s3(self, recipes):
+        """MG_STRAT3: plate_component -> [recipes] (ручная разметка)."""
+        pools = {"protein": [], "carb": [], "veg": []}
+        for r in recipes:
+            pc = getattr(r, "plate_component", None)
+            if pc in pools:
+                pools[pc].append(r)
+        return pools
+
+    def _portion_g(self, recipe):
+        pg = getattr(recipe, "portion_g", None)
+        try:
+            return float(pg) if pg else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _plate_form_ok(self, gp, gc, gv):
+        """MG_STRAT3: доли массы порций ≈ 25/25/50 (±10% абсолютных)."""
+        total = gp + gc + gv
+        if total <= 0:
+            return False
+        tol = self.PLATE_RATIO_TOL
+        return (
+            abs(gp / total - 0.25) <= tol
+            and abs(gc / total - 0.25) <= tol
+            and abs(gv / total - 0.50) <= tol
+        )
+
+    def _pick_plate_s3(self, plate_pools, used, hard_exclude, meal_type, target_meal_cal):
+        """MG_STRAT3_PICK2: тройка (protein, carb, veg) с формой 25/25/50; масштаб k под КБЖУ.
+        Случайный сэмплинг троек (без полного декартова перебора). (p, c, v, k) или None."""
+        def _flt(pool):
+            out = []
+            for r in pool:
+                if r.id in used:
+                    continue
+                if not self._recipe_passes_hard(r, hard_exclude):
+                    continue
+                sf = getattr(r, "suitable_for", None)
+                if sf and meal_type not in sf:
+                    continue
+                if self._portion_g(r) <= 0:
+                    continue
+                out.append(r)
+            return out
+
+        P, C, V = _flt(plate_pools.get("protein", [])), _flt(plate_pools.get("carb", [])), _flt(plate_pools.get("veg", []))
+        if not (P and C and V):
+            return None
+
+        MAX_TRIES = 300
+        best = None  # (dist, p, c, v, k)
+        for _ in range(MAX_TRIES):
+            p = random.choice(P)
+            c = random.choice(C)
+            v = random.choice(V)
+            gp, gc, gv = self._portion_g(p), self._portion_g(c), self._portion_g(v)
+            if not self._plate_form_ok(gp, gc, gv):
+                continue
+            plate_cal = 0.0
+            for rec in (p, c, v):
+                kc = self._recipe_kcal_portion(rec)
+                if kc:
+                    plate_cal += float(kc)
+            k = 1.0
+            if target_meal_cal and plate_cal > 0:
+                k = float(target_meal_cal) / plate_cal
+                k = max(self.PLATE_SCALE_MIN, min(self.PLATE_SCALE_MAX, k))
+            dist = abs(plate_cal * k - float(target_meal_cal)) if (target_meal_cal and plate_cal) else 0.0
+            if best is None or dist < best[0]:
+                best = (dist, p, c, v, k)
+            if not target_meal_cal or dist <= float(target_meal_cal) * 0.10:
+                return (p, c, v, k)
+        if best is None:
+            return None
+        return (best[1], best[2], best[3], best[4])
+
+    def _generate_strategy3(self):
+        """MG_STRAT3 strategy=3: тарелка 25/25/50 по массе порций (±10%) + масштаб k∈[0.5,2.0] под КБЖУ.
+        per_member; MG-303/304 off; MG-302 поверх (через warnings); перекусы — отдельным параметром позже."""
+        all_recipes = self._build_recipe_pool()
+        plate_pools = self._build_plate_pools_s3(all_recipes)
+        fridge_ids = self._get_fridge_ingredient_names()
+        items = []
+        used_per_member = {m.id: set() for m in self.members}
+        MEALS = ["breakfast", "lunch", "dinner"]
+
+        for day in range(self.period_days):
+            for member in self.members:
+                target_cal = self._get_calorie_target(member)
+                hard_exclude = self._get_hard_exclude(member)
+                used = used_per_member[member.id]
+                per_meal_cal = (float(target_cal) / 3.0) if target_cal else None
+
+                for meal_slot in MEALS:
+                    db_meal_type = MEAL_TYPE_DB[meal_slot]
+                    self._meal_cal_target[(member.id, day, meal_slot)] = per_meal_cal
+                    plate = self._pick_plate_s3(plate_pools, used, hard_exclude, db_meal_type, per_meal_cal)
+                    if plate is None:
+                        raise EmptyRolePoolError(
+                            role="plate", meal_slot=meal_slot, day_offset=day,
+                            member_name=self._member_display_name(member),
+                            reason_hint="Нет тройки рецептов (белок/гарнир/овощи) с разметкой тарелки и формой 25/25/50.",
+                        )
+                    p, c, v, k = plate
+                    for rec in (p, c, v):
+                        used.add(rec.id)
+                        self.tracker.add(member.id, day, rec)
+                        kc = self._recipe_kcal_portion(rec)
+                        if kc is not None:
+                            self._meal_cal_actual[(member.id, day, meal_slot)] += float(kc) * float(k)
+                        items.append(
+                            {
+                                "member": member,
+                                "meal_type": db_meal_type,
+                                "meal_slot": meal_slot,
+                                "day_offset": day,
+                                "recipe": rec,
+                                "component_role": getattr(rec, "dish_type", None) or "other",
+                                "is_cheat_meal": False,
+                                "quantity": round(float(k), 2),
+                            }
+                        )
+
+        warnings = []
+        warnings.extend(self._collect_weekly_warnings())
+        warnings.extend(self._collect_daily_plant_warnings())
+        warnings.extend(self._collect_meal_calorie_warnings())
+        self.last_warnings = warnings
+        return items
 
 
 # MG_505_V_generator: cheat-meal слот

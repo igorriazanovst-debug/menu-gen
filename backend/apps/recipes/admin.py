@@ -177,6 +177,7 @@ class RecipeAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "dish_type",
+                    "plate_component",
                     "categories",
                     "suitable_for",
                     "food_group",

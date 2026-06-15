@@ -118,6 +118,19 @@ class Recipe(models.Model):
         blank=True,
         help_text="Тип блюда (первое/второе/десерт...). RB-001.",
     )
+    class PlateComponent(models.TextChoices):  # MG_STRAT_PLATE
+        PROTEIN = "protein", "Plate: protein"
+        CARB = "carb", "Plate: carb (side)"
+        VEG = "veg", "Plate: veg/fiber"
+
+    plate_component = models.CharField(  # MG_STRAT_PLATE
+        max_length=8,
+        choices=PlateComponent.choices,
+        null=True,
+        blank=True,
+        help_text="Plate component for strategy=3 (manual tagging).",
+    )
+
     portion_g = models.PositiveIntegerField(
         null=True,
         blank=True,
