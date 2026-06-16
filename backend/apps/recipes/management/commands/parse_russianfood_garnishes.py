@@ -320,7 +320,7 @@ class Command(BaseCommand):
 
         while page_url:
             page_num += 1
-            self.stdout.write(f"  Листинг стр.{page_num}: {page_url}", flush=True)
+            self.stdout.write(f"  Листинг стр.{page_num}: {page_url}")
             urls, next_url = parse_list_page(page_url, delay)
             self.stdout.write(f"    → найдено {len(urls)} ссылок")
 
@@ -366,7 +366,7 @@ class Command(BaseCommand):
                 skipped += 1
                 continue
 
-            self.stdout.write(f"  [{i}/{len(all_urls)}] Парсим: {url}", flush=True)
+            self.stdout.write(f"  [{i}/{len(all_urls)}] Парсим: {url}")
             data = parse_recipe_page(url, delay)
 
             if not data or not data.get("title"):
