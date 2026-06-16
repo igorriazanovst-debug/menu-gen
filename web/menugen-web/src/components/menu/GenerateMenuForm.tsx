@@ -59,6 +59,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
   const [periodDays, setPeriodDays] = useState(7);
   const [startDate, setStartDate] = useState(todayISO());
   const [mealPlanType, setMealPlanType] = useState<MealPlan>(initialMealPlan);
+  const [strategy, setStrategy] = useState<'1' | '2' | '3'>('1'); // MG_STRAT_WEB
 
   // страны
   const [allCountries, setAllCountries] = useState<string[]>([]);
@@ -116,8 +117,9 @@ export const GenerateMenuForm: React.FC<Props> = ({
       const payload: GenerateMenuPayload = {
         period_days: periodDays,
         start_date: startDate,
-        meal_plan_type: mealPlanType,
+        strategy, // MG_STRAT_WEB
       };
+      if (strategy === '1') payload.meal_plan_type = mealPlanType; // MG_STRAT_WEB: 3/5 только для s1
       if (selectedCountries.length > 0) payload.countries = selectedCountries;
       if (maxCookTime !== '' && Number(maxCookTime) > 0) payload.max_cook_time = Number(maxCookTime);
       if (!respectAllergies) payload.exclude_allergens = [];
@@ -156,7 +158,34 @@ export const GenerateMenuForm: React.FC<Props> = ({
       )}
 
       {/* Период + Приёмов пищи в одной строке */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* MG_STRAT_WEB strategy selector */}
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Стратегия меню</label>
+        <div className="flex flex-col gap-1">
+          {([
+            ['1', 'Стандарт', 'Метод тарелки по ролям; выбор 3 или 5 приёмов'],
+            ['2', 'По составу', 'Каждый приём по макро-ролям (белок/жир/углевод/клетчатка)'],
+            ['3', 'Тарелка 25/25/50', 'Белок/гарнир/овощи в пропорции по массе'],
+          ] as const).map(([v, title, desc]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setStrategy(v)}
+              className={[
+                'text-left px-3 py-2 rounded-xl border text-sm transition',
+                strategy === v
+                  ? 'border-tomato bg-tomato/10 text-tomato'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+              ].join(' ')}
+            >
+              <span className="font-medium">{title}</span>
+              <span className="block text-xs text-gray-400">{desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={`grid grid-cols-1 gap-3 ${strategy === '1' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         <div>
           <label className="block text-xs text-gray-500 mb-1">С даты</label>
           <input
@@ -175,6 +204,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-tomato"
           />
         </div>
+        {strategy === '1' && (  /* MG_STRAT_WEB */
         <div>
           <label className="block text-xs text-gray-500 mb-1">Приёмов пищи</label>
           <div className="flex gap-1">
@@ -195,6 +225,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             ))}
           </div>
         </div>
+        )}
       </div>
 
       {/* Страны кухни */}

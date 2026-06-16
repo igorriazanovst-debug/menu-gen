@@ -23,6 +23,7 @@ export interface GenerateMenuPayload {
   period_days: number;
   start_date: string;
   meal_plan_type?: '3' | '5';
+  strategy?: '1' | '2' | '3';      // MG_STRAT_WEB: 1=стандарт, 2=состав, 3=тарелка
   country?: string;                 // legacy single
   countries?: string[];             // MG-607: мульти
   max_cook_time?: number;

@@ -1033,7 +1033,7 @@ class MenuGenerator:
             cands = cands[:10]
         return random.choice(cands)
 
-    def _place_s2(self, items, member, db_meal_type, meal_slot, day, recipe, used):
+    def _place_s2(self, items, member, db_meal_type, meal_slot, day, recipe, used, component_role=None):  # MG_STRAT2_ROLE
         """MG_STRAT: положить выбранный рецепт в items + учёт в tracker/калориях."""
         used.add(recipe.id)
         self.tracker.add(member.id, day, recipe)
@@ -1047,7 +1047,7 @@ class MenuGenerator:
                 "meal_slot": meal_slot,
                 "day_offset": day,
                 "recipe": recipe,
-                "component_role": getattr(recipe, "dish_type", None) or "other",
+                "component_role": component_role or (getattr(recipe, "dish_type", None) or "other"),  # MG_STRAT2_ROLE
                 "is_cheat_meal": False,
             }
         )
@@ -1143,7 +1143,7 @@ class MenuGenerator:
                             role=anchor_dt, meal_slot=meal_slot, day_offset=day,
                             member_name=self._member_display_name(member),
                         )
-                    self._place_s2(items, member, db_meal_type, meal_slot, day, anchor, used)
+                    self._place_s2(items, member, db_meal_type, meal_slot, day, anchor, used, component_role=anchor_dt)  # MG_STRAT2_ROLE
                     covered = set(_mr.recipe_roles(anchor))
 
                     for role in MEAL_ROLES[meal_slot]:
@@ -1159,7 +1159,7 @@ class MenuGenerator:
                                 member_name=self._member_display_name(member),
                                 reason_hint=f"Не хватает рецептов: {self._MACRO_ROLE_RU.get(role, role)}.",
                             )
-                        self._place_s2(items, member, db_meal_type, meal_slot, day, rec, used)
+                        self._place_s2(items, member, db_meal_type, meal_slot, day, rec, used, component_role=str(role))  # MG_STRAT2_ROLE
                         covered |= _mr.recipe_roles(rec)
 
                     if meal_slot == "lunch":
@@ -1169,7 +1169,7 @@ class MenuGenerator:
                             _mr.CARB_COMPLEX, db_meal_type, role_pools, used, hard_exclude, fridge_ids
                         )
                         if rec is not None:
-                            self._place_s2(items, member, db_meal_type, meal_slot, day, rec, used)
+                            self._place_s2(items, member, db_meal_type, meal_slot, day, rec, used, component_role=str(_mr.CARB_COMPLEX))  # MG_STRAT2_ROLE
 
                 if target_cal:  # MG_STRAT3: перекусы-добор по КБЖУ безусловны
                     self._fill_snacks_s2(items, member, day, used, hard_exclude, fridge_ids, pools, float(target_cal))

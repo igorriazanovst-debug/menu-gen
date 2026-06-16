@@ -136,7 +136,8 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
         body['countries'] = e.countries;
       }
       if (e.maxCookTime != null) body['max_cook_time'] = e.maxCookTime;
-      if (e.mealPlanType != null) body['meal_plan_type'] = e.mealPlanType;
+      body['strategy'] = e.strategy; // MG_STRAT_MOBILE
+      if (e.strategy == '1' && e.mealPlanType != null) body['meal_plan_type'] = e.mealPlanType; // MG_STRAT_MOBILE
       if (e.excludeAllergens != null) body['exclude_allergens'] = e.excludeAllergens;
       if (e.excludeDisliked != null) body['exclude_disliked'] = e.excludeDisliked;
       body['with_soup'] = e.withSoup; // MG_610_V_mobile

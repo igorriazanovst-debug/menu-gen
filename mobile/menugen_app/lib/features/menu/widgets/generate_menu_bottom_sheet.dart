@@ -48,6 +48,7 @@ class _State extends State<GenerateMenuBottomSheet> {
   int _days = 7;
   DateTime _start = DateTime.now();
   String _mealPlanType = '3';
+  String _strategy = '1'; // MG_STRAT_MOBILE
   final Set<String> _countries = <String>{};
   int? _maxCookTime;
   bool _respectAllergies = true;
@@ -150,6 +151,7 @@ class _State extends State<GenerateMenuBottomSheet> {
           excludeAllergens: _respectAllergies ? null : const <String>[],
           excludeDisliked: _respectDisliked ? null : const <String>[],
           withSoup: _withSoup, // MG_610_V_mobile
+          strategy: _strategy, // MG_STRAT_MOBILE
         ));
     Navigator.pop(context);
   }
@@ -203,6 +205,15 @@ class _State extends State<GenerateMenuBottomSheet> {
                   ]),
                   const Divider(),
 
+                  // MG_STRAT_MOBILE strategy selector
+                  const Text('Стратегия меню', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  _strategyTile('1', 'Стандарт', 'Метод тарелки по ролям; 3 или 5 приёмов'),
+                  _strategyTile('2', 'По составу', 'Приём по макро-ролям'),
+                  _strategyTile('3', 'Тарелка 25/25/50', 'Белок/гарнир/овощи по массе'),
+                  const SizedBox(height: 16),
+                  // MG_STRAT_MOBILE: 3/5 только для s1
+                  if (_strategy == '1') ...[
                   // Приёмов пищи
                   const Text('Приёмов пищи', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
@@ -212,6 +223,7 @@ class _State extends State<GenerateMenuBottomSheet> {
                     Expanded(child: _planButton('5')),
                   ]),
                   const SizedBox(height: 16),
+                  ],
 
                   // Страны
                   if (_allCountries.isNotEmpty) ...[
@@ -329,6 +341,34 @@ class _State extends State<GenerateMenuBottomSheet> {
       child: Text(
         'Цели из Профиля: ${parts.join(" · ")}',
         style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+      ),
+    );
+  }
+
+  // MG_STRAT_MOBILE
+  Widget _strategyTile(String v, String title, String desc) {
+    final active = _strategy == v;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () => setState(() => _strategy = v),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: active ? const Color(0xFFE8502E) : const Color(0xFFE0E0E0)),
+            color: active ? const Color(0x1AE8502E) : Colors.white,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: active ? const Color(0xFFE8502E) : const Color(0xFF3A2A20))),
+              const SizedBox(height: 2),
+              Text(desc, style: const TextStyle(fontSize: 12, color: Color(0xFF9E9E9E))),
+            ],
+          ),
+        ),
       ),
     );
   }
