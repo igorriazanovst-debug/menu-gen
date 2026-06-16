@@ -66,7 +66,8 @@ def _get(url: str, delay: float) -> BeautifulSoup | None:
                 log.warning("HTTP %s: %s", resp.status_code, url)
                 return None
             time.sleep(delay * (0.5 + random.random()))
-            return BeautifulSoup(resp.content, "html.parser", from_encoding="windows-1251")
+            html = resp.content.decode("windows-1251", errors="replace")
+            return BeautifulSoup(html, "html.parser")
         except Exception as exc:
             log.error("Ошибка: %s — %s", url, exc)
     return None
