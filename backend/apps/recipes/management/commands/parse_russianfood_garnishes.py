@@ -122,162 +122,61 @@ def parse_recipe_page(url: str, delay: float) -> dict | None:
     data: dict = {"source_url": url}
 
     # ── title ──
-    title_el = (
-        soup.select_one("h1.recipe-title")
-        or soup.select_one("h1[itemprop='name']")
-        or soup.select_one("h1")
-    )
-    if not title_el:
+    h1 = soup.find("h1")
+    if not h1:
         logger.warning("Нет заголовка: %s", url)
         return None
-    data["title"] = title_el.get_text(strip=True)
+    data["title"] = h1.get_text(strip=True)
 
-    # ── image ──
-    img = (
-        soup.select_one("img[itemprop='image']")
-        or soup.select_one(".recipe-photo img")
-        or soup.select_one(".photo img")
-    )
-    if img:
-        src = img.get("src") or img.get("data-src") or ""
+    # ── image: og:image ──
+    og_img = soup.select_one("meta[property='og:image']")
+    if og_img:
+        src = og_img.get("content", "")
         if src:
-            data["image_url"] = src if src.startswith("http") else BASE_URL + src
+            if src.startswith("//"):
+                src = "https:" + src
+            elif not src.startswith("http"):
+                src = BASE_URL + src
+            data["image_url"] = src
 
-    # ── cook_time ──
-    time_el = (
-        soup.select_one("[itemprop='totalTime']")
-        or soup.select_one("[itemprop='cookTime']")
-        or soup.select_one(".cook-time")
-        or soup.select_one(".time")
+    # ── cook_time и servings из HTML-комментария ──
+    # <!-- ... время приготовления 40 мин., затраты времени 15 мин., на 3 порций" -->
+    raw_html = str(soup)
+    comment_m = re.search(
+        r'время приготовления\s+(\d+)\s*мин.*?на\s+(\d+)\s*пор',
+        raw_html, re.I
     )
-    if time_el:
-        t_str = time_el.get("content") or time_el.get_text(strip=True)
-        # PT1H30M → «1 ч 30 мин»
-        if t_str and t_str.startswith("PT"):
-            h = re.search(r"(\d+)H", t_str)
-            m = re.search(r"(\d+)M", t_str)
-            parts = []
-            if h:
-                parts.append(f"{h.group(1)} ч")
-            if m:
-                parts.append(f"{m.group(1)} мин")
-            data["cook_time"] = " ".join(parts) if parts else t_str
-            total = (int(h.group(1)) * 60 if h else 0) + (int(m.group(1)) if m else 0)
-            if total:
-                data["cook_time_min"] = total
-        else:
-            data["cook_time"] = t_str
+    if comment_m:
+        total_min = int(comment_m.group(1))
+        data["cook_time_min"] = total_min
+        data["cook_time"] = f"{total_min} мин."
+        data["servings"] = int(comment_m.group(2))
 
-    # ── servings ──
-    srv_el = (
-        soup.select_one("[itemprop='recipeYield']")
-        or soup.select_one(".servings")
-        or soup.select_one(".portions")
-    )
-    if srv_el:
-        srv_text = srv_el.get("content") or srv_el.get_text(strip=True)
-        n = _parse_int(srv_text)
-        if n:
-            data["servings"] = n
-
-    # ── nutrition (microdata) ──
-    kcal_el = soup.select_one("[itemprop='calories']")
-    prot_el = soup.select_one("[itemprop='proteinContent']")
-    fat_el = soup.select_one("[itemprop='fatContent']")
-    carb_el = soup.select_one("[itemprop='carbohydrateContent']")
-
-    def _nutr_val(el):
-        if not el:
-            return None
-        c = el.get("content") or el.get_text(strip=True)
-        # «150 ккал» → «150»
-        m = re.search(r"[\d.,]+", str(c))
-        return m.group() if m else None
-
-    kcal = _to_dec(_nutr_val(kcal_el))
-    prot = _to_dec(_nutr_val(prot_el))
-    fat = _to_dec(_nutr_val(fat_el))
-    carb = _to_dec(_nutr_val(carb_el))
-
-    if any(v is not None for v in (kcal, prot, fat, carb)):
-        data["kcal_per_100g"] = kcal
-        data["proteins_per_100g"] = prot
-        data["fats_per_100g"] = fat
-        data["carbs_per_100g"] = carb
-        # nutrition JSONField (legacy)
-        data["nutrition"] = {
-            "calories": {"value": str(kcal or ""), "unit": "kcal"},
-            "proteins": {"value": str(prot or ""), "unit": "g"},
-            "fats": {"value": str(fat or ""), "unit": "g"},
-            "carbs": {"value": str(carb or ""), "unit": "g"},
-        }
-
-    # ── ingredients ──
-    ingredients = []
-    # вариант 1: microdata
-    for ing_el in soup.select("[itemprop='recipeIngredient'], [itemprop='ingredients']"):
-        text = ing_el.get_text(strip=True)
-        if text:
-            ingredients.append({"raw": text})
-
-    # вариант 2: список внутри .ingredients-list / #ingredients
-    if not ingredients:
-        for sel in (".ingredients li", "#ingredients li", ".ingr li", ".recipe-ingr li"):
-            items = soup.select(sel)
-            if items:
-                for li in items:
-                    text = li.get_text(strip=True)
-                    if text:
-                        ingredients.append({"raw": text})
-                break
-
-    # вариант 3: любые li внутри блока с «ингредиент» в id/class
-    if not ingredients:
-        for tag in soup.find_all(["ul", "ol"]):
-            attr = " ".join([
-                tag.get("id") or "",
-                " ".join(tag.get("class") or [])
-            ]).lower()
-            if any(kw in attr for kw in ("ingr", "ingredient", "состав")):
-                for li in tag.find_all("li"):
-                    text = li.get_text(strip=True)
-                    if text:
-                        ingredients.append({"raw": text})
-                break
-
-    if ingredients:
-        data["ingredients"] = ingredients
-
-    # ── steps ──
-    steps = []
-    # microdata
-    for step_el in soup.select("[itemprop='recipeInstructions'] [itemprop='text'], [itemprop='recipeInstructions']"):
-        text = step_el.get_text(strip=True)
-        if text and text not in steps:
-            steps.append(text)
-
-    if not steps:
-        # числовые шаги .step / .instruction / .directions li
-        for sel in (".step", ".instruction", ".directions li", ".recipe-step", ".cooking-step"):
-            items = soup.select(sel)
-            if items:
-                for el in items:
-                    text = el.get_text(strip=True)
-                    if text:
-                        steps.append(text)
-                break
-
-    if steps:
-        data["steps"] = [{"text": s, "step": i + 1} for i, s in enumerate(steps)]
-
-    # ── portion_g (попробуем вытащить из заголовка порции) ──
-    for tag in soup.find_all(text=re.compile(r"\d+\s*г(?:р)?\.?")):
-        m = re.search(r"(\d+)\s*г", str(tag))
+    # ── ingredients: из <meta name="description"> после «состав:» ──
+    desc_meta = soup.select_one("meta[name='description']")
+    if desc_meta:
+        desc = desc_meta.get("content", "")
+        # «Рецепт ..., cостав: ингр1 (кол), ингр2, ...»
+        m = re.search(r'[сc]остав\s*:\s*(.+)', desc, re.I)
         if m:
-            g = int(m.group(1))
-            if 50 <= g <= 1000:
-                data.setdefault("portion_g", g)
-                break
+            raw_ingr = m.group(1).strip()
+            # разбиваем по запятой, но не внутри скобок
+            parts = re.split(r',\s*(?![^(]*\))', raw_ingr)
+            for part in parts:
+                part = part.strip().rstrip(".")
+                if part and len(part) > 1:
+                    data.setdefault("ingredients", []).append({"raw": part})
+
+    # ── steps: div.step_n ──
+    step_els = soup.select("div.step_n")
+    if step_els:
+        steps = []
+        for el in step_els:
+            text = el.get_text(strip=True)
+            if text:
+                steps.append(text)
+        if steps:
+            data["steps"] = [{"text": s, "step": i + 1} for i, s in enumerate(steps)]
 
     return data
 
