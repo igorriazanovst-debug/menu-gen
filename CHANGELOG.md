@@ -127,6 +127,26 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
 
+## MG_STRAT2/3 — фикс записи s2/s3 + UI-селектор стратегии + разметка plate_component (chat-79)
+_2026-06-16_
+
+**D-07 — разметка `Recipe.plate_component`:** management-команда `mg_seed_plate` (food_group + dish_type whitelist {main,side,salad,breakfast_dish,snack}: protein→protein, grain→carb, vegetable/fruit→veg; идемпотентно по NULL; `--dry-run`/`--apply`). Размечено protein/carb/veg = 90/47/36 (173 рецепта).
+
+**s3 (тарелка 25/25/50) — переработка отбора и масштаба:**
+- Форма тарелки ЗАДАЁТСЯ масштабом каждого компонента под массу тарелки M (M из калорий приёма; при отсутствии — 400 г); per-item `quantity = доля·M/portion_g`, кламп [0.25..3.0]. Прежний подход (поиск троек с уже-готовой пропорцией сырых portion_g) на реальной базе давал 0 троек. (MG_STRAT3_PLATEFORM)
+- Выбор лучшей тройки: сэмплинг K=30, скор «форма + относит. отклонение калорий». Verify: форма ±2% 0/300, калории ±10% 300/300. (MG_STRAT3_SELECT)
+- `component_role` из `plate_component`: protein→main, carb→side, veg→salad — снимает IntegrityError unique_together(menu,member,day,meal_slot,component_role). (MG_STRAT3_ROLE)
+- Удалён мёртвый код прежнего подхода: `_plate_form_ok`, `PLATE_RATIO_TOL`, `PLATE_SCALE_MIN/MAX`. (MG_STRAT3_CLEAN)
+
+**s2 (состав по макро-ролям) — фикс записи (MG_STRAT2_ROLE):** `component_role` уникален внутри приёма — якорь=dish_type, доборы=макро-роль (protein/fat/carb/carb_complex/fiber); снимает тот же IntegrityError при нескольких рецептах приёма с одинаковым dish_type. Снеки — отдельные слоты snack{n}.
+
+**UI — селектор стратегии:**
+- web (MG_STRAT_WEB): блок «Стратегия меню» (Стандарт/По составу/Тарелка 25/25/50); meal_plan_type (3/5) скрыт для s2/s3, в payload только для s1; strategy в payload.
+- mobile (MG_STRAT_MOBILE): strategy в MenuGenerateRequested+body; селектор в bottom-sheet, блок 3/5 скрыт для s2/s3.
+
+Verify: s2/s3 smoke через реальный API → 201, MenuItem без дублей ролей; s3 форма 25/25/50 и калории в точку. Flutter CI ✓, Web CI ✓ (backend CI — предсуществующий flake8-долг, D-01). Известное ограничение s3: в базе почти нет моно-компонентных рецептов → тарелка из 3 составных блюд («насыщенно»); ждёт наполнения базы (T-15).
+
+
 ## [2026-06-15] MG_STRAT — Стратегии генерации меню (s1/s2/s3)
 
 - **Payload `strategy`** (`"1"|"2"|"3"`, default `"1"`) в `GenerateMenuSerializer`; проброс в `filters`; ветвление в `MenuGenerator.generate()` (per_member для s2/s3).
