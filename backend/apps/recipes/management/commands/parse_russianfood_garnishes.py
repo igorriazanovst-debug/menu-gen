@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import random
 import re
 import time
 import logging
@@ -50,7 +51,7 @@ SESSION.headers.update(HEADERS)
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _get(url: str, delay: float = 1.5) -> BeautifulSoup | None:
-    retry_waits = [10, 30, 60]
+    retry_waits = [15, 45, 90]
     for attempt, wait in enumerate([0] + retry_waits):
         if wait:
             logger.warning("Пауза %ds перед повтором (попытка %d): %s", wait, attempt + 1, url)
@@ -63,7 +64,8 @@ def _get(url: str, delay: float = 1.5) -> BeautifulSoup | None:
             if resp.status_code != 200:
                 logger.warning("HTTP %s: %s", resp.status_code, url)
                 return None
-            time.sleep(delay)
+            # случайная пауза delay ± 50%
+            time.sleep(delay * (0.5 + random.random()))
             return BeautifulSoup(resp.text, "html.parser")
         except Exception as exc:
             logger.error("Ошибка запроса %s: %s", url, exc)
