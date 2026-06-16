@@ -1185,9 +1185,14 @@ class MenuGenerator:
         return items
 
     # ── MG_STRAT3: strategy=3 (plate 25/25/50) ────────────────────────────────
-    PLATE_RATIO_TOL = 0.10
-    PLATE_SCALE_MIN = 0.5
-    PLATE_SCALE_MAX = 2.0
+    # MG_STRAT3_PLATEFORM: форма тарелки задаётся (per-component scaling), а не ищется.
+    PLATE_SHARES = {"protein": 0.25, "carb": 0.25, "veg": 0.50}
+    PLATE_MASS_DEFAULT_G = 400.0  # масса тарелки при отсутствии калор. цели
+    PLATE_MASS_MIN_G = 200.0
+    PLATE_MASS_MAX_G = 900.0
+    PLATE_ITEM_Q_MIN = 0.25
+    PLATE_ITEM_Q_MAX = 3.0
+    PLATE_PICK_K = 30  # MG_STRAT3_SELECT: сколько троек сэмплировать и брать лучшую
 
     def _build_plate_pools_s3(self, recipes):
         """MG_STRAT3: plate_component -> [recipes] (ручная разметка)."""
@@ -1205,21 +1210,25 @@ class MenuGenerator:
         except (TypeError, ValueError):
             return 0.0
 
-    def _plate_form_ok(self, gp, gc, gv):
-        """MG_STRAT3: доли массы порций ≈ 25/25/50 (±10% абсолютных)."""
-        total = gp + gc + gv
-        if total <= 0:
-            return False
-        tol = self.PLATE_RATIO_TOL
-        return (
-            abs(gp / total - 0.25) <= tol
-            and abs(gc / total - 0.25) <= tol
-            and abs(gv / total - 0.50) <= tol
-        )
+    def _kcal_per_g(self, recipe):  # MG_STRAT3_PLATEFORM
+        """ккал на 1 г порции рецепта (kcal_per_100g/100, либо kcal_порции/portion_g)."""
+        kpg = getattr(recipe, "kcal_per_100g", None)
+        if kpg:
+            try:
+                return float(kpg) / 100.0
+            except (TypeError, ValueError):
+                pass
+        kc = self._recipe_kcal_portion(recipe)
+        g = self._portion_g(recipe)
+        if kc and g > 0:
+            return float(kc) / g
+        return 0.0
 
     def _pick_plate_s3(self, plate_pools, used, hard_exclude, meal_type, target_meal_cal):
-        """MG_STRAT3_PICK2: тройка (protein, carb, veg) с формой 25/25/50; масштаб k под КБЖУ.
-        Случайный сэмплинг троек (без полного декартова перебора). (p, c, v, k) или None."""
+        """MG_STRAT3_PLATEFORM: тройка (protein, carb, veg) + per-component quantity.
+        Форма 25/25/50 ЗАДАЁТСЯ масштабом каждого компонента под массу тарелки M
+        (M подбирается под target_meal_cal, при отсутствии — PLATE_MASS_DEFAULT_G).
+        Возврат: (p, c, v, qp, qc, qv) или None."""
         def _flt(pool):
             out = []
             for r in pool:
@@ -1239,32 +1248,57 @@ class MenuGenerator:
         if not (P and C and V):
             return None
 
-        MAX_TRIES = 300
-        best = None  # (dist, p, c, v, k)
-        for _ in range(MAX_TRIES):
+        sh = self.PLATE_SHARES
+
+        def _eval(p, c, v):  # MG_STRAT3_SELECT: масса тарелки M + клампнутые quantity + ошибки
+            if target_meal_cal:
+                dens = (
+                    sh["protein"] * self._kcal_per_g(p)
+                    + sh["carb"] * self._kcal_per_g(c)
+                    + sh["veg"] * self._kcal_per_g(v)
+                )  # ккал на 1 г тарелки
+                M = (float(target_meal_cal) / dens) if dens > 0 else self.PLATE_MASS_DEFAULT_G
+            else:
+                M = self.PLATE_MASS_DEFAULT_G
+            M = max(self.PLATE_MASS_MIN_G, min(self.PLATE_MASS_MAX_G, M))
+
+            def _q(recipe, share):
+                g = self._portion_g(recipe)
+                if g <= 0:
+                    return 1.0
+                q = (share * M) / g
+                return round(max(self.PLATE_ITEM_Q_MIN, min(self.PLATE_ITEM_Q_MAX, q)), 2)
+
+            qp = _q(p, sh["protein"])
+            qc = _q(c, sh["carb"])
+            qv = _q(v, sh["veg"])
+            gp, gc, gv = self._portion_g(p) * qp, self._portion_g(c) * qc, self._portion_g(v) * qv
+            tot = gp + gc + gv
+            if tot <= 0:
+                return (9.9, qp, qc, qv)
+            form_err = (
+                abs(gp / tot - sh["protein"])
+                + abs(gc / tot - sh["carb"])
+                + abs(gv / tot - sh["veg"])
+            )
+            if target_meal_cal:
+                cal = sum((self._recipe_kcal_portion(r) or 0) * q for r, q in ((p, qp), (c, qc), (v, qv)))
+                cal_err = abs(float(cal) - float(target_meal_cal)) / float(target_meal_cal)
+            else:
+                cal_err = 0.0
+            return (form_err + cal_err, qp, qc, qv)
+
+        best = None  # (score, p, c, v, qp, qc, qv)
+        for _ in range(self.PLATE_PICK_K):
             p = random.choice(P)
             c = random.choice(C)
             v = random.choice(V)
-            gp, gc, gv = self._portion_g(p), self._portion_g(c), self._portion_g(v)
-            if not self._plate_form_ok(gp, gc, gv):
-                continue
-            plate_cal = 0.0
-            for rec in (p, c, v):
-                kc = self._recipe_kcal_portion(rec)
-                if kc:
-                    plate_cal += float(kc)
-            k = 1.0
-            if target_meal_cal and plate_cal > 0:
-                k = float(target_meal_cal) / plate_cal
-                k = max(self.PLATE_SCALE_MIN, min(self.PLATE_SCALE_MAX, k))
-            dist = abs(plate_cal * k - float(target_meal_cal)) if (target_meal_cal and plate_cal) else 0.0
-            if best is None or dist < best[0]:
-                best = (dist, p, c, v, k)
-            if not target_meal_cal or dist <= float(target_meal_cal) * 0.10:
-                return (p, c, v, k)
+            score, qp, qc, qv = _eval(p, c, v)
+            if best is None or score < best[0]:
+                best = (score, p, c, v, qp, qc, qv)
         if best is None:
             return None
-        return (best[1], best[2], best[3], best[4])
+        return (best[1], best[2], best[3], best[4], best[5], best[6])
 
     def _generate_strategy3(self):
         """MG_STRAT3 strategy=3: тарелка 25/25/50 по массе порций (±10%) + масштаб k∈[0.5,2.0] под КБЖУ.
@@ -1293,13 +1327,14 @@ class MenuGenerator:
                             member_name=self._member_display_name(member),
                             reason_hint="Нет тройки рецептов (белок/гарнир/овощи) с разметкой тарелки и формой 25/25/50.",
                         )
-                    p, c, v, k = plate
-                    for rec in (p, c, v):
+                    p, c, v, qp, qc, qv = plate  # MG_STRAT3_PLATEFORM
+                    _S3_ROLE = {"protein": "main", "carb": "side", "veg": "salad"}  # MG_STRAT3_ROLE
+                    for rec, q, _pc in ((p, qp, "protein"), (c, qc, "carb"), (v, qv, "veg")):  # MG_STRAT3_ROLE
                         used.add(rec.id)
                         self.tracker.add(member.id, day, rec)
                         kc = self._recipe_kcal_portion(rec)
                         if kc is not None:
-                            self._meal_cal_actual[(member.id, day, meal_slot)] += float(kc) * float(k)
+                            self._meal_cal_actual[(member.id, day, meal_slot)] += float(kc) * float(q)
                         items.append(
                             {
                                 "member": member,
@@ -1307,9 +1342,9 @@ class MenuGenerator:
                                 "meal_slot": meal_slot,
                                 "day_offset": day,
                                 "recipe": rec,
-                                "component_role": getattr(rec, "dish_type", None) or "other",
+                                "component_role": _S3_ROLE[_pc],  # MG_STRAT3_ROLE
                                 "is_cheat_meal": False,
-                                "quantity": round(float(k), 2),
+                                "quantity": float(q),
                             }
                         )
 
