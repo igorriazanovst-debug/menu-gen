@@ -73,37 +73,56 @@ def _get(url: str, delay: float) -> BeautifulSoup | None:
     return None
 
 
+def _get_html(url: str, delay: float) -> str | None:
+    """Возвращает сырой HTML (windows-1251) или None."""
+    retry_waits = [15, 45, 90]
+    for attempt, wait in enumerate([0] + retry_waits):
+        if wait:
+            log.warning("403/429 — пауза %ds (попытка %d)", wait, attempt + 1)
+            time.sleep(wait)
+        try:
+            resp = SESSION.get(url, timeout=20)
+            if resp.status_code in (403, 429):
+                log.warning("HTTP %s: %s", resp.status_code, url)
+                continue
+            if resp.status_code != 200:
+                log.warning("HTTP %s: %s", resp.status_code, url)
+                return None
+            time.sleep(delay * (0.5 + random.random()))
+            return resp.content.decode("windows-1251", errors="replace")
+        except Exception as exc:
+            log.error("Ошибка: %s — %s", url, exc)
+    return None
+
+
 def collect_urls(max_pages: int, delay: float) -> list[str]:
     all_urls: list[str] = []
     page_url: str | None = LIST_URL
     page_num = 0
+    seen: set[str] = set()
 
     while page_url:
         page_num += 1
         log.info("Листинг стр.%d: %s", page_num, page_url)
-        soup = _get(page_url, delay)
-        if not soup:
+        html = _get_html(page_url, delay)
+        if not html:
             log.error("Не удалось загрузить листинг стр.%d", page_num)
             break
 
-        seen = set(all_urls)
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if "recipe.php" in href and "rid=" in href:
-                full = BASE_URL + href if not href.startswith("http") else href
-                if full not in seen:
-                    seen.add(full)
-                    all_urls.append(full)
+        # ссылки на рецепты через regex
+        for href in re.findall(r'href="(/recipes/recipe\.php\?rid=\d+)"', html):
+            full = BASE_URL + href
+            if full not in seen:
+                seen.add(full)
+                all_urls.append(full)
 
         log.info("  → найдено ссылок всего: %d", len(all_urls))
 
-        next_url = None
-        for a in soup.find_all("a", href=True):
-            if "Следующая" in a.get_text():
-                href = a["href"]
-                if "page=" in href:
-                    next_url = (BASE_URL + href).split("#")[0]
-                    break
+        # следующая страница
+        m = re.search(r'href="(/recipes/bytype/\?fid=17&amp;page=(\d+)[^"]*)"[^>]*>\s*[СC]ледующая', html)
+        if not m:
+            m = re.search(r'href="(/recipes/bytype/\?fid=17&page=(\d+)[^"]*)"[^>]*>\s*[СC]ледующая', html)
+        next_url = (BASE_URL + m.group(1).replace("&amp;", "&")).split("#")[0] if m else None
 
         if max_pages and page_num >= max_pages:
             break
