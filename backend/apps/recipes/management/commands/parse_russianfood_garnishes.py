@@ -87,32 +87,27 @@ def parse_list_page(url: str, delay: float) -> tuple[list[str], str | None]:
     if not soup:
         return [], None
 
+    # russianfood.com: /recipes/recipe.php?rid=XXXXX
+    seen = set()
     links = []
-    # russianfood.com: карточки рецептов — <div class="recipe"> или <a> с /recipes/recipe/
-    for a in soup.select("a[href*='/recipes/recipe/']"):
-        href = a.get("href", "")
-        if href and href not in links:
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if "recipe.php" in href and "rid=" in href:
             full = href if href.startswith("http") else BASE_URL + href
-            if full not in links:
+            if full not in seen:
+                seen.add(full)
                 links.append(full)
 
-    # следующая страница
+    # следующая страница: «Следующая →» или цифра page=N
     next_url = None
-    next_a = soup.select_one("a.next, a[rel='next'], .pager a:last-child")
-    if next_a:
-        href = next_a.get("href", "")
-        if href and "page" in href:
-            next_url = href if href.startswith("http") else BASE_URL + href
-
-    # альтернатива: ищем ссылку «Следующая» / «>»
-    if not next_url:
-        for a in soup.find_all("a"):
-            text = a.get_text(strip=True)
-            if text in ("Следующая", "»", ">", "Вперёд"):
-                href = a.get("href", "")
-                if href:
-                    next_url = href if href.startswith("http") else BASE_URL + href
-                    break
+    for a in soup.find_all("a", href=True):
+        text = a.get_text(strip=True)
+        if "Следующая" in text or text == "→":
+            href = a["href"]
+            if "page=" in href:
+                # убираем якорь #rcp_list
+                next_url = (BASE_URL + href).split("#")[0]
+                break
 
     return links, next_url
 
