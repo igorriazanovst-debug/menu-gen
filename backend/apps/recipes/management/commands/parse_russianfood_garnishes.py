@@ -50,16 +50,24 @@ SESSION.headers.update(HEADERS)
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _get(url: str, delay: float = 1.5) -> BeautifulSoup | None:
-    try:
-        resp = SESSION.get(url, timeout=15)
-        if resp.status_code != 200:
-            logger.warning("HTTP %s: %s", resp.status_code, url)
-            return None
-        time.sleep(delay)
-        return BeautifulSoup(resp.text, "html.parser")
-    except Exception as exc:
-        logger.error("Ошибка запроса %s: %s", url, exc)
-        return None
+    retry_waits = [10, 30, 60]
+    for attempt, wait in enumerate([0] + retry_waits):
+        if wait:
+            logger.warning("Пауза %ds перед повтором (попытка %d): %s", wait, attempt + 1, url)
+            time.sleep(wait)
+        try:
+            resp = SESSION.get(url, timeout=15)
+            if resp.status_code in (403, 429):
+                logger.warning("HTTP %s: %s", resp.status_code, url)
+                continue
+            if resp.status_code != 200:
+                logger.warning("HTTP %s: %s", resp.status_code, url)
+                return None
+            time.sleep(delay)
+            return BeautifulSoup(resp.text, "html.parser")
+        except Exception as exc:
+            logger.error("Ошибка запроса %s: %s", url, exc)
+    return None
 
 
 def _to_dec(val) -> Decimal | None:
