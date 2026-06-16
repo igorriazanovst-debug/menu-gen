@@ -40,11 +40,9 @@ HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
     "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
 }
 
 SESSION = requests.Session()
@@ -108,10 +106,6 @@ def collect_urls(max_pages: int, delay: float) -> list[str]:
         if not html:
             log.error("Не удалось загрузить листинг стр.%d", page_num)
             break
-
-        log.info("  html len=%d, first100=%s", len(html), repr(html[:100]))
-        test = re.findall(r'recipe\.php', html)
-        log.info("  'recipe.php' вхождений: %d", len(test))
 
         # ссылки на рецепты через regex
         for href in re.findall(r'href="(/recipes/recipe\.php\?rid=\d+)"', html):
