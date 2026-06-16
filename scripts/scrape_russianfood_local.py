@@ -109,6 +109,10 @@ def collect_urls(max_pages: int, delay: float) -> list[str]:
             log.error("Не удалось загрузить листинг стр.%d", page_num)
             break
 
+        log.info("  html len=%d, first100=%s", len(html), repr(html[:100]))
+        test = re.findall(r'recipe\.php', html)
+        log.info("  'recipe.php' вхождений: %d", len(test))
+
         # ссылки на рецепты через regex
         for href in re.findall(r'href="(/recipes/recipe\.php\?rid=\d+)"', html):
             full = BASE_URL + href
