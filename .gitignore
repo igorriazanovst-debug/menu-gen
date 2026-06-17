@@ -146,3 +146,7 @@ patch_vision_*
 web-dist.bak.*
 *.bak.MG_T09.*
 *.bak.MG_*
+
+# Промежуточные выгрузки парсеров рецептов (рабочие данные, не исходники)
+/tati_cooks_parsed.json
+/garnishes*.json
