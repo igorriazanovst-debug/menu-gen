@@ -129,6 +129,41 @@ def collect_urls(max_pages: int, delay: float) -> list[str]:
     return all_urls
 
 
+def _parse_ingredient_line(text: str) -> dict:
+    """
+    «Рис длиннозёрный (у меня басмати) - 200 г» -> {name, quantity, unit}
+    «Соль - 0,5 ч. ложки (по вкусу)»            -> name=Соль, quantity=0.5, unit=ч. ложки
+    «Перец чёрный молотый - щепотка (по вкусу)» -> quantity='', unit=щепотка
+    «Лук репчатый - 70 г (1 некрупный)»         -> quantity=70, unit=г
+    """
+    text = (text or "").strip()
+    name, amount = text, ""
+    # делим по « - » (тире с пробелами) — справа количество
+    m = re.match(r"^(.*?)\s+[-–—]\s+(.+)$", text)
+    if m:
+        name = m.group(1).strip()
+        amount = m.group(2).strip()
+
+    # убрать примечание в скобках из имени
+    nm = re.match(r"^(.*?)\s*\([^)]*\)\s*$", name)
+    if nm and nm.group(1).strip():
+        name = nm.group(1).strip()
+
+    quantity, unit = "", ""
+    if amount:
+        # отрезать хвостовое «(по вкусу)» / «(3 ст. ложки)»
+        am = re.match(r"^(.*?)\s*\([^)]*\)\s*$", amount)
+        amount_core = am.group(1).strip() if am else amount
+        qm = re.match(r"^([\d]+(?:[.,]\d+)?(?:\s*/\s*\d+)?)\s*(.*)$", amount_core)
+        if qm:
+            quantity = qm.group(1).replace(",", ".").strip()
+            unit = qm.group(2).strip()
+        else:
+            unit = amount_core  # «щепотка», «несколько перьев»
+
+    return {"name": name, "quantity": quantity, "unit": unit}
+
+
 def parse_recipe(url: str, delay: float) -> dict | None:
     soup = _get(url, delay)
     if not soup:
@@ -158,25 +193,32 @@ def parse_recipe(url: str, delay: float) -> dict | None:
         data["cook_time"] = f"{m.group(1)} мин."
         data["servings"] = int(m.group(2))
 
-    # ингредиенты из <meta description>
-    desc_meta = soup.select_one("meta[name='description']")
-    if desc_meta:
-        desc = desc_meta.get("content", "")
-        cm = re.search(r"[сc]остав\s*:\s*(.+)", desc, re.I)
-        if cm:
-            raw_ingr = cm.group(1).strip()
-            # обрезать по «;» — дальше идут теги-категории
-            semi = raw_ingr.find(";")
-            if semi != -1:
-                raw_ingr = raw_ingr[:semi]
-            parts = re.split(r",\s*(?![^(]*\))", raw_ingr)
-            ingredients = []
-            for part in parts:
-                part = part.strip().rstrip(".,;").strip()
-                if part and len(part) > 1:
-                    ingredients.append({"raw": part})
-            if ingredients:
-                data["ingredients"] = ingredients
+    # ингредиенты из таблицы <table class="ingr"> (точные количества)
+    ingredients = []
+    for td in soup.select("table.ingr td.padding_r"):
+        text = td.get_text(strip=True)
+        if not text:
+            continue
+        ing = _parse_ingredient_line(text)
+        if ing["name"]:
+            ingredients.append(ing)
+    # фолбэк: meta description, если таблицы нет
+    if not ingredients:
+        desc_meta = soup.select_one("meta[name='description']")
+        if desc_meta:
+            desc = desc_meta.get("content", "")
+            cm = re.search(r"[сc]остав\s*:\s*(.+)", desc, re.I)
+            if cm:
+                raw_ingr = cm.group(1).strip()
+                semi = raw_ingr.find(";")
+                if semi != -1:
+                    raw_ingr = raw_ingr[:semi]
+                for part in re.split(r",\s*(?![^(]*\))", raw_ingr):
+                    part = part.strip().rstrip(".,;").strip()
+                    if part and len(part) > 1:
+                        ingredients.append(_parse_ingredient_line(part))
+    if ingredients:
+        data["ingredients"] = ingredients
 
     # шаги из div.step_n
     step_els = soup.select("div.step_n")

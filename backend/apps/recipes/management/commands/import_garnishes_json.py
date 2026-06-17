@@ -48,9 +48,17 @@ _TAG_MARKERS = (
 
 
 def _normalize_ingredients(raw_list: list) -> list:
-    """Склеивает raw-список, обрезает по «;», парсит в [{name, quantity, unit}]."""
+    """[{name,quantity,unit}] из таблицы — пропускаем как есть.
+    Старый формат [{raw}] — склеиваем, обрезаем по «;», парсим."""
+    raw_list = raw_list or []
+    # новый формат таблицы: есть name и нет raw — отдаём как есть
+    if raw_list and all(
+        isinstance(i, dict) and "raw" not in i and i.get("name") for i in raw_list
+    ):
+        return raw_list
+
     raws = []
-    for i in raw_list or []:
+    for i in raw_list:
         if isinstance(i, dict):
             raws.append(i.get("raw") or i.get("name") or "")
         elif isinstance(i, str):
@@ -98,6 +106,10 @@ class Command(BaseCommand):
         parser.add_argument("json_file", help="Путь к JSON-файлу с рецептами")
         parser.add_argument("--dry-run", action="store_true", default=False)
         parser.add_argument("--skip-existing", action="store_true", default=True)
+        parser.add_argument(
+            "--update-existing", action="store_true", default=False,
+            help="Обновлять ингредиенты/шаги существующих рецептов по source_url (не создавать новые)",
+        )
 
     def handle(self, *args, **options):
         from apps.recipes.models import Recipe
@@ -108,6 +120,7 @@ class Command(BaseCommand):
 
         dry_run = options["dry_run"]
         skip_existing = options["skip_existing"]
+        update_existing = options["update_existing"]
         mode = "DRY-RUN" if dry_run else "APPLY"
 
         self.stdout.write(f"[import_garnishes_json] mode={mode} файл={json_path}")
@@ -132,6 +145,34 @@ class Command(BaseCommand):
 
             if not title:
                 failed += 1
+                continue
+
+            # режим обновления существующих по source_url
+            if update_existing:
+                if not url:
+                    skipped += 1
+                    continue
+                recipe = Recipe.objects.filter(source_url=url, source="parsed").first()
+                if not recipe:
+                    skipped += 1
+                    continue
+                new_ingr = _normalize_ingredients(data.get("ingredients", []))
+                new_steps = data.get("steps", [])
+                self.stdout.write(
+                    f"  [{i}/{len(recipes_data)}] UPDATE «{title}» | ингр={len(new_ingr)} | шаги={len(new_steps)}"
+                )
+                if not dry_run:
+                    try:
+                        recipe.ingredients = new_ingr
+                        if new_steps:
+                            recipe.steps = new_steps
+                        recipe.save(update_fields=["ingredients", "steps", "updated_at"])
+                        saved += 1
+                    except Exception as exc:
+                        logger.error("Ошибка обновления «%s»: %s", title, exc)
+                        failed += 1
+                else:
+                    saved += 1
                 continue
 
             if url and url in existing_urls:
