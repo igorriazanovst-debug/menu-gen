@@ -112,6 +112,11 @@ class Command(BaseCommand):
             self.stdout.write(f"  {role:<20} {sz}")
         self.stdout.write("")
 
+        # ── математика: сколько рецептов нужно по каждой роли ────────────────────
+        # d = слотов в неделю; N >= d/T, где T — допустимое пересечение соседних меню.
+        # Множители: min=1×d, good(≤25%)=4×d, great(≤10%)=10×d.
+        self._print_demand_table(gen0, pool_sizes)
+
         # Симулируем N прогонов
         for run_idx in range(runs):
             gen = MenuGenerator(
@@ -200,3 +205,49 @@ class Command(BaseCommand):
             self.stdout.write("⚠  ПРОБЛЕМА: высокая повторяемость обнаружена.")
         else:
             self.stdout.write("✓  Повторяемость в норме.")
+
+    def _print_demand_table(self, gen, pool_sizes):
+        """Считает недельный спрос слотов по ролям и минимально нужный размер пула."""
+        from apps.menu.generator import MEAL_COMPONENTS, MEAL_PLAN_3, MEAL_PLAN_5
+
+        def weekly_demand(meal_plan):
+            demand: Counter = Counter()
+            for meal_slot in meal_plan:
+                for role in MEAL_COMPONENTS.get(meal_slot, ()):
+                    if role == "soup" and not getattr(gen, "with_soup", True):
+                        continue
+                    demand[role] += 7  # 7 дней в неделе
+            return demand
+
+        d3 = weekly_demand(MEAL_PLAN_3)
+        d5 = weekly_demand(MEAL_PLAN_5)
+
+        # объединяем роли из обоих планов
+        roles = sorted(set(d3) | set(d5), key=lambda r: -(d3.get(r, 0)))
+
+        self.stdout.write("=" * 65)
+        self.stdout.write("СКОЛЬКО РЕЦЕПТОВ НУЖНО ПО РОЛЯМ (N ≥ d/T)")
+        self.stdout.write("  d3/d5 — слотов в неделю при плане 3 / 5 приёмов")
+        self.stdout.write("  min=1×d (нет повторов в неделю), good=4×d (≤25%), great=10×d (≤10%)")
+        self.stdout.write("=" * 65)
+        header = f"  {'роль':<16} {'пул':>4} {'d3':>3} {'d5':>3} {'min':>4} {'good':>5} {'great':>6}  статус"
+        self.stdout.write(header)
+        self.stdout.write("  " + "-" * 61)
+        for role in roles:
+            n = pool_sizes.get(role, 0)
+            demand3 = d3.get(role, 0)
+            demand5 = d5.get(role, 0)
+            d = max(demand3, demand5)  # худший случай (5 приёмов)
+            mn, good, great = d, 4 * d, 10 * d
+            if n < mn:
+                status = "🔴 повторы в неделю"
+            elif n < good:
+                status = "🟡 мало для свежести"
+            elif n < great:
+                status = "🟢 ок"
+            else:
+                status = "🟢 отлично"
+            self.stdout.write(
+                f"  {role:<16} {n:>4} {demand3:>3} {demand5:>3} {mn:>4} {good:>5} {great:>6}  {status}"
+            )
+        self.stdout.write("")
