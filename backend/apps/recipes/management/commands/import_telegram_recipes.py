@@ -319,13 +319,14 @@ class Command(BaseCommand):
         existing_titles = set(
             Recipe.objects.filter(source="parsed").values_list("title", flat=True)
         )
-        for r in recipes:
+        total = len(recipes)
+        for n, r in enumerate(recipes, 1):
             if r["title"] in existing_titles or r["title"] == "Без названия":
                 skipped += 1
                 continue
             try:
                 with transaction.atomic():
-                    Recipe.objects.create(
+                    recipe = Recipe(
                         title=r["title"],
                         dish_type=r["dish_type"],
                         servings=r["servings"],
@@ -347,18 +348,27 @@ class Command(BaseCommand):
                         is_custom=False,
                         source="parsed",
                     )
+                    # MG_RECIPELINK: не дёргать AI-перелинковку продуктов на каждый
+                    # save — иначе импорт делает сотни AI-запросов и «висит».
+                    # Связи продуктов строим отдельно позже (mg-команда/скрипт).
+                    recipe._mg_skip_link_rebuild = True
+                    recipe.save()
                     saved += 1
                     existing_titles.add(r["title"])
             except Exception as exc:
                 self.stderr.write(f"Ошибка «{r['title']}»: {exc}")
                 failed += 1
+            if n % 10 == 0:
+                self.stdout.write(f"  ... обработано {n}/{total} (сохранено {saved})")
 
         self.stdout.write(
             f"\n{'='*50}\nИтог [APPLY]:\n"
             f"  Сохранено: {saved}\n  Пропущено: {skipped}\n  Ошибок:    {failed}\n"
         )
         self.stdout.write(
-            "\nПосле импорта обновите разметку и проверьте повторы:\n"
+            "\nПосле импорта (перелинковка продуктов делается отдельно, т.к.\n"
+            "на save она пропущена — иначе сотни AI-запросов и зависание):\n"
+            "  python manage.py mg_backfill_recipe_products --force\n"
             "  python manage.py mg_seed_plate --apply\n"
             "  python manage.py mg_analyze_s1_repeats --runs 20 --days 7"
         )
