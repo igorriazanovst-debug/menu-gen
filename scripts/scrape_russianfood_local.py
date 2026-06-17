@@ -34,62 +34,61 @@ log = logging.getLogger(__name__)
 BASE_URL = "https://www.russianfood.com"
 LIST_URL = "https://www.russianfood.com/recipes/bytype/?fid=17"
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
+# пул User-Agent для ротации
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+]
+
+BASE_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
     "Connection": "keep-alive",
+    "Referer": LIST_URL,
 }
 
 SESSION = requests.Session()
-SESSION.headers.update(HEADERS)
 
 
-def _get(url: str, delay: float) -> BeautifulSoup | None:
-    retry_waits = [15, 45, 90]
+def _fetch(url: str, delay: float) -> str | None:
+    """Случайная пауза ПЕРЕД запросом + ротация UA + бэкофф на 403/429."""
+    retry_waits = [30, 90, 180]
     for attempt, wait in enumerate([0] + retry_waits):
         if wait:
-            log.warning("403/429 — пауза %ds (попытка %d)", wait, attempt + 1)
-            time.sleep(wait)
+            jitter = wait * (0.7 + 0.6 * random.random())
+            log.warning("403/429 — пауза %.0fs (попытка %d)", jitter, attempt + 1)
+            time.sleep(jitter)
+
+        # случайная задержка ПЕРЕД чтением (delay ± 50%)
+        time.sleep(delay * (0.5 + random.random()))
+
+        headers = dict(BASE_HEADERS)
+        headers["User-Agent"] = random.choice(USER_AGENTS)
         try:
-            resp = SESSION.get(url, timeout=20)
+            resp = SESSION.get(url, headers=headers, timeout=20)
             if resp.status_code in (403, 429):
                 log.warning("HTTP %s: %s", resp.status_code, url)
                 continue
             if resp.status_code != 200:
                 log.warning("HTTP %s: %s", resp.status_code, url)
                 return None
-            time.sleep(delay * (0.5 + random.random()))
-            html = resp.content.decode("windows-1251", errors="replace")
-            return BeautifulSoup(html, "html.parser")
+            return resp.content.decode("windows-1251", errors="replace")
         except Exception as exc:
             log.error("Ошибка: %s — %s", url, exc)
     return None
 
 
+def _get(url: str, delay: float) -> BeautifulSoup | None:
+    html = _fetch(url, delay)
+    return BeautifulSoup(html, "html.parser") if html else None
+
+
 def _get_html(url: str, delay: float) -> str | None:
-    """Возвращает сырой HTML (windows-1251) или None."""
-    retry_waits = [15, 45, 90]
-    for attempt, wait in enumerate([0] + retry_waits):
-        if wait:
-            log.warning("403/429 — пауза %ds (попытка %d)", wait, attempt + 1)
-            time.sleep(wait)
-        try:
-            resp = SESSION.get(url, timeout=20)
-            if resp.status_code in (403, 429):
-                log.warning("HTTP %s: %s", resp.status_code, url)
-                continue
-            if resp.status_code != 200:
-                log.warning("HTTP %s: %s", resp.status_code, url)
-                return None
-            time.sleep(delay * (0.5 + random.random()))
-            return resp.content.decode("windows-1251", errors="replace")
-        except Exception as exc:
-            log.error("Ошибка: %s — %s", url, exc)
+    return _fetch(url, delay)
     return None
 
 
