@@ -22,6 +22,34 @@ from django.db import transaction
 logger = logging.getLogger(__name__)
 
 
+def _parse_raw_ingredient(raw: str) -> dict:
+    """«масло оливковое (2 ст. л.)» -> {name, quantity, unit}."""
+    raw = (raw or "").strip()
+    name, quantity, unit = raw, "", ""
+    m = re.search(r"^(.*?)\s*\(([^)]*)\)\s*$", raw)
+    if m:
+        name = m.group(1).strip()
+        inside = m.group(2).strip()
+        num_m = re.match(r"^([\d]+(?:[.,]\d+)?(?:\s*/\s*\d+)?)\s*(.*)$", inside)
+        if num_m:
+            quantity = num_m.group(1).replace(",", ".").strip()
+            unit = num_m.group(2).strip()
+        else:
+            unit = inside
+    return {"name": name, "quantity": quantity, "unit": unit}
+
+
+def _normalize_ingredients(raw_list: list) -> list:
+    """Приводит [{raw:...}] к [{name, quantity, unit}]."""
+    out = []
+    for i in raw_list or []:
+        if isinstance(i, dict) and "raw" in i:
+            out.append(_parse_raw_ingredient(i["raw"]))
+        elif isinstance(i, dict):
+            out.append(i)
+    return out
+
+
 def _guess_food_group(title: str) -> str:
     t = title.lower()
     grain_kw = (
@@ -110,7 +138,7 @@ class Command(BaseCommand):
                             cook_time=data.get("cook_time") or "",
                             cook_time_min=data.get("cook_time_min") or None,
                             servings=data.get("servings") or None,
-                            ingredients=data.get("ingredients", []),
+                            ingredients=_normalize_ingredients(data.get("ingredients", [])),
                             steps=data.get("steps", []),
                             nutrition={},
                             categories=[],
