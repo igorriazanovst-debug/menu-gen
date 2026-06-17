@@ -165,10 +165,14 @@ def parse_recipe(url: str, delay: float) -> dict | None:
         cm = re.search(r"[сc]остав\s*:\s*(.+)", desc, re.I)
         if cm:
             raw_ingr = cm.group(1).strip()
+            # обрезать по «;» — дальше идут теги-категории
+            semi = raw_ingr.find(";")
+            if semi != -1:
+                raw_ingr = raw_ingr[:semi]
             parts = re.split(r",\s*(?![^(]*\))", raw_ingr)
             ingredients = []
             for part in parts:
-                part = part.strip().rstrip(".")
+                part = part.strip().rstrip(".,;").strip()
                 if part and len(part) > 1:
                     ingredients.append({"raw": part})
             if ingredients:

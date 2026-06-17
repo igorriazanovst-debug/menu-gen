@@ -1,8 +1,12 @@
 """
-Конвертация ингредиентов формата {raw: "название (кол-во единица)"}
-в формат {name, quantity, unit}, который понимает UI.
+Чинит ингредиенты импортированных гарниров (source='parsed').
 
-Применяется к рецептам source='parsed' (импортированные гарниры).
+Старый скрапер брал список из <meta description> после «состав:», но НЕ обрезал
+по «;» — после точки с запятой в описании идут теги-категории («Рецепты вторых
+блюд», «Гарниры», «Каши» и т.п.), которые попали в ингредиенты как мусор.
+
+Эта команда: склеивает raw-список обратно в строку, обрезает по первому «;»,
+заново разбивает по запятым (с учётом скобок) и парсит в {name, quantity, unit}.
 
 Запуск:
   python manage.py mg_fix_parsed_ingredients            # dry-run
@@ -16,36 +20,64 @@ import re
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+# теги-категории, которые иногда оказываются в хвосте без «;»
+_TAG_MARKERS = (
+    "рецепт", "блюда из", "пошаговый", "с фото", "с видео", "вегетариан",
+    "на скорую руку", "для детей", "праздничн", "в мультиварке", "в духовке",
+    "на сковороде", "на пару", "время приготовления", "затраты времени",
+)
 
-def parse_raw_ingredient(raw: str) -> dict:
-    """
-    «масло оливковое (2 ст. л.)» -> {name, quantity, unit}
-    «соль (по вкусу)»            -> {name:'соль', quantity:'', unit:'по вкусу'}
-    «картофель молодой»          -> {name:'картофель молодой', quantity:'', unit:''}
-    """
-    raw = (raw or "").strip()
-    name = raw
-    quantity = ""
-    unit = ""
 
+def _is_tag(s: str) -> bool:
+    low = s.lower()
+    return any(m in low for m in _TAG_MARKERS)
+
+
+def _parse_one(raw: str) -> dict:
+    """«масло подсолнечное (3 ст. ложки)» -> {name, quantity, unit}."""
+    raw = (raw or "").strip().rstrip(".,;").strip()
+    name, quantity, unit = raw, "", ""
     m = re.search(r"^(.*?)\s*\(([^)]*)\)\s*$", raw)
     if m:
         name = m.group(1).strip()
         inside = m.group(2).strip()
-        # «2 ст. л.» / «0,5 шт.» / «1 некрупный» / «по вкусу»
         num_m = re.match(r"^([\d]+(?:[.,]\d+)?(?:\s*/\s*\d+)?)\s*(.*)$", inside)
         if num_m:
             quantity = num_m.group(1).replace(",", ".").strip()
             unit = num_m.group(2).strip()
         else:
-            # числа нет: «по вкусу», «по желанию» -> в unit
             unit = inside
-
     return {"name": name, "quantity": quantity, "unit": unit}
 
 
+def clean_ingredients(raw_list: list) -> list:
+    """Склеивает raw-список, обрезает по «;», перепарсит в {name,quantity,unit}."""
+    # собрать исходные строки
+    raws = []
+    for i in raw_list or []:
+        if isinstance(i, dict):
+            raws.append(i.get("raw") or i.get("name") or "")
+        elif isinstance(i, str):
+            raws.append(i)
+    joined = ", ".join(r for r in raws if r)
+
+    # обрезать по первому «;» — дальше идут теги
+    semi = joined.find(";")
+    if semi != -1:
+        joined = joined[:semi]
+
+    # разбить по запятым, не трогая запятые внутри скобок
+    parts = re.split(r",\s*(?![^(]*\))", joined)
+    out = []
+    for p in parts:
+        p = p.strip().rstrip(".,;").strip()
+        if p and len(p) > 1 and not _is_tag(p):
+            out.append(_parse_one(p))
+    return out
+
+
 class Command(BaseCommand):
-    help = "Конвертирует raw-ингредиенты в {name, quantity, unit} для source='parsed'"
+    help = "Чинит ингредиенты гарниров source='parsed' (обрезка по «;» + {name,quantity,unit})"
 
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true", default=False)
@@ -59,37 +91,32 @@ class Command(BaseCommand):
         qs = Recipe.objects.filter(source="parsed")
         self.stdout.write(f"[mg_fix_parsed_ingredients] mode={mode} рецептов: {qs.count()}")
 
-        converted = 0
+        fixed = 0
         skipped = 0
-        sample_shown = 0
-
+        sample = 0
         to_update = []
+
         for r in qs.iterator():
-            ingr = r.ingredients or []
-            if not ingr:
-                skipped += 1
-                continue
-            # уже в новом формате?
-            if all(isinstance(i, dict) and "raw" not in i for i in ingr):
+            old = r.ingredients or []
+            if not old:
                 skipped += 1
                 continue
 
-            new_ingr = []
-            for i in ingr:
-                if isinstance(i, dict) and "raw" in i:
-                    new_ingr.append(parse_raw_ingredient(i["raw"]))
-                else:
-                    new_ingr.append(i)
+            new = clean_ingredients(old)
+            if not new:
+                skipped += 1
+                continue
 
-            if sample_shown < 3:
-                self.stdout.write(f"\n  «{r.title}»")
-                for old, new in zip(ingr[:4], new_ingr[:4]):
-                    self.stdout.write(f"    {old}  ->  {new}")
-                sample_shown += 1
+            if sample < 4:
+                self.stdout.write(f"\n  «{r.title}»  ({len(old)} -> {len(new)})")
+                for n in new[:6]:
+                    q = f"{n['quantity']} {n['unit']}".strip()
+                    self.stdout.write(f"    • {n['name']}  [{q}]")
+                sample += 1
 
-            r.ingredients = new_ingr
+            r.ingredients = new
             to_update.append(r)
-            converted += 1
+            fixed += 1
 
         if apply and to_update:
             with transaction.atomic():
@@ -98,8 +125,8 @@ class Command(BaseCommand):
         self.stdout.write(
             f"\n{'='*50}\n"
             f"Итог [{mode}]:\n"
-            f"  Конвертировано: {converted}\n"
-            f"  Пропущено:      {skipped}\n"
+            f"  Исправлено: {fixed}\n"
+            f"  Пропущено:  {skipped}\n"
         )
         if not apply:
             self.stdout.write("DRY-RUN. Запустите с --apply для записи.")

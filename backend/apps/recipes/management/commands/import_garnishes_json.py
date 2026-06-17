@@ -39,14 +39,33 @@ def _parse_raw_ingredient(raw: str) -> dict:
     return {"name": name, "quantity": quantity, "unit": unit}
 
 
+# теги-категории, которые иногда попадают в хвост ингредиентов без «;»
+_TAG_MARKERS = (
+    "рецепт", "блюда из", "пошаговый", "с фото", "с видео", "вегетариан",
+    "на скорую руку", "для детей", "праздничн", "в мультиварке", "в духовке",
+    "на сковороде", "на пару", "время приготовления", "затраты времени",
+)
+
+
 def _normalize_ingredients(raw_list: list) -> list:
-    """Приводит [{raw:...}] к [{name, quantity, unit}]."""
-    out = []
+    """Склеивает raw-список, обрезает по «;», парсит в [{name, quantity, unit}]."""
+    raws = []
     for i in raw_list or []:
-        if isinstance(i, dict) and "raw" in i:
-            out.append(_parse_raw_ingredient(i["raw"]))
-        elif isinstance(i, dict):
-            out.append(i)
+        if isinstance(i, dict):
+            raws.append(i.get("raw") or i.get("name") or "")
+        elif isinstance(i, str):
+            raws.append(i)
+    joined = ", ".join(r for r in raws if r)
+
+    semi = joined.find(";")
+    if semi != -1:
+        joined = joined[:semi]
+
+    out = []
+    for p in re.split(r",\s*(?![^(]*\))", joined):
+        p = p.strip().rstrip(".,;").strip()
+        if p and len(p) > 1 and not any(m in p.lower() for m in _TAG_MARKERS):
+            out.append(_parse_raw_ingredient(p))
     return out
 
 
