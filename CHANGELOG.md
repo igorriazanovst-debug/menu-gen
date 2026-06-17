@@ -125,6 +125,12 @@ and this project adheres to marker-based commit tracking (`MG_*`).
 
 - **Added** 2026-06-14 `MG_T08_mobile` — Offline-first shopping toggle (mobile, NOT verified — needs rework): in-memory LWW queue in ShoppingBloc, global PendingSyncCubit, SyncIndicator strip, connectivity banner text -> 'Нет подключения', flush on reconnect — files: `mobile/menugen_app/lib/core/sync/pending_sync_cubit.dart`, `mobile/menugen_app/lib/core/widgets/sync_indicator.dart`, `mobile/menugen_app/lib/core/widgets/connectivity_banner.dart`, `mobile/menugen_app/lib/core/widgets/main_shell.dart`, `mobile/menugen_app/lib/main.dart`, `mobile/menugen_app/lib/features/shopping/screens/shopping_list_screen.dart`, `mobile/menugen_app/lib/features/shopping/bloc/shopping_bloc.dart`
 
+- **Added** 2026-06-17 `MG_S1ANALYZE` — T-15: mg_analyze_s1_repeats — синтетический тест повторяемости рецептов s1 (N меню in-memory, распределение появлений, таблица спроса по ролям N≥d/T: min/good/great) — files: `backend/apps/menu/management/commands/mg_analyze_s1_repeats.py`
+
+- **Changed** 2026-06-17 `MG_DRINK` — T-15: напитки исключены из генерации s1 (пул из 4 рецептов давал 100%-повторы; равная дележка калорий забирала половину бюджета завтрака/перекуса). drink убран из MEAL_COMPONENTS — files: `backend/apps/menu/generator.py`
+
+- **Added** 2026-06-17 `MG_TGIMPORT` — T-15: import_telegram_recipes — парсинг экспорта канала tati_cooks в рецепты (КБЖУ per-portion, ингредиенты в граммах, выход в порциях, классификация по хэштегам). Импортировано ~24 салата/супа/основных; пул salad 20→32 — files: `backend/apps/recipes/management/commands/import_telegram_recipes.py`
+
 <!-- CHANGELOG_AUTO_ANCHOR — new entries inserted above this line by add_changelog.py -->
 
 ## MG_STRAT2/3 — фикс записи s2/s3 + UI-селектор стратегии + разметка plate_component (chat-79)
