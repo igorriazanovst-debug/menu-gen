@@ -27,7 +27,7 @@ import { RecommendationFormPage }  from './pages/specialist/RecommendationFormPa
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, initialized } = useAppSelector((s) => s.auth);
   if (!initialized) return (
-    <div className="min-h-screen flex items-center justify-center bg-rice">
+    <div className="min-h-screen flex items-center justify-center bg-bg">
       <div className="text-4xl animate-pulse">🍅</div>
     </div>
   );
