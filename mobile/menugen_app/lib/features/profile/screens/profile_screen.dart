@@ -118,11 +118,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Center(
                   child: CircleAvatar(
                     radius: 44,
-                    backgroundColor: AppColors.primary.withOpacity(0.15),
+                    backgroundColor: context.cs.primary.withOpacity(0.15),
                     child: Text(
                       ((user['name'] as String?) ?? 'U')[0].toUpperCase(),
-                      style: const TextStyle(
-                          fontSize: 32, color: AppColors.primary),
+                      style: TextStyle(
+                          fontSize: 32, color: context.cs.primary),
                     ),
                   ),
                 ),
@@ -264,8 +264,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 24),
                 const Divider(),
                 ListTile(
-                  leading: const Icon(Icons.people_outline,
-                      color: AppColors.secondary),
+                  leading: Icon(Icons.people_outline,
+                      color: context.cs.secondary),
                   title: const Text('Семья'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/family'),

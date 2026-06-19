@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/theme/app_theme.dart'; // MG_SKIN
 import '../bloc/auth_bloc.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -29,9 +30,11 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.restaurant_menu, size: 72, color: Color(0xFFE63946)),
+              // MG_SKIN: слот логотипа (заменить на AppLogo, когда придёт ассет:
+              // logo_mark ~72px высотой, цветной на светлом фоне).
+              Icon(Icons.restaurant_menu, size: 72, color: context.cs.primary),
               const SizedBox(height: 8),
-              const Text('MenuGen', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFFE63946))),
+              Text('MenuGen', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: context.cs.primary)),
               const SizedBox(height: 48),
               TextField(controller: _email,
                 decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
