@@ -11,6 +11,7 @@ import '../bloc/menu_bloc.dart';
 import '../widgets/generate_menu_bottom_sheet.dart';
 import '../widgets/menu_day_strip.dart';
 import '../widgets/menu_meal_carousel.dart';
+import '../widgets/menu_summary_card.dart'; // MG_SKIN
 import 'quarantine_screen.dart';
 
 /// Главный экран "Меню" (MG_608_V_mobile_screen — добавлен Dropdown выбора меню).
@@ -24,7 +25,6 @@ class MenuScreen extends StatefulWidget {
 
 class _MenuScreenState extends State<MenuScreen> {
   // --- /users/me/ snapshot
-  String? _userName;
   String _mealPlanType = '3';
   bool _meLoaded = false;
 
@@ -58,7 +58,6 @@ class _MenuScreenState extends State<MenuScreen> {
           : <String, dynamic>{};
       if (!mounted) return;
       setState(() {
-        _userName = data['name'] as String?;
         _mealPlanType = (profile['meal_plan_type'] as String?) ?? '3';
         _meLoaded = true;
       });
@@ -271,8 +270,9 @@ class _MenuScreenState extends State<MenuScreen> {
 
           return Column(
             children: [
-              _HeaderTitle(
-                userName: _userName,
+              // MG_SKIN: карточка-итог дня (донат КБЖУ) в стиле Main-референса.
+              MenuSummaryCard(
+                totals: MealNutritionTotals.fromItems(dayItems),
                 start: start,
                 end: start.add(Duration(days: periodDays - 1)),
               ),
@@ -280,10 +280,6 @@ class _MenuScreenState extends State<MenuScreen> {
                 days: allDays,
                 selected: _selectedDate!,
                 onSelected: (d) => setState(() => _selectedDate = d),
-              ),
-              NutritionTotalsBar(  // KBJU_DISPLAY: дневной итог КБЖУ
-                title: 'Итог за день',
-                totals: MealNutritionTotals.fromItems(dayItems),
               ),
               _MealTabs(
                 slots: _mealSlots,
@@ -387,40 +383,6 @@ class _MenuScreenState extends State<MenuScreen> {
       builder: (_) => BlocProvider.value(
         value: context.read<MenuBloc>(),
         child: GenerateMenuBottomSheet(apiClient: widget.apiClient),
-      ),
-    );
-  }
-}
-
-class _HeaderTitle extends StatelessWidget {
-  final String? userName;
-  final DateTime start;
-  final DateTime end;
-  const _HeaderTitle({required this.userName, required this.start, required this.end});
-
-  @override
-  Widget build(BuildContext context) {
-    final fmt = DateFormat('d MMM', 'ru');
-    final period = '${fmt.format(start)} – ${fmt.format(end)}';
-    final name = (userName == null || userName!.isEmpty) ? '—' : userName!;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Меню для $name',
-            style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'на $period',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-          ),
-        ],
       ),
     );
   }
