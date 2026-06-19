@@ -14,7 +14,9 @@ import 'core/sync/pending_sync_cubit.dart'; // MG_T08
 import 'core/sync/offline_toggle_queue.dart'; // MG_T09
 import 'core/cache/shopping_cache.dart'; // MG_CACHE
 import 'core/sync/sync_service.dart';
+import 'core/theme/app_skin.dart'; // MG_SKIN
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_cubit.dart'; // MG_SKIN
 import 'features/auth/bloc/auth_bloc.dart';
 import 'features/diary/bloc/diary_bloc.dart';
 import 'features/fridge/bloc/fridge_bloc.dart';
@@ -44,7 +46,11 @@ void main() async {
   );
 
   // MG_CACHE: lightweight offline cache for shopping lists/details.
-  final shoppingCache = ShoppingCache(await SharedPreferences.getInstance());
+  final prefs = await SharedPreferences.getInstance();
+  final shoppingCache = ShoppingCache(prefs);
+
+  // MG_SKIN: cubit выбранного скина (персист + синк в аккаунт).
+  final themeCubit = ThemeCubit(prefs: prefs, apiClient: apiClient);
 
   syncService.start();
   runApp(MenuGenApp(
@@ -57,6 +63,7 @@ void main() async {
     pendingSync: pendingSync, // MG_T09
     offlineToggleQueue: offlineToggleQueue, // MG_T09
     shoppingCache: shoppingCache, // MG_CACHE
+    themeCubit: themeCubit, // MG_SKIN
   ));
 }
 
@@ -70,6 +77,7 @@ class MenuGenApp extends StatelessWidget {
   final PendingSyncCubit pendingSync; // MG_T09
   final OfflineToggleQueue offlineToggleQueue; // MG_T09
   final ShoppingCache shoppingCache; // MG_CACHE
+  final ThemeCubit themeCubit; // MG_SKIN
 
   const MenuGenApp({
     super.key,
@@ -82,6 +90,7 @@ class MenuGenApp extends StatelessWidget {
     required this.pendingSync, // MG_T09
     required this.offlineToggleQueue, // MG_T09
     required this.shoppingCache, // MG_CACHE
+    required this.themeCubit, // MG_SKIN
   });
 
   @override
@@ -95,6 +104,7 @@ class MenuGenApp extends StatelessWidget {
         BlocProvider.value(value: connectivity), // MG_T09
         BlocProvider.value(value: pendingSync), // MG_T09
         BlocProvider.value(value: premiumGate),
+        BlocProvider.value(value: themeCubit), // MG_SKIN
         BlocProvider(
           create: (_) => AuthBloc(
             apiClient: apiClient,
@@ -108,25 +118,34 @@ class MenuGenApp extends StatelessWidget {
         BlocProvider(create: (_) => FridgeBloc(apiClient: apiClient, db: db, premiumGate: premiumGate)),
         BlocProvider(create: (_) => DiaryBloc(apiClient: apiClient, db: db, premiumGate: premiumGate)),
       ],
-      child: BlocBuilder<AuthBloc, AuthState>(
+      // MG_SKIN: при авторизации подтягиваем скин из профиля; тему берём из ThemeCubit.
+      child: BlocListener<AuthBloc, AuthState>(
+        listenWhen: (prev, curr) => curr is AuthAuthenticated,
+        listener: (context, authState) {
+          if (authState is AuthAuthenticated) {
+            context.read<ThemeCubit>().loadFromProfile(authState.user);
+          }
+        },
+        child: BlocBuilder<AuthBloc, AuthState>(
         builder: (context, authState) {
           final router = AppRouter.create(authState: authState, apiClient: apiClient);
-          return MaterialApp.router(
-            title: 'MenuGen',
-            theme: AppTheme.light(),
-            darkTheme: AppTheme.dark(),
-            themeMode: ThemeMode.light, // dark theme disabled until full migration
-            routerConfig: router,
-            debugShowCheckedModeBanner: false,
-            locale: const Locale('ru'),
-            supportedLocales: const [Locale('ru'), Locale('en')],
-            localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
+          return BlocBuilder<ThemeCubit, AppSkin>(
+            builder: (context, skin) => MaterialApp.router(
+              title: 'MenuGen',
+              theme: AppTheme.forSkin(skin), // MG_SKIN
+              routerConfig: router,
+              debugShowCheckedModeBanner: false,
+              locale: const Locale('ru'),
+              supportedLocales: const [Locale('ru'), Locale('en')],
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+            ),
           );
         },
+      ),
       ),
     ),
     ),

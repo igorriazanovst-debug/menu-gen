@@ -29,6 +29,7 @@ export interface User {
   id: number; name: string; email?: string; phone?: string;
   vk_id?: string; avatar_url?: string; user_type: string;
   allergies: string[]; disliked_products: string[]; profile?: UserProfile;
+  ui_skin?: 'main' | 'second'; // MG_SKIN
   created_at: string;
 }
 export interface Ingredient { name: string; quantity?: string; unit?: string; }

@@ -9,6 +9,7 @@ import { usersApi } from '../../api/users';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { SkinSwitcher } from '../../components/ui/SkinSwitcher'; // MG_SKIN
 import { TargetField, type TargetLoader } from '../../components/profile/TargetField';
 import { getErrorMessage } from '../../utils/api';
 import type {
@@ -212,6 +213,15 @@ export const ProfilePage: React.FC = () => {
           )}
           {curMsg && <p className="text-xs text-gray-500 mt-1">{curMsg}</p>}
         </div>
+      </Card>
+
+      {/* MG_SKIN: выбор скина оформления */}
+      <Card className="p-6">
+        <h2 className="text-lg font-bold text-text mb-1">Оформление</h2>
+        <p className="text-xs text-muted mb-4">
+          Скин синхронизируется с мобильным приложением через ваш аккаунт.
+        </p>
+        <SkinSwitcher />
       </Card>
 
       <Card className="p-6">

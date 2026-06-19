@@ -190,6 +190,7 @@ class UserMeSerializer(serializers.ModelSerializer):
             "user_type",
             "allergies",
             "disliked_products",
+            "ui_skin",  # MG_SKIN
             "created_at",
             "profile",
             "subscription_status",
@@ -248,7 +249,7 @@ class UserMeUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("name", "avatar_url", "allergies", "disliked_products", "profile")
+        fields = ("name", "avatar_url", "allergies", "disliked_products", "ui_skin", "profile")  # MG_SKIN
 
     def update(self, instance, validated_data):
         from .audit import record_target_change

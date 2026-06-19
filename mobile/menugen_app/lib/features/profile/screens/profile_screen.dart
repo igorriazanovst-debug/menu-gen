@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../features/auth/bloc/auth_bloc.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/skin_selector.dart'; // MG_SKIN
 import '../../../core/widgets/macro_pill.dart';
 import '../../../core/widgets/target_field.dart';
 import '../../../core/premium/premium_badge.dart';
@@ -209,6 +210,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+
+                // ── Оформление (скин) ───────────────────────────────
+                const SkinSelectorCard(), // MG_SKIN
                 const SizedBox(height: 12),
 
                 // ── План приёмов пищи ───────────────────────────────

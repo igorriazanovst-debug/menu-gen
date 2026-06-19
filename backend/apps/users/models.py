@@ -27,6 +27,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         SPECIALIST = "specialist", "Специалист"
         ADMIN = "admin", "Администратор"
 
+    # MG_SKIN: выбранный скин оформления, синкается web↔mobile через аккаунт.
+    class UISkin(models.TextChoices):
+        MAIN = "main", "Основная"
+        SECOND = "second", "Альтернативная"
+
     email = models.EmailField(unique=True, null=True, blank=True)
     phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
     vk_id = models.CharField(max_length=64, unique=True, null=True, blank=True)
@@ -37,6 +42,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     allergies = models.JSONField(default=list, blank=True)
     disliked_products = models.JSONField(default=list, blank=True)
+    # MG_SKIN: оформление UI
+    ui_skin = models.CharField(max_length=16, choices=UISkin.choices, default=UISkin.MAIN)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
