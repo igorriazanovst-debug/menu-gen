@@ -61,17 +61,19 @@ class NutritionTotalsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (totals.isEmpty) return const SizedBox.shrink();
+    final cs = context.cs;
+    final tokens = context.tokens;
     Widget cell(String label, double v, String unit) => Expanded(
           child: Column(
             children: [
               Text('${_fmtNum(v)}$unit',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary)),
+                      color: cs.onSurface)),
               const SizedBox(height: 2),
               Text(label,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                  style: TextStyle(fontSize: 11, color: tokens.textSecondary)),
             ],
           ),
         );
@@ -79,7 +81,7 @@ class NutritionTotalsBar extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: tokens.surfaceAlt,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -89,7 +91,7 @@ class NutritionTotalsBar extends StatelessWidget {
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade700)),
+                  color: tokens.textSecondary)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -126,11 +128,11 @@ class MenuMealCarousel extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.no_meals, size: 64, color: Colors.grey.shade400),
+              Icon(Icons.no_meals, size: 64, color: context.tokens.textSecondary),
               const SizedBox(height: 12),
               Text(
                 'Нет блюд для «$slotLabel»',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
+                style: TextStyle(color: context.tokens.textSecondary, fontSize: 15),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -192,9 +194,10 @@ class _RecipeBigCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
     final radius = BorderRadius.circular(20);
     return Material(
-      color: AppColors.surface,
+      color: cs.surface,
       borderRadius: radius,
       elevation: 2,
       child: InkWell(
@@ -209,22 +212,22 @@ class _RecipeBigCard extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: _imageUrl == null || _imageUrl!.isEmpty
                     ? Container(
-                        color: AppColors.background,
+                        color: context.tokens.surfaceAlt,
                         child: Icon(Icons.restaurant,
-                            size: 64, color: Colors.grey.shade400),
+                            size: 64, color: context.tokens.textSecondary),
                       )
                     : CachedNetworkImage(
                         imageUrl: _imageUrl!,
                         fit: BoxFit.cover,
                         placeholder: (_, __) => Container(
-                          color: AppColors.background,
+                          color: context.tokens.surfaceAlt,
                           child: const Center(
                               child: CircularProgressIndicator(strokeWidth: 2)),
                         ),
                         errorWidget: (_, __, ___) => Container(
-                          color: AppColors.background,
+                          color: context.tokens.surfaceAlt,
                           child: Icon(Icons.restaurant,
-                              size: 64, color: Colors.grey.shade400),
+                              size: 64, color: context.tokens.textSecondary),
                         ),
                       ),
               ),
@@ -236,10 +239,10 @@ class _RecipeBigCard extends StatelessWidget {
                 children: [
                   Text(
                     _title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: cs.onSurface,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -277,9 +280,9 @@ class _MetaChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: AppColors.secondary),
+        Icon(icon, size: 16, color: context.cs.secondary),
         const SizedBox(width: 4),
-        Text(text, style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+        Text(text, style: TextStyle(fontSize: 13, color: context.tokens.textSecondary)),
       ],
     );
   }

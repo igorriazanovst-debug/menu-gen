@@ -138,7 +138,7 @@ class _MenuScreenState extends State<MenuScreen> {
                   value: activeId is int ? activeId : null,
                   isExpanded: true,
                   iconEnabledColor: Colors.white,
-                  dropdownColor: AppColors.primary,
+                  dropdownColor: Theme.of(context).colorScheme.primary,
                   style: const TextStyle(color: Colors.white, fontSize: 16),
                   items: state.menus.map((m) {
                     return DropdownMenuItem<int>(
@@ -451,33 +451,34 @@ class _MealTabsState extends State<_MealTabs> {
         itemBuilder: (context, i) {
           final slot = slots[i];
           final active = i == widget.selected;
+          final cs = context.cs;
           return ChoiceChip(
             label: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icons[slot] ?? Icons.restaurant,
                     size: 18,
-                    color: active ? Colors.white : AppColors.textPrimary),
+                    color: active ? Colors.white : cs.onSurface),
                 const SizedBox(width: 6),
                 Text(
                   labels[slot] ?? slot,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: active ? Colors.white : AppColors.textPrimary,
+                    color: active ? Colors.white : cs.onSurface,
                   ),
                 ),
               ],
             ),
             selected: active,
-            selectedColor: AppColors.primary,
-            backgroundColor: AppColors.surface,
+            selectedColor: cs.primary,
+            backgroundColor: cs.surface,
             showCheckmark: false,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
               side: BorderSide(
-                color: active ? AppColors.primary : Colors.grey.shade300,
+                color: active ? cs.primary : context.tokens.border,
               ),
             ),
             onSelected: (_) => onSelected(i),
@@ -559,7 +560,7 @@ class _PremiumLockedView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.lock_outline, size: 56, color: AppColors.primary),
+            Icon(Icons.lock_outline, size: 56, color: context.cs.primary),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),

@@ -61,13 +61,14 @@ class _DayChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
     final dow = DateFormat('E', 'ru').format(date).toUpperCase();
     final day = DateFormat('d', 'ru').format(date);
-    final bg = active ? AppColors.primary : AppColors.surface;
-    final fg = active ? Colors.white : AppColors.textPrimary;
+    final bg = active ? cs.primary : cs.surface;
+    final fg = active ? Colors.white : cs.onSurface;
     final borderColor = active
-        ? AppColors.primary
-        : (isToday ? AppColors.primary : Colors.grey.shade300);
+        ? cs.primary
+        : (isToday ? cs.primary : context.tokens.border);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -86,7 +87,7 @@ class _DayChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: active ? Colors.white.withOpacity(0.85) : Colors.grey.shade600,
+                color: active ? Colors.white.withOpacity(0.85) : context.tokens.textSecondary,
               ),
             ),
             const SizedBox(height: 2),

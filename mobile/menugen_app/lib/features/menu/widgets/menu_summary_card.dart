@@ -20,16 +20,19 @@ class MenuSummaryCard extends StatelessWidget {
     required this.end,
   });
 
-  // Цвета макросов (распределение калорий): углеводы / жиры / белки.
+  // Углеводы — фиксированный «семантический» синий (не брендовый);
+  // жиры/белки берём из активного скина.
   static const _carbColor = Color(0xFF5B9BD5);
-  static final Color _fatColor = AppColors.accent;
-  static const _proColor = AppColors.primary;
 
   String _fmt(double v) =>
       v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final tokens = context.tokens;
+    final fatColor = tokens.accent;
+    final proColor = cs.primary;
     final fmt = DateFormat('d MMM', 'ru');
     final period = '${fmt.format(start)} – ${fmt.format(end)}';
 
@@ -41,7 +44,7 @@ class MenuSummaryCard extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -62,9 +65,9 @@ class MenuSummaryCard extends StatelessWidget {
                 fatCal: fatCal,
                 proCal: proCal,
                 carbColor: _carbColor,
-                fatColor: _fatColor,
-                proColor: _proColor,
-                emptyColor: AppColors.background,
+                fatColor: fatColor,
+                proColor: proColor,
+                emptyColor: tokens.surfaceAlt,
               ),
             ),
           ),
@@ -79,16 +82,16 @@ class MenuSummaryCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade500,
+                    color: tokens.textSecondary,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '${_fmt(totals.calories)} ккал',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                    color: cs.onSurface,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -102,12 +105,12 @@ class MenuSummaryCard extends StatelessWidget {
                       value: '${_fmt(totals.carbs)} г',
                     ),
                     _MacroLegend(
-                      color: _fatColor,
+                      color: fatColor,
                       label: 'Ж',
                       value: '${_fmt(totals.fats)} г',
                     ),
                     _MacroLegend(
-                      color: _proColor,
+                      color: proColor,
                       label: 'Б',
                       value: '${_fmt(totals.proteins)} г',
                     ),
@@ -149,7 +152,7 @@ class _MacroLegend extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Colors.grey.shade700,
+            color: context.tokens.textSecondary,
           ),
         ),
       ],

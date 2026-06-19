@@ -130,6 +130,12 @@ abstract class AppColors {
   static const darkDivider = Color(0xFF3A3F47);
 }
 
+// MG_SKIN: удобный доступ к скин-токенам из виджетов (Phase 1 миграция хардкода).
+extension AppThemeX on BuildContext {
+  AppTokens get tokens => Theme.of(this).extension<AppTokens>()!;
+  ColorScheme get cs => Theme.of(this).colorScheme;
+}
+
 class AppTheme {
   // MG_SKIN: тема по скину.
   static ThemeData forSkin(AppSkin skin) => _fromPalette(paletteForSkin(skin));
