@@ -39,13 +39,32 @@ class MainShell extends StatelessWidget {
           Expanded(child: child),
         ],
       )), // MG_T09: close SafeArea
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex(context),
-        onTap: (i) => context.go(_tabs[i].path),
-        items: _tabs.map((t) => BottomNavigationBarItem(
-          icon: Icon(t.icon),
-          label: t.label,
-        )).toList(),
+      // MG_SKIN: скруглённая «плавающая» нижняя навигация в стиле Main-референса.
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 16,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BottomNavigationBar(
+            currentIndex: _currentIndex(context),
+            onTap: (i) => context.go(_tabs[i].path),
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            items: _tabs.map((t) => BottomNavigationBarItem(
+              icon: Icon(t.icon),
+              label: t.label,
+            )).toList(),
+          ),
+        ),
       ),
     );
   }
