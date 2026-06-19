@@ -23,6 +23,10 @@
   --c-danger:      230  57  70;
   --c-success:      46 160  92;
   --c-warning:     244 162  97;
+  /* MG_SKIN: тёмный сайдбар (web_skin) */
+  --c-sidebar:      30  33  38; /* #1E2126 */
+  --c-sidebar-fg:  255 255 255;
+  --c-sidebar-muted: 156 163 170;
 }
 
 :root[data-skin='second'] {
@@ -39,6 +43,10 @@
   --c-danger:      224  74  74;
   --c-success:      46 160  92;
   --c-warning:     240 200 120;
+  /* MG_SKIN: тёмный сайдбар — глубокий зелёный для Second */
+  --c-sidebar:      20  56  38; /* #143826 */
+  --c-sidebar-fg:  255 255 255;
+  --c-sidebar-muted: 184 196 188;
 }
 
 @layer base {

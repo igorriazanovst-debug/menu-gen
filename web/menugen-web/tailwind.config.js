@@ -22,6 +22,9 @@ module.exports = {
         danger:      v('--c-danger'),
         success:     v('--c-success'),
         warning:     v('--c-warning'),
+        sidebar:        v('--c-sidebar'),
+        'sidebar-fg':   v('--c-sidebar-fg'),
+        'sidebar-muted': v('--c-sidebar-muted'),
 
         // MG_SKIN: legacy-алиасы старого бренда → те же токены,
         // чтобы существующие экраны автоматически реагировали на скин
