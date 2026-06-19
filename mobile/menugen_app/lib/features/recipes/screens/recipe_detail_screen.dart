@@ -112,8 +112,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             ? Icons.favorite
             : (isDis ? Icons.heart_broken : Icons.favorite_border),
         color: isFav
-            ? AppColors.primary
-            : (isDis ? Colors.grey.shade400 : null),
+            ? context.cs.primary
+            : (isDis ? context.tokens.textSecondary : null),
       ),
       tooltip: isFav
           ? 'Любимое'
@@ -172,23 +172,38 @@ class _DetailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final tokens = context.tokens;
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        if (_imageUrl != null && _imageUrl!.isNotEmpty)
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: CachedNetworkImage(
-              imageUrl: _imageUrl!,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(color: AppColors.background),
-              errorWidget: (_, __, ___) => Container(
-                color: AppColors.background,
-                child:
-                    Icon(Icons.restaurant, size: 64, color: Colors.grey.shade400),
-              ),
+        // MG_SKIN: hero-изображение на тёплой подложке из темы (замена тёмного
+        // верха референса recipe_page), со скруглением снизу.
+        Container(
+          color: tokens.surfaceAlt,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+            child: AspectRatio(
+              aspectRatio: 16 / 10,
+              child: (_imageUrl != null && _imageUrl!.isNotEmpty)
+                  ? CachedNetworkImage(
+                      imageUrl: _imageUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(color: tokens.surfaceAlt),
+                      errorWidget: (_, __, ___) => Container(
+                        color: tokens.surfaceAlt,
+                        child: Icon(Icons.restaurant,
+                            size: 64, color: tokens.textSecondary),
+                      ),
+                    )
+                  : Container(
+                      color: tokens.surfaceAlt,
+                      child: Icon(Icons.restaurant,
+                          size: 64, color: tokens.textSecondary),
+                    ),
             ),
           ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           child: Column(
@@ -196,10 +211,10 @@ class _DetailBody extends StatelessWidget {
             children: [
               Text(
                 _title,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary),
+                    color: cs.onSurface),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -249,7 +264,7 @@ class _DetailBody extends StatelessWidget {
               if (_ingredients.isNotEmpty) ...[
                 const _SectionTitle('Ингредиенты'),
                 const SizedBox(height: 8),
-                ..._ingredients.map(_buildIngredientRow),
+                ..._ingredients.map((i) => _buildIngredientRow(context, i)),
                 const SizedBox(height: 20),
               ],
               if (_steps.isNotEmpty) ...[
@@ -267,28 +282,39 @@ class _DetailBody extends StatelessWidget {
     );
   }
 
-  Widget _buildIngredientRow(Map<String, dynamic> ing) {
+  Widget _buildIngredientRow(BuildContext context, Map<String, dynamic> ing) {
+    final cs = context.cs;
+    final tokens = context.tokens;
     final name = (ing['name'] as String?) ?? '';
     final qty = ing['quantity']?.toString() ?? '';
     final unit = (ing['unit'] as String?) ?? '';
     final amount = [qty, unit].where((s) => s.isNotEmpty).join(' ');
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: tokens.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 7),
-            child: Icon(Icons.circle, size: 6, color: AppColors.secondary),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: cs.secondary, shape: BoxShape.circle),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(name,
-                style: const TextStyle(fontSize: 15, color: AppColors.textPrimary)),
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: cs.onSurface)),
           ),
           if (amount.isNotEmpty)
             Text(amount,
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+                style: TextStyle(fontSize: 14, color: tokens.textSecondary)),
         ],
       ),
     );
@@ -302,8 +328,8 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
-          fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+      style: TextStyle(
+          fontSize: 17, fontWeight: FontWeight.w700, color: context.cs.onSurface),
     );
   }
 }
@@ -317,7 +343,7 @@ class _MetaItem extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 18, color: AppColors.secondary),
+        Icon(icon, size: 18, color: context.cs.secondary),
         const SizedBox(width: 6),
         Text(text, style: const TextStyle(fontSize: 14)),
       ],
@@ -342,32 +368,53 @@ class _NutritionGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final entries = <(String, String?)>[
-      ('Калории', _val('calories')),
-      ('Белки', _val('proteins')),
-      ('Жиры', _val('fats')),
-      ('Углеводы', _val('carbs')),
+    final cs = context.cs;
+    final tokens = context.tokens;
+    // Цвета-акценты статов (в стиле recipe_page): калории/белки/жиры/углеводы.
+    const proColor = Color(0xFF5B9BD5);
+    final entries = <(String, String?, Color)>[
+      ('Калории', _val('calories'), cs.primary),
+      ('Белки', _val('proteins'), proColor),
+      ('Жиры', _val('fats'), tokens.accent),
+      ('Углеводы', _val('carbs'), cs.secondary),
     ].where((e) => e.$2 != null).toList();
     if (entries.isEmpty) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(14),
+        color: tokens.surfaceAlt,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: entries.map((e) {
           return Expanded(
-            child: Column(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(e.$2!,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary)),
-                const SizedBox(height: 2),
-                Text(e.$1,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Container(
+                  width: 4,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: e.$3,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(e.$2!,
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: cs.onSurface)),
+                    const SizedBox(height: 2),
+                    Text(e.$1,
+                        style: TextStyle(
+                            fontSize: 11, color: tokens.textSecondary)),
+                  ],
+                ),
               ],
             ),
           );
@@ -391,7 +438,7 @@ class _StepRow extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 14,
-            backgroundColor: AppColors.primary,
+            backgroundColor: context.cs.primary,
             child: Text('$index',
                 style: const TextStyle(
                     color: Colors.white,
@@ -402,7 +449,7 @@ class _StepRow extends StatelessWidget {
           Expanded(
             child: Text(text,
                 style:
-                    const TextStyle(fontSize: 15, color: AppColors.textPrimary)),
+                    TextStyle(fontSize: 15, color: context.cs.onSurface)),
           ),
         ],
       ),
