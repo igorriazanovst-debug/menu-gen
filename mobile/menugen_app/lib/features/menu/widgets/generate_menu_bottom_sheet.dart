@@ -335,12 +335,12 @@ class _State extends State<GenerateMenuBottomSheet> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.cs.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         'Цели из Профиля: ${parts.join(" · ")}',
-        style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+        style: TextStyle(fontSize: 12, color: context.cs.onSurface),
       ),
     );
   }
@@ -381,10 +381,10 @@ class _State extends State<GenerateMenuBottomSheet> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: active ? AppColors.primary.withOpacity(0.1) : Colors.white,
+          color: active ? context.cs.primary.withOpacity(0.1) : context.cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: active ? AppColors.primary : Colors.grey.shade300,
+            color: active ? context.cs.primary : context.tokens.border,
           ),
         ),
         alignment: Alignment.center,
@@ -392,7 +392,7 @@ class _State extends State<GenerateMenuBottomSheet> {
           v,
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            color: active ? AppColors.primary : AppColors.textPrimary,
+            color: active ? context.cs.primary : context.cs.onSurface,
           ),
         ),
       ),
@@ -496,7 +496,7 @@ class _ToggleTile extends StatelessWidget {
         Switch(
           value: value && !disabled,
           onChanged: disabled ? null : onChanged,
-          activeColor: AppColors.primary,
+          activeColor: context.cs.primary,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -511,7 +511,7 @@ class _ToggleTile extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   color: disabled
                       ? Colors.grey
-                      : AppColors.textPrimary,
+                      : context.cs.onSurface,
                 ),
               ),
               const SizedBox(height: 2),

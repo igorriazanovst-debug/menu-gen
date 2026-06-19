@@ -320,10 +320,10 @@ class _KbjuCalculatorScreenState extends State<KbjuCalculatorScreen> {
         padding: const EdgeInsets.all(12),
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
-          color: active ? AppColors.primary.withOpacity(0.1) : null,
+          color: active ? context.cs.primary.withOpacity(0.1) : null,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: active ? AppColors.primary : const Color(0xFFE0E0E0),
+            color: active ? context.cs.primary : context.tokens.border,
           ),
         ),
         child: Column(

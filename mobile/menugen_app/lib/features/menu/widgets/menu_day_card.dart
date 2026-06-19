@@ -35,14 +35,14 @@ class MenuDayCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(dayLabel, style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              fontWeight: FontWeight.w600, color: context.cs.onSurface)),
             const SizedBox(height: 12),
             ...['breakfast', 'lunch', 'dinner', 'snack'].map((meal) {
               final item = items.where((i) => i.mealType == meal).firstOrNull;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(children: [
-                  Icon(_mealIcons[meal], size: 20, color: AppColors.secondary),
+                  Icon(_mealIcons[meal], size: 20, color: context.cs.secondary),
                   const SizedBox(width: 8),
                   SizedBox(width: 70,
                     child: Text(_mealLabels[meal] ?? meal,
