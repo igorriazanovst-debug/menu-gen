@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
+import '../../../core/theme/app_theme.dart'; // MG_SKIN
 import '../bloc/recipes_bloc.dart';
 import '../models/recipe_filters.dart';
 import '../widgets/filter_sheet.dart';
@@ -255,7 +256,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.menu_book,
-                              size: 56, color: Colors.grey.shade400),
+                              size: 56, color: context.tokens.textSecondary),
                           const SizedBox(height: 12),
                           const Text('Рецептов не найдено'),
                           if (_filters.activeCount > 0) ...[

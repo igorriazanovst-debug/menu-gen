@@ -40,8 +40,10 @@ class RecipeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = context.cs;
+    final tokens = context.tokens;
     return Material(
-      color: Colors.white,
+      color: cs.surface,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -57,10 +59,10 @@ class RecipeCard extends StatelessWidget {
                       ? CachedNetworkImage(
                           imageUrl: _imageUrl!,
                           fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(color: AppColors.background),
-                          errorWidget: (_, __, ___) => _placeholder(),
+                          placeholder: (_, __) => Container(color: tokens.surfaceAlt),
+                          errorWidget: (_, __, ___) => _placeholder(context),
                         )
-                      : _placeholder(),
+                      : _placeholder(context),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -71,10 +73,10 @@ class RecipeCard extends StatelessWidget {
                         _title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
+                          color: cs.onSurface,
                           height: 1.2,
                         ),
                       ),
@@ -84,8 +86,8 @@ class RecipeCard extends StatelessWidget {
                         runSpacing: 4,
                         children: [
                           if (_cookTime != null && _cookTime!.isNotEmpty)
-                            _meta(Icons.access_time, _cookTime!),
-                          if (_kcal != null) _meta(Icons.local_fire_department, _kcal!),
+                            _meta(context, Icons.access_time, _cookTime!),
+                          if (_kcal != null) _meta(context, Icons.local_fire_department, _kcal!),
                           if (_fridgeMatch != null && _fridgeMatch! > 0)
                             _badge('🧺 $_fridgeMatch'),
                         ],
@@ -116,8 +118,8 @@ class RecipeCard extends StatelessWidget {
                               : Icons.favorite_border),
                       size: 18,
                       color: _isFavorite
-                          ? AppColors.primary
-                          : (_isDisliked ? Colors.grey : Colors.grey.shade500),
+                          ? cs.primary
+                          : tokens.textSecondary,
                     ),
                   ),
                 ),
@@ -128,35 +130,37 @@ class RecipeCard extends StatelessWidget {
     );
   }
 
-  Widget _placeholder() => Container(
-        color: AppColors.background,
+  Widget _placeholder(BuildContext context) => Container(
+        color: context.tokens.surfaceAlt,
         child: Center(
           child: Icon(Icons.restaurant_menu,
-              size: 48, color: Colors.grey.shade400),
+              size: 48, color: context.tokens.textSecondary),
         ),
       );
 
-  Widget _meta(IconData icon, String text) => Row(
+  Widget _meta(BuildContext context, IconData icon, String text) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: Colors.grey.shade600),
+          Icon(icon, size: 12, color: context.tokens.textSecondary),
           const SizedBox(width: 3),
           Text(
             text,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 11, color: context.tokens.textSecondary),
           ),
         ],
       );
 
-  Widget _badge(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: AppColors.secondary.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+  Widget _badge(String text) => Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: context.cs.secondary.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
         ),
       );
 }
