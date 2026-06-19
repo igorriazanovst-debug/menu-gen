@@ -6,11 +6,12 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
 }
 
+// MG_SKIN: варианты на семантических токенах (реагируют на скин)
 const variants = {
-  primary:   'bg-tomato text-white hover:bg-red-700 disabled:opacity-50',
-  secondary: 'bg-avocado text-white hover:bg-green-700 disabled:opacity-50',
-  ghost:     'bg-transparent text-tomato hover:bg-red-50 border border-tomato',
-  danger:    'bg-red-600 text-white hover:bg-red-700',
+  primary:   'bg-primary text-primary-fg hover:opacity-90 disabled:opacity-50',
+  secondary: 'bg-secondary text-white hover:opacity-90 disabled:opacity-50',
+  ghost:     'bg-transparent text-primary hover:bg-primary/10 border border-primary',
+  danger:    'bg-danger text-white hover:opacity-90',
 };
 const sizes = {
   sm: 'px-3 py-1.5 text-sm', md: 'px-4 py-2 text-sm', lg: 'px-6 py-3 text-base',
@@ -21,7 +22,7 @@ export const Button: React.FC<ButtonProps> = ({
 }) => (
   <button
     className={[
-      'rounded-xl font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-tomato/40',
+      'rounded-xl font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40',
       variants[variant], sizes[size], className,
     ].join(' ')}
     disabled={disabled || loading}

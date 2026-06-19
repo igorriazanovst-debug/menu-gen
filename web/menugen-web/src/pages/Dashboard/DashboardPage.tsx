@@ -38,36 +38,36 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-chocolate">
+        <h1 className="text-2xl font-bold text-text">
           Добро пожаловать, {user?.name}! 👋
         </h1>
-        <p className="text-gray-500 text-sm mt-1">Планируйте питание легко и вкусно</p>
+        <p className="text-muted text-sm mt-1">Планируйте питание легко и вкусно</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-4">
-          <p className="text-sm text-gray-500">Активное меню</p>
-          <p className="text-xl font-bold text-chocolate mt-1">
+        <Card className="p-4 border-l-4 border-l-primary">
+          <p className="text-sm text-muted">Активное меню</p>
+          <p className="text-xl font-bold text-text mt-1">
             {activeMenu ? `${activeMenu.period_days} дней` : 'Нет'}
           </p>
           {activeMenu && (
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-muted mt-0.5">
               до {new Date(activeMenu.end_date).toLocaleDateString('ru')}
             </p>
           )}
         </Card>
-        <Card className="p-4">
-          <p className="text-sm text-gray-500">Тариф</p>
+        <Card className="p-4 border-l-4 border-l-secondary">
+          <p className="text-sm text-muted">Тариф</p>
           <div className="mt-1 flex items-center gap-2">
-            <p className="text-xl font-bold text-chocolate">{sub?.plan.name ?? 'Free'}</p>
+            <p className="text-xl font-bold text-text">{sub?.plan.name ?? 'Free'}</p>
             <Badge color={PLAN_COLOR[sub?.plan.code ?? 'free'] ?? 'gray'}>
               {sub?.status === 'active' ? 'Активна' : 'Free'}
             </Badge>
           </div>
         </Card>
-        <Card className="p-4">
-          <p className="text-sm text-gray-500">Дата входа</p>
-          <p className="text-xl font-bold text-chocolate mt-1">
+        <Card className="p-4 border-l-4 border-l-accent">
+          <p className="text-sm text-muted">Дата входа</p>
+          <p className="text-xl font-bold text-text mt-1">
             {user?.created_at
               ? new Date(user.created_at).toLocaleDateString('ru', { day: 'numeric', month: 'long' })
               : '—'}
@@ -76,7 +76,7 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       <Card className="p-6">
-        <h2 className="font-semibold text-chocolate mb-4">Быстрые действия</h2>
+        <h2 className="font-semibold text-text mb-4">Быстрые действия</h2>
         <div className="flex flex-wrap gap-3">
           <Link to="/menu"><Button>📋 Перейти к меню</Button></Link>
           <Link to="/recipes"><Button variant="secondary">📖 Каталог рецептов</Button></Link>
@@ -87,8 +87,8 @@ export const DashboardPage: React.FC = () => {
       {activeMenu && (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-chocolate">Сегодняшнее меню</h2>
-            <Link to="/menu" className="text-sm text-tomato hover:underline">Открыть →</Link>
+            <h2 className="font-semibold text-text">Сегодняшнее меню</h2>
+            <Link to="/menu" className="text-sm text-primary hover:underline">Открыть →</Link>
           </div>
           <TodayMeals menu={activeMenu} />
         </Card>
@@ -104,7 +104,7 @@ const TodayMeals: React.FC<{ menu: Menu }> = ({ menu }) => {
   const dayOffset = Math.floor((today.getTime() - start.getTime()) / 86400000);
   const todayItems = items.filter((i) => i.day_offset === dayOffset);
 
-  if (!todayItems.length) return <p className="text-gray-400 text-sm">Нет блюд на сегодня</p>;
+  if (!todayItems.length) return <p className="text-muted text-sm">Нет блюд на сегодня</p>;
 
   const labels: Record<string, string> = {
     breakfast: 'Завтрак', lunch: 'Обед', dinner: 'Ужин', snack: 'Перекус',
@@ -113,9 +113,9 @@ const TodayMeals: React.FC<{ menu: Menu }> = ({ menu }) => {
   return (
     <div className="space-y-2">
       {todayItems.map((item) => (
-        <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl bg-rice">
-          <span className="text-sm text-gray-500 w-20 shrink-0">{labels[item.meal_type]}</span>
-          <span className="font-medium text-chocolate text-sm">{item.recipe.title}</span>
+        <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl bg-surface-alt">
+          <span className="text-sm text-muted w-20 shrink-0">{labels[item.meal_type]}</span>
+          <span className="font-medium text-text text-sm">{item.recipe.title}</span>
         </div>
       ))}
     </div>
