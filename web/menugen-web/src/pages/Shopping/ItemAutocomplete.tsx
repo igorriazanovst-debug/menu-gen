@@ -310,7 +310,7 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
       </div>
 
       {open && results.length > 0 && (
-        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-72 overflow-auto">
+        <ul className="absolute z-20 mt-1 w-full bg-surface border border-border rounded-xl shadow-lg max-h-72 overflow-auto">
           {results.map((r) => (
             <li
               key={r.product_id}
@@ -326,7 +326,7 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
           ))}
           <li
             onClick={startNew}
-            className="px-3 py-2 text-sm text-tomato hover:bg-tomato/5 cursor-pointer border-t border-gray-100"
+            className="px-3 py-2 text-sm text-tomato hover:bg-tomato/5 cursor-pointer border-t border-border"
           >
             + Добавить «{text.trim()}» как новый товар
           </li>
@@ -334,7 +334,7 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
       )}
 
       {open && results.length === 0 && text.trim() && !loading && (
-        <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg p-2">
+        <div className="absolute z-20 mt-1 w-full bg-surface border border-border rounded-xl shadow-lg p-2">
           <button
             onClick={startNew}
             className="w-full text-left px-2 py-1.5 text-sm text-tomato hover:bg-tomato/5 rounded-lg"
@@ -351,10 +351,10 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
           onClick={() => setBrowseOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+            className="bg-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="font-bold text-chocolate">Каталог товаров</h3>
               <button
                 onClick={() => setBrowseOpen(false)}
@@ -364,7 +364,7 @@ export const ItemAutocomplete: React.FC<Props> = ({ onAdd, currency = 'RUB' }) =
               </button>
             </div>
             <div className="flex flex-1 min-h-0">
-              <div className="w-44 shrink-0 border-r border-gray-100 overflow-auto">
+              <div className="w-44 shrink-0 border-r border-border overflow-auto">
                 {browseCats.map((c) => (
                   <button
                     key={c.slug}

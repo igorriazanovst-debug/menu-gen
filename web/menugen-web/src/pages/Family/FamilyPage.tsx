@@ -109,7 +109,7 @@ export const FamilyPage: React.FC = () => {
                     </Badge>
                     <button
                       onClick={() => setEditing(m)}
-                      className="text-xs text-gray-500 hover:text-tomato transition px-2 py-1 rounded hover:bg-white"
+                      className="text-xs text-gray-500 hover:text-tomato transition px-2 py-1 rounded hover:bg-surface"
                       title="Редактировать"
                     >
                       ✎

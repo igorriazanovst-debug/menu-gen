@@ -116,7 +116,7 @@ export const RecipesPage: React.FC = () => {
         <button
           onClick={() => setShowFilters(v => !v)}
           className={`px-4 py-2 rounded-xl border text-sm font-medium transition flex items-center gap-1
-            ${showFilters ? 'bg-tomato/10 border-tomato text-tomato' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            ${showFilters ? 'bg-tomato/10 border-tomato text-tomato' : 'border-border text-gray-600 hover:bg-gray-50'}`}
         >
           🔽 Фильтры
           {activeFilterCount > 0 && (
@@ -129,7 +129,7 @@ export const RecipesPage: React.FC = () => {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-4 shadow-sm">
+        <div className="bg-surface rounded-2xl border border-border p-4 space-y-4 shadow-sm">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Тип приёма пищи */}
             <div>
@@ -137,7 +137,7 @@ export const RecipesPage: React.FC = () => {
               <select
                 value={filters.meal_type}
                 onChange={e => handleFilterChange('meal_type', e.target.value)}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-tomato"
+                className="w-full rounded-xl border border-border px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-tomato"
               >
                 <option value="">Все</option>
                 {MEAL_TYPES.map(m => (
@@ -152,7 +152,7 @@ export const RecipesPage: React.FC = () => {
               <select
                 value={filters.country}
                 onChange={e => handleFilterChange('country', e.target.value)}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-tomato"
+                className="w-full rounded-xl border border-border px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-tomato"
               >
                 <option value="">Все</option>
                 {CUISINES.map(c => (
@@ -279,7 +279,7 @@ const RecipeCard: React.FC<{
     {isAdmin && (
       <button
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
-        className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm text-gray-600 hover:text-tomato hover:bg-white rounded-lg px-2 py-1 text-xs font-medium shadow opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 bg-surface/90 backdrop-blur-sm text-gray-600 hover:text-tomato hover:bg-surface rounded-lg px-2 py-1 text-xs font-medium shadow opacity-0 group-hover:opacity-100 transition-opacity"
       >
         ✏️ Изменить
       </button>
@@ -312,7 +312,7 @@ const RecipeModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {recipe.image_url && (
           <img src={recipe.image_url} alt={recipe.title}
             className="w-full object-contain rounded-t-2xl bg-gray-50" />

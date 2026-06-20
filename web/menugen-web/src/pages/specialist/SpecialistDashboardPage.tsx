@@ -58,7 +58,7 @@ export const SpecialistDashboardPage: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
       {/* Профиль */}
-      <div className="bg-white rounded-2xl shadow p-6 flex items-center gap-4">
+      <div className="bg-surface rounded-2xl shadow p-6 flex items-center gap-4">
         <div className="w-14 h-14 rounded-full bg-avocado flex items-center justify-center text-white text-2xl font-bold">
           {profile.name.charAt(0).toUpperCase()}
         </div>
@@ -117,7 +117,7 @@ export const SpecialistDashboardPage: React.FC = () => {
               <Link
                 key={c.id}
                 to={`/specialist/clients/${c.id}`}
-                className="bg-white rounded-xl shadow p-4 hover:shadow-md transition"
+                className="bg-surface rounded-xl shadow p-4 hover:shadow-md transition"
               >
                 <p className="font-semibold text-chocolate">{c.name}</p>
                 <p className="text-sm text-gray-500 mt-1">

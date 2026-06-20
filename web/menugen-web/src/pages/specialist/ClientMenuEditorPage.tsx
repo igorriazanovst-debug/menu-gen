@@ -133,11 +133,11 @@ export const ClientMenuEditorPage: React.FC = () => {
             return dt.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
           })();
           return (
-            <div key={d} className="bg-white rounded-2xl shadow p-4">
+            <div key={d} className="bg-surface rounded-2xl shadow p-4">
               <h2 className="font-semibold text-chocolate capitalize mb-3">{dateStr}</h2>
               <div className="space-y-2">
                 {dayItems.map((item) => (
-                  <div key={item.id} className="border border-gray-100 rounded-xl px-3 py-2">
+                  <div key={item.id} className="border border-border rounded-xl px-3 py-2">
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-xs text-lemon font-semibold uppercase">
@@ -168,10 +168,10 @@ export const ClientMenuEditorPage: React.FC = () => {
                           placeholder="Поиск рецепта..."
                           value={recipeSearch}
                           onChange={(e) => setRecipeSearch(e.target.value)}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
+                          className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
                         />
                         {recipeOptions.length > 0 && (
-                          <ul className="mt-2 border border-gray-100 rounded-lg divide-y max-h-48 overflow-y-auto">
+                          <ul className="mt-2 border border-border rounded-lg divide-y max-h-48 overflow-y-auto">
                             {recipeOptions.map((r) => (
                               <li
                                 key={r.id}

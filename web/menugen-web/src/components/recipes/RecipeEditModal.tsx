@@ -179,7 +179,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
 
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <h2 className="text-lg font-bold text-chocolate">Редактировать блюдо</h2>
@@ -266,7 +266,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Группа продукта (метод тарелки)</label>
                 <select value={foodGroup} onChange={e => setFoodGroup(e.target.value as FoodGroup | '')}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-tomato/40">
+                  className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-tomato/40">
                   <option value="">— не указано —</option>
                   {FOOD_GROUP_OPTIONS.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -278,7 +278,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Тип белка *</label>
                   <select value={proteinType} onChange={e => setProteinType(e.target.value as ProteinType | '')}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-tomato/40">
+                    className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-tomato/40">
                     <option value="">— не указано —</option>
                     {PROTEIN_TYPE_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -291,7 +291,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Тип зерна *</label>
                   <select value={grainType} onChange={e => setGrainType(e.target.value as GrainType | '')}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-tomato/40">
+                    className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-tomato/40">
                     <option value="">— не указано —</option>
                     {GRAIN_TYPE_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -304,7 +304,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
                 <label className="text-xs text-gray-500 mb-2 block">Подходит для приёмов пищи</label>
                 <div className="grid grid-cols-2 gap-2">
                   {SUITABLE_FOR_OPTIONS.map(o => (
-                    <label key={o.value} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+                    <label key={o.value} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border cursor-pointer hover:bg-gray-50">
                       <input type="checkbox" checked={suitableFor.includes(o.value)}
                         onChange={() => toggleSuitable(o.value)} />
                       <span className="text-sm">{o.label}</span>
@@ -314,11 +314,11 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
               </div>
 
               <div className="space-y-2">
-                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border cursor-pointer hover:bg-gray-50">
                   <input type="checkbox" checked={isFattyFish} onChange={e => setIsFattyFish(e.target.checked)} />
                   <span className="text-sm">Жирная рыба (лосось, скумбрия, сельдь, форель)</span>
                 </label>
-                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border cursor-pointer hover:bg-gray-50">
                   <input type="checkbox" checked={isRedMeat} onChange={e => setIsRedMeat(e.target.checked)} />
                   <span className="text-sm">Красное мясо (говядина, баранина, свинина, утка)</span>
                 </label>
@@ -328,7 +328,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Метод приготовления</label>
                 <select value={cookingMethod} onChange={e => setCookingMethod(e.target.value as CookingMethod | '')}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-tomato/40">
+                  className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-tomato/40">
                   <option value="">— не указано —</option>
                   {COOKING_METHOD_OPTIONS.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -336,7 +336,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
                 </select>
               </div>
 
-              <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50">
+              <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border cursor-pointer hover:bg-gray-50">
                 <input type="checkbox" checked={hasAddedSugar} onChange={e => setHasAddedSugar(e.target.checked)} />
                 <span className="text-sm">Содержит добавленный сахар</span>
               </label>

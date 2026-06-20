@@ -172,7 +172,7 @@ export const ProfilePage: React.FC = () => {
                       'p-3 rounded-xl border text-left transition ' +
                       (active
                         ? 'border-tomato bg-tomato/10 text-chocolate'
-                        : 'border-gray-200 bg-white hover:border-tomato/50 text-gray-700')
+                        : 'border-border bg-surface hover:border-tomato/50 text-gray-700')
                     }
                   >
                     <div className="font-semibold">{opt.label}</div>
@@ -187,7 +187,7 @@ export const ProfilePage: React.FC = () => {
         </form>
 
         {/* MG_RUBRIC007_ui: family currency */}
-        <div className="mt-6 pt-6 border-t border-gray-100">
+        <div className="mt-6 pt-6 border-t border-border">
           <label className="block text-sm font-medium text-chocolate mb-2">
             Валюта семьи (для списков покупок)
           </label>

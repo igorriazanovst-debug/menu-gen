@@ -71,13 +71,13 @@ export const RecommendationFormPage: React.FC = () => {
       {/* Форма */}
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="bg-white rounded-2xl shadow p-6 space-y-4 mb-8"
+        className="bg-surface rounded-2xl shadow p-6 space-y-4 mb-8"
       >
         <div>
           <label className="block text-sm font-medium text-chocolate mb-1">Тип</label>
           <select
             {...register("rec_type")}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
           >
             {TYPE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -91,7 +91,7 @@ export const RecommendationFormPage: React.FC = () => {
           <label className="block text-sm font-medium text-chocolate mb-1">Название *</label>
           <input
             {...register("name")}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
             placeholder="Например: Омега-3"
           />
           {errors.name && (
@@ -104,7 +104,7 @@ export const RecommendationFormPage: React.FC = () => {
             <label className="block text-sm font-medium text-chocolate mb-1">Доза</label>
             <input
               {...register("dosage")}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
               placeholder="1000 мг"
             />
           </div>
@@ -112,7 +112,7 @@ export const RecommendationFormPage: React.FC = () => {
             <label className="block text-sm font-medium text-chocolate mb-1">Частота</label>
             <input
               {...register("frequency")}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
               placeholder="2 раза в день"
             />
           </div>
@@ -124,7 +124,7 @@ export const RecommendationFormPage: React.FC = () => {
             <input
               type="date"
               {...register("start_date")}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
             />
           </div>
           <div>
@@ -132,7 +132,7 @@ export const RecommendationFormPage: React.FC = () => {
             <input
               type="date"
               {...register("end_date")}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-avocado"
             />
           </div>
         </div>
@@ -155,7 +155,7 @@ export const RecommendationFormPage: React.FC = () => {
           {selectedClientRecs.map((r) => (
             <div
               key={r.id}
-              className={`bg-white rounded-xl shadow px-4 py-3 flex items-center justify-between ${
+              className={`bg-surface rounded-xl shadow px-4 py-3 flex items-center justify-between ${
                 !r.is_active ? "opacity-40" : ""
               }`}
             >

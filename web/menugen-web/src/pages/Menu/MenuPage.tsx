@@ -121,13 +121,13 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
         ✏️ Заменить
       </button>
       {open && (
-        <div className="mt-2 border border-gray-200 rounded-lg p-2 bg-gray-50">
+        <div className="mt-2 border border-border rounded-lg p-2 bg-gray-50">
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Поиск рецепта..."
-            className="w-full px-2 py-1 text-sm rounded-md border border-gray-200 focus:outline-none focus:border-tomato"
+            className="w-full px-2 py-1 text-sm rounded-md border border-border focus:outline-none focus:border-tomato"
           />
           {loading && <p className="text-xs text-gray-400 mt-2">Загрузка...</p>}
           {err && <p className="text-xs text-red-600 mt-2">{err}</p>}
@@ -135,7 +135,7 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
             <p className="text-xs text-gray-400 mt-2">Ничего не найдено</p>
           )}
           {items.length > 0 && (
-            <ul className="mt-2 max-h-48 overflow-y-auto divide-y divide-gray-200 bg-white rounded-md">
+            <ul className="mt-2 max-h-48 overflow-y-auto divide-y divide-gray-200 bg-surface rounded-md">
               {items.map(r => (
                 <li
                   key={r.id}
@@ -201,7 +201,7 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6"
+      <div className="bg-surface rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6"
            onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -319,7 +319,7 @@ const MealCard: React.FC<MealCardProps> = ({ slot, items, warnings, onOpenModal 
       </button>
 
       {expanded && (
-        <div className="mt-2 pt-2 border-t border-gray-200 space-y-1.5">
+        <div className="mt-2 pt-2 border-t border-border space-y-1.5">
           {sorted.map(item => {
             const role = (item.component_role || 'other') as ComponentRole;
             return (
@@ -488,7 +488,7 @@ export const MenuPage: React.FC = () => {
                   'flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium transition border',
                   isActive
                     ? 'bg-tomato text-white border-tomato'
-                    : 'bg-white text-chocolate border-gray-200 hover:border-tomato',
+                    : 'bg-surface text-chocolate border-border hover:border-tomato',
                 ].join(' ')}
               >
                 {formatDate(m.start_date)} — {formatDate(m.end_date)}

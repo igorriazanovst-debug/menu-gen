@@ -175,7 +175,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
                 'text-left px-3 py-2 rounded-xl border text-sm transition',
                 strategy === v
                   ? 'border-tomato bg-tomato/10 text-tomato'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+                  : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
               ].join(' ')}
             >
               <span className="font-medium">{title}</span>
@@ -192,7 +192,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             type="date"
             value={startDate}
             onChange={e => setStartDate(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-tomato"
+            className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-tomato"
           />
         </div>
         <div>
@@ -201,7 +201,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             type="number" min={1} max={30}
             value={periodDays}
             onChange={e => setPeriodDays(Number(e.target.value) || 1)}
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-tomato"
+            className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-tomato"
           />
         </div>
         {strategy === '1' && (  /* MG_STRAT_WEB */
@@ -217,7 +217,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
                   'flex-1 px-3 py-2 rounded-xl border text-sm transition',
                   mealPlanType === v
                     ? 'border-tomato bg-tomato/10 text-tomato'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+                    : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
                 ].join(' ')}
               >
                 {v}
@@ -249,7 +249,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
                     'px-3 py-1.5 rounded-full border text-xs transition',
                     active
                       ? 'border-tomato bg-tomato text-white'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+                      : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
                   ].join(' ')}
                 >
                   {COUNTRY_LABELS[c] ?? c}
@@ -267,7 +267,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             )}
           </div>
           {showAllCountries && restCountries.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-gray-100">
+            <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-border">
               {restCountries.map(c => {
                 const active = selectedCountries.includes(c);
                 return (
@@ -279,7 +279,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
                       'px-3 py-1.5 rounded-full border text-xs transition',
                       active
                         ? 'border-tomato bg-tomato text-white'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+                        : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
                     ].join(' ')}
                   >
                     {COUNTRY_LABELS[c] ?? c}
@@ -302,7 +302,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
           value={maxCookTime}
           onChange={e => setMaxCookTime(e.target.value ? Number(e.target.value) : '')}
           placeholder="Не ограничено"
-          className="w-40 px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-tomato"
+          className="w-40 px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-tomato"
         />
       </div>
 
@@ -337,7 +337,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+      <div className="flex justify-end gap-2 pt-2 border-t border-border">
         <Button variant="ghost" onClick={onCancel} disabled={generating}>Отмена</Button>
         <Button onClick={handleSubmit} loading={generating}>Создать меню</Button>
       </div>
@@ -359,8 +359,8 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ checked, onChange, title, subtitl
     <div className={[
       'flex items-center gap-3 p-3 rounded-xl border transition',
       disabled
-        ? 'border-gray-100 bg-gray-50 opacity-60'
-        : 'border-gray-200 bg-white hover:border-tomato/30',
+        ? 'border-border bg-gray-50 opacity-60'
+        : 'border-border bg-surface hover:border-tomato/30',
     ].join(' ')}>
       <button
         type="button"
@@ -376,7 +376,7 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ checked, onChange, title, subtitl
       >
         <span
           className={[
-            'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+            'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-surface shadow transition-transform',
             checked ? 'translate-x-4' : 'translate-x-0',
           ].join(' ')}
         />

@@ -76,7 +76,7 @@ export const ClientDetailPage: React.FC = () => {
 
       {/* Участники */}
       {client && (
-        <section className="bg-white rounded-xl shadow p-4">
+        <section className="bg-surface rounded-xl shadow p-4">
           <h2 className="font-semibold text-chocolate mb-3">Участники семьи</h2>
           <div className="divide-y">
             {client.members.map((m) => (
@@ -102,7 +102,7 @@ export const ClientDetailPage: React.FC = () => {
               <Link
                 key={menu.id}
                 to={`/specialist/clients/${fid}/menus/${menu.id}`}
-                className="bg-white rounded-xl shadow px-4 py-3 flex items-center justify-between hover:shadow-md transition"
+                className="bg-surface rounded-xl shadow px-4 py-3 flex items-center justify-between hover:shadow-md transition"
               >
                 <div>
                   <p className="font-medium text-chocolate">
@@ -145,7 +145,7 @@ export const ClientDetailPage: React.FC = () => {
               .map((r) => (
                 <div
                   key={r.id}
-                  className="bg-white rounded-xl shadow px-4 py-3"
+                  className="bg-surface rounded-xl shadow px-4 py-3"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-chocolate">{r.name}</span>

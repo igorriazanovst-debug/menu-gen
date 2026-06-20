@@ -117,7 +117,7 @@ export const FamilyMemberEditModal: React.FC<Props> = ({
                   className={`px-4 py-2 rounded-xl border transition ${
                     mealPlan === v
                       ? 'bg-tomato text-white border-tomato'
-                      : 'bg-white text-chocolate border-gray-200 hover:border-tomato'
+                      : 'bg-surface text-chocolate border-border hover:border-tomato'
                   }`}
                 >
                   {v === '3' ? '3 приёма' : '5 приёмов'}
