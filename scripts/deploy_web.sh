@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# MenuGen: WIP-коммит локальных правок на сервере + веб-деплой (CRA -> web-dist -> nginx)
+# MenuGen: веб-деплой ТОЛЬКО фронта (CRA -> web-dist -> nginx).
+# Сборка идёт из ветки в ИЗОЛИРОВАННОМ git worktree, поэтому основное рабочее
+# дерево ($REPO) — и вместе с ним backend, который раздаётся из него, — НЕ трогается.
 set -euo pipefail
 
 REPO=/opt/menugen
-SRC=$REPO/web/menugen-web
 DIST=$REPO/web-dist
-BRANCH=claude/nifty-rubin-h90pfg
-PUSH=${PUSH:-1}          # 1 = запушить WIP-коммит в origin, 0 = оставить только локально
+BRANCH=${BRANCH:-claude/nifty-rubin-h90pfg}   # ветку фронта можно переопределить: BRANCH=... ./deploy_web.sh
+WT=/tmp/mg-web-build                          # изолированная копия ветки (worktree)
+WT_SRC=$WT/web/menugen-web
 TS=$(date +%Y%m%d_%H%M%S)
 
 cd "$REPO"
+MAINBR=$(git rev-parse --abbrev-ref HEAD)
+echo "==> Основное дерево остаётся на ветке: $MAINBR (backend не трогаем)"
 
 echo "==> 0. Бэкап текущего web-dist"
 mkdir -p "$REPO/backups"
@@ -18,41 +22,36 @@ if [ -d "$DIST" ]; then
   echo "    $REPO/backups/web-dist.tar.gz.bak_${TS}"
 fi
 
-echo "==> 1. Фетч ветки $BRANCH"
+echo "==> 1. Фетч ветки фронта: $BRANCH"
 git fetch origin "$BRANCH"
-CUR=$(git rev-parse --abbrev-ref HEAD)
-echo "    текущая ветка сервера: $CUR"
 
-echo "==> 2. Промежуточный коммит локальных правок (ДО checkout, на ветке $CUR)"
-if [ -n "$(git status --porcelain)" ]; then
-  git config user.name  >/dev/null 2>&1 || git config user.name  "MenuGen Server"
-  git config user.email >/dev/null 2>&1 || git config user.email "server@menugen.local"
-  git add -A
-  git commit -m "wip(server): промежуточный коммит локальных правок перед деплоем ${TS}"
-  echo "    закоммичено на ветке $CUR (правки сохранены, не потеряются)"
-else
-  echo "    незакоммиченных правок нет — пропуск"
-fi
+echo "==> 2. Изолированный worktree из origin/$BRANCH"
+# на случай, если предыдущий запуск не подчистил за собой
+git worktree remove --force "$WT" 2>/dev/null || true
+rm -rf "$WT"
+git worktree add --detach "$WT" "origin/$BRANCH"
 
-echo "==> 3. Переключаемся на $BRANCH и подтягиваем origin"
-git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" "origin/$BRANCH"
-git pull --rebase origin "$BRANCH"
-# Примечание: WIP-коммит с правками сервера остаётся на ветке "$CUR".
-# Авто-пуш WIP не делаем — это чужая (не деплой-) ветка. PUSH=$PUSH (зарезервировано).
+cleanup() {
+  echo "==> Чистка worktree"
+  cd "$REPO"
+  git worktree remove --force "$WT" 2>/dev/null || true
+  rm -rf "$WT"
+}
+trap cleanup EXIT
 
-echo "==> 4. Зависимости (--legacy-peer-deps обязателен)"
-cd "$SRC"
+echo "==> 3. Зависимости (--legacy-peer-deps обязателен)"
+cd "$WT_SRC"
 npm install --legacy-peer-deps
 
-echo "==> 5. Проверка типов + сборка (CI=false)"
+echo "==> 4. Проверка типов + сборка (CI=false)"
 npx tsc --noEmit
 CI=false npm run build
 
-echo "==> 6. build -> web-dist"
+echo "==> 5. build -> web-dist"
 rm -rf "$DIST"; mkdir -p "$DIST"
-cp -a "$SRC/build/." "$DIST/"
+cp -a "$WT_SRC/build/." "$DIST/"
 
-echo "==> 7. Reload nginx"
+echo "==> 6. Reload nginx"
 nginx -t && nginx -s reload
 
 echo "==> ГОТОВО. В браузере: Ctrl+Shift+R"
