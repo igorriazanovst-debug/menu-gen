@@ -117,6 +117,13 @@ class _MenuScreenState extends State<MenuScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 44,
+        titleSpacing: 8,
+        titleTextStyle: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         title: BlocBuilder<MenuBloc, MenuState>(
           buildWhen: (a, b) => true,
           builder: (context, state) {
@@ -152,6 +159,9 @@ class _MenuScreenState extends State<MenuScreen> {
         ),
         actions: [
           IconButton(
+            iconSize: 20,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
             icon: const Icon(Icons.inventory_2_outlined),
             tooltip: 'Карантин',
             onPressed: () {
@@ -174,6 +184,9 @@ class _MenuScreenState extends State<MenuScreen> {
               if (rawId is! int) return const SizedBox.shrink();
               final int activeId = rawId;
               return IconButton(
+                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 tooltip: 'Удалить меню',
                 onPressed: () => _confirmDeleteCurrent(context, activeId),
@@ -181,6 +194,9 @@ class _MenuScreenState extends State<MenuScreen> {
             },
           ),
           IconButton(
+            iconSize: 20,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
             icon: const Icon(Icons.refresh),
             tooltip: 'Обновить',
             onPressed: () =>
@@ -188,8 +204,11 @@ class _MenuScreenState extends State<MenuScreen> {
           ),
         ],
       ),
-      body: BlocBuilder<MenuBloc, MenuState>(
-        builder: (context, state) {
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: BlocBuilder<MenuBloc, MenuState>(
+              builder: (context, state) {
           if (state is MenuLoading || state is MenuGenerating || !_meLoaded) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -287,12 +306,15 @@ class _MenuScreenState extends State<MenuScreen> {
               ),
             ],
           );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showGenerateSheet(context),
-        icon: const Icon(Icons.auto_awesome),
-        label: const Text('Сгенерировать'),
+              },
+            ),
+          ),
+          Positioned.fill(
+            child: _DraggableGenerateButton(
+              onPressed: () => _showGenerateSheet(context),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -515,6 +537,89 @@ class _PremiumLockedView extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// MG_SKIN: перетаскиваемая кнопка «Сгенерировать» — чтобы не перекрывать
+// приёмы пищи. Положение хранится локально, по умолчанию — снизу справа.
+class _DraggableGenerateButton extends StatefulWidget {
+  final VoidCallback onPressed;
+  const _DraggableGenerateButton({required this.onPressed});
+
+  @override
+  State<_DraggableGenerateButton> createState() =>
+      _DraggableGenerateButtonState();
+}
+
+class _DraggableGenerateButtonState extends State<_DraggableGenerateButton> {
+  static const double _w = 168;
+  static const double _h = 46;
+
+  Offset? _pos; // top-left; null = дефолт (снизу справа)
+
+  double _clamp(double v, double lo, double hi) =>
+      v < lo ? lo : (v > hi ? hi : v);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, c) {
+        final maxX = (c.maxWidth - _w - 8);
+        final maxY = (c.maxHeight - _h - 8);
+        final hiX = maxX < 8 ? 8.0 : maxX;
+        final hiY = maxY < 8 ? 8.0 : maxY;
+        final base = _pos ?? Offset(c.maxWidth - _w - 16, c.maxHeight - _h - 16);
+        final dx = _clamp(base.dx, 8, hiX);
+        final dy = _clamp(base.dy, 8, hiY);
+        return Stack(
+          children: [
+            Positioned(
+              left: dx,
+              top: dy,
+              child: GestureDetector(
+                onPanUpdate: (d) {
+                  setState(() {
+                    _pos = Offset(
+                      _clamp(dx + d.delta.dx, 8, hiX),
+                      _clamp(dy + d.delta.dy, 8, hiY),
+                    );
+                  });
+                },
+                child: Material(
+                  color: cs.primary,
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(_h / 2),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(_h / 2),
+                    onTap: widget.onPressed,
+                    child: const SizedBox(
+                      width: _w,
+                      height: _h,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Сгенерировать',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
