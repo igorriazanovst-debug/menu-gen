@@ -18,35 +18,27 @@ if [ -d "$DIST" ]; then
   echo "    $REPO/backups/web-dist.tar.gz.bak_${TS}"
 fi
 
-echo "==> 1. Ветка $BRANCH"
+echo "==> 1. Фетч ветки $BRANCH"
 git fetch origin "$BRANCH"
-git checkout "$BRANCH"
+CUR=$(git rev-parse --abbrev-ref HEAD)
+echo "    текущая ветка сервера: $CUR"
 
-echo "==> 2. Промежуточный коммит локальных правок (если есть)"
-COMMITTED=0
+echo "==> 2. Промежуточный коммит локальных правок (ДО checkout, на ветке $CUR)"
 if [ -n "$(git status --porcelain)" ]; then
   git config user.name  >/dev/null 2>&1 || git config user.name  "MenuGen Server"
   git config user.email >/dev/null 2>&1 || git config user.email "server@menugen.local"
   git add -A
   git commit -m "wip(server): промежуточный коммит локальных правок перед деплоем ${TS}"
-  COMMITTED=1
-  echo "    закоммичено"
+  echo "    закоммичено на ветке $CUR (правки сохранены, не потеряются)"
 else
   echo "    незакоммиченных правок нет — пропуск"
 fi
 
-echo "==> 3. Подтягиваем origin/$BRANCH (rebase)"
+echo "==> 3. Переключаемся на $BRANCH и подтягиваем origin"
+git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" "origin/$BRANCH"
 git pull --rebase origin "$BRANCH"
-
-if [ "$PUSH" = "1" ] && [ "$COMMITTED" = "1" ]; then
-  echo "==> 3b. Пуш WIP-коммита в origin (с ретраями)"
-  ok=0
-  for d in 0 2 4 8 16; do
-    [ "$d" -gt 0 ] && { echo "    повтор через ${d}s..."; sleep "$d"; }
-    if git push -u origin "$BRANCH"; then ok=1; break; fi
-  done
-  [ "$ok" = "1" ] || echo "!! push не удался — код закоммичен локально, запушишь позже"
-fi
+# Примечание: WIP-коммит с правками сервера остаётся на ветке "$CUR".
+# Авто-пуш WIP не делаем — это чужая (не деплой-) ветка. PUSH=$PUSH (зарезервировано).
 
 echo "==> 4. Зависимости (--legacy-peer-deps обязателен)"
 cd "$SRC"
