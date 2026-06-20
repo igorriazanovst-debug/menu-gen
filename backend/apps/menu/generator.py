@@ -54,12 +54,15 @@ MEAL_TYPE_DB = {
 #   lunch          -> soup?, main, salad?, dessert?, bakery?
 #   dinner         -> main, salad?
 #   snack1/snack2  -> snack, drink?
+# MG_DRINK: напитки исключены из генерации s1 (пул из 4 рецептов давал
+# 100%-повторы во всех меню, а равная дележка калорий приёма забирала у еды
+# половину бюджета завтрака/перекуса). В стратегиях 2 и 3 напитков и так нет.
 MEAL_COMPONENTS: Dict[str, Tuple[str, ...]] = {
-    "breakfast": ("breakfast_dish", "drink"),
+    "breakfast": ("breakfast_dish",),
     "lunch": ("soup", "main", "salad", "dessert", "bakery"),
     "dinner": ("main", "salad"),
-    "snack1": ("snack", "drink"),
-    "snack2": ("snack", "drink"),
+    "snack1": ("snack",),
+    "snack2": ("snack",),
 }
 
 # RB001_V_step4: обязательные роли — при пустом пуле поднимаем EmptyRolePoolError.
