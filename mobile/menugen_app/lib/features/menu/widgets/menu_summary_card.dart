@@ -12,12 +12,15 @@ class MenuSummaryCard extends StatelessWidget {
   final MealNutritionTotals totals;
   final DateTime start;
   final DateTime end;
+  // MG_SKIN: переопределение подписи периода (для режима «выбранный день»).
+  final String? periodLabel;
 
   const MenuSummaryCard({
     super.key,
     required this.totals,
     required this.start,
     required this.end,
+    this.periodLabel,
   });
 
   // Углеводы — фиксированный «семантический» синий (не брендовый);
@@ -34,7 +37,7 @@ class MenuSummaryCard extends StatelessWidget {
     final fatColor = tokens.accent;
     final proColor = cs.primary;
     final fmt = DateFormat('d MMM', 'ru');
-    final period = '${fmt.format(start)} – ${fmt.format(end)}';
+    final period = periodLabel ?? '${fmt.format(start)} – ${fmt.format(end)}';
 
     final carbCal = totals.carbs * 4;
     final fatCal = totals.fats * 9;

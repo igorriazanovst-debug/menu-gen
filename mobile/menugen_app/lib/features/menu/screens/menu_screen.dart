@@ -9,7 +9,7 @@ import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/theme/app_theme.dart';
 import '../bloc/menu_bloc.dart';
 import '../widgets/generate_menu_bottom_sheet.dart';
-import '../widgets/menu_day_strip.dart';
+import '../widgets/menu_matrix.dart'; // MG_SKIN: матрица меню
 import '../widgets/menu_meal_carousel.dart';
 import '../widgets/menu_summary_card.dart'; // MG_SKIN
 import 'quarantine_screen.dart';
@@ -31,22 +31,11 @@ class _MenuScreenState extends State<MenuScreen> {
   // --- выбранная дата
   DateTime? _selectedDate;
 
-  // --- порядок meal-таб для PageView
-  late final PageController _mealPageCtrl;
-  int _mealIndex = 0;
-
   @override
   void initState() {
     super.initState();
-    _mealPageCtrl = PageController();
     _loadMe();
     context.read<MenuBloc>().add(const MenuLoadRequested());
-  }
-
-  @override
-  void dispose() {
-    _mealPageCtrl.dispose();
-    super.dispose();
   }
 
   Future<void> _loadMe() async {
@@ -270,46 +259,30 @@ class _MenuScreenState extends State<MenuScreen> {
 
           return Column(
             children: [
-              // MG_SKIN: карточка-итог дня (донат КБЖУ) в стиле Main-референса.
+              // MG_SKIN: карточка-итог за ВЫБРАННЫЙ день (донат КБЖУ).
               MenuSummaryCard(
                 totals: MealNutritionTotals.fromItems(dayItems),
-                start: start,
-                end: start.add(Duration(days: periodDays - 1)),
+                start: _selectedDate!,
+                end: _selectedDate!,
+                periodLabel: _dayLabel(_selectedDate!),
               ),
-              MenuDayStrip(
-                days: allDays,
-                selected: _selectedDate!,
-                onSelected: (d) => setState(() => _selectedDate = d),
-              ),
-              _MealTabs(
-                slots: _mealSlots,
-                labels: _mealLabels,
-                icons: _mealIcons,
-                selected: _mealIndex,
-                onSelected: (i) {
-                  setState(() => _mealIndex = i);
-                  _mealPageCtrl.animateToPage(
-                    i,
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOut,
-                  );
-                },
-              ),
-              const SizedBox(height: 4),
+              // MG_SKIN: матрица «приёмы × дни» с крупными фото блюд.
               Expanded(
-                child: PageView.builder(
-                  controller: _mealPageCtrl,
-                  itemCount: _mealSlots.length,
-                  onPageChanged: (i) => setState(() => _mealIndex = i),
-                  itemBuilder: (context, i) {
-                    final slot = _mealSlots[i];
-                    final slotItems = _itemsForSlot(dayItems: dayItems, slot: slot);
-                    return MenuMealCarousel(
-                      slotLabel: _mealLabels[slot] ?? slot,
-                      items: slotItems,
-                      onRecipeTap: (recipeId) => context.push('/recipes/$recipeId'),
-                    );
+                child: MenuMatrix(
+                  days: allDays,
+                  start: start,
+                  mealSlots: _mealSlots,
+                  labels: _mealLabels,
+                  icons: _mealIcons,
+                  selected: _selectedDate!,
+                  cellItems: (off, slot) {
+                    final di = items
+                        .where((i) => (i['day_offset'] as int?) == off)
+                        .toList();
+                    return _itemsForSlot(dayItems: di, slot: slot);
                   },
+                  onDaySelected: (d) => setState(() => _selectedDate = d),
+                  onCellTap: (d, slot, its) => _openMealSheet(d, slot, its),
                 ),
               ),
             ],
@@ -386,105 +359,76 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
     );
   }
-}
 
-class _MealTabs extends StatefulWidget {
-  final List<String> slots;
-  final Map<String, String> labels;
-  final Map<String, IconData> icons;
-  final int selected;
-  final ValueChanged<int> onSelected;
-
-  const _MealTabs({
-    required this.slots,
-    required this.labels,
-    required this.icons,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  State<_MealTabs> createState() => _MealTabsState();
-}
-
-class _MealTabsState extends State<_MealTabs> {
-  // KBJU_DISPLAY: авто-скролл ленты к активному табу при свайпе PageView.
-  final ScrollController _ctrl = ScrollController();
-  static const double _chipExtent = 132.0; // оценка ширины чипа + separator
-
-  @override
-  void didUpdateWidget(covariant _MealTabs old) {
-    super.didUpdateWidget(old);
-    if (old.selected != widget.selected) _scrollToSelected();
+  // MG_SKIN: подпись «выбранный день» для карточки-сводки.
+  String _dayLabel(DateTime d) {
+    final s = DateFormat('EEEE, d MMMM', 'ru').format(d);
+    return s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
   }
 
-  void _scrollToSelected() {
-    if (!_ctrl.hasClients) return;
-    final target =
-        (widget.selected * _chipExtent) - 40; // лёгкий отступ слева
-    final max = _ctrl.position.maxScrollExtent;
-    final offset = target.clamp(0.0, max);
-    _ctrl.animateTo(offset,
-        duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final slots = widget.slots;
-    final labels = widget.labels;
-    final icons = widget.icons;
-    final onSelected = widget.onSelected;
-    return SizedBox(
-      height: 64,
-      child: ListView.separated(
-        controller: _ctrl,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: slots.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final slot = slots[i];
-          final active = i == widget.selected;
-          final cs = context.cs;
-          return ChoiceChip(
-            label: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icons[slot] ?? Icons.restaurant,
-                    size: 18,
-                    color: active ? Colors.white : cs.onSurface),
-                const SizedBox(width: 6),
-                Text(
-                  labels[slot] ?? slot,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: active ? Colors.white : cs.onSurface,
-                  ),
+  // MG_SKIN: лист приёма пищи (тап по ячейке матрицы) — крупные карточки блюд.
+  void _openMealSheet(
+      DateTime date, String slot, List<Map<String, dynamic>> items) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        final h = MediaQuery.of(sheetCtx).size.height * 0.78;
+        final cs = Theme.of(sheetCtx).colorScheme;
+        return Container(
+          height: h,
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: sheetCtx.tokens.border,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-              ],
-            ),
-            selected: active,
-            selectedColor: cs.primary,
-            backgroundColor: cs.surface,
-            showCheckmark: false,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(
-                color: active ? cs.primary : context.tokens.border,
               ),
-            ),
-            onSelected: (_) => onSelected(i),
-          );
-        },
-      ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_mealLabels[slot] ?? slot} · '
+                        '${DateFormat('d MMM', 'ru').format(date)}',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(sheetCtx).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: MenuMealCarousel(
+                  slotLabel: _mealLabels[slot] ?? slot,
+                  items: items,
+                  onRecipeTap: (recipeId) {
+                    Navigator.of(sheetCtx).pop();
+                    context.push('/recipes/$recipeId');
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
