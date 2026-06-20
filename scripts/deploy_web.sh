@@ -39,6 +39,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+echo "==> 2b. Переносим локальный .env (gitignored) в worktree"
+# .env c REACT_APP_API_BASE_URL лежит в основном дереве и в .gitignore,
+# поэтому в чистый checkout ветки он не попадает. Без него CRA соберётся
+# с дефолтным http://localhost:8000/api/v1 и логин сломается.
+ENV_FOUND=0
+for f in .env .env.local .env.production .env.production.local; do
+  if [ -f "$REPO/web/menugen-web/$f" ]; then
+    cp "$REPO/web/menugen-web/$f" "$WT_SRC/$f"
+    echo "    скопирован $f"
+    ENV_FOUND=1
+  fi
+done
+if [ "$ENV_FOUND" = "0" ]; then
+  echo "!! ВНИМАНИЕ: .env не найден в $REPO/web/menugen-web — сборка пойдёт с дефолтным"
+  echo "!! API-URL (localhost:8000) и логин сломается. Создай .env с REACT_APP_API_BASE_URL."
+fi
+
 echo "==> 3. Зависимости (--legacy-peer-deps обязателен)"
 cd "$WT_SRC"
 npm install --legacy-peer-deps
@@ -46,6 +63,16 @@ npm install --legacy-peer-deps
 echo "==> 4. Проверка типов + сборка (CI=false)"
 npx tsc --noEmit
 CI=false npm run build
+
+echo "==> 4b. Контроль API-URL в собранном бандле"
+BUNDLE=$(ls "$WT_SRC"/build/static/js/main.*.js | head -1)
+if grep -q 'localhost:8000' "$BUNDLE"; then
+  echo "!! В бандле остался localhost:8000 — .env не подхватился. Деплой остановлен,"
+  echo "!! web-dist НЕ тронут (вход не сломается). Проверь $REPO/web/menugen-web/.env"
+  exit 1
+fi
+echo "    OK, baked API-URL:"
+grep -oE 'https?://[a-zA-Z0-9_.:-]+/api/v[0-9]+|/api/v[0-9]+' "$BUNDLE" | sort -u | sed 's/^/      /'
 
 echo "==> 5. build -> web-dist"
 rm -rf "$DIST"; mkdir -p "$DIST"
