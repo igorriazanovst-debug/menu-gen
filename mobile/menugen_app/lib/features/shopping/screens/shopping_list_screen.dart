@@ -5,6 +5,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T08
 import '../../../core/sync/offline_toggle_queue.dart'; // MG_T09
 import '../../../core/cache/shopping_cache.dart'; // MG_CACHE
+import '../../../core/theme/app_theme.dart'; // MG_SKIN: токены
 import '../bloc/shopping_bloc.dart';
 import '../models/shopping_models.dart';
 import 'shopping_detail_screen.dart';
@@ -64,11 +65,8 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
     }
   }
 
-  // MG_T09: ' (n)' suffix, or '' when zero/unknown.
-  String _cnt(String key) {
-    final n = _counts[key] ?? 0;
-    return n > 0 ? ' ($n)' : '';
-  }
+  // MG_T09: list count for a tab (0 if unknown).
+  int _count(String key) => _counts[key] ?? 0;
 
   void _selectTab(int t) {
     setState(() => _tab = t);
@@ -118,7 +116,16 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Списки покупок')),
+      appBar: AppBar(
+        toolbarHeight: 44,
+        titleSpacing: 12,
+        titleTextStyle: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+        title: const Text('Списки покупок'),
+      ),
       floatingActionButton: (_tab == 2 || _tab == 3) // MG_SHAREACCEPT
           ? null
           : FloatingActionButton(
@@ -127,17 +134,38 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
             ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: SegmentedButton<int>(
-              segments: [
-                ButtonSegment(value: 0, label: Text('Активные${_cnt('active')}')),
-                ButtonSegment(value: 3, label: Text('Ожидают${_cnt('pending')}')), // MG_SHAREACCEPT
-                ButtonSegment(value: 1, label: Text('Архив${_cnt('archived')}')),
-                ButtonSegment(value: 2, label: Text('История${_cnt('history')}')),
+          // MG_SKIN: горизонтальные вкладки — слова целиком, не переносятся;
+          // счётчики в закрашенных кружочках.
+          SizedBox(
+            height: 50,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              children: [
+                _Tab(
+                    label: 'Активные',
+                    count: _count('active'),
+                    selected: _tab == 0,
+                    onTap: () => _selectTab(0)),
+                const SizedBox(width: 8),
+                _Tab(
+                    label: 'Ожидают',
+                    count: _count('pending'),
+                    selected: _tab == 3,
+                    onTap: () => _selectTab(3)),
+                const SizedBox(width: 8),
+                _Tab(
+                    label: 'Архив',
+                    count: _count('archived'),
+                    selected: _tab == 1,
+                    onTap: () => _selectTab(1)),
+                const SizedBox(width: 8),
+                _Tab(
+                    label: 'История',
+                    count: _count('history'),
+                    selected: _tab == 2,
+                    onTap: () => _selectTab(2)),
               ],
-              selected: {_tab},
-              onSelectionChanged: (s) => _selectTab(s.first),
             ),
           ),
           Expanded(
@@ -173,18 +201,12 @@ class _ShoppingListViewState extends State<_ShoppingListView> {
                           return const Center(child: Text('Списков нет.'));
                         }
                         return ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
                           itemCount: state.lists.length,
                           itemBuilder: (_, i) {
                             final l = state.lists[i];
-                            // MG_SHOPBUG_MOB: include creation date.
-                            final dateStr = fmtListDate(l.createdAt);
-                            final sub = dateStr.isEmpty
-                                ? '${l.source.label} · ${l.itemsPurchased}/${l.itemsTotal}'
-                                : '${l.source.label} · $dateStr · ${l.itemsPurchased}/${l.itemsTotal}';
-                            return ListTile(
-                              title: Text(l.name),
-                              subtitle: Text(sub),
-                              trailing: const Icon(Icons.chevron_right),
+                            return _ListCard(
+                              list: l,
                               onTap: () => _openDetail(l.id),
                             );
                           },
@@ -337,4 +359,187 @@ class _PendingCardState extends State<_PendingCard> {
       ),
     );
   }
+}
+
+// MG_SKIN: вкладка-чип со счётчиком в закрашенном кружочке.
+class _Tab extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+  const _Tab({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final tokens = context.tokens;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? cs.primary : cs.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? cs.primary : tokens.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : cs.onSurface,
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              _CountBadge(count: count, onSelected: selected),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// MG_SKIN: круглый счётчик. На невыделенной вкладке — заливка primary/белая
+// цифра; на выделенной (фон primary) — белый кружок с цифрой primary.
+class _CountBadge extends StatelessWidget {
+  final int count;
+  final bool onSelected;
+  const _CountBadge({required this.count, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final bg = onSelected ? Colors.white : cs.primary;
+    final fg = onSelected ? cs.primary : Colors.white;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+      child: Text(
+        '$count',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+}
+
+// MG_SKIN: карточка списка покупок — в рамке, с понятным статусом.
+class _ListCard extends StatelessWidget {
+  final ShoppingListBrief list;
+  final VoidCallback onTap;
+  const _ListCard({required this.list, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = context.cs;
+    final tokens = context.tokens;
+    final total = list.itemsTotal;
+    final bought = list.itemsPurchased;
+    final remaining = (total - bought).clamp(0, total);
+    final allBought = total > 0 && remaining == 0;
+
+    // «Пустой» (source.empty) — это про способ создания и сбивает с толку;
+    // показываем источник только когда он информативен.
+    final meta = <String>[];
+    if (list.source != ShoppingSource.empty) meta.add(list.source.label);
+    final date = fmtListDate(list.createdAt);
+    if (date.isNotEmpty) meta.add(date);
+    final metaStr = meta.join(' · ');
+
+    Widget status;
+    if (total == 0) {
+      status = Text('Пока пусто',
+          style: TextStyle(fontSize: 13, color: tokens.textSecondary));
+    } else if (allBought) {
+      status = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle, size: 18, color: Colors.green.shade600),
+          const SizedBox(width: 6),
+          Text('Всё куплено',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green.shade700)),
+        ],
+      );
+    } else {
+      status = Text(
+        'Осталось купить $remaining ${_pluralItems(remaining)}',
+        style: TextStyle(
+            fontSize: 13, fontWeight: FontWeight.w600, color: cs.primary),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: tokens.border),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        list.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface),
+                      ),
+                      if (metaStr.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(metaStr,
+                            style: TextStyle(
+                                fontSize: 12, color: tokens.textSecondary)),
+                      ],
+                      const SizedBox(height: 8),
+                      status,
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: tokens.textSecondary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// MG_SKIN: склонение слова «товар» для остатка.
+String _pluralItems(int n) {
+  final n10 = n % 10;
+  final n100 = n % 100;
+  if (n10 == 1 && n100 != 11) return 'товар';
+  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return 'товара';
+  return 'товаров';
 }
