@@ -6,6 +6,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/premium/premium_gate_cubit.dart';
+import '../../../core/widgets/draggable_action_button.dart'; // MG_SKIN
 import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
 import '../models/diary_stats.dart';
@@ -19,6 +20,7 @@ class DiaryScreen extends StatefulWidget {
 
 class _DiaryScreenState extends State<DiaryScreen> {
   DateTime _selected = DateTime.now();
+  DateTime _focusedDay = DateTime.now(); // MG_SKIN: страница календаря
   int? _memberId;
   List<Map<String, dynamic>> _members = const []; // DIARY_V2
   bool _isHead = false;
@@ -57,10 +59,20 @@ class _DiaryScreenState extends State<DiaryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 44,
+        titleSpacing: 12,
+        titleTextStyle: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         title: const Text('Дневник питания'),
         actions: [
           if (_isHead && _members.length > 1) // DIARY_V2 member switcher
             PopupMenuButton<int?>(
+              iconSize: 20,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
               icon: const Icon(Icons.people_outline),
               tooltip: 'Член семьи',
               onSelected: (v) {
@@ -76,58 +88,189 @@ class _DiaryScreenState extends State<DiaryScreen> {
               ],
             ),
           IconButton(
+            iconSize: 20,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
             icon: const Icon(Icons.copy_all_outlined),
             tooltip: 'Копировать из дня', // DIARY_COPY_V3
             onPressed: _onCopyTap,
           ),
           IconButton(
+            iconSize: 20,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
             icon: const Icon(Icons.download_for_offline_outlined),
             tooltip: 'Импорт из меню',
             onPressed: _onImportTap,
           ),
+          const SizedBox(width: 4),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _onAddManualTap, // DIARY_V2
-        icon: const Icon(Icons.add),
-        label: const Text('Добавить'),
-      ),
-      body: Column(
+      body: Stack(
         children: [
-          TableCalendar(
-            firstDay: DateTime(2020),
-            lastDay: DateTime(2030),
-            focusedDay: _selected,
-            selectedDayPredicate: (d) => isSameDay(d, _selected),
-            onDaySelected: (sel, _) {
-              setState(() => _selected = sel);
-              _load();
-            },
-            calendarFormat: CalendarFormat.week,
+          Positioned.fill(
+            child: Column(
+              children: [
+                _calendarBar(),
+                _WaterCard( // DIARY_V2
+                  onAdd: (delta) {
+                    final st = context.read<DiaryBloc>().state;
+                    final cur = st is DiaryLoaded ? st.waterMl : 0;
+                    context.read<DiaryBloc>().add(DiaryWaterSetRequested(
+                          date: DateFormat('yyyy-MM-dd').format(_selected),
+                          waterMl: (cur + delta) < 0 ? 0 : (cur + delta),
+                          memberId: _memberId,
+                        ));
+                  },
+                  onSet: (ml) {
+                    context.read<DiaryBloc>().add(DiaryWaterSetRequested(
+                          date: DateFormat('yyyy-MM-dd').format(_selected),
+                          waterMl: ml < 0 ? 0 : ml,
+                          memberId: _memberId,
+                        ));
+                  },
+                ),
+                Expanded(child: _buildBody()),
+              ],
+            ),
           ),
-          _WaterCard( // DIARY_V2
-            onAdd: (delta) {
-              final st = context.read<DiaryBloc>().state;
-              final cur = st is DiaryLoaded ? st.waterMl : 0;
-              context.read<DiaryBloc>().add(DiaryWaterSetRequested(
-                date: DateFormat('yyyy-MM-dd').format(_selected),
-                waterMl: (cur + delta) < 0 ? 0 : (cur + delta),
-                memberId: _memberId,
-              ));
-            },
-            onSet: (ml) {
-              context.read<DiaryBloc>().add(DiaryWaterSetRequested(
-                date: DateFormat('yyyy-MM-dd').format(_selected),
-                waterMl: ml < 0 ? 0 : ml,
-                memberId: _memberId,
-              ));
-            },
+          Positioned.fill(
+            child: DraggableActionButton(
+              onPressed: _onAddManualTap, // DIARY_V2
+              icon: Icons.add,
+              label: 'Добавить',
+              width: 150,
+            ),
           ),
-          Expanded(child: _buildBody()),
         ],
       ),
     );
   }
+
+  // MG_SKIN: минимальный недельный выбор даты (рус. локаль) + кнопка модалки.
+  Widget _calendarBar() {
+    final monthLabel = _cap(DateFormat('LLLL yyyy', 'ru').format(_focusedDay));
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 4, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(monthLabel,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14)),
+              ),
+              TextButton.icon(
+                onPressed: _openCalendarModal,
+                icon: const Icon(Icons.calendar_month, size: 18),
+                label: const Text('Календарь'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+        ),
+        TableCalendar(
+          locale: 'ru',
+          firstDay: DateTime(2020),
+          lastDay: DateTime(2030),
+          focusedDay: _focusedDay,
+          currentDay: DateTime.now(),
+          headerVisible: false,
+          rowHeight: 40,
+          daysOfWeekHeight: 18,
+          availableGestures: AvailableGestures.horizontalSwipe,
+          calendarFormat: CalendarFormat.week,
+          selectedDayPredicate: (d) => isSameDay(d, _selected),
+          onDaySelected: (sel, foc) {
+            setState(() {
+              _selected = sel;
+              _focusedDay = foc;
+            });
+            _load();
+          },
+          onPageChanged: (foc) => setState(() => _focusedDay = foc),
+          calendarStyle: const CalendarStyle(
+            outsideDaysVisible: false,
+            cellMargin: EdgeInsets.all(4),
+          ),
+          daysOfWeekStyle: const DaysOfWeekStyle(
+            weekdayStyle: TextStyle(fontSize: 11),
+            weekendStyle: TextStyle(fontSize: 11),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // MG_SKIN: модальное окно выбора месяца/недели/даты.
+  void _openCalendarModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetCtx) {
+        CalendarFormat fmt = CalendarFormat.month;
+        DateTime focused = _focusedDay;
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TableCalendar(
+                      locale: 'ru',
+                      firstDay: DateTime(2020),
+                      lastDay: DateTime(2030),
+                      focusedDay: focused,
+                      currentDay: DateTime.now(),
+                      calendarFormat: fmt,
+                      availableCalendarFormats: const {
+                        CalendarFormat.month: 'Месяц',
+                        CalendarFormat.twoWeeks: '2 недели',
+                        CalendarFormat.week: 'Неделя',
+                      },
+                      selectedDayPredicate: (d) => isSameDay(d, _selected),
+                      onFormatChanged: (f) => setSheet(() => fmt = f),
+                      onPageChanged: (f) => setSheet(() => focused = f),
+                      onDaySelected: (sel, foc) {
+                        setState(() {
+                          _selected = sel;
+                          _focusedDay = foc;
+                        });
+                        _load();
+                        Navigator.of(ctx).pop();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _cap(String s) =>
+      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
   Widget _buildBody() {
     return BlocBuilder<DiaryBloc, DiaryState>(
@@ -460,6 +603,7 @@ class _WaterCard extends StatefulWidget {
 class _WaterCardState extends State<_WaterCard> {
   static const int _goal = 2000;
   final _ctrl = TextEditingController();
+  bool _expanded = false; // MG_SKIN: по умолчанию свёрнуто в строчку
 
   @override
   void dispose() {
@@ -473,59 +617,84 @@ class _WaterCardState extends State<_WaterCard> {
     final ml = st is DiaryLoaded ? st.waterMl : 0;
     final pct = (_goal == 0) ? 0.0 : (ml / _goal).clamp(0.0, 1.0);
     return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('💧 Вода', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text('$ml / $_goal мл', style: TextStyle(color: Colors.grey.shade600)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(value: pct, minHeight: 8),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                OutlinedButton(onPressed: () => widget.onAdd(250), child: const Text('+250 мл')),
-                OutlinedButton(onPressed: () => widget.onAdd(500), child: const Text('+500 мл')),
-                OutlinedButton(
-                  onPressed: ml <= 0 ? null : () => widget.onAdd(-250),
-                  child: const Text('−250 мл'),
-                ),
-                SizedBox(
-                  width: 90,
-                  child: TextField(
-                    controller: _ctrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(hintText: 'мл', isDense: true),
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Свёрнутая строка-сводка (тап — развернуть управление).
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  const Text('💧', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  const Text('Вода',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(value: pct, minHeight: 6),
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    final v = int.tryParse(_ctrl.text.trim());
-                    if (v != null) {
-                      widget.onSet(v);
-                      _ctrl.clear();
-                      FocusScope.of(context).unfocus();
-                    }
-                  },
-                  child: const Text('Задать'),
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  Text('$ml/$_goal мл',
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  const SizedBox(width: 2),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.0 : -0.25,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(Icons.keyboard_arrow_down, size: 20),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton(
+                      onPressed: () => widget.onAdd(250),
+                      child: const Text('+250 мл')),
+                  OutlinedButton(
+                      onPressed: () => widget.onAdd(500),
+                      child: const Text('+500 мл')),
+                  OutlinedButton(
+                    onPressed: ml <= 0 ? null : () => widget.onAdd(-250),
+                    child: const Text('−250 мл'),
+                  ),
+                  SizedBox(
+                    width: 90,
+                    child: TextField(
+                      controller: _ctrl,
+                      keyboardType: TextInputType.number,
+                      decoration:
+                          const InputDecoration(hintText: 'мл', isDense: true),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      final v = int.tryParse(_ctrl.text.trim());
+                      if (v != null) {
+                        widget.onSet(v);
+                        _ctrl.clear();
+                        FocusScope.of(context).unfocus();
+                      }
+                    },
+                    child: const Text('Задать'),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
