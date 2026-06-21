@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:shared_preferences/shared_preferences.dart'; // MG_SKIN: persist collapse
 
 import '../bloc/shopping_bloc.dart';
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
@@ -28,11 +29,41 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
   // MG_SHOPMOB_GROUP: category metadata (color/icon/sort_order) for zones.
   List<Map<String, dynamic>> _cats = const [];
 
+  // MG_SKIN: развёрнутые группы (slug'и), сохраняются per-list.
+  // Пустой набор = всё свёрнуто (поведение при первом открытии).
+  Set<String> _expanded = <String>{};
+  String get _expandedKey => 'shopping.expanded.${widget.listId}';
+
   @override
   void initState() {
     super.initState();
     context.read<ShoppingBloc>().add(ShoppingDetailRequested(widget.listId));
     _loadCategories();
+    _loadExpanded();
+  }
+
+  // MG_SKIN: восстановить сохранённые состояния групп.
+  Future<void> _loadExpanded() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final saved = p.getStringList(_expandedKey);
+      if (saved != null && mounted) setState(() => _expanded = saved.toSet());
+    } catch (_) {
+      // non-fatal: остаёмся в свёрнутом виде
+    }
+  }
+
+  // MG_SKIN: свернуть/развернуть группу и сохранить состояние.
+  Future<void> _toggleGroup(String slug) async {
+    setState(() {
+      if (!_expanded.remove(slug)) _expanded.add(slug);
+    });
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_expandedKey, _expanded.toList());
+    } catch (_) {
+      // non-fatal
+    }
   }
 
   // MG_SHOPMOB_GROUP: fetch rubricator categories for colored zones.
@@ -243,6 +274,15 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
             ? d.items.where((it) => !it.isPurchased).toList()
             : d.items;
         final groups = _grouped(visibleItems);
+        // MG_SKIN: реальные счётчики по группам (из всех товаров, не из
+        // отфильтрованных) — для заголовка «куплено/осталось».
+        final totalBy = <String, int>{};
+        final boughtBy = <String, int>{};
+        for (final it in d.items) {
+          final k = it.categorySlug ?? '__none__';
+          totalBy[k] = (totalBy[k] ?? 0) + 1;
+          if (it.isPurchased) boughtBy[k] = (boughtBy[k] ?? 0) + 1;
+        }
         return Scaffold(
           appBar: AppBar(
             // MG_SHOPBUG_MOB: title shows list name + creation date.
@@ -334,27 +374,109 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                 crossAxisAlignment:
                                     CrossAxisAlignment.stretch,
                                 children: [
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        6, 2, 6, 6),
-                                    child: Row(
-                                      children: [
-                                        Text(g.icon,
-                                            style: const TextStyle(
-                                                fontSize: 16)),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            g.name,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 13,
+                                  // MG_SKIN: тап по заголовку — свернуть/развернуть.
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(12),
+                                    onTap: () => _toggleGroup(g.slug),
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                          6, 4, 4, 8),
+                                      child: Row(
+                                        children: [
+                                          Text(g.icon,
+                                              style: const TextStyle(
+                                                  fontSize: 16)),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  g.name,
+                                                  style: const TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.w700,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Builder(builder: (_) {
+                                                  final total =
+                                                      totalBy[g.slug] ??
+                                                          g.items.length;
+                                                  final bought =
+                                                      boughtBy[g.slug] ?? 0;
+                                                  final remaining =
+                                                      (total - bought)
+                                                          .clamp(0, total);
+                                                  final allBought =
+                                                      total > 0 &&
+                                                          remaining == 0;
+                                                  return Text(
+                                                    allBought
+                                                        ? 'Всё куплено'
+                                                        : 'куплено $bought · осталось $remaining',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: allBought
+                                                          ? Colors.green
+                                                              .shade800
+                                                          : Colors.black
+                                                              .withOpacity(
+                                                                  0.6),
+                                                    ),
+                                                  );
+                                                }),
+                                              ],
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                          const SizedBox(width: 8),
+                                          // Кол-во товаров в группе.
+                                          Container(
+                                            constraints:
+                                                const BoxConstraints(
+                                                    minWidth: 22,
+                                                    minHeight: 22),
+                                            padding:
+                                                const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2),
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white
+                                                  .withOpacity(0.85),
+                                              borderRadius:
+                                                  BorderRadius.circular(11),
+                                            ),
+                                            child: Text(
+                                              '${totalBy[g.slug] ?? g.items.length}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          AnimatedRotation(
+                                            turns: _expanded
+                                                    .contains(g.slug)
+                                                ? 0.0
+                                                : -0.25,
+                                            duration: const Duration(
+                                                milliseconds: 180),
+                                            child: const Icon(
+                                                Icons.keyboard_arrow_down,
+                                                size: 22),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
+                                  if (_expanded.contains(g.slug))
                                   Container(
                                     decoration: BoxDecoration(
                                       color:
