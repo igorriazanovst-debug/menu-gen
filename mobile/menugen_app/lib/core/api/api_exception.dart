@@ -33,6 +33,7 @@ class ApiException implements Exception {
 
   bool get isUnauthorized => statusCode == 401;
   bool get isNotFound => statusCode == 404;
+  bool get isThrottled => statusCode == 429; // MG_SKIN: DRF rate limit
   bool get isServerError => statusCode != null && statusCode! >= 500;
   bool get isNetwork => statusCode == null;
 

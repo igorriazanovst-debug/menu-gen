@@ -164,6 +164,26 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     }
   }
 
+  // MG_SKIN: PATCH is_eaten tolerant to DRF rate-limit (429). The backend
+  // user throttle is modest, and a branch/all toggle fires several writes at
+  // once, so we back off and retry instead of failing the whole action.
+  Future<void> _patchEaten(int id, bool eaten) async {
+    const maxAttempts = 4;
+    for (var attempt = 1;; attempt++) {
+      try {
+        await apiClient.patch('/diary/$id/', data: {'is_eaten': eaten});
+        return;
+      } catch (err) {
+        final throttled = err is ApiException && err.isThrottled;
+        if (throttled && attempt < maxAttempts) {
+          await Future<void>.delayed(const Duration(milliseconds: 1200));
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
   Future<void> _onMarkEaten(
     DiaryMarkEatenRequested e,
     Emitter<DiaryState> emit,
@@ -176,7 +196,7 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
         .toList();
     emit(prev.copyWith(entries: optimistic));
     try {
-      await apiClient.patch('/diary/${e.entryId}/', data: {'is_eaten': e.isEaten});
+      await _patchEaten(e.entryId, e.isEaten);
       // MG_SKIN: refresh stats in place — NO DiaryLoading, so the list keeps
       // its scroll position on check/uncheck.
       final fresh = await _fetchStats(prev.date, prev.memberId);
@@ -202,8 +222,12 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
         .toList();
     emit(prev.copyWith(entries: optimistic));
     try {
-      for (final id in e.entryIds) {
-        await apiClient.patch('/diary/$id/', data: {'is_eaten': e.isEaten});
+      for (var i = 0; i < e.entryIds.length; i++) {
+        await _patchEaten(e.entryIds[i], e.isEaten);
+        // Light spacing between writes to avoid bursting the throttle.
+        if (i < e.entryIds.length - 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 150));
+        }
       }
       final fresh = await _fetchStats(prev.date, prev.memberId);
       final cur = state;
