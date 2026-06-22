@@ -60,6 +60,21 @@ class DiaryEntry extends Equatable {
   String get displayTitle =>
       (recipeTitle?.isNotEmpty == true) ? recipeTitle! : customName;
 
+  // MG_SKIN: lightweight copy for optimistic is_eaten flips.
+  DiaryEntry copyWith({bool? isEaten}) => DiaryEntry(
+        id: id,
+        date: date,
+        mealType: mealType,
+        recipeId: recipeId,
+        recipeTitle: recipeTitle,
+        customName: customName,
+        nutrition: nutrition,
+        quantity: quantity,
+        plannedMenuItemId: plannedMenuItemId,
+        isEaten: isEaten ?? this.isEaten,
+        isPlannedFlag: isPlannedFlag,
+      );
+
   factory DiaryEntry.fromJson(Map<String, dynamic> j) {
     final mt = MealType.tryParse(j['meal_type'] as String?) ?? MealType.snack;
     final qRaw = j['quantity'];

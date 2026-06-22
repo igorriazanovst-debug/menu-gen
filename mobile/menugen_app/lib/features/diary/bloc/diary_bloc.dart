@@ -37,6 +37,7 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
   }) : super(const DiaryInitial()) {
     on<DiaryLoadRequested>(_onLoad);
     on<DiaryMarkEatenRequested>(_onMarkEaten);
+    on<DiaryMarkManyEatenRequested>(_onMarkMany);
     on<DiaryAddManualRequested>(_onAddManual);
     on<DiaryDeleteRequested>(_onDelete);
     on<DiaryImportFromMenuRequested>(_onImportFromMenu);
@@ -150,6 +151,19 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     }
   }
 
+  // MG_SKIN: best-effort day stats fetch (no Loading emit).
+  Future<DiaryDayStats?> _fetchStats(String date, int? memberId) async {
+    try {
+      final p = <String, dynamic>{'from': date, 'to': date};
+      if (memberId != null) p['member_id'] = memberId;
+      final resp = await apiClient.get('/diary/stats/', params: p);
+      final s = _parseStats(resp);
+      return s.isNotEmpty ? s.first : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _onMarkEaten(
     DiaryMarkEatenRequested e,
     Emitter<DiaryState> emit,
@@ -158,28 +172,43 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     if (prev is! DiaryLoaded) return;
     // Optimistic UI flip; revert on failure.
     final optimistic = prev.entries
-        .map((x) => x.id == e.entryId
-            ? DiaryEntry(
-                id: x.id,
-                date: x.date,
-                mealType: x.mealType,
-                recipeId: x.recipeId,
-                recipeTitle: x.recipeTitle,
-                customName: x.customName,
-                nutrition: x.nutrition,
-                quantity: x.quantity,
-                plannedMenuItemId: x.plannedMenuItemId,
-                isEaten: e.isEaten,
-              )
-            : x)
+        .map((x) => x.id == e.entryId ? x.copyWith(isEaten: e.isEaten) : x)
         .toList();
     emit(prev.copyWith(entries: optimistic));
     try {
       await apiClient.patch('/diary/${e.entryId}/', data: {'is_eaten': e.isEaten});
-      // Refresh to pull fresh stats; cheap because day-scoped.
-      add(DiaryLoadRequested(date: prev.date, memberId: prev.memberId));
+      // MG_SKIN: refresh stats in place — NO DiaryLoading, so the list keeps
+      // its scroll position on check/uncheck.
+      final fresh = await _fetchStats(prev.date, prev.memberId);
+      final cur = state;
+      if (cur is DiaryLoaded && fresh != null) emit(cur.copyWith(stats: fresh));
     } catch (err) {
       // Revert.
+      emit(prev);
+      emit(_toErrorState(err, isWrite: true));
+    }
+  }
+
+  // MG_SKIN: toggle a whole branch / the whole plan at once.
+  Future<void> _onMarkMany(
+    DiaryMarkManyEatenRequested e,
+    Emitter<DiaryState> emit,
+  ) async {
+    final prev = state;
+    if (prev is! DiaryLoaded || e.entryIds.isEmpty) return;
+    final ids = e.entryIds.toSet();
+    final optimistic = prev.entries
+        .map((x) => ids.contains(x.id) ? x.copyWith(isEaten: e.isEaten) : x)
+        .toList();
+    emit(prev.copyWith(entries: optimistic));
+    try {
+      for (final id in e.entryIds) {
+        await apiClient.patch('/diary/$id/', data: {'is_eaten': e.isEaten});
+      }
+      final fresh = await _fetchStats(prev.date, prev.memberId);
+      final cur = state;
+      if (cur is DiaryLoaded && fresh != null) emit(cur.copyWith(stats: fresh));
+    } catch (err) {
       emit(prev);
       emit(_toErrorState(err, isWrite: true));
     }

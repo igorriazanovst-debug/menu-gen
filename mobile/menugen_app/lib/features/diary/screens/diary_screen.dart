@@ -308,6 +308,11 @@ class _DiaryScreenState extends State<DiaryScreen> {
                   .read<DiaryBloc>()
                   .add(DiaryMarkEatenRequested(entryId: entry.id, isEaten: eaten));
             },
+            onMarkMany: (ids, eaten) {
+              context
+                  .read<DiaryBloc>()
+                  .add(DiaryMarkManyEatenRequested(entryIds: ids, isEaten: eaten));
+            },
             onDelete: (entry) {
               context.read<DiaryBloc>().add(DiaryDeleteRequested(entry.id));
             },
@@ -387,56 +392,158 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
 }
 
-class _LoadedView extends StatelessWidget {
+class _LoadedView extends StatefulWidget {
   final DiaryLoaded state;
   final void Function(DiaryEntry, bool) onMarkEaten;
+  final void Function(List<int>, bool) onMarkMany; // MG_SKIN: branch / all
   final void Function(DiaryEntry) onDelete;
   const _LoadedView({
     required this.state,
     required this.onMarkEaten,
+    required this.onMarkMany,
     required this.onDelete,
   });
 
   @override
+  State<_LoadedView> createState() => _LoadedViewState();
+}
+
+class _LoadedViewState extends State<_LoadedView> {
+  // Свёрнутые ветки приёмов (по умолчанию все развёрнуты).
+  final Set<MealType> _collapsed = <MealType>{};
+
+  static const List<MealType> _mealOrder = [
+    MealType.breakfast,
+    MealType.lunch,
+    MealType.dinner,
+    MealType.snack,
+  ];
+
+  @override
   Widget build(BuildContext context) {
-    final planned = state.plannedEntries;
-    final manual = state.manualEntries;
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    final planned = widget.state.plannedEntries;
+    final manual = widget.state.manualEntries;
+    return Column(
       children: [
-        DiaryStatsCard(stats: state.stats),
-        const SizedBox(height: 12),
-        if (planned.isEmpty && manual.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 32),
-            child: Center(child: Text('Нет записей')),
+        // MG_SKIN: «прилеплённая» сводка КБЖУ — не уезжает при скролле.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+          child: DiaryStatsCard(stats: widget.state.stats),
+        ),
+        Expanded(
+          child: ListView(
+            // MG_SKIN: сохраняем позицию скролла при check/uncheck.
+            key: const PageStorageKey('diary-entries'),
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+            children: [
+              if (planned.isEmpty && manual.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 32),
+                  child: Center(child: Text('Нет записей')),
+                ),
+              if (planned.isNotEmpty) ..._buildPlanTree(planned),
+              if (manual.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _SectionHeader(
+                  icon: Icons.restaurant,
+                  title: 'Факт (${manual.length})',
+                ),
+                ...manual.map((e) => _EntryTile(
+                      entry: e,
+                      onToggleEaten: null, // manual entries are always actual
+                      onDelete: () => widget.onDelete(e),
+                    )),
+              ],
+              const SizedBox(height: 96),
+            ],
           ),
-        if (planned.isNotEmpty) ...[
-          _SectionHeader(
-            icon: Icons.event_note,
-            title: 'План (${planned.length})',
-          ),
-          ...planned.map((e) => _EntryTile(
-                entry: e,
-                onToggleEaten: (v) => onMarkEaten(e, v),
-                onDelete: () => onDelete(e),
-              )),
-        ],
-        if (manual.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _SectionHeader(
-            icon: Icons.restaurant,
-            title: 'Факт (${manual.length})',
-          ),
-          ...manual.map((e) => _EntryTile(
-                entry: e,
-                onToggleEaten: null, // manual entries are always actual
-                onDelete: () => onDelete(e),
-              )),
-        ],
-        const SizedBox(height: 80),
+        ),
       ],
     );
+  }
+
+  // MG_SKIN: «дерево» плана — мастер-чекбокс + ветки приёмов + листья.
+  List<Widget> _buildPlanTree(List<DiaryEntry> planned) {
+    final total = planned.length;
+    final eaten = planned.where((e) => e.isEaten).length;
+    final allEaten = total > 0 && eaten == total;
+    final noneEaten = eaten == 0;
+    final allIds = planned.map((e) => e.id).toList();
+
+    final out = <Widget>[];
+
+    // Мастер-строка: чекнуть/снять весь план.
+    out.add(Row(
+      children: [
+        Checkbox(
+          tristate: true,
+          value: allEaten ? true : (noneEaten ? false : null),
+          onChanged: (_) => widget.onMarkMany(allIds, !allEaten),
+        ),
+        const Icon(Icons.event_note, size: 18),
+        const SizedBox(width: 6),
+        const Expanded(
+          child: Text('План',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        ),
+        Text('$eaten/$total',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+        const SizedBox(width: 8),
+      ],
+    ));
+
+    for (final mt in _mealOrder) {
+      final items = planned.where((e) => e.mealType == mt).toList();
+      if (items.isEmpty) continue;
+      final mEaten = items.where((e) => e.isEaten).length;
+      final mAll = mEaten == items.length;
+      final mNone = mEaten == 0;
+      final mIds = items.map((e) => e.id).toList();
+      final collapsed = _collapsed.contains(mt);
+
+      // Заголовок ветки: чекбокс всей ветки + сворачивание.
+      out.add(InkWell(
+        onTap: () => setState(() {
+          if (!_collapsed.remove(mt)) _collapsed.add(mt);
+        }),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 8, top: 2),
+          child: Row(
+            children: [
+              Checkbox(
+                tristate: true,
+                value: mAll ? true : (mNone ? false : null),
+                onChanged: (_) => widget.onMarkMany(mIds, !mAll),
+              ),
+              Expanded(
+                child: Text('${mt.label} ($mEaten/${items.length})',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+              AnimatedRotation(
+                turns: collapsed ? -0.25 : 0.0,
+                duration: const Duration(milliseconds: 180),
+                child: const Icon(Icons.keyboard_arrow_down, size: 22),
+              ),
+              const SizedBox(width: 4),
+            ],
+          ),
+        ),
+      ));
+
+      if (!collapsed) {
+        for (final e in items) {
+          out.add(Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: _EntryTile(
+              entry: e,
+              onToggleEaten: (v) => widget.onMarkEaten(e, v),
+              onDelete: () => widget.onDelete(e),
+            ),
+          ));
+        }
+      }
+    }
+    return out;
   }
 }
 

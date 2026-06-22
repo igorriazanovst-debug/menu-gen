@@ -29,6 +29,16 @@ class DiaryMarkEatenRequested extends DiaryEvent {
   List<Object?> get props => [entryId, isEaten];
 }
 
+/// MG_SKIN: toggle is_eaten on many entries at once (branch / whole plan).
+class DiaryMarkManyEatenRequested extends DiaryEvent {
+  final List<int> entryIds;
+  final bool isEaten;
+  const DiaryMarkManyEatenRequested(
+      {required this.entryIds, required this.isEaten});
+  @override
+  List<Object?> get props => [entryIds, isEaten];
+}
+
 /// Add a manual (factual) entry — no plan, immediate fact.
 class DiaryAddManualRequested extends DiaryEvent {
   final String date;
