@@ -106,10 +106,13 @@ class GrantAccessSerializer(serializers.Serializer):
                 return User.objects.get(id=data["user_id"])
             except User.DoesNotExist:
                 raise serializers.ValidationError({"user_id": "Пользователь не найден."})
-        try:
-            return User.objects.get(email=data["email"])
-        except User.DoesNotExist:
+        # MG_EMAILCI: e-mail регистронезависимо — пользователь может ввести адрес
+        # в любом регистре (I.User@… == i.user@…).
+        email = (data.get("email") or "").strip()
+        user = User.objects.filter(email__iexact=email).order_by("id").first()
+        if user is None:
             raise serializers.ValidationError({"email": "Пользователь не найден."})
+        return user
 
 
 class ShoppingListSerializer(serializers.ModelSerializer):

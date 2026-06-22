@@ -55,15 +55,15 @@ class FamilyInviteView(APIView):
         serializer = InviteMemberSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data.get("email")
-        phone = serializer.validated_data.get("phone")
+        email = (serializer.validated_data.get("email") or "").strip()
+        phone = (serializer.validated_data.get("phone") or "").strip()
 
-        try:
-            if email:
-                invitee = User.objects.get(email=email)
-            else:
-                invitee = User.objects.get(phone=phone)
-        except User.DoesNotExist:
+        # MG_EMAILCI: e-mail регистронезависимо при поиске приглашаемого.
+        if email:
+            invitee = User.objects.filter(email__iexact=email).order_by("id").first()
+        else:
+            invitee = User.objects.filter(phone=phone).order_by("id").first()
+        if invitee is None:
             return Response(
                 {"detail": "Пользователь не найден."},
                 status=status.HTTP_404_NOT_FOUND,
