@@ -79,6 +79,8 @@ class FamilyScreen extends StatelessWidget {
                   ...members.map((m) {
                     final member = m as Map<String, dynamic>;
                     final isHead = member['role'] == 'head';
+                    // MG_MANAGEDMEMBER: card without its own login.
+                    final isManaged = member['is_managed'] == true;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
@@ -93,7 +95,9 @@ class FamilyScreen extends StatelessWidget {
                         ),
                         title: Text(member['name'] as String? ?? ''),
                         subtitle: Text(
-                          isHead ? 'Глава семьи' : 'Участник',
+                          isHead
+                              ? 'Глава семьи'
+                              : (isManaged ? 'Участник · без входа' : 'Участник'),
                           style: TextStyle(
                             color: isHead
                                 ? Theme.of(context).colorScheme.primary
@@ -103,6 +107,17 @@ class FamilyScreen extends StatelessWidget {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            // MG_MANAGEDMEMBER: give a managed member a login.
+                            if (isManaged)
+                              IconButton(
+                                icon: const Icon(Icons.vpn_key_outlined,
+                                    size: 20),
+                                tooltip: 'Добавить вход',
+                                onPressed: isActionInProgress
+                                    ? null
+                                    : () => _showAttachAccount(
+                                        context, member),
+                              ),
                             IconButton(
                               icon: const Icon(Icons.edit_outlined,
                                   size: 20),
@@ -209,6 +224,59 @@ class FamilyScreen extends StatelessWidget {
     );
   }
 
+  // MG_MANAGEDMEMBER: collect email (+ optional password) to give a managed
+  // member their own login.
+  void _showAttachAccount(BuildContext context, Map<String, dynamic> member) {
+    final bloc = context.read<FamilyBloc>();
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Вход для ${member['name']}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Email'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: passCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Пароль (необязательно)',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final email = emailCtrl.text.trim();
+              if (email.isEmpty) return;
+              bloc.add(FamilyAttachAccountRequested(
+                memberId: member['id'] as int,
+                email: email,
+                password: passCtrl.text.trim().isEmpty
+                    ? null
+                    : passCtrl.text.trim(),
+              ));
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _confirmRemove(BuildContext context, Map<String, dynamic> member) {
     final bloc = context.read<FamilyBloc>();
     showDialog(
@@ -250,13 +318,34 @@ class _AddMemberSheet extends StatefulWidget {
 class _AddMemberSheetState extends State<_AddMemberSheet> {
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController(); // MG_MANAGEDMEMBER
   bool _byEmail = true;
+  // MG_MANAGEDMEMBER: invite an existing user vs create a card without login.
+  bool _invite = true;
 
   @override
   void dispose() {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
+    _nameCtrl.dispose();
     super.dispose();
+  }
+
+  void _submit() {
+    if (_invite) {
+      final email = _byEmail ? _emailCtrl.text.trim() : null;
+      final phone = !_byEmail ? _phoneCtrl.text.trim() : null;
+      if ((email ?? '').isEmpty && (phone ?? '').isEmpty) return;
+      context
+          .read<FamilyBloc>()
+          .add(FamilyInviteMemberRequested(email: email, phone: phone));
+    } else {
+      // MG_MANAGEDMEMBER: create a member card by name only.
+      final name = _nameCtrl.text.trim();
+      if (name.isEmpty) return;
+      context.read<FamilyBloc>().add(FamilyCreateManagedRequested(name));
+    }
+    Navigator.of(context).pop();
   }
 
   @override
@@ -272,46 +361,57 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
               style:
                   TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
+          // MG_MANAGEDMEMBER: pick how the member is added.
           SegmentedButton<bool>(
             segments: const [
-              ButtonSegment(value: true, label: Text('По email')),
-              ButtonSegment(value: false, label: Text('По телефону')),
+              ButtonSegment(value: true, label: Text('Пригласить')),
+              ButtonSegment(value: false, label: Text('Без приглашения')),
             ],
-            selected: {_byEmail},
-            onSelectionChanged: (v) =>
-                setState(() => _byEmail = v.first),
+            selected: {_invite},
+            onSelectionChanged: (v) => setState(() => _invite = v.first),
           ),
           const SizedBox(height: 12),
-          if (_byEmail)
-            TextField(
-              controller: _emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              decoration:
-                  const InputDecoration(labelText: 'Email участника'),
-            )
-          else
-            TextField(
-              controller: _phoneCtrl,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                  labelText: 'Телефон участника'),
+          if (_invite) ...[
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: true, label: Text('По email')),
+                ButtonSegment(value: false, label: Text('По телефону')),
+              ],
+              selected: {_byEmail},
+              onSelectionChanged: (v) =>
+                  setState(() => _byEmail = v.first),
             ),
+            const SizedBox(height: 12),
+            if (_byEmail)
+              TextField(
+                controller: _emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                decoration:
+                    const InputDecoration(labelText: 'Email участника'),
+              )
+            else
+              TextField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                    labelText: 'Телефон участника'),
+              ),
+          ] else ...[
+            const Text(
+              'Карточка без входа — например, ребёнок без телефона или '
+              'член семьи, чьё питание ведёт специалист. Вход можно '
+              'добавить позже.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(labelText: 'Имя'),
+            ),
+          ],
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: () {
-              final email =
-                  _byEmail ? _emailCtrl.text.trim() : null;
-              final phone =
-                  !_byEmail ? _phoneCtrl.text.trim() : null;
-              if ((email ?? '').isEmpty && (phone ?? '').isEmpty) {
-                return;
-              }
-              context.read<FamilyBloc>().add(
-                    FamilyInviteMemberRequested(
-                        email: email, phone: phone),
-                  );
-              Navigator.of(context).pop();
-            },
+            onPressed: _submit,
             child: const Text('Добавить'),
           ),
         ],

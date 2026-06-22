@@ -19,6 +19,10 @@ export const FamilyPage: React.FC = () => {
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
   const [editing, setEditing] = useState<FamilyMember | null>(null);
+  // MG_MANAGEDMEMBER: create a member card without inviting anyone.
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -55,6 +59,35 @@ export const FamilyPage: React.FC = () => {
   const onMemberSaved = () => {
     // перезагружаем семью, чтобы получить обновлённый профиль
     load();
+  };
+
+  // MG_MANAGEDMEMBER: create a member card (no invitation). Open the edit modal
+  // afterwards so the head can fill in the profile / nutrition targets.
+  const handleCreateManaged = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    setCreating(true); setCreateError('');
+    try {
+      const { data } = await familyApi.createManagedMember({ name });
+      setNewName('');
+      await load();
+      setEditing(data); // let the head fill in the profile right away
+    } catch (e) { setCreateError(getErrorMessage(e)); }
+    finally { setCreating(false); }
+  };
+
+  // MG_MANAGEDMEMBER: give a managed member their own login.
+  const handleAttachAccount = async (m: FamilyMember) => {
+    const email = window.prompt(`E-mail для входа (${m.name}):`, '');
+    if (email === null) return;
+    const trimmed = email.trim();
+    if (!trimmed) return;
+    const password = window.prompt('Пароль (необязательно, можно задать позже через сброс):', '') ?? '';
+    try {
+      await familyApi.attachAccount(m.id, { email: trimmed, password: password.trim() || undefined });
+      await load();
+    } catch (e) { alert(getErrorMessage(e)); }
   };
 
   if (loading) return <PageSpinner />;
@@ -104,9 +137,20 @@ export const FamilyPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* MG_MANAGEDMEMBER: card without its own login */}
+                    {m.is_managed && <Badge color="gray">Без входа</Badge>}
                     <Badge color={(m.role === 'head' || m.role === 'owner') ? 'red' : 'gray'}>
                       {(m.role === 'head' || m.role === 'owner') ? 'Глава' : 'Участник'}
                     </Badge>
+                    {m.is_managed && (
+                      <button
+                        onClick={() => handleAttachAccount(m)}
+                        className="text-xs text-gray-500 hover:text-tomato transition px-2 py-1 rounded hover:bg-surface"
+                        title="Добавить вход (email/пароль)"
+                      >
+                        🔑
+                      </button>
+                    )}
                     <button
                       onClick={() => setEditing(m)}
                       className="text-xs text-gray-500 hover:text-tomato transition px-2 py-1 rounded hover:bg-surface"
@@ -124,6 +168,25 @@ export const FamilyPage: React.FC = () => {
                 </div>
               ))}
             </div>
+          </Card>
+
+          {/* MG_MANAGEDMEMBER: add a member card without inviting anyone */}
+          <Card className="p-5">
+            <h2 className="font-semibold text-chocolate mb-1">Добавить члена семьи</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Без приглашения — например, ребёнок без телефона или член семьи, чьё
+              питание ведёт специалист. Вход можно добавить позже.
+            </p>
+            <form onSubmit={handleCreateManaged} className="flex gap-3">
+              <Input
+                className="flex-1"
+                placeholder="Имя"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                error={createError}
+              />
+              <Button type="submit" loading={creating}>Добавить</Button>
+            </form>
           </Card>
 
           {/* Invite */}

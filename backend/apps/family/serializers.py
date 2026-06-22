@@ -58,6 +58,8 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
     avatar_url = serializers.URLField(source="user.avatar_url", read_only=True)
     allergies = serializers.ListField(source="user.allergies", read_only=True)
     disliked_products = serializers.ListField(source="user.disliked_products", read_only=True)
+    # MG_MANAGEDMEMBER: account without its own login.
+    is_managed = serializers.BooleanField(source="user.is_managed", read_only=True)
     profile = serializers.SerializerMethodField()
 
     class Meta:
@@ -70,6 +72,7 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
             "avatar_url",
             "allergies",
             "disliked_products",
+            "is_managed",
             "profile",
             "role",
             "joined_at",
@@ -198,3 +201,38 @@ class FamilyMemberUpdateSerializer(serializers.Serializer):
                     )
 
         return instance
+
+
+# MG_MANAGEDMEMBER: create a family member card without inviting anyone.
+class CreateManagedMemberSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    allergies = serializers.ListField(child=serializers.CharField(), required=False)
+    disliked_products = serializers.ListField(child=serializers.CharField(), required=False)
+    profile = ProfileUpdateSerializer(required=False)
+
+    def validate_name(self, value):
+        v = (value or "").strip()
+        if not v:
+            raise serializers.ValidationError("Имя обязательно.")
+        return v
+
+
+# MG_MANAGEDMEMBER: later give a managed member their own login.
+class AttachAccountSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+
+    def validate(self, attrs):
+        email = (attrs.get("email") or "").strip()
+        phone = (attrs.get("phone") or "").strip()
+        if not email and not phone:
+            raise serializers.ValidationError("Укажите email или телефон.")
+        # MG_EMAILCI: e-mail must be unique case-insensitively.
+        if email and User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError({"email": "E-mail уже используется."})
+        if phone and User.objects.filter(phone=phone).exists():
+            raise serializers.ValidationError({"phone": "Телефон уже используется."})
+        attrs["email"] = email
+        attrs["phone"] = phone
+        return attrs

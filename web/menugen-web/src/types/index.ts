@@ -115,6 +115,7 @@ export interface FamilyMember {
   avatar_url?: string; role: 'head' | 'member' | 'owner'; joined_at: string;
   allergies?: string[];
   disliked_products?: string[];
+  is_managed?: boolean; // MG_MANAGEDMEMBER
   profile?: UserProfile | null;
 }
 export interface Family {

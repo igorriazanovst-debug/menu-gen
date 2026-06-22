@@ -22,6 +22,30 @@ class FamilyInviteMemberRequested extends FamilyEvent {
   List<Object?> get props => [email, phone];
 }
 
+// MG_MANAGEDMEMBER: add a member card without inviting an existing user.
+class FamilyCreateManagedRequested extends FamilyEvent {
+  final String name;
+  const FamilyCreateManagedRequested(this.name);
+  @override
+  List<Object?> get props => [name];
+}
+
+// MG_MANAGEDMEMBER: give a managed member their own login.
+class FamilyAttachAccountRequested extends FamilyEvent {
+  final int memberId;
+  final String? email;
+  final String? phone;
+  final String? password;
+  const FamilyAttachAccountRequested({
+    required this.memberId,
+    this.email,
+    this.phone,
+    this.password,
+  });
+  @override
+  List<Object?> get props => [memberId, email, phone, password];
+}
+
 class FamilyRemoveMemberRequested extends FamilyEvent {
   final int memberId;
   const FamilyRemoveMemberRequested(this.memberId);
@@ -87,6 +111,8 @@ class FamilyBloc extends Bloc<FamilyEvent, FamilyState> {
   FamilyBloc({required this.apiClient}) : super(const FamilyLoading()) {
     on<FamilyLoadRequested>(_onLoad);
     on<FamilyInviteMemberRequested>(_onInvite);
+    on<FamilyCreateManagedRequested>(_onCreateManaged); // MG_MANAGEDMEMBER
+    on<FamilyAttachAccountRequested>(_onAttachAccount); // MG_MANAGEDMEMBER
     on<FamilyRemoveMemberRequested>(_onRemove);
     on<FamilyUpdateMemberRequested>(_onUpdate);
     on<FamilyUpdateCurrencyRequested>(_onUpdateCurrency); // MG_SHOPMOB002
@@ -130,6 +156,40 @@ class FamilyBloc extends Bloc<FamilyEvent, FamilyState> {
       add(const FamilyLoadRequested());
     } catch (e) {
       emit(FamilyError(e.toString(), family: current));
+    }
+  }
+
+  // MG_MANAGEDMEMBER
+  Future<void> _onCreateManaged(
+      FamilyCreateManagedRequested e, Emitter<FamilyState> emit) async {
+    final current = _currentFamily;
+    if (current != null) emit(FamilyActionInProgress(current));
+    try {
+      await apiClient.post('/family/members/create-managed/',
+          data: {'name': e.name});
+      add(const FamilyLoadRequested());
+    } catch (err) {
+      emit(FamilyError(err.toString(), family: current));
+    }
+  }
+
+  // MG_MANAGEDMEMBER
+  Future<void> _onAttachAccount(
+      FamilyAttachAccountRequested e, Emitter<FamilyState> emit) async {
+    final current = _currentFamily;
+    if (current != null) emit(FamilyActionInProgress(current));
+    try {
+      final body = <String, dynamic>{};
+      if (e.email != null && e.email!.isNotEmpty) body['email'] = e.email;
+      if (e.phone != null && e.phone!.isNotEmpty) body['phone'] = e.phone;
+      if (e.password != null && e.password!.isNotEmpty) {
+        body['password'] = e.password;
+      }
+      await apiClient.post('/family/members/${e.memberId}/attach-account/',
+          data: body);
+      add(const FamilyLoadRequested());
+    } catch (err) {
+      emit(FamilyError(err.toString(), family: current));
     }
   }
 
