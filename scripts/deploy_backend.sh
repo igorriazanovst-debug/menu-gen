@@ -77,14 +77,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> 3. Синхронизация кода backend/ (rsync, без media и кэшей)"
-# --delete: удалить файлы, которых уже нет в ветке. media/ — отдельный docker
-# volume (/app/media), .env — в корне, их не трогаем.
-rsync -a --delete \
-  --exclude='media/' \
-  --exclude='__pycache__/' \
-  --exclude='*.pyc' \
-  "$WT/backend/" "$REPO/backend/"
+echo "==> 3. Синхронизация кода backend/ (без media и кэшей)"
+# media/ — отдельный docker volume (/app/media), .env — в корне, их не трогаем.
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete \
+    --exclude='media/' \
+    --exclude='__pycache__/' \
+    --exclude='*.pyc' \
+    "$WT/backend/" "$REPO/backend/"
+else
+  echo "    rsync не найден — синхронизация через tar (mirror, media сохраняется)"
+  # Удаляем всё в backend/, кроме media/, затем распаковываем код из ветки.
+  find "$REPO/backend" -mindepth 1 -maxdepth 1 ! -name media -exec rm -rf {} +
+  tar -C "$WT/backend" --exclude='media' --exclude='__pycache__' --exclude='*.pyc' -cf - . \
+    | tar -C "$REPO/backend" -xf -
+fi
 
 echo "==> 4. План миграций (что будет применено)"
 $DC exec -T backend python manage.py migrate --plan | sed 's/^/    /'
