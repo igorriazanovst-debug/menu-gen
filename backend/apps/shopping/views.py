@@ -190,10 +190,16 @@ class ShoppingListDetailView(APIView):
         sl, caps = _get_list_for_user(request.user, list_id)
         if not sl:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        # MG_SHOP2FRIDGE: prefetch fridge links so in_fridge doesn't N+1.
+        # MG_SHOP2FRIDGE: prefetch fridge links + categories so in_fridge /
+        # fridge_eligible don't N+1.
+        from django.db.models import Prefetch
+
+        items_qs = ShoppingListItem.objects.select_related(
+            "category_fk", "product__category_fk"
+        ).prefetch_related("fridge_items")
         sl = (
             _annotate(ShoppingList.objects.filter(id=sl.id))
-            .prefetch_related("items__fridge_items")
+            .prefetch_related(Prefetch("items", queryset=items_qs))
             .first()
         )
         out = ShoppingListSerializer(sl).data
@@ -408,6 +414,8 @@ class ShoppingAddToFridgeView(APIView):
 
         from apps.fridge.models import FridgeItem
 
+        from .services import is_fridge_eligible  # MG_SHOP2FRIDGE
+
         items = ShoppingListItem.objects.filter(shopping_list=sl, is_purchased=True)
         raw_ids = request.data.get("item_ids")
         if raw_ids:
@@ -416,11 +424,19 @@ class ShoppingAddToFridgeView(APIView):
             except (TypeError, ValueError):
                 return Response({"detail": "Некорректные item_ids."}, status=status.HTTP_400_BAD_REQUEST)
             items = items.filter(id__in=ids)
-        items = items.select_related("product", "category_fk").prefetch_related("fridge_items")
+        items = (
+            items.select_related("product", "product__category_fk", "category_fk")
+            .prefetch_related("fridge_items")
+        )
 
         added = 0
         skipped = 0
         for item in items:
+            # MG_SHOP2FRIDGE: non-food (pet food / household chemistry / hygiene)
+            # is never stocked into the fridge.
+            if not is_fridge_eligible(item):
+                skipped += 1
+                continue
             if any(not fi.is_deleted for fi in item.fridge_items.all()):
                 skipped += 1
                 continue

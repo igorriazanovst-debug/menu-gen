@@ -15,9 +15,17 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
     line_total = serializers.SerializerMethodField()
     # MG_SHOP2FRIDGE: whether this purchased item is currently in the fridge.
     in_fridge = serializers.SerializerMethodField()
+    # MG_SHOP2FRIDGE: whether this item may be stored in the fridge (food only —
+    # pet food / household chemistry / hygiene are excluded).
+    fridge_eligible = serializers.SerializerMethodField()
 
     def get_in_fridge(self, obj):
         return any(not fi.is_deleted for fi in obj.fridge_items.all())
+
+    def get_fridge_eligible(self, obj):
+        from .services import is_fridge_eligible
+
+        return is_fridge_eligible(obj)
 
     def get_line_total(self, obj):
         if obj.price_per_unit is None:
@@ -43,6 +51,7 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
             "price_per_unit",  # MG_RUBRIC006_read_fields_price
             "line_total",
             "in_fridge",  # MG_SHOP2FRIDGE
+            "fridge_eligible",  # MG_SHOP2FRIDGE
             "is_purchased",
             "purchased_by",
             "purchased_by_name",

@@ -396,9 +396,12 @@ const ListDetail: React.FC<{
               {onlyUnpurchased ? '☑ Только некупленные' : '☐ Только некупленные'}
             </Button>
           )}
-          {/* MG_SHOP2FRIDGE: stock purchased items into the fridge */}
+          {/* MG_SHOP2FRIDGE: stock purchased FOOD items into the fridge
+              (non-food — pet food / household chemistry / hygiene — excluded) */}
           {!editMode && caps?.toggle &&
-            detail.items.some((it) => it.is_purchased && !it.in_fridge) && (
+            detail.items.some(
+              (it) => it.is_purchased && !it.in_fridge && it.fridge_eligible !== false,
+            ) && (
               <Button variant="secondary" onClick={onAddToFridge}>❄ В холодильник</Button>
             )}
           {/* MG_SHOPADDEDIT3: enter-edit only; Готово lives in add-bar */}

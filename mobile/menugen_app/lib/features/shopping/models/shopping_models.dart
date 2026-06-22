@@ -33,6 +33,7 @@ class ShoppingItem extends Equatable {
   final String? lineTotal; // MG_SHOPMOB001
   final bool isPurchased;
   final bool inFridge; // MG_SHOP2FRIDGE
+  final bool fridgeEligible; // MG_SHOP2FRIDGE (non-food excluded)
   final String? purchasedByName;
 
   const ShoppingItem({
@@ -47,6 +48,7 @@ class ShoppingItem extends Equatable {
     this.lineTotal,
     required this.isPurchased,
     this.inFridge = false, // MG_SHOP2FRIDGE
+    this.fridgeEligible = true, // MG_SHOP2FRIDGE
     this.purchasedByName,
   });
 
@@ -64,6 +66,7 @@ class ShoppingItem extends Equatable {
       lineTotal: j['line_total']?.toString(),
       isPurchased: j['is_purchased'] as bool? ?? false,
       inFridge: j['in_fridge'] as bool? ?? false, // MG_SHOP2FRIDGE
+      fridgeEligible: j['fridge_eligible'] as bool? ?? true, // MG_SHOP2FRIDGE
       purchasedByName: j['purchased_by_name'] as String?,
     );
   }
@@ -81,12 +84,13 @@ class ShoppingItem extends Equatable {
         lineTotal: lineTotal,
         isPurchased: isPurchased ?? this.isPurchased,
         inFridge: inFridge ?? this.inFridge, // MG_SHOP2FRIDGE
+        fridgeEligible: fridgeEligible, // MG_SHOP2FRIDGE
         purchasedByName: purchasedByName,
       );
 
   @override
   List<Object?> get props =>
-      [id, name, quantity, unit, category, categorySlug, pricePerUnit, isPurchased, inFridge];
+      [id, name, quantity, unit, category, categorySlug, pricePerUnit, isPurchased, inFridge, fridgeEligible];
 }
 
 class ShoppingCapabilities extends Equatable {

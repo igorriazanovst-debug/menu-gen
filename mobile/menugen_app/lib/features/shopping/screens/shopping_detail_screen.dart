@@ -371,10 +371,12 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                   onPressed: () =>
                       setState(() => _onlyUnpurchased = !_onlyUnpurchased),
                 ),
-              // MG_SHOP2FRIDGE: stock purchased items into the fridge.
+              // MG_SHOP2FRIDGE: stock purchased FOOD items into the fridge
+              // (non-food — pet food / chemistry / hygiene — excluded).
               if (!_editMode &&
                   caps.toggle &&
-                  d.items.any((it) => it.isPurchased && !it.inFridge))
+                  d.items.any((it) =>
+                      it.isPurchased && !it.inFridge && it.fridgeEligible))
                 IconButton(
                   icon: const Icon(Icons.kitchen_outlined),
                   tooltip: 'Добавить купленное в холодильник',
