@@ -324,21 +324,24 @@ class _DiaryScreenState extends State<DiaryScreen> {
   }
 
   void _onImportTap() async {
-    final menuIdText = await showDialog<String?>(
+    final bloc = context.read<DiaryBloc>();
+    // MG_DIARYMENU: выбор меню из выпадающего списка вместо ввода сырого ID.
+    final menuId = await showDialog<int?>(
       context: context,
-      builder: (_) => _ImportMenuDialog(initialDate: _selected),
+      builder: (_) => _ImportMenuDialog(
+        initialDate: _selected,
+        apiClient: bloc.apiClient,
+      ),
     );
-    if (menuIdText == null) return;
-    final menuId = int.tryParse(menuIdText);
     if (menuId == null) return;
     if (!mounted) return;
-    context.read<DiaryBloc>().add(
-          DiaryImportFromMenuRequested(
-            menuId: menuId,
-            date: DateFormat('yyyy-MM-dd').format(_selected),
-            memberId: _memberId,
-          ),
-        );
+    bloc.add(
+      DiaryImportFromMenuRequested(
+        menuId: menuId,
+        date: DateFormat('yyyy-MM-dd').format(_selected),
+        memberId: _memberId,
+      ),
+    );
   }
 
   // DIARY_V2: manual add dialog.
@@ -644,20 +647,69 @@ class _PremiumLockView extends StatelessWidget {
   }
 }
 
+// MG_DIARYMENU: выпадающий список меню вместо ручного ввода ID (ID — внутреннее
+// обозначение, пользователю не известно). Грузим /menu/ как в shopping_create_sheet.
 class _ImportMenuDialog extends StatefulWidget {
   final DateTime initialDate;
-  const _ImportMenuDialog({required this.initialDate});
+  final ApiClient apiClient;
+  const _ImportMenuDialog({required this.initialDate, required this.apiClient});
   @override
   State<_ImportMenuDialog> createState() => _ImportMenuDialogState();
 }
 
 class _ImportMenuDialogState extends State<_ImportMenuDialog> {
-  final _ctrl = TextEditingController();
+  List<Map<String, dynamic>> _menus = const [];
+  int? _menuId;
+  bool _loading = true;
+  String? _err;
 
   @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadMenus();
+  }
+
+  // Человекочитаемый лейбл меню (автор + диапазон дат), как в списках покупок.
+  String _menuLabel(Map<String, dynamic> m) {
+    String dm(Object? iso) {
+      final s = iso?.toString() ?? '';
+      if (s.length < 10) return '';
+      return '${s.substring(8, 10)}.${s.substring(5, 7)}';
+    }
+
+    final name = (m['creator_name'] as String?)?.trim() ?? '';
+    final a = dm(m['start_date']);
+    final b = dm(m['end_date']);
+    final dates = (a.isNotEmpty && b.isNotEmpty) ? '$a–$b' : '';
+    final parts = [name, dates].where((e) => e.isNotEmpty).toList();
+    return parts.isEmpty ? 'Меню #${m['id']}' : parts.join(' ');
+  }
+
+  Future<void> _loadMenus() async {
+    try {
+      final r = await widget.apiClient.get('/menu/');
+      final list = (r is Map ? r['results'] : r);
+      if (!mounted) return;
+      if (list is List) {
+        final menus = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        setState(() {
+          _menus = menus;
+          _menuId = menus.isNotEmpty ? menus.first['id'] as int? : null;
+          _loading = false;
+        });
+      } else {
+        setState(() => _loading = false);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _err = 'Не удалось загрузить меню';
+      });
+    }
   }
 
   @override
@@ -673,14 +725,32 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
             style: const TextStyle(fontSize: 13, color: Colors.grey),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _ctrl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'ID меню',
-              hintText: 'Например, 42',
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_menus.isEmpty)
+            Text(
+              _err ?? 'Нет доступных меню. Сначала сгенерируйте меню.',
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            )
+          else
+            DropdownButtonFormField<int>(
+              value: _menuId,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Меню'),
+              items: _menus
+                  .map((m) => DropdownMenuItem<int>(
+                        value: m['id'] as int?,
+                        child: Text(
+                          _menuLabel(m),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _menuId = v),
             ),
-          ),
         ],
       ),
       actions: [
@@ -689,7 +759,9 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
           child: const Text('Отмена'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, _ctrl.text.trim()),
+          onPressed: (_loading || _menuId == null)
+              ? null
+              : () => Navigator.pop(context, _menuId),
           child: const Text('Импортировать'),
         ),
       ],
