@@ -2,7 +2,8 @@
 
 **Дата:** 2026-06-22
 **Ветка разработки:** `claude/nifty-rubin-h90pfg`
-**Последний коммит:** `727da30`
+**Последний коммит:** `de90bfc`
+**Следующая сессия:** логика работы **Дневника** и **Дашборда** (см. раздел в конце).
 
 ---
 
@@ -86,6 +87,28 @@
 - **Откат фронта:** бэкапы в `/opt/menugen/backups/web-dist.tar.gz.bak_*`.
 - **CRLF-грабля:** если скрипт ругается `env: 'bash\r'` — `sed -i 's/\r$//' файл`.
 
+### Деплой backend (`scripts/deploy_backend.sh`) — **аддитивно, обратимо** ✅ ОБКАТАН
+- Та же философия, что у web: код берётся из ветки в изолированном worktree и
+  **синкается ТОЛЬКО `backend/`** (через `rsync`, а если его нет — fallback на
+  `tar`; `media/` сохраняется). Основное дерево на `main` не переключается.
+- Перед изменениями: **бэкап БД** (`pg_dump`→`backups/db.sql.gz.bak_*`) и
+  **кода** (`backups/backend.tar.gz.bak_*`). Печатает `migrate --plan`, спрашивает
+  подтверждение, мигрирует, рестартит `backend`+`celery`+`celery-beat`,
+  health-check `GET /api/v1/` с ретраями (~40с).
+- **Запуск:**
+  ```
+  cd /opt/menugen
+  git show origin/claude/nifty-rubin-h90pfg:scripts/deploy_backend.sh > /tmp/deploy_backend.sh
+  sed -i 's/\r$//' /tmp/deploy_backend.sh; chmod +x /tmp/deploy_backend.sh
+  /tmp/deploy_backend.sh
+  ```
+- **Грабли (выстраданы):** на сервере **нет `rsync`** (есть tar-fallback);
+  `runserver` поднимается дольше пары секунд → ранний health-check давал **ложный
+  502** (исправлено ретраями). При деплое прод впервые догнал миграции ветки
+  (`users.0006 ui_skin`, `users.0007 is_managed`, `fridge.0014`).
+- **Порядок выката:** СНАЧАЛА backend (эндпоинты/миграции), ПОТОМ web — иначе
+  новые web-кнопки получают 404. См. `DEPLOY_backend.md`.
+
 ### Mobile (Flutter)
 - **Flutter SDK в облачном окружении НЕТ** → `flutter analyze`/`test`/`build`
   локально не прогнать. Код вычитывается вручную; финальная валидация — сборка APK.
@@ -103,7 +126,45 @@
 
 ---
 
-## ✅ Что сделано в этой сессии (коммиты `3382f2d` → `727da30`)
+## ✅ Сделано в сессии «логика» (коммиты `bf6a0a2` → `de90bfc`) — В ПРОДЕ
+
+Backend и web **задеплоены в прод** (`deploy_backend.sh` + `deploy_web.sh`).
+Mobile-части едут со следующим APK (Flutter CI запускается по `pull_request`
+автоматически — из ветки открыт PR; ручной `workflow_dispatch` запрещён 403, но и
+не нужен).
+
+1. **Sharing/инвайт — email регистронезависимо** (`bf6a0a2`, backend): поиск
+   пользователя по `email__iexact` (+strip) в `shopping/serializers.py`
+   (`resolve_user`) и `family/views.py` (инвайт). `I.User@…` == `i.user@…`.
+   ⚠️ **Логин остался регистрозависимым** (см. бэклог B — отдельная задача).
+2. **Дневник — импорт из меню дропдауном** (`62c2af3`, **mobile**): в
+   `diary_screen.dart` `_ImportMenuDialog` вместо ввода «ID меню» — загрузка
+   `/menu/` + `DropdownButtonFormField` (как в `shopping_create_sheet.dart`).
+   Web это уже умел (`ImportMenuModal.tsx`).
+3. **Списки покупок → холодильник** (`e8af641`, backend+web+mobile): явное
+   действие «❄ В холодильник». `FridgeItem.source_shopping_item` (FK→
+   `shopping.ShoppingListItem`, миграция `fridge.0014`). Эндпоинт
+   **`POST /shopping/lists/<id>/add-to-fridge/`** (body `item_ids?`, идемпотентно).
+   Toggle uncheck позиции «в холодильнике» отдаёт **409** пока не передан
+   `remove_from_fridge=true` (тогда удаляет связанный `FridgeItem`). Сериализатор
+   отдаёт **`in_fridge`**.
+4. **Непищевое НЕ в холодильник** (`6726267`, backend+web+mobile): категории
+   `pets` (корма), `household` (быт.химия), `hygiene` (гигиена) исключены.
+   `shopping/services.py`: `NON_FOOD_CATEGORY_SLUGS` + `is_fridge_eligible()`.
+   Сериализатор отдаёт **`fridge_eligible`**; кнопка показывается только при
+   наличии купленной пищевой позиции не в холодильнике.
+5. **Член семьи без приглашения (managed)** (`a0aa39a`, backend+web+mobile):
+   для детей без устройств / тех, кого ведёт специалист. **`User.is_managed`**
+   (миграция `users.0007`). **`POST /family/members/create-managed/`** (глава/
+   admin): создаёт User без логина (email/phone пусты, unusable password) +
+   Profile + членство, с лимитом тарифа. **`POST /family/members/<id>/
+   attach-account/`**: добавляет email/phone (+пароль), снимает `is_managed` →
+   появляется вход. Сериализатор отдаёт **`is_managed`**. UI: режим «Пригласить /
+   Без приглашения», метка «без входа», действие-ключ для привязки логина.
+6. **Деплой** (`2c3bad8`→`d554582`→`de90bfc`): `scripts/deploy_backend.sh` +
+   `DEPLOY_backend.md` (см. инварианты выше).
+
+## ✅ Что сделано в сессии вёрстки (коммиты `3382f2d` → `727da30`)
 
 ### Веб
 - **Дашборд-редизайн** (`3382f2d`): health-tracker сетка 2/3 + 1/3 на токенах —
@@ -151,10 +212,18 @@
 
 ## ⏳ Открытые вопросы / бэклог
 
+0. **Задача B — регистронезависимый ЛОГИН** (системно). Сейчас починен только
+   поиск пользователя при sharing/инвайте (`email__iexact`). Сам вход по-прежнему
+   регистрозависим: `LoginSerializer`→`authenticate(username=email)` →
+   `ModelBackend` ищет `email=` точно; `RegisterSerializer.create` пишет email
+   «как ввели» (без `normalize_email`). Корневой фикс: нормализовать email при
+   регистрации в нижний регистр + регистронезависимый вход + миграция данных с
+   разбором возможных дублей (уникальность email в БД регистрозависимая). Требует
+   деплоя backend. Согласовано отложить отдельной задачей.
 1. **Backend throttle `user: 100/min`** (`backend/config/settings.py`) — низковато
-   для интерактива. Правильно поднять до ~`600/min`, но это **бэкенд-изменение →
-   нужен деплой backend** (сервер на `main`). Сейчас закрыто клиентским ретраем.
-   По запросу — подготовить безопасный точечный апдейт + рестарт `backend`.
+   для интерактива. Правильно поднять до ~`600/min`. Теперь есть
+   `scripts/deploy_backend.sh` → можно выкатить точечно. Сейчас закрыто клиентским
+   ретраем.
 2. **Персист свёрнутости** где ещё не сделан: дневник (вода, ветки приёмов), меню.
    Паттерн — SharedPreferences (как в покупках). Делать по запросу.
 3. **Дефолт свёрнутости** веток дневника сейчас «развёрнуто» — обсудить.
@@ -178,4 +247,46 @@ CI=true npx react-scripts test --watchAll=false --passWithNoTests  # тесты
 `@hookform/resolvers`).
 
 **Мобайл:** локально не собрать (нет Flutter SDK). Перед коммитом — ручная вычитка
-+ баланс скобок; финальная валидация на **Flutter CI** (запускает пользователь).
++ баланс скобок; финальная валидация на **Flutter CI** (запускается по PR авто).
+
+**Backend:** полный тест-стек/БД в облаке не развёрнут → перед коммитом
+`python -m py_compile` изменённых файлов + вычитка; финальная валидация — на
+сервере при деплое (`migrate --plan` показывает план до подтверждения).
+
+---
+
+## 🎯 СЛЕДУЮЩАЯ СЕССИЯ — логика Дневника и Дашборда
+
+**Правило прежнее:** сначала исследовать → предложить план/развилки → дождаться
+«делай». Картинка/описание = повод для обсуждения, не команда верстать.
+
+Тема: **логика работы** (не вёрстка) экранов **Дневник** и **Дашборд**. Вёрстка
+обоих уже была сделана ранее (дашборд — `3382f2d`; дневник mobile — `c42b370`/
+`9559eba`). Теперь — поведение/данные.
+
+**Карта кода (откуда стартовать):**
+- Backend дневник: `backend/apps/diary/` — `views.py` (`DiaryStatsView`,
+  `DiaryImportFromMenuView`, `DiaryCopyView`, `WaterLogView`), `models.py`
+  (`DiaryEntry`: `is_planned`/`is_eaten`/`planned_menu_item`, `WaterLog`),
+  `serializers.py`. Логика planned/actual/total — в `DiaryStatsView`.
+- Web: `pages/Diary/DiaryPage.tsx` + `components/diary/*`
+  (`AddDiaryEntryModal`, `CopyFromDayModal`, `ImportMenuModal`, `PrintDiaryModal`);
+  дашборд — `pages/Dashboard/` (источники: профиль-цели, `diary.stats`/`diary.list`,
+  вода), примитив `components/ui/Ring.tsx`.
+- Mobile: `features/diary/` (`diary_screen.dart`, `widgets/diary_stats_card.dart`,
+  bloc/model). Дашборд на mobile отдельного экрана нет (свериться при старте).
+
+**Уже известные зацепки по логике (из этой сессии):**
+- В `DiaryStatsView`: `planned` = записи с `is_planned`/`planned_menu_item`;
+  `actual`/`total` = `is_eaten` ИЛИ запись без плана (manual). КБЖУ считается
+  `_entry_nutrition` с учётом `quantity` (поддержка flat/строка/`{value}`).
+- Throttle `user:100/min` низкий для интерактива (бэклог №1) — может влиять на
+  частые отметки в дневнике; есть клиентский ретрай 429.
+- Открытые из бэклога, относящиеся к дневнику: персист свёрнутости (вода/ветки),
+  дефолт свёрнутости веток (№2/№3).
+
+**Команда старта следующей сессии (выдать ассистенту):**
+> Прочитай `MG_SKIN_HANDOFF.md` в корне. Продолжаем на ветке
+> `claude/nifty-rubin-h90pfg`. Занимаемся **логикой работы Дневника и Дашборда**.
+> Правило: весь кодинг только по моей явной отмашке — сначала исследуй и предложи
+> план, дождись «делай». Не начинай верстать/править по картинке сам.
