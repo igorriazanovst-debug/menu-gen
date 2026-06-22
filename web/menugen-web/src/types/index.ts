@@ -323,6 +323,7 @@ export interface ShoppingV2Item {
   category?: string;
   price_per_unit?: string | null; // MG_RUBRIC008
   line_total?: string | null;
+  in_fridge?: boolean; // MG_SHOP2FRIDGE
   is_purchased: boolean;
   purchased_by?: number | null;
   purchased_by_name?: string | null;

@@ -6,6 +6,7 @@ from .views import (
     PurchaseHistoryView,
     RubricSearchView,
     SharedAccessRespondView,  # MG_SHAREACCEPT
+    ShoppingAddToFridgeView,  # MG_SHOP2FRIDGE
     ShoppingItemDetailView,
     ShoppingItemsView,
     ShoppingItemToggleView,
@@ -27,6 +28,11 @@ urlpatterns = [
         ShoppingItemToggleView.as_view(),
         name="shopping-item-toggle",
     ),
+    path(
+        "lists/<int:list_id>/add-to-fridge/",
+        ShoppingAddToFridgeView.as_view(),
+        name="shopping-add-to-fridge",
+    ),  # MG_SHOP2FRIDGE
     path("lists/<int:list_id>/access/", ShoppingListAccessView.as_view(), name="shopping-list-access"),
     path("lists/<int:list_id>/export/", ShoppingListExportView.as_view(), name="shopping-list-export"),
     path("history/", PurchaseHistoryView.as_view(), name="shopping-history"),

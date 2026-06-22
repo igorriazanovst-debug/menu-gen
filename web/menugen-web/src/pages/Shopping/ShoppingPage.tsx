@@ -115,11 +115,44 @@ export const ShoppingPage: React.FC = () => {
       try {
         await shoppingApi.toggleItem(detail.id, itemId, val);
         await loadDetail(detail.id);
-      } catch {
+      } catch (e) {
+        // MG_SHOP2FRIDGE: un-checking an item that is in the fridge is rejected
+        // with 409 until confirmed. Ask, then retry removing it from the fridge.
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        if (status === 409 && val === false) {
+          const ok = window.confirm(
+            'Этот товар добавлен в холодильник. Снять отметку и убрать его из холодильника?',
+          );
+          if (ok) {
+            try {
+              await shoppingApi.toggleItem(detail.id, itemId, val, true);
+            } catch {
+              /* fall through to reload (reverts optimistic state) */
+            }
+          }
+          await loadDetail(detail.id); // confirm-removed or revert on cancel/failure
+          return;
+        }
         enqueueToggle(detail.id, itemId, val); // request failed mid-flight -> queue (LWW)
       }
     } else {
       enqueueToggle(detail.id, itemId, val); // offline -> queue, sync on reconnect
+    }
+  };
+
+  // MG_SHOP2FRIDGE: push all purchased (not-yet-stored) items into the fridge.
+  const onAddToFridge = async () => {
+    if (!detail) return;
+    try {
+      const { data } = await shoppingApi.addToFridge(detail.id);
+      await loadDetail(detail.id);
+      window.alert(
+        data.added > 0
+          ? `Добавлено в холодильник: ${data.added}`
+          : 'Нет новых купленных товаров для добавления.',
+      );
+    } catch {
+      window.alert('Не удалось добавить в холодильник.');
     }
   };
 
@@ -207,6 +240,7 @@ export const ShoppingPage: React.FC = () => {
                 detail={detail}
                 caps={caps}
                 onToggle={onToggle}
+                onAddToFridge={onAddToFridge}
                 onReload={() => loadDetail(detail.id)}
                 onDelete={onDeleteList}
                 onArchive={onArchive}
@@ -245,12 +279,13 @@ const ListDetail: React.FC<{
   detail: ShoppingV2List;
   caps?: ShoppingV2List['capabilities'];
   onToggle: (itemId: number, val: boolean) => void;
+  onAddToFridge: () => void; // MG_SHOP2FRIDGE
   onReload: () => void;
   onDelete: () => void;
   onArchive: (archived: boolean) => void;
   onPrint: () => void;
   onManageAccess: () => void;
-}> = ({ detail, caps, onToggle, onReload, onDelete, onArchive, onPrint, onManageAccess }) => {
+}> = ({ detail, caps, onToggle, onAddToFridge, onReload, onDelete, onArchive, onPrint, onManageAccess }) => {
   // MG_RUBRIC005_state_removed: add-item state moved into ItemAutocomplete.
   // MG_SHOPBUG_EDITMODE: global edit mode (delete + inline fields gated).
   const [editMode, setEditMode] = useState(false);
@@ -361,6 +396,11 @@ const ListDetail: React.FC<{
               {onlyUnpurchased ? '☑ Только некупленные' : '☐ Только некупленные'}
             </Button>
           )}
+          {/* MG_SHOP2FRIDGE: stock purchased items into the fridge */}
+          {!editMode && caps?.toggle &&
+            detail.items.some((it) => it.is_purchased && !it.in_fridge) && (
+              <Button variant="secondary" onClick={onAddToFridge}>❄ В холодильник</Button>
+            )}
           {/* MG_SHOPADDEDIT3: enter-edit only; Готово lives in add-bar */}
           {caps?.manage && !editMode && (
             <Button variant="secondary" onClick={() => setEditMode(true)}>✎ Редактировать</Button>
@@ -430,6 +470,8 @@ const ListDetail: React.FC<{
                       {it.quantity != null && (
                         <span className="text-gray-500 text-sm"> — {it.quantity}{it.unit ? ` ${it.unit}` : ''}</span>
                       )}
+                      {/* MG_SHOP2FRIDGE: in-fridge indicator */}
+                      {it.in_fridge && <span className="ml-1" title="В холодильнике">❄</span>}
                     </span>
                   )}
                   {editMode && caps?.manage && (

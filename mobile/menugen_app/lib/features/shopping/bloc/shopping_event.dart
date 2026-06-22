@@ -64,9 +64,17 @@ class ShoppingToggleItemRequested extends ShoppingEvent {
   final int listId;
   final int itemId;
   final bool isPurchased;
-  const ShoppingToggleItemRequested(this.listId, this.itemId, this.isPurchased);
+  // MG_SHOP2FRIDGE: confirm removing the linked fridge item when un-checking
+  // an item that was already added to the fridge.
+  final bool removeFromFridge;
+  const ShoppingToggleItemRequested(
+    this.listId,
+    this.itemId,
+    this.isPurchased, {
+    this.removeFromFridge = false,
+  });
   @override
-  List<Object?> get props => [listId, itemId, isPurchased];
+  List<Object?> get props => [listId, itemId, isPurchased, removeFromFridge];
 }
 
 // MG_SHOPBUG_MOB: edit existing item (PATCH /items/{id}/).

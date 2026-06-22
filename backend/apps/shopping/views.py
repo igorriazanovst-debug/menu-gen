@@ -173,7 +173,11 @@ class ShoppingListsView(APIView):
         if bulk:
             ShoppingListItem.objects.bulk_create(bulk)
 
-        sl = _annotate(ShoppingList.objects.filter(id=sl.id)).first()
+        sl = (
+            _annotate(ShoppingList.objects.filter(id=sl.id))
+            .prefetch_related("items__fridge_items")  # MG_SHOP2FRIDGE
+            .first()
+        )
         return Response(ShoppingListSerializer(sl).data, status=status.HTTP_201_CREATED)
 
 
@@ -186,7 +190,12 @@ class ShoppingListDetailView(APIView):
         sl, caps = _get_list_for_user(request.user, list_id)
         if not sl:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        sl = _annotate(ShoppingList.objects.filter(id=sl.id)).first()
+        # MG_SHOP2FRIDGE: prefetch fridge links so in_fridge doesn't N+1.
+        sl = (
+            _annotate(ShoppingList.objects.filter(id=sl.id))
+            .prefetch_related("items__fridge_items")
+            .first()
+        )
         out = ShoppingListSerializer(sl).data
         out["capabilities"] = caps
         return Response(out)
@@ -206,7 +215,11 @@ class ShoppingListDetailView(APIView):
             sl.is_archived = bool(archived)
             sl.archived_at = timezone.now() if sl.is_archived else None
         sl.save()
-        sl = _annotate(ShoppingList.objects.filter(id=sl.id)).first()
+        sl = (
+            _annotate(ShoppingList.objects.filter(id=sl.id))
+            .prefetch_related("items__fridge_items")  # MG_SHOP2FRIDGE
+            .first()
+        )
         return Response(ShoppingListSerializer(sl).data)
 
     def delete(self, request, list_id):
@@ -327,6 +340,24 @@ class ShoppingItemToggleView(APIView):
         target = (not prev) if new_val is None else bool(new_val)
         if target == prev:
             return Response(ShoppingListItemSerializer(item).data)
+        # MG_SHOP2FRIDGE: un-checking an item that was already pushed to the
+        # fridge must remove it from the fridge (in the bought volume). Require
+        # explicit confirmation so the client can warn the user first.
+        if not target:
+            from apps.fridge.models import FridgeItem
+
+            linked = FridgeItem.objects.filter(source_shopping_item=item, is_deleted=False)
+            if linked.exists():
+                if not request.data.get("remove_from_fridge"):
+                    return Response(
+                        {
+                            "detail": "Позиция уже добавлена в холодильник. Снять отметку "
+                            "можно только вместе с удалением из холодильника.",
+                            "code": "in_fridge",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                linked.update(is_deleted=True)
         item.is_purchased = target
         if target:
             item.purchased_by = request.user
@@ -353,6 +384,59 @@ class ShoppingItemToggleView(APIView):
             item.purchased_at = None
         item.save()
         return Response(ShoppingListItemSerializer(item).data)
+
+
+class ShoppingAddToFridgeView(APIView):
+    """MG_SHOP2FRIDGE: POST /shopping/lists/<id>/add-to-fridge/
+
+    Push purchased items into the family's fridge. Body:
+      {"item_ids": [int, ...]}  optional — default: all purchased items that are
+      not yet in the fridge.
+    Each created FridgeItem links back to its ShoppingListItem so that
+    un-checking the item later removes exactly what was added. Idempotent:
+    items already linked to a live fridge item are skipped.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, list_id):
+        sl, caps = _get_list_for_user(request.user, list_id)
+        if not sl:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if not caps["toggle"]:
+            return Response({"detail": "Нет прав на отметку."}, status=status.HTTP_403_FORBIDDEN)
+
+        from apps.fridge.models import FridgeItem
+
+        items = ShoppingListItem.objects.filter(shopping_list=sl, is_purchased=True)
+        raw_ids = request.data.get("item_ids")
+        if raw_ids:
+            try:
+                ids = [int(x) for x in raw_ids]
+            except (TypeError, ValueError):
+                return Response({"detail": "Некорректные item_ids."}, status=status.HTTP_400_BAD_REQUEST)
+            items = items.filter(id__in=ids)
+        items = items.select_related("product", "category_fk").prefetch_related("fridge_items")
+
+        added = 0
+        skipped = 0
+        for item in items:
+            if any(not fi.is_deleted for fi in item.fridge_items.all()):
+                skipped += 1
+                continue
+            FridgeItem.objects.create(
+                family=sl.family,
+                product=item.product,
+                category_fk=item.category_fk,
+                name=item.name,
+                quantity=item.quantity,
+                unit=item.unit,
+                added_by_id=request.user.id,
+                source_shopping_item=item,
+            )
+            added += 1
+
+        return Response({"added": added, "skipped": skipped})
 
 
 class ShoppingListAccessView(APIView):

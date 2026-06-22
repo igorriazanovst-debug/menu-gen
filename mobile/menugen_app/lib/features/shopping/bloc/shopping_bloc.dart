@@ -203,7 +203,11 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
     if (cur is ShoppingDetailLoaded && cur.detail.id == e.listId) {
       final items = cur.detail.items
           .map((it) => it.id == e.itemId
-              ? it.copyWith(isPurchased: e.isPurchased)
+              // MG_SHOP2FRIDGE: removing from fridge clears the in_fridge flag.
+              ? it.copyWith(
+                  isPurchased: e.isPurchased,
+                  inFridge: e.removeFromFridge ? false : null,
+                )
               : it)
           .toList();
       emit(ShoppingDetailLoaded(cur.detail.copyWith(items: items)));
@@ -217,7 +221,12 @@ class ShoppingBloc extends Bloc<ShoppingEvent, ShoppingState> {
     try {
       await apiClient.patch(
           '/shopping/lists/${e.listId}/items/${e.itemId}/toggle/',
-          data: {'is_purchased': e.isPurchased});
+          data: {
+            'is_purchased': e.isPurchased,
+            if (e.removeFromFridge) 'remove_from_fridge': true, // MG_SHOP2FRIDGE
+          });
+      // MG_SHOP2FRIDGE: refresh so fridge state / totals reflect the removal.
+      if (e.removeFromFridge) add(ShoppingDetailRequested(e.listId));
     } on ApiException catch (err) {
       if (err.isNetwork) {
         await cache?.patchDetailItemPurchased(

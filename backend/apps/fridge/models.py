@@ -86,6 +86,15 @@ class FridgeItem(models.Model):
     expiry_date = models.DateField(null=True, blank=True)
     is_deleted = models.BooleanField(default=False)
     added_by_id = models.BigIntegerField(null=True, blank=True)
+    # MG_SHOP2FRIDGE: link back to the purchased shopping item this fridge item
+    # came from. Lets un-checking that item remove exactly what was added.
+    source_shopping_item = models.ForeignKey(
+        "shopping.ShoppingListItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fridge_items",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -96,6 +105,8 @@ class FridgeItem(models.Model):
             models.Index(fields=["product_id"]),
             models.Index(fields=["expiry_date"]),
             models.Index(fields=["is_deleted"]),
+            # MG_SHOP2FRIDGE
+            models.Index(fields=["source_shopping_item"], name="fridge_item_src_shop_idx"),
         ]
 
     @property

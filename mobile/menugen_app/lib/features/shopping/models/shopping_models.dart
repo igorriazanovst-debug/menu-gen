@@ -32,6 +32,7 @@ class ShoppingItem extends Equatable {
   final String? pricePerUnit; // MG_SHOPMOB001 (DRF Decimal => string|null)
   final String? lineTotal; // MG_SHOPMOB001
   final bool isPurchased;
+  final bool inFridge; // MG_SHOP2FRIDGE
   final String? purchasedByName;
 
   const ShoppingItem({
@@ -45,6 +46,7 @@ class ShoppingItem extends Equatable {
     this.pricePerUnit,
     this.lineTotal,
     required this.isPurchased,
+    this.inFridge = false, // MG_SHOP2FRIDGE
     this.purchasedByName,
   });
 
@@ -61,12 +63,13 @@ class ShoppingItem extends Equatable {
       pricePerUnit: j['price_per_unit']?.toString(),
       lineTotal: j['line_total']?.toString(),
       isPurchased: j['is_purchased'] as bool? ?? false,
+      inFridge: j['in_fridge'] as bool? ?? false, // MG_SHOP2FRIDGE
       purchasedByName: j['purchased_by_name'] as String?,
     );
   }
 
   // MG_B11: copyWith for optimistic in-place toggle updates.
-  ShoppingItem copyWith({bool? isPurchased}) => ShoppingItem(
+  ShoppingItem copyWith({bool? isPurchased, bool? inFridge}) => ShoppingItem(
         id: id,
         name: name,
         quantity: quantity,
@@ -77,12 +80,13 @@ class ShoppingItem extends Equatable {
         pricePerUnit: pricePerUnit,
         lineTotal: lineTotal,
         isPurchased: isPurchased ?? this.isPurchased,
+        inFridge: inFridge ?? this.inFridge, // MG_SHOP2FRIDGE
         purchasedByName: purchasedByName,
       );
 
   @override
   List<Object?> get props =>
-      [id, name, quantity, unit, category, categorySlug, pricePerUnit, isPurchased];
+      [id, name, quantity, unit, category, categorySlug, pricePerUnit, isPurchased, inFridge];
 }
 
 class ShoppingCapabilities extends Equatable {

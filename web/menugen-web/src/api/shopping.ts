@@ -83,10 +83,27 @@ export const shoppingApi = {
   removeItem: (listId: number, itemId: number) =>
     client.delete(`/shopping/lists/${listId}/items/${itemId}/`),
 
-  toggleItem: (listId: number, itemId: number, isPurchased?: boolean) =>
+  // MG_SHOP2FRIDGE: removeFromFridge confirms un-checking an item that was
+  // already added to the fridge (the linked fridge item is removed).
+  toggleItem: (
+    listId: number,
+    itemId: number,
+    isPurchased?: boolean,
+    removeFromFridge?: boolean,
+  ) =>
     client.patch<ShoppingV2Item>(
       `/shopping/lists/${listId}/items/${itemId}/toggle/`,
-      isPurchased === undefined ? {} : { is_purchased: isPurchased },
+      {
+        ...(isPurchased === undefined ? {} : { is_purchased: isPurchased }),
+        ...(removeFromFridge ? { remove_from_fridge: true } : {}),
+      },
+    ),
+
+  // MG_SHOP2FRIDGE: push purchased items into the family fridge.
+  addToFridge: (listId: number, itemIds?: number[]) =>
+    client.post<{ added: number; skipped: number }>(
+      `/shopping/lists/${listId}/add-to-fridge/`,
+      itemIds && itemIds.length ? { item_ids: itemIds } : {},
     ),
 
   accesses: (listId: number) =>

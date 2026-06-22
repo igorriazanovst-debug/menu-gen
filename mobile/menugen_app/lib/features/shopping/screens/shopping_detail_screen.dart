@@ -153,6 +153,62 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
     await Printing.layoutPdf(onLayout: (f) => doc.save());
   }
 
+  // MG_SHOP2FRIDGE: push purchased items into the family fridge.
+  Future<void> _addToFridge() async {
+    final api = context.read<ShoppingBloc>().apiClient;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final raw =
+          await api.post('/shopping/lists/${widget.listId}/add-to-fridge/');
+      final m = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+      final added = (m['added'] as int?) ?? 0;
+      if (!mounted) return;
+      context.read<ShoppingBloc>().add(ShoppingDetailRequested(widget.listId));
+      messenger.showSnackBar(SnackBar(
+        content: Text(added > 0
+            ? 'Добавлено в холодильник: $added'
+            : 'Нет новых купленных товаров для добавления.'),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Не удалось добавить в холодильник.'),
+      ));
+    }
+  }
+
+  // MG_SHOP2FRIDGE: un-checking an item that is in the fridge needs confirmation
+  // (it will be removed from the fridge). Returns true if the toggle proceeded.
+  Future<void> _onItemToggle(ShoppingListDetail d, ShoppingItem it, bool v) async {
+    final bloc = context.read<ShoppingBloc>();
+    if (!v && it.inFridge) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Убрать из холодильника?'),
+          content: const Text(
+              'Этот товар добавлен в холодильник. Снять отметку можно только '
+              'вместе с удалением его из холодильника.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Снять и убрать'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      bloc.add(ShoppingToggleItemRequested(d.id, it.id, false,
+          removeFromFridge: true));
+      return;
+    }
+    bloc.add(ShoppingToggleItemRequested(d.id, it.id, v));
+  }
+
   void _openAccess() {
     final bloc = context.read<ShoppingBloc>();
     showModalBottomSheet(
@@ -314,6 +370,15 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                       : 'Только некупленные',
                   onPressed: () =>
                       setState(() => _onlyUnpurchased = !_onlyUnpurchased),
+                ),
+              // MG_SHOP2FRIDGE: stock purchased items into the fridge.
+              if (!_editMode &&
+                  caps.toggle &&
+                  d.items.any((it) => it.isPurchased && !it.inFridge))
+                IconButton(
+                  icon: const Icon(Icons.kitchen_outlined),
+                  tooltip: 'Добавить купленное в холодильник',
+                  onPressed: _addToFridge,
                 ),
               // MG_SHOPBUG_EDITMODE: global edit-mode toggle.
               if (caps.manage)
@@ -510,23 +575,34 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                                   'view-${it.id}'),
                                               value: it.isPurchased,
                                               onChanged: caps.toggle
-                                                  ? (v) => context
-                                                      .read<ShoppingBloc>()
-                                                      .add(ShoppingToggleItemRequested(
-                                                          d.id,
-                                                          it.id,
-                                                          v ?? false))
+                                                  ? (v) => _onItemToggle(
+                                                      d, it, v ?? false)
                                                   : null,
                                               // MG_SHOPMOB_STRIKE: line-through when purchased.
-                                              title: Text(
-                                                it.name,
-                                                style: it.isPurchased
-                                                    ? const TextStyle(
-                                                        decoration: TextDecoration
-                                                            .lineThrough,
-                                                        color: Colors.grey,
-                                                      )
-                                                    : null,
+                                              // MG_SHOP2FRIDGE: ❄ marks items in the fridge.
+                                              title: Row(
+                                                children: [
+                                                  Flexible(
+                                                    child: Text(
+                                                      it.name,
+                                                      style: it.isPurchased
+                                                          ? const TextStyle(
+                                                              decoration:
+                                                                  TextDecoration
+                                                                      .lineThrough,
+                                                              color:
+                                                                  Colors.grey,
+                                                            )
+                                                          : null,
+                                                    ),
+                                                  ),
+                                                  if (it.inFridge) ...[
+                                                    const SizedBox(width: 6),
+                                                    const Icon(Icons.kitchen,
+                                                        size: 15,
+                                                        color: Colors.blueGrey),
+                                                  ],
+                                                ],
                                               ),
                                               subtitle:
                                                   _itemSubtitle(it, sym),
