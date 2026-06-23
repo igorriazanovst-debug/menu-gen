@@ -59,9 +59,13 @@ def _model_uri() -> str:
     model = (getattr(settings, "AI_IMAGE_MODEL", "") or "yandex-art").strip()
     if model.startswith("art://"):
         return model
-    folder_id = (getattr(settings, "AI_FOLDER_ID", "") or "").strip()
+    # ART runs under its own service account/folder ("menugen-image"); allow a
+    # dedicated folder, fall back to the shared text folder.
+    folder_id = (
+        getattr(settings, "AI_IMAGE_FOLDER_ID", "") or getattr(settings, "AI_FOLDER_ID", "") or ""
+    ).strip()
     if not folder_id:
-        raise ImageGenConfigError("AI_FOLDER_ID is not set for image generation.")
+        raise ImageGenConfigError("AI_IMAGE_FOLDER_ID/AI_FOLDER_ID is not set for image generation.")
     return f"art://{folder_id}/{model}/latest"
 
 
@@ -85,9 +89,10 @@ def generate_image(
     if not prompt:
         raise ImageGenConfigError("Empty prompt for image generation.")
 
-    api_key = (getattr(settings, "AI_API_KEY", "") or "").strip()
+    # Dedicated image SA key ("menugen-image"); fall back to the shared key.
+    api_key = (getattr(settings, "AI_IMAGE_API_KEY", "") or getattr(settings, "AI_API_KEY", "") or "").strip()
     if not api_key:
-        raise ImageGenConfigError("AI_API_KEY is not set for image generation.")
+        raise ImageGenConfigError("AI_IMAGE_API_KEY/AI_API_KEY is not set for image generation.")
 
     req_timeout = float(getattr(settings, "AI_IMAGE_TIMEOUT", 30.0) or 30.0)
     poll_timeout = float(poll_timeout if poll_timeout is not None else getattr(settings, "AI_IMAGE_POLL_TIMEOUT", 120.0))

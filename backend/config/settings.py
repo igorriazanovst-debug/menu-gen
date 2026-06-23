@@ -281,6 +281,10 @@ AI_VISION_EXTRACT_MODEL = config("AI_VISION_EXTRACT_MODEL", default=AI_TEXT_MODE
 # folder as the text/OCR clients. Model defaults to "yandex-art".
 AI_IMAGE_BASE_URL = config("AI_IMAGE_BASE_URL", default="")
 AI_IMAGE_MODEL = config("AI_IMAGE_MODEL", default="yandex-art")
+# YandexART runs under a dedicated service account ("menugen-image"). Its own
+# Api-Key (and folder, if different) — fall back to the shared text creds.
+AI_IMAGE_API_KEY = config("AI_IMAGE_API_KEY", default="")
+AI_IMAGE_FOLDER_ID = config("AI_IMAGE_FOLDER_ID", default="")
 AI_IMAGE_TIMEOUT = config("AI_IMAGE_TIMEOUT", default=30.0, cast=float)
 # Seconds to wait for the async generation operation to finish (poll loop).
 AI_IMAGE_POLL_TIMEOUT = config("AI_IMAGE_POLL_TIMEOUT", default=120.0, cast=float)
