@@ -2,22 +2,26 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { logout } from '../../store/slices/authSlice';
+import { useIsPremium } from '../../hooks/usePremium';
 
 const NAV = [
-  { path: '/dashboard',     icon: '🏠', label: 'Главная'      },
-  { path: '/menu',          icon: '📋', label: 'Меню'         },
-  { path: '/recipes',       icon: '📖', label: 'Рецепты'      },
-  { path: '/family',        icon: '👨‍👩‍👧', label: 'Семья'        },
-  { path: '/diary',         icon: '📓', label: 'Дневник'      },
-  { path: '/fridge',        icon: '🧊', label: 'Холодильник'  },
-  { path: '/shopping',      icon: '🛒', label: 'Покупки'      },
-  { path: '/subscriptions', icon: '💳', label: 'Подписка'     },
-  { path: '/profile',       icon: '👤', label: 'Профиль'      },
+  { path: '/dashboard',     icon: '🏠', label: 'Главная',      premium: true  },
+  { path: '/menu',          icon: '📋', label: 'Меню',         premium: false },
+  { path: '/recipes',       icon: '📖', label: 'Рецепты',      premium: false },
+  { path: '/family',        icon: '👨‍👩‍👧', label: 'Семья',        premium: false },
+  { path: '/diary',         icon: '📓', label: 'Дневник',      premium: true  },
+  { path: '/fridge',        icon: '🧊', label: 'Холодильник',  premium: true  },
+  { path: '/shopping',      icon: '🛒', label: 'Покупки',      premium: false },
+  { path: '/subscriptions', icon: '💳', label: 'Подписка',     premium: false },
+  { path: '/profile',       icon: '👤', label: 'Профиль',      premium: false },
 ];
 
 export const Sidebar: React.FC = () => {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
+  const isPremium = useIsPremium();
+  // Free-юзеру premium-пункты не показываем вовсе (страницы не грузятся).
+  const items = NAV.filter((n) => !n.premium || isPremium);
 
   return (
     <aside className="w-56 min-h-screen bg-sidebar text-sidebar-fg flex flex-col">
@@ -35,7 +39,7 @@ export const Sidebar: React.FC = () => {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV.map(({ path, icon, label }) => (
+        {items.map(({ path, icon, label }) => (
           <NavLink
             key={path}
             to={path}

@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { SyncIndicator } from './SyncIndicator'; // MG_T08
+import { ErrorBoundary } from '../ErrorBoundary';
 
 export const AppLayout: React.FC = () => (
   <div className="flex min-h-screen bg-bg">
@@ -13,7 +14,10 @@ export const AppLayout: React.FC = () => (
         <div className="flex justify-end mb-2">
           <SyncIndicator />
         </div>
-        <Outlet />
+        {/* Падение страницы не должно сносить навигацию/всё приложение. */}
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </div>
     </main>
   </div>

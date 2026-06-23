@@ -6,6 +6,7 @@ import { useAppDispatch, useAppSelector } from './hooks/useAppDispatch';
 import { initAuth } from './store/slices/authSlice';
 import { setSkinFromProfile } from './store/slices/uiSlice'; // MG_SKIN
 import { isSkin } from './theme/skins'; // MG_SKIN
+import { useIsPremium } from './hooks/usePremium'; // freemium-гейт
 import { AppLayout }         from './components/layout/AppLayout';
 import { LoginPage }         from './pages/Auth/LoginPage';
 import { DashboardPage }     from './pages/Dashboard/DashboardPage';
@@ -34,6 +35,18 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return user ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
+// Куда вести «/» и неизвестные пути: premium → дашборд, free → меню.
+const HomeRedirect: React.FC = () => {
+  const isPremium = useIsPremium();
+  return <Navigate to={isPremium ? '/dashboard' : '/menu'} replace />;
+};
+
+// Premium-страница: free-юзера не пускаем и не грузим — редирект на Тарифы.
+const PremiumRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const isPremium = useIsPremium();
+  return isPremium ? <>{children}</> : <Navigate to="/subscriptions" replace />;
+};
+
 const AppRoutes: React.FC = () => {
   const dispatch = useAppDispatch();
   const userSkin = useAppSelector((s) => s.auth.user?.ui_skin); // MG_SKIN
@@ -46,13 +59,13 @@ const AppRoutes: React.FC = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard"     element={<DashboardPage />} />
+        <Route index element={<HomeRedirect />} />
+        <Route path="dashboard"     element={<PremiumRoute><DashboardPage /></PremiumRoute>} />
         <Route path="menu"          element={<MenuPage />} />
         <Route path="recipes"       element={<RecipesPage />} />
         <Route path="family"        element={<FamilyPage />} />
-        <Route path="diary"         element={<DiaryPage />} />
-        <Route path="fridge"        element={<FridgePage />} />
+        <Route path="diary"         element={<PremiumRoute><DiaryPage /></PremiumRoute>} />
+        <Route path="fridge"        element={<PremiumRoute><FridgePage /></PremiumRoute>} />
         <Route path="shopping"      element={<ShoppingPage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="profile"       element={<ProfilePage />} />
@@ -63,7 +76,7 @@ const AppRoutes: React.FC = () => {
         <Route path="specialist/clients/:familyId/menus/:menuId"          element={<ClientMenuEditorPage />} />
         <Route path="specialist/clients/:familyId/recommendations/new"    element={<RecommendationFormPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<HomeRedirect />} />
     </Routes>
   );
 };
