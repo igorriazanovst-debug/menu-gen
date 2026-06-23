@@ -118,23 +118,29 @@ class Command(BaseCommand):
 
     # ── purge: null foreign image_url with backup ─────────────────────────────
     def _purge(self, base):
+        from apps.recipes.models import Recipe
+        from django.utils import timezone
+
         qs = base.filter(image_url__icontains="russianfood")
         n = qs.count()
         self.stdout.write("")
         self.stdout.write(self.style.WARNING(f"  PURGE: зануляю {n} чужих картинок (бэкап в povar_raw)…"))
-        purged = 0
-        for r in qs.iterator(chunk_size=200):
-            old = r.image_url
-            raw = r.povar_raw if isinstance(r.povar_raw, dict) else {}
-            raw = dict(raw)
-            raw.setdefault("orig_image_url", old)
+        if not n:
+            self.stdout.write("  PURGE: нечего зануливать.")
+            return
+        now = timezone.now()
+        objs = []
+        for r in qs.only("id", "image_url", "povar_raw").iterator(chunk_size=500):
+            raw = dict(r.povar_raw) if isinstance(r.povar_raw, dict) else {}
+            raw.setdefault("orig_image_url", r.image_url)
             r.povar_raw = raw
             r.image_url = None
-            r.save(update_fields=["image_url", "povar_raw", "updated_at"])
-            purged += 1
-            if purged % 100 == 0:
-                self.stdout.write(f"    …{purged}/{n}")
-        self.stdout.write(self.style.SUCCESS(f"  PURGE готово: {purged} занулено."))
+            r.updated_at = now
+            objs.append(r)
+        # bulk_update НЕ шлёт post_save -> не дёргает rebuild_recipe_links (иначе
+        # на каждую строку идёт тяжёлая пересборка product-links и всё виснет).
+        Recipe.objects.bulk_update(objs, ["image_url", "povar_raw", "updated_at"], batch_size=200)
+        self.stdout.write(self.style.SUCCESS(f"  PURGE готово: {len(objs)} занулено."))
 
     # ── generate: prompt -> YandexART -> media -> image_url ───────────────────
     def _generate(self, base, limit: int, sleep_s: float, retries: int):
@@ -182,6 +188,8 @@ class Command(BaseCommand):
             raw["image_prompt"] = prompt
             r.image_url = url
             r.povar_raw = raw
+            # Смена картинки не должна пересобирать product-links (post_save сигнал).
+            r._mg_skip_link_rebuild = True
             r.save(update_fields=["image_url", "povar_raw", "updated_at"])
             ok += 1
             self.stdout.write(f"  [{i}/{total}] ✓ «{r.title}» (#{r.id}) -> {url}")
