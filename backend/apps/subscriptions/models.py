@@ -47,3 +47,22 @@ class Subscription(models.Model):
 
     def __str__(self):
         return f"{self.family} — {self.plan.code} ({self.status})"
+
+
+class MenuGenerationCounter(models.Model):
+    """Freemium-квота: сколько генераций меню семья использовала в текущем периоде.
+
+    Период — календарный месяц (`period_start` = 1-е число). При генерации в новом
+    месяце счётчик сбрасывается. Premium-семьи квотой не ограничены и сюда не пишут.
+    """
+
+    family = models.OneToOneField("family.Family", on_delete=models.CASCADE, related_name="menu_quota")
+    period_start = models.DateField()
+    count = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "menu_generation_counters"
+
+    def __str__(self):
+        return f"{self.family} — {self.count} @ {self.period_start}"

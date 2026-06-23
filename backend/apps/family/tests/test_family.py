@@ -60,10 +60,26 @@ class TestFamilyDetail:
 @pytest.mark.django_db
 class TestFamilyInvite:
     def test_invite_success(self, client, head, other):
+        # Freemium: free-тариф = 1 участник, поэтому для приглашения 2-го нужен
+        # тариф с большим лимитом. Даём семье такой план.
+        import datetime
+
+        from django.utils import timezone
+
+        from apps.subscriptions.models import Subscription
+
+        family = Family.objects.get(owner=head)
+        plan = SubscriptionPlan.objects.create(code="family5", name="Семейный", price=0, max_family_members=5)
+        Subscription.objects.create(
+            family=family,
+            plan=plan,
+            status=Subscription.Status.ACTIVE,
+            started_at=timezone.now(),
+            expires_at=timezone.now() + datetime.timedelta(days=365),
+        )
         client.force_authenticate(head)
         resp = client.post(reverse("family-invite"), {"email": other.email}, format="json")
         assert resp.status_code == 201
-        family = Family.objects.get(owner=head)
         assert FamilyMember.objects.filter(family=family, user=other).exists()
 
     def test_invite_already_member(self, client, head, other):

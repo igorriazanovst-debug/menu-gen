@@ -82,12 +82,12 @@ class FamilyInviteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Проверка лимита по подписке
-        plan = _get_active_plan(family)
+        # Проверка лимита по тарифу (free → лимит free-плана)
+        limit, plan_name = _member_limit_info(family)
         current_count = family.members.count()
-        if plan and current_count >= plan.max_family_members:
+        if current_count >= limit:
             return Response(
-                {"detail": f"Лимит участников для тарифа «{plan.name}» исчерпан ({plan.max_family_members})."},
+                {"detail": f"Лимит участников для тарифа «{plan_name}» исчерпан ({limit})."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -120,10 +120,10 @@ class FamilyCreateManagedMemberView(APIView):
         data = serializer.validated_data
 
         # Subscription member limit (same rule as invite).
-        plan = _get_active_plan(family)
-        if plan and family.members.count() >= plan.max_family_members:
+        limit, plan_name = _member_limit_info(family)
+        if family.members.count() >= limit:
             return Response(
-                {"detail": f"Лимит участников для тарифа «{plan.name}» исчерпан ({plan.max_family_members})."},
+                {"detail": f"Лимит участников для тарифа «{plan_name}» исчерпан ({limit})."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -287,6 +287,21 @@ def _get_active_plan(family):
         .first()
     )
     return sub.plan if sub else None
+
+
+def _member_limit_info(family):
+    """Эффективный лимит участников и имя тарифа.
+
+    Если активной подписки нет — действует бесплатный тариф (free), у которого
+    свой лимит (по умолчанию 1). Раньше при отсутствии подписки лимит не
+    применялся вовсе — для freemium это закрыто.
+    """
+    plan = _get_active_plan(family)
+    if plan:
+        return plan.max_family_members, plan.name
+    from apps.subscriptions.quota import free_max_family_members
+
+    return free_max_family_members(), "Бесплатный"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

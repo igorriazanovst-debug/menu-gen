@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Subscription, SubscriptionPlan
+from .models import MenuGenerationCounter, Subscription, SubscriptionPlan
 
 
 @admin.register(SubscriptionPlan)
@@ -14,5 +14,12 @@ class SubscriptionPlanAdmin(admin.ModelAdmin):
 class SubscriptionAdmin(admin.ModelAdmin):
     list_display = ("id", "family", "plan", "status", "started_at", "expires_at", "auto_renew")
     list_filter = ("status", "plan")
+    search_fields = ("family__name", "family__owner__email")
+    raw_id_fields = ("family",)
+
+
+@admin.register(MenuGenerationCounter)
+class MenuGenerationCounterAdmin(admin.ModelAdmin):
+    list_display = ("id", "family", "period_start", "count", "updated_at")
     search_fields = ("family__name", "family__owner__email")
     raw_id_fields = ("family",)

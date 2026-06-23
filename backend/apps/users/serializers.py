@@ -211,6 +211,14 @@ class UserMeSerializer(serializers.ModelSerializer):
                     "enum": ["active", "trial", "expired", "cancelled", None],
                 },
                 "expires_at": {"type": "string", "format": "date-time", "nullable": True},
+                "menu_quota": {
+                    "type": "object",
+                    "properties": {
+                        "used": {"type": "integer"},
+                        "limit": {"type": "integer", "nullable": True},
+                        "reset_at": {"type": "string", "format": "date"},
+                    },
+                },
             },
         }
     )
@@ -218,6 +226,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         # Local import — avoid app-loading order issues.
         from apps.subscriptions.models import Subscription
         from apps.subscriptions.permissions import get_user_family, has_active_premium, has_ever_had_premium
+        from apps.subscriptions.quota import menu_quota_summary
 
         family = get_user_family(obj)
         if family is None:
@@ -231,6 +240,8 @@ class UserMeSerializer(serializers.ModelSerializer):
             "plan_code": latest.plan.code if latest else None,
             "status": latest.status if latest else None,
             "expires_at": latest.expires_at.isoformat() if latest else None,
+            # Freemium: остаток квоты на генерацию меню (limit=None → безлимит/premium).
+            "menu_quota": menu_quota_summary(family),
         }
 
 
