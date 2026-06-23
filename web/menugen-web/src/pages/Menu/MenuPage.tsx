@@ -3,7 +3,8 @@ import { menuApi } from '../../api/menu';
 import type { DeletedMenu, SwapResult } from '../../api/menu';
 import { recipesApi } from '../../api/recipes';
 import { swapMenuItem } from '../../api/menu'; // MG-402
-import { useAppSelector } from '../../hooks/useAppDispatch';
+import { useAppSelector, useAppDispatch } from '../../hooks/useAppDispatch';
+import { initAuth } from '../../store/slices/authSlice'; // Freemium: refresh quota after generate
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
@@ -349,6 +350,7 @@ const MealCard: React.FC<MealCardProps> = ({ slot, items, warnings, onOpenModal 
 
 export const MenuPage: React.FC = () => {
   const user = useAppSelector(s => s.auth.user);
+  const dispatch = useAppDispatch();
   const [menus, setMenus] = useState<Menu[]>([]);
   const [activeMenu, setActiveMenu] = useState<Menu | null>(null);
   const [loading, setLoading] = useState(true);
@@ -505,12 +507,14 @@ export const MenuPage: React.FC = () => {
           userAllergies={user?.allergies ?? []}
           userDisliked={user?.disliked_products ?? []}
           userProfile={user?.profile}
+          menuQuota={user?.subscription_status?.menu_quota}
           onCancel={() => setShowGenerateForm(false)}
           onCreated={(m) => {
             setActiveMenu(m);
             try { localStorage.setItem(STORAGE_KEY, String(m.id)); } catch {}
             setShowGenerateForm(false);
             load();
+            dispatch(initAuth()); // Freemium: обновить остаток квоты
           }}
         />
       )}

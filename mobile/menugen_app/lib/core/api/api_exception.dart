@@ -31,6 +31,10 @@ class ApiException implements Exception {
   /// status code alone — backend does not provide an error_code field.
   bool get isPremiumLocked => statusCode == 403;
 
+  /// Freemium: 403 из-за исчерпания бесплатной квоты генераций меню
+  /// (бэкенд шлёт `{"code": "menu_quota_exceeded"}`), а не premium-гейт.
+  bool get isQuotaExceeded => statusCode == 403 && errorCode == 'menu_quota_exceeded';
+
   bool get isUnauthorized => statusCode == 401;
   bool get isNotFound => statusCode == 404;
   bool get isThrottled => statusCode == 429; // MG_SKIN: DRF rate limit
