@@ -53,10 +53,11 @@ def _auth(c, u):
 
 @pytest.mark.django_db
 class TestMenuPremiumGate:
-    def test_list_no_premium_403(self, db):
+    def test_list_no_premium_200(self, db):
+        # Freemium: бесплатная семья видит свои меню (список не за premium-гейтом).
         family, head = _family()
         c = _auth(APIClient(), head)
-        assert c.get("/api/v1/menu/").status_code == 403
+        assert c.get("/api/v1/menu/").status_code == 200
 
     def test_list_active_premium_200(self, db):
         family, head = _family()
@@ -70,27 +71,28 @@ class TestMenuPremiumGate:
         c = _auth(APIClient(), head)
         assert c.get("/api/v1/menu/").status_code == 200
 
-    def test_generate_no_premium_403(self, db):
+    def test_generate_no_premium_not_gated(self, db):
+        # Freemium: бесплатная семья НЕ блокируется premium-гейтом на генерацию.
+        # (квота свежая; без рецептов генерация падает на 400, но не на 403-гейте).
         family, head = _family()
         c = _auth(APIClient(), head)
-        # без рецептов всё равно permission-check раньше валидации
         resp = c.post("/api/v1/menu/generate/", {"period_days": 1}, format="json")
-        assert resp.status_code == 403
+        assert resp.status_code != 403
 
-    def test_generate_expired_premium_403(self, db):
+    def test_generate_expired_premium_falls_back_to_free(self, db):
+        # Истёкший premium = нет активного premium → работает как free (не 403-гейт).
         family, head = _family()
         _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
         c = _auth(APIClient(), head)
         resp = c.post("/api/v1/menu/generate/", {"period_days": 1}, format="json")
-        # POST → требует active premium
-        assert resp.status_code == 403
+        assert resp.status_code != 403
 
-    def test_generate_cancelled_403(self, db):
+    def test_generate_cancelled_falls_back_to_free(self, db):
         family, head = _family()
         _sub(family, Subscription.Status.CANCELLED)
         c = _auth(APIClient(), head)
         resp = c.post("/api/v1/menu/generate/", {"period_days": 1}, format="json")
-        assert resp.status_code == 403
+        assert resp.status_code != 403
 
     def test_deleted_list_no_premium_403(self, db):
         family, head = _family()

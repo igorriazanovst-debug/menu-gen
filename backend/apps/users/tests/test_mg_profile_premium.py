@@ -83,14 +83,16 @@ class TestSubscriptionStatusField:
 
     def test_family_no_subscription_returns_payload_with_false_flags(self, db):
         _, head = _family("h1@e.com")
-        data = _serialize(head)
-        assert data["subscription_status"] == {
-            "is_active_premium": False,
-            "has_ever_premium": False,
-            "plan_code": None,
-            "status": None,
-            "expires_at": None,
-        }
+        data = _serialize(head)["subscription_status"]
+        assert data["is_active_premium"] is False
+        assert data["has_ever_premium"] is False
+        assert data["plan_code"] is None
+        assert data["status"] is None
+        assert data["expires_at"] is None
+        # Freemium: бесплатная семья получает квоту free-плана (4/мес, 0 использовано).
+        assert data["menu_quota"]["limit"] == 4
+        assert data["menu_quota"]["used"] == 0
+        assert "reset_at" in data["menu_quota"]
 
     def test_active_premium(self, db, plan_premium):
         family, head = _family("h2@e.com")
