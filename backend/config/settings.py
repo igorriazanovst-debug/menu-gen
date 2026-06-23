@@ -274,3 +274,17 @@ OCR_LANGUAGE_CODES = [c.strip() for c in config("OCR_LANGUAGE_CODES", default="r
 # Model used to extract product name from noisy OCR text.
 # Defaults to AI_TEXT_MODEL (yandexgpt-lite) per decision; override via env.
 AI_VISION_EXTRACT_MODEL = config("AI_VISION_EXTRACT_MODEL", default=AI_TEXT_MODEL)
+
+# ─── Image generation (YandexART) ───────────────────────────────────────────
+# Async foundation-models image generation. Host is derived from AI_BASE_URL's
+# root (…/v1 stripped) unless AI_IMAGE_BASE_URL overrides it. Same Api-Key and
+# folder as the text/OCR clients. Model defaults to "yandex-art".
+AI_IMAGE_BASE_URL = config("AI_IMAGE_BASE_URL", default="")
+AI_IMAGE_MODEL = config("AI_IMAGE_MODEL", default="yandex-art")
+AI_IMAGE_TIMEOUT = config("AI_IMAGE_TIMEOUT", default=30.0, cast=float)
+# Seconds to wait for the async generation operation to finish (poll loop).
+AI_IMAGE_POLL_TIMEOUT = config("AI_IMAGE_POLL_TIMEOUT", default=120.0, cast=float)
+AI_IMAGE_POLL_INTERVAL = config("AI_IMAGE_POLL_INTERVAL", default=2.0, cast=float)
+# Prompt-builder text model (recipe -> visual slots). Defaults to the PRO model
+# for richer descriptions; override via env.
+AI_IMAGE_PROMPT_MODEL = config("AI_IMAGE_PROMPT_MODEL", default=AI_TEXT_MODEL_PRO)
