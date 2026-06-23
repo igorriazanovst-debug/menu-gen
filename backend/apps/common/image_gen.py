@@ -54,6 +54,20 @@ def _host_root() -> str:
     return m.group(1)
 
 
+def _clean_key(raw: str) -> str:
+    """Снять случайные обёртки вокруг ключа: пробелы, кавычки, угловые скобки.
+
+    Защита от опечаток в .env вроде AI_IMAGE_API_KEY=<AQV...age> (брекеты из
+    плейсхолдера) — Yandex иначе отдаёт 401 «Unknown api key».
+    """
+    k = (raw or "").strip()
+    if len(k) >= 2 and (
+        (k[0] == k[-1] and k[0] in "\"'") or (k[0] == "<" and k[-1] == ">")
+    ):
+        k = k[1:-1].strip()
+    return k
+
+
 def _model_uri() -> str:
     """Build art://<folder>/<model>/latest unless a full URI was provided."""
     model = (getattr(settings, "AI_IMAGE_MODEL", "") or "yandex-art").strip()
@@ -90,7 +104,7 @@ def generate_image(
         raise ImageGenConfigError("Empty prompt for image generation.")
 
     # Dedicated image SA key ("menugen-image"); fall back to the shared key.
-    api_key = (getattr(settings, "AI_IMAGE_API_KEY", "") or getattr(settings, "AI_API_KEY", "") or "").strip()
+    api_key = _clean_key(getattr(settings, "AI_IMAGE_API_KEY", "") or getattr(settings, "AI_API_KEY", ""))
     if not api_key:
         raise ImageGenConfigError("AI_IMAGE_API_KEY/AI_API_KEY is not set for image generation.")
 
