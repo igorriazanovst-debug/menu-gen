@@ -128,7 +128,7 @@ class MenuGenApp extends StatelessWidget {
         },
         child: BlocBuilder<AuthBloc, AuthState>(
         builder: (context, authState) {
-          final router = AppRouter.create(authState: authState, apiClient: apiClient);
+          final router = AppRouter.create(authState: authState, apiClient: apiClient, premiumGate: premiumGate);
           return BlocBuilder<ThemeCubit, AppSkin>(
             builder: (context, skin) => MaterialApp.router(
               title: 'MenuGen',

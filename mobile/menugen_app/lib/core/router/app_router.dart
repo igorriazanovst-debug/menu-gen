@@ -17,10 +17,13 @@ import '../../features/recipes/screens/recipes_screen.dart';
 import '../../features/shopping/screens/shopping_list_screen.dart';
 import '../api/api_client.dart';
 import '../premium/paywall_screen.dart';
+import '../premium/premium_gate_cubit.dart';
 import '../widgets/main_shell.dart';
 
+const _premiumOnlyPaths = {'/fridge', '/diary'};
+
 class AppRouter {
-  static GoRouter create({required AuthState authState, required ApiClient apiClient}) {
+  static GoRouter create({required AuthState authState, required ApiClient apiClient, required PremiumGateCubit premiumGate}) {
     return GoRouter(
       initialLocation: '/menu',
       redirect: (context, state) {
@@ -28,6 +31,10 @@ class AppRouter {
         final isLoggingIn = state.matchedLocation == '/login';
         if (!isLoggedIn && !isLoggingIn) return '/login';
         if (isLoggedIn && isLoggingIn) return '/menu';
+        if (premiumGate.state.status == PremiumStatus.lockedForRead &&
+            _premiumOnlyPaths.any((p) => state.matchedLocation.startsWith(p))) {
+          return '/paywall';
+        }
         return null;
       },
       routes: [
