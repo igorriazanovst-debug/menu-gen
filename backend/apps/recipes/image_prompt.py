@@ -79,14 +79,15 @@ def _system() -> str:
         "фотокарточке для меню. Верни СТРОГО JSON без markdown и без пояснений, "
         "формат: "
         '{"dish_visual":"...","garnish":"...","dishware":"...","cutlery":"...","color_hint":"..."}. '
-        "Поля: dish_visual — 1–2 предложения: что это за блюдо, его консистенция/"
-        "текстура и главные видимые компоненты; garnish — чем украшено (зелень и "
-        "т.п.) или пустая строка; dishware — в чём подаётся, В ПРЕДЛОЖНОМ ПАДЕЖЕ "
-        "(отвечает на «в чём?»: глубокой керамической миске / белой фарфоровой "
-        "тарелке / деревянной доске / стеклянном стакане…), без слова «в»; "
-        "cutlery — прибор рядом (ложка / вилка и нож / десертная ложка) или пустая "
-        "строка; color_hint — реальный естественный цвет/оттенок блюда (например: "
-        "борщ — насыщённый свекольный красный; окрошка — бледный кремовый). "
+        "Поля: dish_visual — ОЧЕНЬ КРАТКО (до 12 слов, без точки): что за блюдо и "
+        "главные видимые компоненты, не перечисляй все ингредиенты; garnish — "
+        "коротко чем украшено (1–3 слова) или пустая строка; dishware — в чём "
+        "подаётся, В ПРЕДЛОЖНОМ ПАДЕЖЕ (отвечает на «в чём?»: глубокой керамической "
+        "миске / белой фарфоровой тарелке / деревянной доске / стеклянном "
+        "стакане…), без слова «в»; cutlery — прибор рядом (ложка / вилка и нож / "
+        "десертная ложка) или пустая строка; color_hint — естественный оттенок "
+        "блюда в 2–4 слова (например: насыщённый свекольный красный; бледный "
+        "кремовый). "
         "Посуду и прибор подбирай ПО ТИПУ блюда: суп → глубокая миска + ложка; "
         "второе → тарелка + вилка и нож; салат → тарелка/миска + вилка; гарнир → "
         "тарелка + вилка; десерт → десертная тарелка + ложка; напиток → стакан/"
@@ -166,31 +167,55 @@ def build_slots(title: str, ingredients=None, steps=None, dish_type: Optional[st
     return out
 
 
+# YandexART ограничивает позитивный промпт 500 символами; держим запас.
+MAX_PROMPT_CHARS = 490
+
+
+def _trim(text: str, limit: int) -> str:
+    """Обрезать по границе слова до limit символов."""
+    text = text.strip()
+    if len(text) <= limit or limit <= 0:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0].rstrip(" ,.;—-")
+    return cut or text[:limit]
+
+
 def assemble_prompt(title: str, slots: dict) -> str:
-    """Slot the per-dish parts into the fixed brand template."""
+    """Собрать компактный промт из фикс-стиля + слотов, уложиться в лимит ART.
+
+    Самый длинный переменный слот (dish_visual) ужимается под оставшийся бюджет,
+    в конце — жёсткий предохранитель на MAX_PROMPT_CHARS.
+    """
+    title = (title or "").strip()
     dish_visual = (slots.get("dish_visual") or "").strip().rstrip(".")
     garnish = (slots.get("garnish") or "").strip().rstrip(".")
     dishware = (slots.get("dishware") or "керамической тарелке").strip().rstrip(".")
     cutlery = (slots.get("cutlery") or "").strip().rstrip(".")
-    color_hint = (slots.get("color_hint") or "естественные, приглушённые цвета").strip().rstrip(".")
+    color_hint = (slots.get("color_hint") or "естественные приглушённые").strip().rstrip(".")
 
-    lines = [
-        f"Фотореалистичный вид сверху готового блюда «{title}» на деревенском "
-        "дубовом столе без скатерти. Мягкий естественный дневной свет. "
-        "Дубовый стол имеет видимую текстуру древесины, тёплый, но не яркий.",
-        f"{dish_visual}.",
-    ]
-    if garnish:
-        lines.append(f"Украшено {garnish}.")
-    lines.append(f"Подаётся в {dishware}.")
-    if cutlery:
-        lines.append(f"Рядом — {cutlery}.")
-    lines.append(
-        f"Цвета приглушённые и неяркие, но естественные для блюда ({color_hint}). "
-        "Общая тональность мягкая и натуральная."
-    )
-    lines.append("Без текста, без надписей, без логотипов, без рук и людей. Квадратный кадр 1:1.")
-    return " ".join(lines)
+    head = f"Фотореалистичное фото блюда сверху: «{title}»."
+    serve = f"Подаётся в {dishware}" + (f", рядом {cutlery}" if cutlery else "") + "."
+    garnish_clause = f"Украшено {garnish}." if garnish else ""
+    style = "Деревенский дубовый стол без скатерти, мягкий дневной свет."
+    color = f"Цвета приглушённые, естественные для блюда ({color_hint})."
+    neg = "Без текста и логотипов, без рук. Квадрат 1:1."
+
+    def join(parts):
+        return " ".join(p for p in parts if p)
+
+    # бюджет под dish_visual = лимит минус всё остальное
+    fixed = join([head, serve, garnish_clause, style, color, neg])
+    budget = MAX_PROMPT_CHARS - len(fixed) - 1
+    if budget < 24 and garnish_clause:  # освобождаем место, жертвуя украшением
+        garnish_clause = ""
+        fixed = join([head, serve, style, color, neg])
+        budget = MAX_PROMPT_CHARS - len(fixed) - 1
+    dv = _trim(dish_visual, budget)
+
+    prompt = join([head, f"{dv}." if dv else "", serve, garnish_clause, style, color, neg])
+    if len(prompt) > MAX_PROMPT_CHARS:
+        prompt = _trim(prompt, MAX_PROMPT_CHARS)
+    return prompt
 
 
 def build_prompt(title: str, ingredients=None, steps=None, dish_type: Optional[str] = None) -> str:
