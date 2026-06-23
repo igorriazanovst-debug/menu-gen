@@ -65,7 +65,17 @@ class _State extends State<GenerateMenuBottomSheet> {
   String? _fatTarget;
   String? _carbTarget;
 
+  // Freemium: остаток квоты на генерацию меню (limit=null → безлимит/premium).
+  int? _quotaUsed;
+  int? _quotaLimit;
+  String? _quotaResetAt;
+
   bool _loadingMeta = true;
+
+  bool get _hasQuota => _quotaLimit != null;
+  int get _quotaRemaining =>
+      _quotaLimit == null ? 0 : (_quotaLimit! - (_quotaUsed ?? 0)).clamp(0, _quotaLimit!);
+  bool get _quotaExhausted => _hasQuota && _quotaRemaining == 0;
 
   @override
   void initState() {
@@ -100,6 +110,17 @@ class _State extends State<GenerateMenuBottomSheet> {
       final mp_type = profile['meal_plan_type'];
       if (mp_type == '5' || mp_type == '3') {
         _mealPlanType = mp_type as String;
+      }
+
+      // Freemium: остаток квоты из subscription_status.menu_quota.
+      final sub = mp['subscription_status'];
+      if (sub is Map && sub['menu_quota'] is Map) {
+        final q = Map<String, dynamic>.from(sub['menu_quota'] as Map);
+        final used = q['used'];
+        final limit = q['limit'];
+        _quotaUsed = used is num ? used.toInt() : null;
+        _quotaLimit = limit is num ? limit.toInt() : null; // null → безлимит
+        _quotaResetAt = q['reset_at']?.toString();
       }
     } catch (_) {/* ignore */}
 
@@ -177,6 +198,12 @@ class _State extends State<GenerateMenuBottomSheet> {
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
+
+                  // Freemium: остаток бесплатных генераций
+                  if (_hasQuota) ...[
+                    _buildQuotaBanner(),
+                    const SizedBox(height: 12),
+                  ],
 
                   // КБЖУ summary
                   _buildKbjuSummary(),
@@ -294,16 +321,42 @@ class _State extends State<GenerateMenuBottomSheet> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.auto_awesome),
-                      label: const Text('Создать меню'),
+                      label: Text(_quotaExhausted ? 'Лимит исчерпан' : 'Создать меню'),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
-                      onPressed: _submit,
+                      onPressed: _quotaExhausted ? null : _submit,
                     ),
                   ),
                 ],
               ),
             ),
+    );
+  }
+
+  // Freemium: баннер с остатком бесплатных генераций.
+  Widget _buildQuotaBanner() {
+    final exhausted = _quotaExhausted;
+    final reset = (_quotaResetAt != null && _quotaResetAt!.isNotEmpty)
+        ? ' · сброс $_quotaResetAt'
+        : '';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: exhausted ? Colors.red.shade50 : Colors.green.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        exhausted
+            ? 'Лимит бесплатных генераций исчерпан. Оформите Premium для безлимитной генерации$reset.'
+            : 'Бесплатные генерации: осталось $_quotaRemaining из $_quotaLimit$reset',
+        style: TextStyle(
+          fontSize: 13,
+          color: exhausted ? Colors.red.shade800 : Colors.green.shade900,
+          fontWeight: exhausted ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
     );
   }
 

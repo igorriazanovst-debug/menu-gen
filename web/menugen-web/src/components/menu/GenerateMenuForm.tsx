@@ -12,7 +12,7 @@ import { menuApi, type GenerateMenuPayload } from '../../api/menu';
 import { recipesApi } from '../../api/recipes';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import type { Menu, MealPlan, UserProfile } from '../../types';
+import type { Menu, MealPlan, UserProfile, MenuQuota } from '../../types';
 
 // Маппинг кодов стран → display names. Если кода нет в маппинге — показываем как есть.
 const COUNTRY_LABELS: Record<string, string> = {
@@ -46,6 +46,7 @@ interface Props {
   userDisliked: string[];
   userProfile?: UserProfile;
   initialMealPlan: MealPlan;
+  menuQuota?: MenuQuota | null; // Freemium: остаток бесплатных генераций
 }
 
 export const GenerateMenuForm: React.FC<Props> = ({
@@ -55,6 +56,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
   userDisliked,
   userProfile,
   initialMealPlan,
+  menuQuota,
 }) => {
   const [periodDays, setPeriodDays] = useState(7);
   const [startDate, setStartDate] = useState(todayISO());
@@ -111,6 +113,14 @@ export const GenerateMenuForm: React.FC<Props> = ({
     c: userProfile.carb_target_g,
   } : null;
 
+  // Freemium: остаток бесплатных генераций (limit=null → безлимит/premium).
+  const hasLimit = !!menuQuota && menuQuota.limit !== null && menuQuota.limit !== undefined;
+  const remaining = hasLimit ? Math.max(0, (menuQuota!.limit as number) - menuQuota!.used) : null;
+  const quotaExhausted = hasLimit && remaining === 0;
+  const resetLabel = menuQuota?.reset_at
+    ? new Date(menuQuota.reset_at).toLocaleDateString('ru')
+    : '';
+
   const handleSubmit = async () => {
     setGenerating(true); setError('');
     try {
@@ -140,6 +150,21 @@ export const GenerateMenuForm: React.FC<Props> = ({
 
   return (
     <Card className="p-5 space-y-5">
+      {/* Freemium: остаток бесплатных генераций */}
+      {hasLimit && (
+        <div className={[
+          'rounded-xl px-3 py-2 text-xs flex items-center justify-between gap-2',
+          quotaExhausted ? 'bg-red-50 text-red-700' : 'bg-rice/60 text-chocolate',
+        ].join(' ')}>
+          <span>
+            <span className="font-semibold">Бесплатные генерации:</span>{' '}
+            осталось {remaining} из {menuQuota!.limit}
+            {resetLabel && <span className="text-gray-500"> · сброс {resetLabel}</span>}
+          </span>
+          {quotaExhausted && <span className="font-semibold whitespace-nowrap">Лимит исчерпан</span>}
+        </div>
+      )}
+
       {/* КБЖУ-summary */}
       {targets ? (
         <div className="rounded-xl bg-rice/50 px-3 py-2 text-xs text-chocolate">
@@ -337,9 +362,16 @@ export const GenerateMenuForm: React.FC<Props> = ({
         </div>
       )}
 
+      {quotaExhausted && !error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+          Лимит бесплатных генераций исчерпан. Оформите Premium для безлимитной
+          генерации{resetLabel && ` или дождитесь сброса ${resetLabel}`}.
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 pt-2 border-t border-border">
         <Button variant="ghost" onClick={onCancel} disabled={generating}>Отмена</Button>
-        <Button onClick={handleSubmit} loading={generating}>Создать меню</Button>
+        <Button onClick={handleSubmit} loading={generating} disabled={quotaExhausted}>Создать меню</Button>
       </div>
     </Card>
   );

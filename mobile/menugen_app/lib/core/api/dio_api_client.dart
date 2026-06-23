@@ -115,7 +115,8 @@ class DioApiClient implements ApiClient {
               body['error'] ??
               'Ошибка сервера')
           .toString();
-      final ec = body['error_code'];
+      // Freemium 403 шлёт {"code": "menu_quota_exceeded"}; принимаем оба ключа.
+      final ec = body['error_code'] ?? body['code'];
       if (ec is String) errorCode = ec;
     } else if (body is String && body.isNotEmpty) {
       message = body;
