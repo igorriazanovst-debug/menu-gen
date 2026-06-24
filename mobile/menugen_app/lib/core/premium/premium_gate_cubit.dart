@@ -27,6 +27,10 @@ enum PremiumStatus {
 class PremiumGateState extends Equatable {
   final PremiumStatus status;
 
+  /// True if the user has ever had an active premium subscription.
+  /// False means "free tier" — reportReadSuccess() must NOT promote to lockedForWrite.
+  final bool hasEverPremium;
+
   /// Last feature/endpoint that triggered a lock, for paywall copy
   /// (e.g. "diary", "menu", "fridge", "notifications"). Best-effort.
   final String? lastLockedFeature;
@@ -36,29 +40,33 @@ class PremiumGateState extends Equatable {
 
   const PremiumGateState({
     required this.status,
+    this.hasEverPremium = false,
     this.lastLockedFeature,
     this.lastLockMessage,
   });
 
   const PremiumGateState.unknown()
       : status = PremiumStatus.unknown,
+        hasEverPremium = false,
         lastLockedFeature = null,
         lastLockMessage = null;
 
   PremiumGateState copyWith({
     PremiumStatus? status,
+    bool? hasEverPremium,
     String? lastLockedFeature,
     String? lastLockMessage,
   }) {
     return PremiumGateState(
       status: status ?? this.status,
+      hasEverPremium: hasEverPremium ?? this.hasEverPremium,
       lastLockedFeature: lastLockedFeature ?? this.lastLockedFeature,
       lastLockMessage: lastLockMessage ?? this.lastLockMessage,
     );
   }
 
   @override
-  List<Object?> get props => [status, lastLockedFeature, lastLockMessage];
+  List<Object?> get props => [status, hasEverPremium, lastLockedFeature, lastLockMessage];
 }
 
 /// Listens to `DioApiClient.errorStream` and updates premium status on 403s.
@@ -96,8 +104,10 @@ class PremiumGateCubit extends Cubit<PremiumGateState> {
 
   /// Signal from a feature bloc that a successful read happened — promotes
   /// `lockedForRead` to `lockedForWrite` (read-only-after-expiry mode).
+  /// Only applies to users who had premium before (hasEverPremium=true);
+  /// free users (never premium) stay in lockedForRead.
   void reportReadSuccess() {
-    if (state.status == PremiumStatus.lockedForRead) {
+    if (state.status == PremiumStatus.lockedForRead && state.hasEverPremium) {
       emit(state.copyWith(status: PremiumStatus.lockedForWrite));
     }
   }
@@ -134,12 +144,14 @@ class PremiumGateCubit extends Cubit<PremiumGateState> {
     if (hasEver) {
       emit(state.copyWith(
         status: PremiumStatus.lockedForWrite,
+        hasEverPremium: true,
         lastLockMessage: null,
       ));
       return;
     }
     emit(state.copyWith(
       status: PremiumStatus.lockedForRead,
+      hasEverPremium: false,
       lastLockMessage: null,
     ));
   }

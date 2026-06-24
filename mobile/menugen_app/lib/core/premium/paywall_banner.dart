@@ -19,6 +19,11 @@ class PaywallBanner extends StatelessWidget {
         if (state.status == PremiumStatus.unknown) {
           return const SizedBox.shrink();
         }
+        // Free users (never had premium) don't see the banner in the shell —
+        // premium routes are hidden from the nav and redirect to /paywall.
+        if (!state.hasEverPremium) {
+          return const SizedBox.shrink();
+        }
         final isWrite = state.status == PremiumStatus.lockedForWrite;
         final bg = isWrite ? Colors.amber.shade100 : Colors.red.shade100;
         final fg = isWrite ? Colors.amber.shade900 : Colors.red.shade900;
