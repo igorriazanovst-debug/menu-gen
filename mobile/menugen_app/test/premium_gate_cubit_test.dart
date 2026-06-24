@@ -56,13 +56,21 @@ void main() {
     );
 
     blocTest<PremiumGateCubit, PremiumGateState>(
-      'reportReadSuccess promotes lockedForRead → lockedForWrite',
+      'reportReadSuccess promotes lockedForRead → lockedForWrite for expired-premium users',
       build: PremiumGateCubit.new,
-      seed: () => const PremiumGateState(status: PremiumStatus.lockedForRead),
+      seed: () => const PremiumGateState(status: PremiumStatus.lockedForRead, hasEverPremium: true),
       act: (c) => c.reportReadSuccess(),
       expect: () => [
         isA<PremiumGateState>().having((s) => s.status, 'status', PremiumStatus.lockedForWrite),
       ],
+    );
+
+    blocTest<PremiumGateCubit, PremiumGateState>(
+      'reportReadSuccess is no-op for free users (hasEverPremium=false)',
+      build: PremiumGateCubit.new,
+      seed: () => const PremiumGateState(status: PremiumStatus.lockedForRead, hasEverPremium: false),
+      act: (c) => c.reportReadSuccess(),
+      expect: () => [],
     );
 
     blocTest<PremiumGateCubit, PremiumGateState>(
