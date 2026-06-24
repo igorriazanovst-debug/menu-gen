@@ -88,21 +88,34 @@ class _MenuScreenState extends State<MenuScreen> {
     }
   }
 
-  /// Маппинг item.meal_type → слот:
-  /// для 5-приёмов: первый snack за день → snack1, второй → snack2.
+  /// Маппинг item → слот с дедупликацией по recipe.id (семейный режим).
   List<Map<String, dynamic>> _itemsForSlot({
     required List<Map<String, dynamic>> dayItems,
     required String slot,
   }) {
+    List<Map<String, dynamic>> result;
     if (slot == 'snack1' || slot == 'snack2') {
-      final snacks =
-          dayItems.where((i) => (i['meal_type'] as String?) == 'snack').toList();
-      if (snacks.isEmpty) return const [];
-      if (slot == 'snack1') return [snacks.first];
-      if (snacks.length >= 2) return [snacks[1]];
-      return const [];
+      // Сначала пробуем точный meal_slot (новые меню).
+      result = dayItems.where((i) => (i['meal_slot'] as String?) == slot).toList();
+      if (result.isEmpty) {
+        // Фоллбек по индексу для старых меню без meal_slot.
+        final snacks = dayItems
+            .where((i) => (i['meal_type'] as String?) == 'snack')
+            .toList();
+        if (slot == 'snack1' && snacks.isNotEmpty) result = [snacks.first];
+        else if (slot == 'snack2' && snacks.length >= 2) result = [snacks[1]];
+        else result = const [];
+      }
+    } else {
+      result = dayItems.where((i) => (i['meal_type'] as String?) == slot).toList();
     }
-    return dayItems.where((i) => (i['meal_type'] as String?) == slot).toList();
+    // Дедуплицируем по recipe.id — в семейном режиме один рецепт на члена семьи.
+    final seen = <Object>{};
+    return result.where((i) {
+      final rid = (i['recipe'] as Map<String, dynamic>?)?['id'];
+      if (rid == null) return true;
+      return seen.add(rid);
+    }).toList();
   }
 
   String _shortRange(Map<String, dynamic> m) {

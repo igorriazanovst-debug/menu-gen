@@ -627,11 +627,14 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
   const [warnings] = useState<Record<number, SwapResult>>({});
   const [mealModal, setMealModal] = useState<{ items: MenuItem[]; label: string; dayLabel: string } | null>(null);
 
-  // Определяем 3 vs 5 приёмов:
-  // если у любого item meal_slot = snack2 — это 5 приёмов
+  // Определяем 3 vs 5 приёмов по meal_plan_type из filters_used.
+  // Фоллбек через наличие snack2-item для старых меню без этого поля.
   const hasTwoSnacks = useMemo(() => {
+    const mpt = (menu.filters_used as Record<string, unknown>)?.meal_plan_type;
+    if (mpt === '5') return true;
+    if (mpt === '3') return false;
     return (menu.items || []).some(i => getSlotKey(i) === 'snack2');
-  }, [menu.items]);
+  }, [menu.filters_used, menu.items]);
 
   const slots: readonly string[] = hasTwoSnacks ? MEAL_SLOTS_5 : MEAL_SLOTS_3;
 
@@ -661,7 +664,13 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
             <DayNutritionSummary items={dayItems} targets={targets} />
             <div className={`grid gap-2 ${slots.length === 5 ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-3'}`}>
               {slots.map(slot => {
-                const slotItems = dayItems.filter(i => getSlotKey(i) === slot);
+                const rawSlotItems = dayItems.filter(i => getSlotKey(i) === slot);
+                const seenIds = new Set<number>();
+                const slotItems = rawSlotItems.filter(i => {
+                  if (seenIds.has(i.recipe.id)) return false;
+                  seenIds.add(i.recipe.id);
+                  return true;
+                });
                 const dbType = slotToMealType(slot);
                 const label  = MEAL_SLOT_LABEL[slot] || MEAL_LABELS[dbType] || slot;
                 return (
