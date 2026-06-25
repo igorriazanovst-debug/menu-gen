@@ -61,6 +61,15 @@ class TestDedupProducts:
         assert Product.objects.filter(name="Морковь").exists()
         assert Product.objects.filter(name="Капуста").exists()
 
+    def test_auto_alias_does_not_trigger_merge(self, db):
+        # Шумный авто-синоним не должен сливать разные продукты.
+        flour = Product.objects.create(name="Мука", is_seed=True)
+        wheat = Product.objects.create(name="Мука пшеничная", calories_per_100g=364)
+        ProductAlias.objects.create(alias_norm="мука пшеничная", product=flour, source="auto")
+        _run("--apply")
+        assert Product.objects.filter(id=wheat.id).exists()
+        assert Product.objects.filter(id=flour.id).exists()
+
     def test_dry_run_changes_nothing(self, db):
         canon = Product.objects.create(name="Огурцы", is_seed=True)
         dup = Product.objects.create(name="Огурец")

@@ -83,6 +83,13 @@ class TestSeedProductKbju:
         _run()
         assert ProductAlias.objects.filter(alias_norm="огурец").exists()
 
+    def test_removes_bad_aliases(self, db):
+        # ранее созданные ошибочные синонимы (телятина->говядина и т.п.) удаляются
+        beef = Product.objects.create(name="Говядина", nutrition={})
+        ProductAlias.objects.create(alias_norm="телятина", product=beef, source="manual")
+        _run()
+        assert not ProductAlias.objects.filter(alias_norm="телятина").exists()
+
 
 class TestAliasSearch:
     """Поиск по синонимам через ProductSearchView (ед./мн. число)."""
