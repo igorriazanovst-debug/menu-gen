@@ -117,11 +117,12 @@ class TestMg608PurgeOne:
         assert resp.status_code == 204
         assert not DeletedMenu.objects.filter(id=d.id).exists()
 
-    def test_purge_no_family_403(self, client, db):
+    def test_purge_no_family_404(self, client, db):
+        # Freemium: premium-гейт снят, юзер без семьи доходит до вью → 404.
         u = _mk_user(email="mg608_p2@x.com")
         client.force_authenticate(u)
         resp = client.delete(reverse("menu-purge", args=[1]))
-        assert resp.status_code == 403  # premium-gate без семьи
+        assert resp.status_code == 404
 
     def test_purge_not_found(self, client, db):
         user = _mk_user(email="mg608_p3@x.com")

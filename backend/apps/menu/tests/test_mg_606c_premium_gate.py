@@ -94,10 +94,11 @@ class TestMenuPremiumGate:
         resp = c.post("/api/v1/menu/generate/", {"period_days": 1}, format="json")
         assert resp.status_code != 403
 
-    def test_deleted_list_no_premium_403(self, db):
+    def test_deleted_list_no_premium_200(self, db):
+        # Freemium: бесплатная семья видит свой карантин (не за premium-гейтом).
         family, head = _family()
         c = _auth(APIClient(), head)
-        assert c.get("/api/v1/menu/quarantine/").status_code == 403
+        assert c.get("/api/v1/menu/quarantine/").status_code == 200
 
     def test_deleted_list_active_premium_404_or_200(self, db):
         # У эндпоинта на пустой семье без меню возвращается 404 (см. views.py)
