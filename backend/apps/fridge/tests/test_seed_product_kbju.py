@@ -1,10 +1,12 @@
-"""Тесты management-команды seed_product_kbju (КБЖУ сид-продуктам)."""
+"""Тесты management-команды seed_product_kbju (КБЖУ + базовые продукты + синонимы)."""
 
 from io import StringIO
 
 from django.core.management import call_command
+from rest_framework.test import APIClient
 
-from apps.fridge.models import Product
+from apps.fridge.models import Product, ProductAlias
+from apps.users.models import User
 
 
 def _run(*args):
@@ -25,14 +27,12 @@ class TestSeedProductKbju:
         assert p.nutrition["calories"] == 343
 
     def test_matching_is_case_and_yo_insensitive(self, db):
-        # «ё» -> «е», регистр не важен
         p = Product.objects.create(name="свЕкла", nutrition={})
         _run()
         p.refresh_from_db()
         assert float(p.calories_per_100g) == 43
 
     def test_skips_product_with_existing_nutrition(self, db):
-        # реальные данные (напр. из скана штрихкода) не затираем
         p = Product.objects.create(
             name="Молоко",
             calories_per_100g=99,
@@ -68,3 +68,44 @@ class TestSeedProductKbju:
         assert p.calories_per_100g is None
         assert p.nutrition == {}
         assert "DRY-RUN" in out
+
+    def test_creates_missing_base_product(self, db):
+        # «Миндаль» нет в сидах — команда должна его создать с КБЖУ.
+        assert not Product.objects.filter(name="Миндаль").exists()
+        _run()
+        p = Product.objects.get(name="Миндаль")
+        assert float(p.calories_per_100g) == 575
+        assert p.nutrition["proteins"] == 18.6
+        assert p.is_seed is True
+
+    def test_creates_alias_for_synonym(self, db):
+        Product.objects.create(name="Огурцы", nutrition={})
+        _run()
+        assert ProductAlias.objects.filter(alias_norm="огурец").exists()
+
+
+class TestAliasSearch:
+    """Поиск по синонимам через ProductSearchView (ед./мн. число)."""
+
+    def _auth(self):
+        u = User.objects.create_user(email="u@e.com", name="U", password="x12345")
+        c = APIClient()
+        c.force_authenticate(user=u)
+        return c
+
+    def test_singular_finds_plural_seed_product(self, db):
+        Product.objects.create(name="Огурцы", nutrition={})
+        _run()
+        c = self._auth()
+        resp = c.get("/api/v1/fridge/products/search/", {"q": "огурец"})
+        assert resp.status_code == 200
+        names = [r["name"] for r in resp.data["results"]]
+        assert "Огурцы" in names
+
+    def test_substring_still_works(self, db):
+        Product.objects.create(name="Огурцы", nutrition={})
+        _run()
+        c = self._auth()
+        resp = c.get("/api/v1/fridge/products/search/", {"q": "Огур"})
+        names = [r["name"] for r in resp.data["results"]]
+        assert "Огурцы" in names

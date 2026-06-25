@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -214,7 +215,14 @@ class ProductSearchView(generics.ListAPIView):
         q = self.request.query_params.get("q", "").strip()
         if len(q) < 2:
             return Product.objects.none()
-        return Product.objects.filter(name__icontains=q)[:20]
+        # Матчим и по имени, и по синонимам (ProductAlias): «огурец» -> «Огурцы».
+        from .aliases import normalize_alias
+
+        cond = Q(name__icontains=q)
+        qn = normalize_alias(q)
+        if qn:
+            cond |= Q(aliases__alias_norm__icontains=qn)
+        return Product.objects.filter(cond).distinct().order_by("name")[:20]
 
 
 # ─── MG-609: category list ──────────────────────────────────────────────────

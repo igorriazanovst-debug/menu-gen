@@ -115,7 +115,7 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
     clearTimeout(productTimer.current);
     productTimer.current = setTimeout(async () => {
       try {
-        const { data } = await fridgeApi.searchProducts(q);
+        const data = await fridgeApi.searchProducts(q);
         setProductResults(data ?? []);
       } catch {
         setProductResults([]);

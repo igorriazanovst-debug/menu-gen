@@ -65,8 +65,13 @@ export const fridgeApi = {
 
   // freemium: поиск по общему каталогу продуктов (КБЖУ на 100 г) — открыт free,
   // используется ручным добавлением продукта в дневник. Endpoint ждёт ?q=.
-  searchProducts: (q: string) =>
-    client.get<Product[]>('/fridge/products/search/', { params: { q } }),
+  // Ответ пагинирован DRF ({results:[...]}); распаковываем (с запасом на голый массив).
+  searchProducts: async (q: string): Promise<Product[]> => {
+    const { data } = await client.get<PaginatedResponse<Product> | Product[]>(
+      '/fridge/products/search/', { params: { q } },
+    );
+    return Array.isArray(data) ? data : (data.results ?? []);
+  },
 
   products: (params?: { category?: string | number; seed?: boolean }) => {
     const query: Record<string, string> = {};
