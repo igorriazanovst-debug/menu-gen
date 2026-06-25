@@ -311,7 +311,9 @@ class MenuDetailView(generics.RetrieveAPIView):
 class MenuDeleteView(APIView):
     """Мягкое удаление — перемещение в карантин на 24ч."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # Freemium: удаление своих меню доступно и бесплатным семьям
+    # (генерация им уже открыта). Реальная авторизация — в _can_delete_menu.
+    permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, menu_id):
         family = _get_family(request.user)
@@ -340,7 +342,8 @@ class MenuDeleteView(APIView):
 class DeletedMenuListView(APIView):
     """MG_608_V_views: Список меню в карантине (только не истёкшие)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # Freemium: карантин своих меню доступен и бесплатным семьям.
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         family = _get_family(request.user)
@@ -356,7 +359,8 @@ class DeletedMenuListView(APIView):
 class MenuRestoreView(APIView):
     """Восстановление меню из карантина (до истечения 24ч)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # Freemium: восстановление своих меню доступно и бесплатным семьям.
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, deleted_id):
         family = _get_family(request.user)
@@ -413,7 +417,8 @@ class MenuRestoreView(APIView):
 class MenuPurgeView(APIView):
     """MG_608_V_views: окончательное удаление одной записи из карантина."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # Freemium: чистка своего карантина доступна и бесплатным семьям.
+    permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, deleted_id):
         family = _get_family(request.user)
@@ -434,7 +439,9 @@ class MenuPurgeView(APIView):
 class MenuPurgeAllView(APIView):
     """MG_608_V_views: окончательное удаление всех записей карантина семьи."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # Freemium: чистка своего карантина доступна и бесплатным семьям
+    # (внутри — проверка admin/head).
+    permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request):
         family = _get_family(request.user)
