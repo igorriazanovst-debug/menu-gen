@@ -1,7 +1,7 @@
 """MG-605.C — Premium gate + ?member_id= + PATCH владельцем.
 
 Покрывает:
-- Premium gate (нет подписки → 403)
+- Freemium: дневник открыт free-юзерам (read + write)
 - ?member_id= для HEAD/MEMBER (403 / 404 / 200)
 - PATCH /diary/{id}/ владельцем
 - PATCH чужой записи (HEAD/MEMBER) → 404
@@ -83,89 +83,27 @@ def _list(resp):
 # ─── 1) Premium gate ────────────────────────────────────────────────────────
 
 
-class TestPremiumGate:
-    def test_no_premium_list_403(self, db):
-        family, head, _ = _make_family_with_premium(with_premium=False)
-        client = _auth(APIClient(), head)
-        resp = client.get("/api/v1/diary/")
-        assert resp.status_code == 403
+class TestFreemiumAccess:
+    """Freemium: дневник открыт free-юзерам (read + write). Premium тоже работает."""
 
-    def test_no_premium_stats_403(self, db):
+    def test_free_user_list_ok(self, db):
         family, head, _ = _make_family_with_premium(with_premium=False)
         client = _auth(APIClient(), head)
-        resp = client.get("/api/v1/diary/stats/")
-        assert resp.status_code == 403
-
-    def test_no_premium_water_403(self, db):
-        family, head, _ = _make_family_with_premium(with_premium=False)
-        client = _auth(APIClient(), head)
-        resp = client.get("/api/v1/diary/water/")
-        assert resp.status_code == 403
-
-    def test_expired_premium_read_ok_write_forbidden(self, db):
-        # MG-606.B: после истечения подписки чтение остаётся, запись — нет.
-        family, head, _ = _make_family_with_premium(with_premium=False)
-        plan, _ = SubscriptionPlan.objects.get_or_create(
-            code="premium",
-            defaults={"name": "Premium", "price": Decimal("0")},
-        )
-        Subscription.objects.create(
-            family=family,
-            plan=plan,
-            status=Subscription.Status.ACTIVE,
-            started_at=timezone.now() - timedelta(days=60),
-            expires_at=timezone.now() - timedelta(days=1),
-        )
-        client = _auth(APIClient(), head)
-        # MG-606.B: GET доступен после истечения (статус ACTIVE в истории).
         assert client.get("/api/v1/diary/").status_code == 200
-        # запись — 403
-        resp = client.post(
-            "/api/v1/diary/",
-            {
-                "date": str(date.today()),
-                "meal_type": "breakfast",
-                "custom_name": "X",
-                "quantity": 1,
-                "nutrition": {"calories": {"value": 100}},
-            },
-            format="json",
-        )
-        assert resp.status_code == 403
 
-    def test_cancelled_premium_403(self, db):
+    def test_free_user_stats_ok(self, db):
         family, head, _ = _make_family_with_premium(with_premium=False)
-        plan, _ = SubscriptionPlan.objects.get_or_create(
-            code="premium",
-            defaults={"name": "Premium", "price": Decimal("0")},
-        )
-        Subscription.objects.create(
-            family=family,
-            plan=plan,
-            status=Subscription.Status.CANCELLED,
-            started_at=timezone.now() - timedelta(days=1),
-            expires_at=timezone.now() + timedelta(days=30),
-        )
         client = _auth(APIClient(), head)
-        assert client.get("/api/v1/diary/").status_code == 403
+        assert client.get("/api/v1/diary/stats/").status_code == 200
 
-    def test_trial_premium_write_ok_read_forbidden(self, db):
-        # MG-606.B: одинокий trial (без active в истории) НЕ даёт «реального опыта».
-        # GET — 403, POST — 201 (фича активна, пока триал идёт).
+    def test_free_user_water_ok(self, db):
         family, head, _ = _make_family_with_premium(with_premium=False)
-        plan, _ = SubscriptionPlan.objects.get_or_create(
-            code="premium",
-            defaults={"name": "Premium", "price": Decimal("0")},
-        )
-        Subscription.objects.create(
-            family=family,
-            plan=plan,
-            status=Subscription.Status.TRIAL,
-            started_at=timezone.now() - timedelta(days=1),
-            expires_at=timezone.now() + timedelta(days=7),
-        )
         client = _auth(APIClient(), head)
-        assert client.get("/api/v1/diary/").status_code == 403
+        assert client.get("/api/v1/diary/water/").status_code == 200
+
+    def test_free_user_create_ok(self, db):
+        family, head, _ = _make_family_with_premium(with_premium=False)
+        client = _auth(APIClient(), head)
         resp = client.post(
             "/api/v1/diary/",
             {

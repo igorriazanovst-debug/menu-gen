@@ -75,6 +75,16 @@ export interface Recipe {
   has_added_sugar?:    boolean;
   oil_tsp?:            string | number | null;
   serving_size_label?: string | null;
+  // Надёжные числовые КБЖУ-поля (в обход рассогласованного nutrition JSON).
+  portion_g?:          number | null;        // вес одной порции, г
+  kcal?:               string | number | null;  // на 1 порцию
+  proteins?:           string | number | null;  // на 1 порцию, г
+  fats?:               string | number | null;  // на 1 порцию, г
+  carbs?:              string | number | null;  // на 1 порцию, г
+  kcal_per_100g?:      string | number | null;
+  proteins_per_100g?:  string | number | null;
+  fats_per_100g?:      string | number | null;
+  carbs_per_100g?:     string | number | null;
 }
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export const MEAL_LABELS: Record<MealType, string> = {

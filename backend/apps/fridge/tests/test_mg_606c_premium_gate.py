@@ -96,8 +96,9 @@ class TestFridgePremiumGate:
         resp = c.post(reverse("fridge-scan"), {"barcode": "1234567890"}, format="json")
         assert resp.status_code == 403
 
-    def test_product_search_no_premium_403(self, db):
+    def test_product_search_open_to_free_200(self, db):
         family, head = _family()
         c = _auth(APIClient(), head)
-        # search — GET, но без премиум-истории → 403
-        assert c.get("/api/v1/fridge/products/search/").status_code == 403
+        # freemium: каталог продуктов (КБЖУ) открыт free-юзерам — используется
+        # ручным добавлением продукта в дневник.
+        assert c.get("/api/v1/fridge/products/search/").status_code == 200

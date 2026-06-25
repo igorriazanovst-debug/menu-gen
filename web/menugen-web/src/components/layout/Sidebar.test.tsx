@@ -20,7 +20,10 @@ const mockUser = { id: 1, name: 'Иван Иванов', email: 'ivan@example.co
 
 describe('Sidebar', () => {
   it('brand', () => { renderSidebar(); expect(screen.getByText('MenuGen')).toBeInTheDocument(); });
-  it('nav links', () => { renderSidebar(); ['Главная','Меню','Рецепты','Семья','Дневник','Подписка','Профиль'].forEach(l => expect(screen.getByText(l)).toBeInTheDocument()); });
+  // free-юзер (null user): premium-пункты (Главная/dashboard, Холодильник) скрыты,
+  // Дневник теперь открыт free и показывается.
+  it('nav links (free)', () => { renderSidebar(); ['Меню','Рецепты','Семья','Дневник','Покупки','Подписка','Профиль'].forEach(l => expect(screen.getByText(l)).toBeInTheDocument()); });
+  it('hides premium links for free', () => { renderSidebar(); ['Главная','Холодильник'].forEach(l => expect(screen.queryByText(l)).not.toBeInTheDocument()); });
   it('logout button', () => { renderSidebar(); expect(screen.getByText(/выйти/i)).toBeInTheDocument(); });
   it('user name', () => { renderSidebar(mockUser); expect(screen.getByText('Иван Иванов')).toBeInTheDocument(); });
   it('no crash null user', () => { renderSidebar(null); expect(screen.getByText('MenuGen')).toBeInTheDocument(); });

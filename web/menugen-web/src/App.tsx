@@ -64,7 +64,7 @@ const AppRoutes: React.FC = () => {
         <Route path="menu"          element={<MenuPage />} />
         <Route path="recipes"       element={<RecipesPage />} />
         <Route path="family"        element={<FamilyPage />} />
-        <Route path="diary"         element={<PremiumRoute><DiaryPage /></PremiumRoute>} />
+        <Route path="diary"         element={<DiaryPage />} />
         <Route path="fridge"        element={<PremiumRoute><FridgePage /></PremiumRoute>} />
         <Route path="shopping"      element={<ShoppingPage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />

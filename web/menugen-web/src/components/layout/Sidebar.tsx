@@ -9,7 +9,7 @@ const NAV = [
   { path: '/menu',          icon: '📋', label: 'Меню',         premium: false },
   { path: '/recipes',       icon: '📖', label: 'Рецепты',      premium: false },
   { path: '/family',        icon: '👨‍👩‍👧', label: 'Семья',        premium: false },
-  { path: '/diary',         icon: '📓', label: 'Дневник',      premium: true  },
+  { path: '/diary',         icon: '📓', label: 'Дневник',      premium: false },
   { path: '/fridge',        icon: '🧊', label: 'Холодильник',  premium: true  },
   { path: '/shopping',      icon: '🛒', label: 'Покупки',      premium: false },
   { path: '/subscriptions', icon: '💳', label: 'Подписка',     premium: false },

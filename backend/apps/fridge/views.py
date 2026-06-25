@@ -203,7 +203,10 @@ class FridgeItemDetailsView(APIView):
 
 
 class ProductSearchView(generics.ListAPIView):
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # freemium: каталог продуктов (КБЖУ) открыт для поиска free-юзерам —
+    # используется ручным добавлением в дневник. Это общий справочник, а не
+    # данные холодильника семьи.
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = ProductSerializer
     search_fields = ["name"]
 

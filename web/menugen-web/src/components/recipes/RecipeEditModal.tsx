@@ -90,6 +90,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
   const [hasAddedSugar,    setHasAddedSugar]    = useState<boolean>(recipe.has_added_sugar ?? false);
   const [oilTsp,           setOilTsp]           = useState<string>(recipe.oil_tsp != null ? String(recipe.oil_tsp) : '');
   const [servingSizeLabel, setServingSizeLabel] = useState<string>(recipe.serving_size_label ?? '');
+  const [portionG,         setPortionG]         = useState<string>(recipe.portion_g != null ? String(recipe.portion_g) : '');
 
   const [saving,       setSaving]       = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -157,6 +158,7 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
         has_added_sugar:     hasAddedSugar,
         oil_tsp:             oilTsp.trim() === '' ? null : oilTsp.trim(),
         serving_size_label:  servingSizeLabel.trim() || null,
+        portion_g:           portionG.trim() === '' ? null : Number(portionG),
       };
 
       const { data } = await recipesApi.update(recipe.id, payload);
@@ -352,6 +354,13 @@ export const RecipeEditModal: React.FC<Props> = ({ recipe, onClose, onSaved }) =
                   <Input value={servingSizeLabel}
                     onChange={e => setServingSizeLabel(e.target.value)}
                     placeholder='напр. "1 тарелка / 200 г"' />
+                </div>
+                <div>
+                  {/* freemium: вес порции (г) — нужен для пересчёта рецепта в граммы
+                      при ручном добавлении в дневник. */}
+                  <label className="text-xs text-gray-500 mb-1 block">Вес порции, г</label>
+                  <Input type="number" min="0" step="1" value={portionG}
+                    onChange={e => setPortionG(e.target.value)} placeholder="напр. 200" />
                 </div>
               </div>
 

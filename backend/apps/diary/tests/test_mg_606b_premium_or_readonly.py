@@ -1,12 +1,13 @@
-"""MG-606.B: тесты IsFamilyPremiumOrReadOnly на diary API.
+"""Freemium: дневник питания открыт free-юзерам (write + read).
 
-Покрытие:
-- active → GET 200, POST 201, PATCH 200, DELETE 204
-- expired (active по статусу, дата прошла) → GET 200, POST 403, PATCH 403, DELETE 403
-- cancelled (без active в истории) → GET 403, POST 403
-- никогда не было → GET 403, POST 403
-- trial → POST 201 (фича работает в триале), GET 403 (нет «реального опыта»)
-- история active→expired → GET 200, POST 403
+Ранее diary был под IsFamilyPremiumOrReadOnly (read — только при наличии
+premium в истории, write — только при активном premium). В рамках freemium
+гейт снят: дневник доступен любому авторизованному пользователю, реальная
+авторизация (владелец записи / HEAD) — на уровне IsDiaryEntryOwner и
+_resolve_target_member, см. test_mg_605c_permissions.py.
+
+Этот файл проверяет, что free-юзер (без какой-либо подписки) получает полный
+доступ к своему дневнику, и что premium-юзер по-прежнему работает.
 """
 
 from datetime import date, timedelta
@@ -79,21 +80,66 @@ def _post_payload():
     }
 
 
-# ─── 1. ACTIVE ─────────────────────────────────────────────────────────────
+# ─── 1. FREE-юзер (без подписки) — полный доступ ────────────────────────────
 
 
-class TestActivePremium:
+class TestFreeUserFullAccess:
+    def test_get_list_ok(self, db):
+        _, head, _ = _family()
+        c = _auth(APIClient(), head)
+        assert c.get("/api/v1/diary/").status_code == 200
+
+    def test_get_stats_ok(self, db):
+        _, head, _ = _family()
+        c = _auth(APIClient(), head)
+        assert c.get("/api/v1/diary/stats/").status_code == 200
+
+    def test_get_water_ok(self, db):
+        _, head, _ = _family()
+        c = _auth(APIClient(), head)
+        assert c.get("/api/v1/diary/water/").status_code == 200
+
+    def test_get_detail_ok(self, db):
+        _, head, head_m = _family()
+        e = _entry(head_m)
+        c = _auth(APIClient(), head)
+        assert c.get(f"/api/v1/diary/{e.id}/").status_code == 200
+
+    def test_post_create_ok(self, db):
+        _, head, _ = _family()
+        c = _auth(APIClient(), head)
+        r = c.post("/api/v1/diary/", _post_payload(), format="json")
+        assert r.status_code == 201
+
+    def test_patch_own_ok(self, db):
+        _, head, head_m = _family()
+        e = _entry(head_m)
+        c = _auth(APIClient(), head)
+        r = c.patch(f"/api/v1/diary/{e.id}/", {"custom_name": "Y"}, format="json")
+        assert r.status_code == 200
+
+    def test_delete_own_ok(self, db):
+        _, head, head_m = _family()
+        e = _entry(head_m)
+        c = _auth(APIClient(), head)
+        assert c.delete(f"/api/v1/diary/{e.id}/").status_code == 204
+
+    def test_water_post_ok(self, db):
+        _, head, _ = _family()
+        c = _auth(APIClient(), head)
+        r = c.post("/api/v1/diary/water/", {"date": str(date.today()), "water_ml": 500}, format="json")
+        assert r.status_code in (200, 201)
+
+
+# ─── 2. PREMIUM-юзер — по-прежнему работает (sanity) ────────────────────────
+
+
+class TestPremiumStillWorks:
     def test_get_list_ok(self, db):
         family, head, _ = _family()
         _sub(family, Subscription.Status.ACTIVE)
         c = _auth(APIClient(), head)
         assert c.get("/api/v1/diary/").status_code == 200
-
-    def test_get_stats_ok(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.ACTIVE)
-        c = _auth(APIClient(), head)
-        assert c.get("/api/v1/diary/stats/").status_code == 200
 
     def test_post_create_ok(self, db):
         family, head, _ = _family()
@@ -101,143 +147,3 @@ class TestActivePremium:
         c = _auth(APIClient(), head)
         r = c.post("/api/v1/diary/", _post_payload(), format="json")
         assert r.status_code == 201
-
-    def test_patch_own_ok(self, db):
-        family, head, head_m = _family()
-        _sub(family, Subscription.Status.ACTIVE)
-        e = _entry(head_m)
-        c = _auth(APIClient(), head)
-        r = c.patch(f"/api/v1/diary/{e.id}/", {"custom_name": "Y"}, format="json")
-        assert r.status_code == 200
-
-    def test_delete_own_ok(self, db):
-        family, head, head_m = _family()
-        _sub(family, Subscription.Status.ACTIVE)
-        e = _entry(head_m)
-        c = _auth(APIClient(), head)
-        assert c.delete(f"/api/v1/diary/{e.id}/").status_code == 204
-
-
-# ─── 2. EXPIRED (active-по-статусу, истёкший по дате) ──────────────────────
-
-
-class TestExpiredPremium:
-    """Самая важная группа: read остаётся, write закрыт."""
-
-    def test_get_list_ok(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.get("/api/v1/diary/").status_code == 200
-
-    def test_get_stats_ok(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.get("/api/v1/diary/stats/").status_code == 200
-
-    def test_get_water_ok(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.get("/api/v1/diary/water/").status_code == 200
-
-    def test_get_detail_ok(self, db):
-        family, head, head_m = _family()
-        e = _entry(head_m)
-        _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.get(f"/api/v1/diary/{e.id}/").status_code == 200
-
-    def test_post_create_forbidden(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.post("/api/v1/diary/", _post_payload(), format="json").status_code == 403
-
-    def test_patch_forbidden(self, db):
-        family, head, head_m = _family()
-        e = _entry(head_m)
-        _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.patch(f"/api/v1/diary/{e.id}/", {"custom_name": "Y"}, format="json").status_code == 403
-
-    def test_delete_forbidden(self, db):
-        family, head, head_m = _family()
-        e = _entry(head_m)
-        _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.delete(f"/api/v1/diary/{e.id}/").status_code == 403
-
-    def test_water_post_forbidden(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.ACTIVE, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        r = c.post("/api/v1/diary/water/", {"date": str(date.today()), "ml": 500}, format="json")
-        assert r.status_code == 403
-
-
-# ─── 3. CANCELLED only / no sub ─────────────────────────────────────────────
-
-
-class TestNeverHadPremium:
-    def test_no_sub_get_forbidden(self, db):
-        family, head, _ = _family()
-        c = _auth(APIClient(), head)
-        assert c.get("/api/v1/diary/").status_code == 403
-
-    def test_no_sub_post_forbidden(self, db):
-        family, head, _ = _family()
-        c = _auth(APIClient(), head)
-        assert c.post("/api/v1/diary/", _post_payload(), format="json").status_code == 403
-
-    def test_cancelled_only_get_forbidden(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.CANCELLED, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.get("/api/v1/diary/").status_code == 403
-
-    def test_cancelled_only_post_forbidden(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.CANCELLED, expires_in_days=-1)
-        c = _auth(APIClient(), head)
-        assert c.post("/api/v1/diary/", _post_payload(), format="json").status_code == 403
-
-
-# ─── 4. TRIAL только ────────────────────────────────────────────────────────
-
-
-class TestTrialOnly:
-    """trial: write можно (фича включена пока триал жив), но read-после-истечения нет — это не «реальный опыт»."""
-
-    def test_get_forbidden(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.TRIAL)
-        c = _auth(APIClient(), head)
-        assert c.get("/api/v1/diary/").status_code == 403
-
-    def test_post_ok(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.TRIAL)
-        c = _auth(APIClient(), head)
-        r = c.post("/api/v1/diary/", _post_payload(), format="json")
-        assert r.status_code == 201
-
-
-# ─── 5. История: active → истёк по дате ────────────────────────────────────
-
-
-class TestHistoryActiveThenExpired:
-    """Реальная история: был active, истёк, новой подписки нет. read должен сохраниться."""
-
-    def test_get_ok_after_active_expired(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.EXPIRED, expires_in_days=-30)
-        c = _auth(APIClient(), head)
-        assert c.get("/api/v1/diary/").status_code == 200
-
-    def test_post_forbidden_after_active_expired(self, db):
-        family, head, _ = _family()
-        _sub(family, Subscription.Status.EXPIRED, expires_in_days=-30)
-        c = _auth(APIClient(), head)
-        assert c.post("/api/v1/diary/", _post_payload(), format="json").status_code == 403

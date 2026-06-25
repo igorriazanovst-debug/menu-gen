@@ -69,6 +69,21 @@ MG501_FIELDS = (
     "serving_size_label",
 )
 
+# Надёжные числовые поля КБЖУ (в обход рассогласованного nutrition JSON).
+# Используются ручным добавлением рецепта в дневник: per-100g для граммовки,
+# per-порционные — для fallback на порции. portion_g — вес одной порции.
+NUTRITION_NUMERIC_FIELDS = (
+    "portion_g",
+    "kcal",
+    "proteins",
+    "fats",
+    "carbs",
+    "kcal_per_100g",
+    "proteins_per_100g",
+    "fats_per_100g",
+    "carbs_per_100g",
+)
+
 
 class _FavoriteStateMixin(serializers.Serializer):
     """Adds ``is_favorite`` / ``is_disliked`` derived from the current user."""
@@ -154,6 +169,7 @@ class RecipeListSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _Absol
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS
+            + NUTRITION_NUMERIC_FIELDS
         )
 
     def get_fridge_match_count(self, obj):
@@ -194,6 +210,7 @@ class RecipeDetailSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _Abs
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS
+            + NUTRITION_NUMERIC_FIELDS
         )
 
 
@@ -215,6 +232,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS
+            + NUTRITION_NUMERIC_FIELDS
         )
 
     def validate_ingredients(self, value):

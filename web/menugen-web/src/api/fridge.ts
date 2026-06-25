@@ -63,6 +63,11 @@ export const fridgeApi = {
   categories: () =>
     client.get<ProductCategory[]>('/fridge/categories/'),
 
+  // freemium: поиск по общему каталогу продуктов (КБЖУ на 100 г) — открыт free,
+  // используется ручным добавлением продукта в дневник. Endpoint ждёт ?q=.
+  searchProducts: (q: string) =>
+    client.get<Product[]>('/fridge/products/search/', { params: { q } }),
+
   products: (params?: { category?: string | number; seed?: boolean }) => {
     const query: Record<string, string> = {};
     if (params?.category != null) query.category = String(params.category);
