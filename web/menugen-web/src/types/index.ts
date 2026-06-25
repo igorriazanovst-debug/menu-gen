@@ -25,10 +25,26 @@ export interface UserProfile {
   last_cheat_meal_date?: string | null;
 
 }
+// Freemium: остаток квоты на генерацию меню (limit=null → безлимит/premium).
+export interface MenuQuota {
+  used: number;
+  limit: number | null;
+  reset_at: string; // YYYY-MM-DD
+}
+export interface SubscriptionStatus {
+  is_active_premium: boolean;
+  has_ever_premium: boolean;
+  plan_code: string | null;
+  status: string | null;
+  expires_at: string | null;
+  menu_quota: MenuQuota;
+}
 export interface User {
   id: number; name: string; email?: string; phone?: string;
   vk_id?: string; avatar_url?: string; user_type: string;
   allergies: string[]; disliked_products: string[]; profile?: UserProfile;
+  ui_skin?: 'main' | 'second'; // MG_SKIN
+  subscription_status?: SubscriptionStatus | null; // Freemium
   created_at: string;
 }
 export interface Ingredient { name: string; quantity?: string; unit?: string; }
@@ -114,6 +130,7 @@ export interface FamilyMember {
   avatar_url?: string; role: 'head' | 'member' | 'owner'; joined_at: string;
   allergies?: string[];
   disliked_products?: string[];
+  is_managed?: boolean; // MG_MANAGEDMEMBER
   profile?: UserProfile | null;
 }
 export interface Family {
@@ -322,6 +339,8 @@ export interface ShoppingV2Item {
   category?: string;
   price_per_unit?: string | null; // MG_RUBRIC008
   line_total?: string | null;
+  in_fridge?: boolean; // MG_SHOP2FRIDGE
+  fridge_eligible?: boolean; // MG_SHOP2FRIDGE (non-food excluded)
   is_purchased: boolean;
   purchased_by?: number | null;
   purchased_by_name?: string | null;

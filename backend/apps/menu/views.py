@@ -12,6 +12,12 @@ from apps.fridge.models import FridgeItem
 from apps.recipes.models import Recipe
 from apps.subscriptions.models import Subscription
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
+from apps.subscriptions.quota import (
+    can_generate_menu,
+    menu_quota_limit,
+    menu_quota_reset_at,
+    try_consume_menu_generation,
+)
 
 from .exceptions import MenuGeneratorError  # MG_301_V_views
 from .generator import MenuGenerator
@@ -42,6 +48,18 @@ def _get_plan_code(family) -> str:
         .first()
     )
     return sub.plan.code if sub else "free"
+
+
+def _quota_exceeded_payload(family) -> dict:
+    """Тело ответа 403 при исчерпании бесплатной квоты генераций."""
+    limit = menu_quota_limit(family)
+    return {
+        "detail": (
+            f"Лимит бесплатных генераций меню исчерпан ({limit}/мес). " "Оформите Premium для безлимитной генерации."
+        ),
+        "code": "menu_quota_exceeded",
+        "reset_at": menu_quota_reset_at(family).isoformat(),
+    }
 
 
 def _can_edit_menu(user, family):
@@ -131,7 +149,9 @@ def _menu_snapshot(menu):
 
 
 class MenuGenerateView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # Freemium: генерация доступна и бесплатным семьям (в пределах квоты);
+    # premium — без лимита. Сама проверка квоты — ниже, в post().
+    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(request=GenerateMenuSerializer, responses={201: MenuDetailSerializer})
     def post(self, request):
@@ -142,6 +162,10 @@ class MenuGenerateView(APIView):
         family = _get_family(request.user)
         if not family:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Freemium-квота: дешёвая предпроверка до дорогой генерации.
+        if not can_generate_menu(family):
+            return Response(_quota_exceeded_payload(family), status=status.HTTP_403_FORBIDDEN)
 
         plan_code = _get_plan_code(family)
         start_date = data["start_date"]
@@ -198,6 +222,12 @@ class MenuGenerateView(APIView):
         except MenuGeneratorError as exc:  # MG_301_V_views
             return Response(exc.to_response(), status=status.HTTP_400_BAD_REQUEST)
 
+        # Списываем квоту под row-lock (select_for_update требует транзакцию) —
+        # защита от гонки параллельных генераций у одной семьи. Premium → no-op.
+        with transaction.atomic():
+            if not try_consume_menu_generation(family):
+                return Response(_quota_exceeded_payload(family), status=status.HTTP_403_FORBIDDEN)
+
         with transaction.atomic():
             menu = Menu.objects.create(
                 family=family,
@@ -248,7 +278,8 @@ class MenuGenerateView(APIView):
 
 
 class MenuListView(generics.ListAPIView):
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # Freemium: свои сгенерированные меню доступны и бесплатным семьям.
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = MenuListSerializer
 
     def get_queryset(self):
@@ -264,7 +295,8 @@ class MenuListView(generics.ListAPIView):
 
 
 class MenuDetailView(generics.RetrieveAPIView):
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    # Freemium: свои сгенерированные меню доступны и бесплатным семьям.
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = MenuDetailSerializer
 
     def get_queryset(self):
@@ -279,7 +311,7 @@ class MenuDetailView(generics.RetrieveAPIView):
 class MenuDeleteView(APIView):
     """Мягкое удаление — перемещение в карантин на 24ч."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, menu_id):
         family = _get_family(request.user)
@@ -308,7 +340,7 @@ class MenuDeleteView(APIView):
 class DeletedMenuListView(APIView):
     """MG_608_V_views: Список меню в карантине (только не истёкшие)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         family = _get_family(request.user)
@@ -324,7 +356,7 @@ class DeletedMenuListView(APIView):
 class MenuRestoreView(APIView):
     """Восстановление меню из карантина (до истечения 24ч)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, deleted_id):
         family = _get_family(request.user)
@@ -381,7 +413,7 @@ class MenuRestoreView(APIView):
 class MenuPurgeView(APIView):
     """MG_608_V_views: окончательное удаление одной записи из карантина."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, deleted_id):
         family = _get_family(request.user)
@@ -402,7 +434,7 @@ class MenuPurgeView(APIView):
 class MenuPurgeAllView(APIView):
     """MG_608_V_views: окончательное удаление всех записей карантина семьи."""
 
-    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request):
         family = _get_family(request.user)

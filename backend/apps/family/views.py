@@ -5,7 +5,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Family, FamilyMember
-from .serializers import FamilyMemberSerializer, FamilyMemberUpdateSerializer, FamilySerializer, InviteMemberSerializer
+from .serializers import (
+    AttachAccountSerializer,  # MG_MANAGEDMEMBER
+    CreateManagedMemberSerializer,  # MG_MANAGEDMEMBER
+    FamilyMemberSerializer,
+    FamilyMemberUpdateSerializer,
+    FamilySerializer,
+    InviteMemberSerializer,
+)
 
 User = get_user_model()
 
@@ -55,15 +62,15 @@ class FamilyInviteView(APIView):
         serializer = InviteMemberSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data.get("email")
-        phone = serializer.validated_data.get("phone")
+        email = (serializer.validated_data.get("email") or "").strip()
+        phone = (serializer.validated_data.get("phone") or "").strip()
 
-        try:
-            if email:
-                invitee = User.objects.get(email=email)
-            else:
-                invitee = User.objects.get(phone=phone)
-        except User.DoesNotExist:
+        # MG_EMAILCI: e-mail регистронезависимо при поиске приглашаемого.
+        if email:
+            invitee = User.objects.filter(email__iexact=email).order_by("id").first()
+        else:
+            invitee = User.objects.filter(phone=phone).order_by("id").first()
+        if invitee is None:
             return Response(
                 {"detail": "Пользователь не найден."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -75,17 +82,118 @@ class FamilyInviteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Проверка лимита по подписке
-        plan = _get_active_plan(family)
+        # Проверка лимита по тарифу (free → лимит free-плана)
+        limit, plan_name = _member_limit_info(family)
         current_count = family.members.count()
-        if plan and current_count >= plan.max_family_members:
+        if current_count >= limit:
             return Response(
-                {"detail": f"Лимит участников для тарифа «{plan.name}» исчерпан ({plan.max_family_members})."},
+                {"detail": f"Лимит участников для тарифа «{plan_name}» исчерпан ({limit})."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         member = FamilyMember.objects.create(family=family, user=invitee, role=FamilyMember.Role.MEMBER)
         return Response(FamilyMemberSerializer(member).data, status=status.HTTP_201_CREATED)
+
+
+class FamilyCreateManagedMemberView(APIView):
+    """MG_MANAGEDMEMBER: POST /family/members/create-managed/
+
+    Create a family member card WITHOUT inviting an existing user — e.g. a child
+    with no device, or someone whose nutrition a specialist will manage. Creates
+    a managed User (no login: blank e-mail/phone, unusable password) plus a
+    Profile, and adds it to the family. The head can later attach credentials.
+    Only the family head / admin may do this.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(request=CreateManagedMemberSerializer, responses={201: FamilyMemberSerializer})
+    def post(self, request):
+        family = _get_user_family(request.user)
+        if not family:
+            return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+        if family.owner_id != request.user.id and request.user.user_type != "admin":
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        serializer = CreateManagedMemberSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # Subscription member limit (same rule as invite).
+        limit, plan_name = _member_limit_info(family)
+        if family.members.count() >= limit:
+            return Response(
+                {"detail": f"Лимит участников для тарифа «{plan_name}» исчерпан ({limit})."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from apps.users.models import Profile
+
+        member_user = User(
+            name=data["name"],
+            is_managed=True,
+            allergies=data.get("allergies") or [],
+            disliked_products=data.get("disliked_products") or [],
+        )
+        member_user.set_unusable_password()
+        member_user.save()
+
+        profile = Profile.objects.create(user=member_user)
+        profile_data = data.get("profile")
+        if profile_data:
+            for attr, value in profile_data.items():
+                setattr(profile, attr, value)
+            profile.save()
+
+        member = FamilyMember.objects.create(
+            family=family, user=member_user, role=FamilyMember.Role.MEMBER
+        )
+        return Response(FamilyMemberSerializer(member).data, status=status.HTTP_201_CREATED)
+
+
+class FamilyAttachAccountView(APIView):
+    """MG_MANAGEDMEMBER: POST /family/members/<id>/attach-account/
+
+    Give a managed member their own login by adding e-mail/phone (and optionally
+    an initial password). Clears the managed flag so the member can sign in.
+    Only the family head / admin may do this.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(request=AttachAccountSerializer, responses={200: FamilyMemberSerializer})
+    def post(self, request, member_id):
+        family = _get_user_family(request.user)
+        if not family:
+            return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+        if family.owner_id != request.user.id and request.user.user_type != "admin":
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            member = FamilyMember.objects.select_related("user").get(id=member_id, family=family)
+        except FamilyMember.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if not member.user.is_managed:
+            return Response(
+                {"detail": "У участника уже есть аккаунт."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = AttachAccountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        u = member.user
+        if data["email"]:
+            u.email = data["email"]
+        if data["phone"]:
+            u.phone = data["phone"]
+        password = data.get("password")
+        if password:
+            u.set_password(password)
+        u.is_managed = False
+        u.save()
+        return Response(FamilyMemberSerializer(member).data, status=status.HTTP_200_OK)
 
 
 class FamilyRemoveMemberView(APIView):
@@ -179,6 +287,21 @@ def _get_active_plan(family):
         .first()
     )
     return sub.plan if sub else None
+
+
+def _member_limit_info(family):
+    """Эффективный лимит участников и имя тарифа.
+
+    Если активной подписки нет — действует бесплатный тариф (free), у которого
+    свой лимит (по умолчанию 1). Раньше при отсутствии подписки лимит не
+    применялся вовсе — для freemium это закрыто.
+    """
+    plan = _get_active_plan(family)
+    if plan:
+        return plan.max_family_members, plan.name
+    from apps.subscriptions.quota import free_max_family_members
+
+    return free_max_family_members(), "Бесплатный"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

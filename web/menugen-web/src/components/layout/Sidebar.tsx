@@ -20,15 +20,16 @@ export const Sidebar: React.FC = () => {
   const user = useAppSelector((s) => s.auth.user);
 
   return (
-    <aside className="w-56 min-h-screen bg-white border-r border-gray-100 flex flex-col">
-      {/* Logo */}
-      <div className="px-6 py-5 border-b border-gray-100">
+    <aside className="w-56 min-h-screen bg-sidebar text-sidebar-fg flex flex-col">
+      {/* MG_SKIN: слот логотипа (заменить на <Logo/> белой версией, когда придёт
+          ассет: logo_full_white ~h-7, читаемый на тёмном сайдбаре). */}
+      <div className="px-6 py-5 border-b border-white/10">
         <div className="flex items-center gap-2">
           <span className="text-2xl">🍅</span>
-          <span className="font-bold text-lg text-chocolate">MenuGen</span>
+          <span className="font-bold text-lg text-sidebar-fg">MenuGen</span>
         </div>
         {user && (
-          <p className="text-xs text-gray-500 mt-1 truncate">{user.name}</p>
+          <p className="text-xs text-sidebar-muted mt-1 truncate">{user.name}</p>
         )}
       </div>
 
@@ -42,8 +43,8 @@ export const Sidebar: React.FC = () => {
               [
                 'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors',
                 isActive
-                  ? 'bg-tomato/10 text-tomato font-semibold'
-                  : 'text-gray-600 hover:bg-gray-50',
+                  ? 'bg-primary/20 text-primary font-semibold'
+                  : 'text-sidebar-muted hover:bg-white/5 hover:text-sidebar-fg',
               ].join(' ')
             }
           >
@@ -54,10 +55,10 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* Logout */}
-      <div className="px-3 py-4 border-t border-gray-100">
+      <div className="px-3 py-4 border-t border-white/10">
         <button
           onClick={() => dispatch(logout())}
-          className="flex items-center gap-3 px-3 py-2 w-full rounded-xl text-sm text-red-600 hover:bg-red-50 transition-colors"
+          className="flex items-center gap-3 px-3 py-2 w-full rounded-xl text-sm text-sidebar-muted hover:bg-white/5 hover:text-sidebar-fg transition-colors"
         >
           <span>🚪</span> Выйти
         </button>

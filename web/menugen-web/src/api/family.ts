@@ -17,6 +17,18 @@ export const familyApi = {
     client.patch<Family>('/family/', payload),
   invite: (email?: string, phone?: string) =>
     client.post('/family/invite/', { email, phone }),
+  // MG_MANAGEDMEMBER: add a member card without inviting an existing user.
+  createManagedMember: (payload: {
+    name: string;
+    allergies?: string[];
+    disliked_products?: string[];
+    profile?: Partial<UserProfile>;
+  }) => client.post<FamilyMember>('/family/members/create-managed/', payload),
+  // MG_MANAGEDMEMBER: later give a managed member their own login.
+  attachAccount: (
+    memberId: number,
+    payload: { email?: string; phone?: string; password?: string },
+  ) => client.post<FamilyMember>(`/family/members/${memberId}/attach-account/`, payload),
   removeMember: (memberId: number) =>
     client.delete(`/family/members/${memberId}/`),
   updateMember: (memberId: number, payload: FamilyMemberUpdatePayload) =>

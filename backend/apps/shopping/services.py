@@ -8,6 +8,27 @@ from apps.fridge.models import FridgeItem
 from apps.menu.models import Menu, MenuItem
 
 
+# MG_SHOP2FRIDGE: non-food categories never go into the fridge (pet food,
+# household chemistry, hygiene / other non-edible goods).
+NON_FOOD_CATEGORY_SLUGS = frozenset({"household", "hygiene", "pets"})
+
+
+def item_category_slug(item):
+    """Effective rubricator slug of a ShoppingListItem: per-item override first,
+    else the linked product's category. '' if unknown."""
+    if getattr(item, "category_fk_id", None) and item.category_fk:
+        return item.category_fk.slug
+    product = getattr(item, "product", None)
+    if product is not None and product.category_fk_id and product.category_fk:
+        return product.category_fk.slug
+    return ""
+
+
+def is_fridge_eligible(item):
+    """True if the item may be stored in the fridge (i.e. it is food)."""
+    return item_category_slug(item) not in NON_FOOD_CATEGORY_SLUGS
+
+
 def _to_decimal(v):
     if v is None or v == "":
         return None

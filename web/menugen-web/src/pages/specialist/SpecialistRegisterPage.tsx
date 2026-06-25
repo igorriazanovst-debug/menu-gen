@@ -42,7 +42,7 @@ export const SpecialistRegisterPage: React.FC = () => {
 
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="bg-white rounded-2xl shadow p-6 space-y-5"
+        className="bg-surface rounded-2xl shadow p-6 space-y-5"
       >
         <div>
           <label className="block text-sm font-medium text-chocolate mb-2">
@@ -50,7 +50,7 @@ export const SpecialistRegisterPage: React.FC = () => {
           </label>
           <select
             {...register("specialist_type")}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-avocado"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-avocado"
           >
             <option value="dietitian">Диетолог</option>
             <option value="trainer">Тренер</option>

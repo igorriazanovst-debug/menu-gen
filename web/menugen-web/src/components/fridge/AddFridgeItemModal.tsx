@@ -279,7 +279,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-chocolate">Добавить в холодильник</h2>
@@ -288,7 +288,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
 
           {showScanner ? (
             <div className="space-y-3">
-              <div className="rounded-xl overflow-hidden border border-gray-200">
+              <div className="rounded-xl overflow-hidden border border-border">
                 <Scanner
                   onScan={onBarcodeDetected}
                   styles={{ container: { width: '100%' } }}
@@ -311,7 +311,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
                         key={`${h.name}-${i}`}
                         type="button"
                         onClick={() => applyHistory(h)}
-                        className="px-2.5 py-1 rounded-full bg-rice border border-gray-200 text-xs hover:bg-tomato/10"
+                        className="px-2.5 py-1 rounded-full bg-rice border border-border text-xs hover:bg-tomato/10"
                       >
                         {h.category_icon ? `${h.category_icon} ` : ''}{h.name}
                       </button>
@@ -360,7 +360,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
                         key={p.id}
                         type="button"
                         onClick={() => applySeed(p)}
-                        className="px-2.5 py-1 rounded-full bg-white border border-gray-300 text-xs hover:bg-rice"
+                        className="px-2.5 py-1 rounded-full bg-surface border border-gray-300 text-xs hover:bg-rice"
                       >
                         {p.name}
                       </button>
@@ -408,7 +408,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
               </div>
 
               {recognized.length > 0 && (
-                <div data-testid="recognized-list" className="rounded-xl border border-gray-200 p-3 space-y-2">
+                <div data-testid="recognized-list" className="rounded-xl border border-border p-3 space-y-2">
                   <div className="text-sm font-medium text-chocolate">Распознанные продукты</div>
                   {recognized.map((rp, i) => (
                     <label key={`${rp.name}-${i}`} className="flex items-center gap-2 text-sm">

@@ -242,7 +242,7 @@ export const FridgePage: React.FC = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-border">
         {([
           { key: 'groups', label: '🗂  По группам' },
           { key: 'expiry', label: '⏱  По сроку годности' },
@@ -277,9 +277,9 @@ export const FridgePage: React.FC = () => {
                 <div className="flex items-center gap-2 px-2 pb-2">
                   <span className="text-xl">{icon}</span>
                   <span className="font-semibold text-chocolate">{name}</span>
-                  <span className="ml-auto bg-white/70 rounded-full px-2 py-0.5 text-xs font-medium">{grp.items.length}</span>
+                  <span className="ml-auto bg-surface/70 rounded-full px-2 py-0.5 text-xs font-medium">{grp.items.length}</span>
                 </div>
-                <div className="bg-white rounded-xl p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                <div className="bg-surface rounded-xl p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {grp.items.map(renderItem)}
                 </div>
               </div>
@@ -293,9 +293,9 @@ export const FridgePage: React.FC = () => {
               <div className="flex items-center gap-2 px-2 pb-2">
                 <span className="text-xl">{b.emoji}</span>
                 <span className="font-semibold text-chocolate">{b.title}</span>
-                <span className="ml-auto bg-white/70 rounded-full px-2 py-0.5 text-xs font-medium">{b.items.length}</span>
+                <span className="ml-auto bg-surface/70 rounded-full px-2 py-0.5 text-xs font-medium">{b.items.length}</span>
               </div>
-              <div className="bg-white rounded-xl p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div className="bg-surface rounded-xl p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {b.items.map(renderItem)}
               </div>
             </div>

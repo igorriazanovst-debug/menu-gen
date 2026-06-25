@@ -13,6 +13,19 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category_fk.name_ru", read_only=True, default=None)
     # MG_RUBRIC006_read_price: line total = quantity * price_per_unit.
     line_total = serializers.SerializerMethodField()
+    # MG_SHOP2FRIDGE: whether this purchased item is currently in the fridge.
+    in_fridge = serializers.SerializerMethodField()
+    # MG_SHOP2FRIDGE: whether this item may be stored in the fridge (food only —
+    # pet food / household chemistry / hygiene are excluded).
+    fridge_eligible = serializers.SerializerMethodField()
+
+    def get_in_fridge(self, obj):
+        return any(not fi.is_deleted for fi in obj.fridge_items.all())
+
+    def get_fridge_eligible(self, obj):
+        from .services import is_fridge_eligible
+
+        return is_fridge_eligible(obj)
 
     def get_line_total(self, obj):
         if obj.price_per_unit is None:
@@ -37,6 +50,8 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
             "category_name",
             "price_per_unit",  # MG_RUBRIC006_read_fields_price
             "line_total",
+            "in_fridge",  # MG_SHOP2FRIDGE
+            "fridge_eligible",  # MG_SHOP2FRIDGE
             "is_purchased",
             "purchased_by",
             "purchased_by_name",
@@ -106,10 +121,13 @@ class GrantAccessSerializer(serializers.Serializer):
                 return User.objects.get(id=data["user_id"])
             except User.DoesNotExist:
                 raise serializers.ValidationError({"user_id": "Пользователь не найден."})
-        try:
-            return User.objects.get(email=data["email"])
-        except User.DoesNotExist:
+        # MG_EMAILCI: e-mail регистронезависимо — пользователь может ввести адрес
+        # в любом регистре (I.User@… == i.user@…).
+        email = (data.get("email") or "").strip()
+        user = User.objects.filter(email__iexact=email).order_by("id").first()
+        if user is None:
             raise serializers.ValidationError({"email": "Пользователь не найден."})
+        return user
 
 
 class ShoppingListSerializer(serializers.ModelSerializer):

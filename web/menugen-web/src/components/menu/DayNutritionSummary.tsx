@@ -91,7 +91,7 @@ export const DayNutritionSummary: React.FC<Props> = ({ items, targets }) => {
   const tgt = targets ?? null;
 
   return (
-    <div className="px-3 py-3 bg-rice/40 rounded-xl border border-gray-100 space-y-2">
+    <div className="px-3 py-3 bg-rice/40 rounded-xl border border-border space-y-2">
       <div className="text-xs font-medium text-chocolate/80">
         Итог за день
         {!tgt && (

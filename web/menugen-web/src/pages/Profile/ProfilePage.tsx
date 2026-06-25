@@ -9,6 +9,7 @@ import { usersApi } from '../../api/users';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { SkinSwitcher } from '../../components/ui/SkinSwitcher'; // MG_SKIN
 import { TargetField, type TargetLoader } from '../../components/profile/TargetField';
 import { getErrorMessage } from '../../utils/api';
 import type {
@@ -171,7 +172,7 @@ export const ProfilePage: React.FC = () => {
                       'p-3 rounded-xl border text-left transition ' +
                       (active
                         ? 'border-tomato bg-tomato/10 text-chocolate'
-                        : 'border-gray-200 bg-white hover:border-tomato/50 text-gray-700')
+                        : 'border-border bg-surface hover:border-tomato/50 text-gray-700')
                     }
                   >
                     <div className="font-semibold">{opt.label}</div>
@@ -186,7 +187,7 @@ export const ProfilePage: React.FC = () => {
         </form>
 
         {/* MG_RUBRIC007_ui: family currency */}
-        <div className="mt-6 pt-6 border-t border-gray-100">
+        <div className="mt-6 pt-6 border-t border-border">
           <label className="block text-sm font-medium text-chocolate mb-2">
             Валюта семьи (для списков покупок)
           </label>
@@ -212,6 +213,15 @@ export const ProfilePage: React.FC = () => {
           )}
           {curMsg && <p className="text-xs text-gray-500 mt-1">{curMsg}</p>}
         </div>
+      </Card>
+
+      {/* MG_SKIN: выбор скина оформления */}
+      <Card className="p-6">
+        <h2 className="text-lg font-bold text-text mb-1">Оформление</h2>
+        <p className="text-xs text-muted mb-4">
+          Скин синхронизируется с мобильным приложением через ваш аккаунт.
+        </p>
+        <SkinSwitcher />
       </Card>
 
       <Card className="p-6">

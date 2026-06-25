@@ -170,7 +170,7 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
                     const slotKeys = Array.from(slots.keys())
                       .sort((a, b) => SLOT_ORDER.indexOf(a) - SLOT_ORDER.indexOf(b));
                     return (
-                      <div key={day} className="rounded-xl border border-gray-100">
+                      <div key={day} className="rounded-xl border border-border">
                         <div className="px-3 py-2 text-xs font-semibold text-chocolate bg-rice rounded-t-xl">
                           День {day + 1} · {dayDate(day)}
                         </div>

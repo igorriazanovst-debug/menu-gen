@@ -207,7 +207,7 @@ export const KBJUCalculatorPage: React.FC = () => {
                   'p-3 rounded-xl border text-left transition ' +
                   (active
                     ? 'border-tomato bg-tomato/10 text-chocolate'
-                    : 'border-gray-200 bg-white hover:border-tomato/50 text-gray-700')
+                    : 'border-border bg-surface hover:border-tomato/50 text-gray-700')
                 }
               >
                 <div className="font-semibold">{s.label}</div>
@@ -234,7 +234,7 @@ export const KBJUCalculatorPage: React.FC = () => {
                     'p-3 rounded-xl border text-left transition ' +
                     (active
                       ? 'border-tomato bg-tomato/10 text-chocolate'
-                      : 'border-gray-200 bg-white hover:border-tomato/50 text-gray-700')
+                      : 'border-border bg-surface hover:border-tomato/50 text-gray-700')
                   }
                 >
                   <div className="font-semibold">{d.label}</div>
@@ -263,7 +263,7 @@ export const KBJUCalculatorPage: React.FC = () => {
                     'p-3 rounded-xl border text-left transition ' +
                     (active
                       ? 'border-tomato bg-tomato/10 text-chocolate'
-                      : 'border-gray-200 bg-white hover:border-tomato/50 text-gray-700')
+                      : 'border-border bg-surface hover:border-tomato/50 text-gray-700')
                   }
                 >
                   <div className="font-semibold">{label}</div>
@@ -323,7 +323,7 @@ export const KBJUCalculatorPage: React.FC = () => {
         )}
 
         {isCustomPercents && (
-          <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+          <div className="mt-4 pt-4 border-t border-border space-y-4">
             <Input
               label="Дельта от TDEE, ккал (− дефицит / + профицит)"
               type="number"

@@ -271,7 +271,7 @@ export const DiaryPage: React.FC = () => {
                   return n;
                 });
               }}
-              className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
+              className="rounded-2xl border border-border bg-surface overflow-hidden">
               <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between">
                 <span className="font-semibold text-chocolate">
                   {MEAL_LABELS[g.mt] ?? g.mt}

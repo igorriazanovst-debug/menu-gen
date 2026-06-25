@@ -12,7 +12,7 @@ import { menuApi, type GenerateMenuPayload } from '../../api/menu';
 import { recipesApi } from '../../api/recipes';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import type { Menu, MealPlan, UserProfile } from '../../types';
+import type { Menu, MealPlan, UserProfile, MenuQuota } from '../../types';
 
 // Маппинг кодов стран → display names. Если кода нет в маппинге — показываем как есть.
 const COUNTRY_LABELS: Record<string, string> = {
@@ -46,6 +46,7 @@ interface Props {
   userDisliked: string[];
   userProfile?: UserProfile;
   initialMealPlan: MealPlan;
+  menuQuota?: MenuQuota | null; // Freemium: остаток бесплатных генераций
 }
 
 export const GenerateMenuForm: React.FC<Props> = ({
@@ -55,6 +56,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
   userDisliked,
   userProfile,
   initialMealPlan,
+  menuQuota,
 }) => {
   const [periodDays, setPeriodDays] = useState(7);
   const [startDate, setStartDate] = useState(todayISO());
@@ -111,6 +113,14 @@ export const GenerateMenuForm: React.FC<Props> = ({
     c: userProfile.carb_target_g,
   } : null;
 
+  // Freemium: остаток бесплатных генераций (limit=null → безлимит/premium).
+  const hasLimit = !!menuQuota && menuQuota.limit !== null && menuQuota.limit !== undefined;
+  const remaining = hasLimit ? Math.max(0, (menuQuota!.limit as number) - menuQuota!.used) : null;
+  const quotaExhausted = hasLimit && remaining === 0;
+  const resetLabel = menuQuota?.reset_at
+    ? new Date(menuQuota.reset_at).toLocaleDateString('ru')
+    : '';
+
   const handleSubmit = async () => {
     setGenerating(true); setError('');
     try {
@@ -140,6 +150,21 @@ export const GenerateMenuForm: React.FC<Props> = ({
 
   return (
     <Card className="p-5 space-y-5">
+      {/* Freemium: остаток бесплатных генераций */}
+      {hasLimit && (
+        <div className={[
+          'rounded-xl px-3 py-2 text-xs flex items-center justify-between gap-2',
+          quotaExhausted ? 'bg-red-50 text-red-700' : 'bg-rice/60 text-chocolate',
+        ].join(' ')}>
+          <span>
+            <span className="font-semibold">Бесплатные генерации:</span>{' '}
+            осталось {remaining} из {menuQuota!.limit}
+            {resetLabel && <span className="text-gray-500"> · сброс {resetLabel}</span>}
+          </span>
+          {quotaExhausted && <span className="font-semibold whitespace-nowrap">Лимит исчерпан</span>}
+        </div>
+      )}
+
       {/* КБЖУ-summary */}
       {targets ? (
         <div className="rounded-xl bg-rice/50 px-3 py-2 text-xs text-chocolate">
@@ -175,7 +200,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
                 'text-left px-3 py-2 rounded-xl border text-sm transition',
                 strategy === v
                   ? 'border-tomato bg-tomato/10 text-tomato'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+                  : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
               ].join(' ')}
             >
               <span className="font-medium">{title}</span>
@@ -192,7 +217,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             type="date"
             value={startDate}
             onChange={e => setStartDate(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-tomato"
+            className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-tomato"
           />
         </div>
         <div>
@@ -201,7 +226,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             type="number" min={1} max={30}
             value={periodDays}
             onChange={e => setPeriodDays(Number(e.target.value) || 1)}
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-tomato"
+            className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-tomato"
           />
         </div>
         {strategy === '1' && (  /* MG_STRAT_WEB */
@@ -217,7 +242,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
                   'flex-1 px-3 py-2 rounded-xl border text-sm transition',
                   mealPlanType === v
                     ? 'border-tomato bg-tomato/10 text-tomato'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+                    : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
                 ].join(' ')}
               >
                 {v}
@@ -249,7 +274,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
                     'px-3 py-1.5 rounded-full border text-xs transition',
                     active
                       ? 'border-tomato bg-tomato text-white'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+                      : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
                   ].join(' ')}
                 >
                   {COUNTRY_LABELS[c] ?? c}
@@ -267,7 +292,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             )}
           </div>
           {showAllCountries && restCountries.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-gray-100">
+            <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-border">
               {restCountries.map(c => {
                 const active = selectedCountries.includes(c);
                 return (
@@ -279,7 +304,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
                       'px-3 py-1.5 rounded-full border text-xs transition',
                       active
                         ? 'border-tomato bg-tomato text-white'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-tomato/50',
+                        : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
                     ].join(' ')}
                   >
                     {COUNTRY_LABELS[c] ?? c}
@@ -302,7 +327,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
           value={maxCookTime}
           onChange={e => setMaxCookTime(e.target.value ? Number(e.target.value) : '')}
           placeholder="Не ограничено"
-          className="w-40 px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-tomato"
+          className="w-40 px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-tomato"
         />
       </div>
 
@@ -337,9 +362,16 @@ export const GenerateMenuForm: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+      {quotaExhausted && !error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+          Лимит бесплатных генераций исчерпан. Оформите Premium для безлимитной
+          генерации{resetLabel && ` или дождитесь сброса ${resetLabel}`}.
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 pt-2 border-t border-border">
         <Button variant="ghost" onClick={onCancel} disabled={generating}>Отмена</Button>
-        <Button onClick={handleSubmit} loading={generating}>Создать меню</Button>
+        <Button onClick={handleSubmit} loading={generating} disabled={quotaExhausted}>Создать меню</Button>
       </div>
     </Card>
   );
@@ -359,8 +391,8 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ checked, onChange, title, subtitl
     <div className={[
       'flex items-center gap-3 p-3 rounded-xl border transition',
       disabled
-        ? 'border-gray-100 bg-gray-50 opacity-60'
-        : 'border-gray-200 bg-white hover:border-tomato/30',
+        ? 'border-border bg-gray-50 opacity-60'
+        : 'border-border bg-surface hover:border-tomato/30',
     ].join(' ')}>
       <button
         type="button"
@@ -376,7 +408,7 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ checked, onChange, title, subtitl
       >
         <span
           className={[
-            'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+            'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-surface shadow transition-transform',
             checked ? 'translate-x-4' : 'translate-x-0',
           ].join(' ')}
         />

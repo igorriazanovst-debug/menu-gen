@@ -81,6 +81,9 @@ export const SubscriptionsPage: React.FC = () => {
                 </div>
                 <ul className="space-y-1 text-sm text-gray-600 flex-1">
                   <li>👥 До {plan.max_family_members} участника</li>
+                  <li>🍽 {(plan.features as any)?.menu_generations_per_month
+                    ? `${(plan.features as any).menu_generations_per_month} генераций меню/мес`
+                    : 'Генерация меню без лимита'}</li>
                   {(plan.features as any)?.country && <li>🌍 Фильтр по стране</li>}
                   {(plan.features as any)?.calories && <li>🔥 Учёт калорийности</li>}
                   {(plan.features as any)?.fridge && <li>🧊 Холодильник</li>}

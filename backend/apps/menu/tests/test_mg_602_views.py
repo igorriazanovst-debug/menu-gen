@@ -221,14 +221,14 @@ class TestHelpers:
 # ╚═════════════════════════════════════════════════════════════════════════╝
 @pytest.mark.django_db
 class TestMenuGenerateNegative:
-    def test_no_family_returns_403_premium_gate(self, client, db):
-        # MG-606.C: нет семьи → нет Premium → 403 от gate (раньше: 404 из view).
+    def test_no_family_returns_404(self, client, db):
+        # Freemium: генерация больше не за premium-гейтом; без семьи → 404 из view.
         u = _mk_user(email="nf@x.com", name="NF")
         client.force_authenticate(u)
         resp = client.post(
             reverse("menu-generate"), {"period_days": 1, "start_date": str(datetime.date.today())}, format="json"
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     def test_with_max_cook_time_filter(self, client, setup):
         user, _, _ = setup
@@ -251,19 +251,20 @@ class TestMenuGenerateNegative:
 # ╚═════════════════════════════════════════════════════════════════════════╝
 @pytest.mark.django_db
 class TestMenuListDetail:
-    def test_list_no_family_returns_403_premium_gate(self, client, db):
-        # MG-606.C: нет семьи → нет Premium → 403 от gate (раньше: 200 + пустой список).
+    def test_list_no_family_returns_200_empty(self, client, db):
+        # Freemium: список меню больше не за premium-гейтом; без семьи → 200 + пусто.
         u = _mk_user(email="nfl@x.com", name="NFL")
         client.force_authenticate(u)
         resp = client.get(reverse("menu-list"))
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        assert resp.data == [] or resp.data.get("results") == []
 
-    def test_detail_no_family_returns_403_premium_gate(self, client, db):
-        # MG-606.C: нет семьи → 403 от Premium gate.
+    def test_detail_no_family_returns_404(self, client, db):
+        # Freemium: detail больше не за premium-гейтом; без семьи → 404 (пустой qs).
         u = _mk_user(email="nfd@x.com", name="NFD")
         client.force_authenticate(u)
         resp = client.get(reverse("menu-detail", args=[1]))
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     def test_list_get_queryset_swagger_fake(self, db):
         view = menu_views.MenuListView()

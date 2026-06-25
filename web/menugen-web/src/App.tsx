@@ -4,6 +4,8 @@ import { Provider } from 'react-redux';
 import { store } from './store';
 import { useAppDispatch, useAppSelector } from './hooks/useAppDispatch';
 import { initAuth } from './store/slices/authSlice';
+import { setSkinFromProfile } from './store/slices/uiSlice'; // MG_SKIN
+import { isSkin } from './theme/skins'; // MG_SKIN
 import { AppLayout }         from './components/layout/AppLayout';
 import { LoginPage }         from './pages/Auth/LoginPage';
 import { DashboardPage }     from './pages/Dashboard/DashboardPage';
@@ -25,7 +27,7 @@ import { RecommendationFormPage }  from './pages/specialist/RecommendationFormPa
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, initialized } = useAppSelector((s) => s.auth);
   if (!initialized) return (
-    <div className="min-h-screen flex items-center justify-center bg-rice">
+    <div className="min-h-screen flex items-center justify-center bg-bg">
       <div className="text-4xl animate-pulse">🍅</div>
     </div>
   );
@@ -34,7 +36,12 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 const AppRoutes: React.FC = () => {
   const dispatch = useAppDispatch();
+  const userSkin = useAppSelector((s) => s.auth.user?.ui_skin); // MG_SKIN
   useEffect(() => { dispatch(initAuth()); }, [dispatch]);
+  // MG_SKIN: подтягиваем скин из профиля после логина/инициализации.
+  useEffect(() => {
+    if (isSkin(userSkin)) dispatch(setSkinFromProfile(userSkin));
+  }, [userSkin, dispatch]);
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

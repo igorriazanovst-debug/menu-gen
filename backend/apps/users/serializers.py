@@ -190,6 +190,7 @@ class UserMeSerializer(serializers.ModelSerializer):
             "user_type",
             "allergies",
             "disliked_products",
+            "ui_skin",  # MG_SKIN
             "created_at",
             "profile",
             "subscription_status",
@@ -210,6 +211,14 @@ class UserMeSerializer(serializers.ModelSerializer):
                     "enum": ["active", "trial", "expired", "cancelled", None],
                 },
                 "expires_at": {"type": "string", "format": "date-time", "nullable": True},
+                "menu_quota": {
+                    "type": "object",
+                    "properties": {
+                        "used": {"type": "integer"},
+                        "limit": {"type": "integer", "nullable": True},
+                        "reset_at": {"type": "string", "format": "date"},
+                    },
+                },
             },
         }
     )
@@ -217,6 +226,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         # Local import — avoid app-loading order issues.
         from apps.subscriptions.models import Subscription
         from apps.subscriptions.permissions import get_user_family, has_active_premium, has_ever_had_premium
+        from apps.subscriptions.quota import menu_quota_summary
 
         family = get_user_family(obj)
         if family is None:
@@ -230,6 +240,8 @@ class UserMeSerializer(serializers.ModelSerializer):
             "plan_code": latest.plan.code if latest else None,
             "status": latest.status if latest else None,
             "expires_at": latest.expires_at.isoformat() if latest else None,
+            # Freemium: остаток квоты на генерацию меню (limit=None → безлимит/premium).
+            "menu_quota": menu_quota_summary(family),
         }
 
 
@@ -248,7 +260,7 @@ class UserMeUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("name", "avatar_url", "allergies", "disliked_products", "profile")
+        fields = ("name", "avatar_url", "allergies", "disliked_products", "ui_skin", "profile")  # MG_SKIN
 
     def update(self, instance, validated_data):
         from .audit import record_target_change

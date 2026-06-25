@@ -115,11 +115,44 @@ export const ShoppingPage: React.FC = () => {
       try {
         await shoppingApi.toggleItem(detail.id, itemId, val);
         await loadDetail(detail.id);
-      } catch {
+      } catch (e) {
+        // MG_SHOP2FRIDGE: un-checking an item that is in the fridge is rejected
+        // with 409 until confirmed. Ask, then retry removing it from the fridge.
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        if (status === 409 && val === false) {
+          const ok = window.confirm(
+            'Этот товар добавлен в холодильник. Снять отметку и убрать его из холодильника?',
+          );
+          if (ok) {
+            try {
+              await shoppingApi.toggleItem(detail.id, itemId, val, true);
+            } catch {
+              /* fall through to reload (reverts optimistic state) */
+            }
+          }
+          await loadDetail(detail.id); // confirm-removed or revert on cancel/failure
+          return;
+        }
         enqueueToggle(detail.id, itemId, val); // request failed mid-flight -> queue (LWW)
       }
     } else {
       enqueueToggle(detail.id, itemId, val); // offline -> queue, sync on reconnect
+    }
+  };
+
+  // MG_SHOP2FRIDGE: push all purchased (not-yet-stored) items into the fridge.
+  const onAddToFridge = async () => {
+    if (!detail) return;
+    try {
+      const { data } = await shoppingApi.addToFridge(detail.id);
+      await loadDetail(detail.id);
+      window.alert(
+        data.added > 0
+          ? `Добавлено в холодильник: ${data.added}`
+          : 'Нет новых купленных товаров для добавления.',
+      );
+    } catch {
+      window.alert('Не удалось добавить в холодильник.');
     }
   };
 
@@ -207,6 +240,7 @@ export const ShoppingPage: React.FC = () => {
                 detail={detail}
                 caps={caps}
                 onToggle={onToggle}
+                onAddToFridge={onAddToFridge}
                 onReload={() => loadDetail(detail.id)}
                 onDelete={onDeleteList}
                 onArchive={onArchive}
@@ -245,12 +279,13 @@ const ListDetail: React.FC<{
   detail: ShoppingV2List;
   caps?: ShoppingV2List['capabilities'];
   onToggle: (itemId: number, val: boolean) => void;
+  onAddToFridge: () => void; // MG_SHOP2FRIDGE
   onReload: () => void;
   onDelete: () => void;
   onArchive: (archived: boolean) => void;
   onPrint: () => void;
   onManageAccess: () => void;
-}> = ({ detail, caps, onToggle, onReload, onDelete, onArchive, onPrint, onManageAccess }) => {
+}> = ({ detail, caps, onToggle, onAddToFridge, onReload, onDelete, onArchive, onPrint, onManageAccess }) => {
   // MG_RUBRIC005_state_removed: add-item state moved into ItemAutocomplete.
   // MG_SHOPBUG_EDITMODE: global edit mode (delete + inline fields gated).
   const [editMode, setEditMode] = useState(false);
@@ -361,6 +396,14 @@ const ListDetail: React.FC<{
               {onlyUnpurchased ? '☑ Только некупленные' : '☐ Только некупленные'}
             </Button>
           )}
+          {/* MG_SHOP2FRIDGE: stock purchased FOOD items into the fridge
+              (non-food — pet food / household chemistry / hygiene — excluded) */}
+          {!editMode && caps?.toggle &&
+            detail.items.some(
+              (it) => it.is_purchased && !it.in_fridge && it.fridge_eligible !== false,
+            ) && (
+              <Button variant="secondary" onClick={onAddToFridge}>❄ В холодильник</Button>
+            )}
           {/* MG_SHOPADDEDIT3: enter-edit only; Готово lives in add-bar */}
           {caps?.manage && !editMode && (
             <Button variant="secondary" onClick={() => setEditMode(true)}>✎ Редактировать</Button>
@@ -384,7 +427,7 @@ const ListDetail: React.FC<{
 
       {/* MG_SHOPADDEDIT2: add-item bar pinned above an internally-scrolling list */}
       {caps?.manage && editMode && (
-        <div className="mb-2 pb-3 border-b border-gray-100 flex gap-2 items-start">
+        <div className="mb-2 pb-3 border-b border-border flex gap-2 items-start">
           <div className="flex-1 min-w-0">
             <ItemAutocomplete onAdd={handleAdd} currency={currency} />
           </div>
@@ -405,7 +448,7 @@ const ListDetail: React.FC<{
             </div>
             <ul className="space-y-1">
               {g.items.map((it) => (
-                <li key={it.id} className="flex items-center gap-2 py-1 bg-white/60 rounded-lg px-2">
+                <li key={it.id} className="flex items-center gap-2 py-1 bg-surface/60 rounded-lg px-2">
                   {/* MG_SHOPBUG_EDITMODE: hide checkbox in edit mode */}
                   {!editMode && (
                     <input
@@ -422,7 +465,7 @@ const ListDetail: React.FC<{
                       defaultValue={it.name}
                       onBlur={(e) => { if (e.target.value !== it.name) setName(it.id, e.target.value); }}
                       placeholder="Продукт"
-                      className="flex-1 rounded-lg border border-gray-200 px-2 py-0.5 text-sm"
+                      className="flex-1 rounded-lg border border-border px-2 py-0.5 text-sm"
                     />
                   ) : (
                     <span className={it.is_purchased ? 'line-through text-gray-400 flex-1' : 'flex-1'}>
@@ -430,6 +473,8 @@ const ListDetail: React.FC<{
                       {it.quantity != null && (
                         <span className="text-gray-500 text-sm"> — {it.quantity}{it.unit ? ` ${it.unit}` : ''}</span>
                       )}
+                      {/* MG_SHOP2FRIDGE: in-fridge indicator */}
+                      {it.in_fridge && <span className="ml-1" title="В холодильнике">❄</span>}
                     </span>
                   )}
                   {editMode && caps?.manage && (
@@ -443,12 +488,12 @@ const ListDetail: React.FC<{
                         }}
                         inputMode="decimal"
                         placeholder="кол."
-                        className="w-14 rounded-lg border border-gray-200 px-2 py-0.5 text-xs text-right"
+                        className="w-14 rounded-lg border border-border px-2 py-0.5 text-xs text-right"
                       />
                       <select
                         defaultValue={it.unit ?? ''}
                         onChange={(e) => { if (e.target.value !== (it.unit ?? '')) setUnit(it.id, e.target.value); }}
-                        className="rounded-lg border border-gray-200 px-1 py-0.5 text-xs"
+                        className="rounded-lg border border-border px-1 py-0.5 text-xs"
                       >
                         {(UNITS.includes(it.unit ?? '') ? UNITS : [it.unit ?? '', ...UNITS]).map((u) => (
                           <option key={u} value={u}>{u || '—'}</option>
@@ -462,7 +507,7 @@ const ListDetail: React.FC<{
                         }}
                         inputMode="decimal"
                         placeholder="цена"
-                        className="w-16 rounded-lg border border-gray-200 px-2 py-0.5 text-xs text-right"
+                        className="w-16 rounded-lg border border-border px-2 py-0.5 text-xs text-right"
                       />
                     </>
                   )}
@@ -491,7 +536,7 @@ const ListDetail: React.FC<{
 
       {/* MG_RUBRIC009: grand total */}
       {detail.total_price != null && (
-        <div className="mt-3 pt-2 border-t border-gray-100 flex justify-between items-center">
+        <div className="mt-3 pt-2 border-t border-border flex justify-between items-center">
           <span className="text-sm text-gray-500">Итого</span>
           <span className="text-lg font-bold text-chocolate">{fmtMoney(detail.total_price)} {currency}</span>
         </div>
@@ -608,7 +653,7 @@ const PendingCard: React.FC<{ p: ShoppingV2PendingList; onReload: () => void }> 
       </div>
 
       {open && preview && (
-        <ul className="mt-3 border-t border-gray-100 pt-2 space-y-1 max-h-60 overflow-auto">
+        <ul className="mt-3 border-t border-border pt-2 space-y-1 max-h-60 overflow-auto">
           {preview.items.length === 0 && <li className="text-sm text-gray-400">Список пуст.</li>}
           {preview.items.map((it) => (
             <li key={it.id} className="text-sm flex gap-2">
@@ -696,7 +741,7 @@ const CreateModal: React.FC<{
         <select
           value={source}
           onChange={(e) => setSource(e.target.value as ShoppingV2Source)}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+          className="w-full border border-border rounded-xl px-3 py-2 text-sm"
         >
           <option value="empty">Пустой</option>
           <option value="menu">Из меню</option>
@@ -708,7 +753,7 @@ const CreateModal: React.FC<{
           <select
             value={menuId}
             onChange={(e) => setMenuId(e.target.value ? Number(e.target.value) : '')}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            className="w-full border border-border rounded-xl px-3 py-2 text-sm"
           >
             <option value="">— выберите меню —</option>
             {menus.map((m: any) => (
@@ -737,7 +782,7 @@ const CreateModal: React.FC<{
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Вставьте произвольный текст со списком…"
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm h-28"
+            className="w-full border border-border rounded-xl px-3 py-2 text-sm h-28"
           />
         )}
 
@@ -746,7 +791,7 @@ const CreateModal: React.FC<{
             value={csvText}
             onChange={(e) => setCsvText(e.target.value)}
             placeholder="name,quantity,unit,category"
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm h-28 font-mono"
+            className="w-full border border-border rounded-xl px-3 py-2 text-sm h-28 font-mono"
           />
         )}
 
@@ -819,7 +864,7 @@ const AccessModal: React.FC<{ listId: number; onClose: () => void }> = ({ listId
           {accesses.length === 0 && <p className="text-sm text-gray-400">Доступ ещё не выдан.</p>}
         </ul>
 
-        <div className="pt-2 border-t border-gray-100 space-y-2">
+        <div className="pt-2 border-t border-border space-y-2">
           <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email пользователя" />
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={canToggle} onChange={(e) => setCanToggle(e.target.checked)} />
@@ -846,7 +891,7 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
   children,
 }) => (
   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-    <div className="bg-white rounded-2xl p-5 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+    <div className="bg-surface rounded-2xl p-5 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-lg">{title}</h3>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>

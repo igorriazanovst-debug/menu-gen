@@ -33,7 +33,7 @@ const formatNum = (v: string | number | null | undefined): string => {
 };
 
 const sourceBadge: Record<string, { label: string; cls: string }> = {
-  auto:       { label: 'auto',     cls: 'bg-gray-100  text-gray-600  border-gray-200' },
+  auto:       { label: 'auto',     cls: 'bg-gray-100  text-gray-600  border-border' },
   user:       { label: 'вручную',  cls: 'bg-blue-100  text-blue-700  border-blue-200' },
   specialist: { label: 'специалист', cls: 'bg-purple-100 text-purple-700 border-purple-200' },
 };
@@ -98,7 +98,7 @@ export const TargetField: React.FC<Props> = ({
       </div>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white rounded-xl border border-gray-200 shadow-lg p-3 text-xs text-chocolate min-w-[220px]">
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-surface rounded-xl border border-border shadow-lg p-3 text-xs text-chocolate min-w-[220px]">
           <div className="flex items-center justify-between mb-2">
             <span className="font-semibold">{label} — история</span>
             <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700">✕</button>
