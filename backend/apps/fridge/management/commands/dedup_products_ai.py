@@ -41,11 +41,13 @@ SYSTEM = (
 
 
 def _survivor_rank(p, key):
-    """Лучший канон в группе: имя уже в канон-форме > есть КБЖУ > is_seed > id."""
+    """Лучший выживший в группе: сначала курируемый сид-продукт и наличие КБЖУ
+    (чистое имя/категория), и только потом совпадение имени с канон-формой от AI.
+    Иначе выжил бы ugly авто-вариант (напр. «лук зеленый» вместо «Зелёный лук»)."""
     return (
-        0 if normalize_alias(p.name) == key else 1,
-        0 if has_kbju(p) else 1,
         0 if p.is_seed else 1,
+        0 if has_kbju(p) else 1,
+        0 if normalize_alias(p.name) == key else 1,
         p.id,
     )
 
