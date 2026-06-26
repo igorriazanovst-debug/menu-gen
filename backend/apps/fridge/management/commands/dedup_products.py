@@ -26,17 +26,14 @@ from collections import defaultdict
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from apps.fridge.aliases import learn_alias, normalize_alias
-from apps.fridge.models import FridgeItem, Product, ProductAlias
-
-
-def _has_kbju(p):
-    return isinstance(p.nutrition, dict) and len(p.nutrition) > 0
+from apps.fridge.aliases import normalize_alias
+from apps.fridge.dedup import has_kbju, merge_product_into
+from apps.fridge.models import Product, ProductAlias
 
 
 def _canon_rank(p):
     """Меньше — лучше канон: с КБЖУ, потом is_seed, потом меньший id."""
-    return (0 if _has_kbju(p) else 1, 0 if p.is_seed else 1, p.id)
+    return (0 if has_kbju(p) else 1, 0 if p.is_seed else 1, p.id)
 
 
 class Command(BaseCommand):
@@ -116,37 +113,12 @@ class Command(BaseCommand):
 
         fridge_moved = recipe_moved = shop_moved = kbju_filled = deleted = 0
         with transaction.atomic():
-            # ленивый импорт, чтобы не тянуть лишние приложения при сборке схемы
-            from apps.recipes.models import RecipeProduct
-            from apps.shopping.models import ShoppingListItem
-
             for dup_id, canon_id in merges.items():
-                dup = pmap[dup_id]
-                canon = pmap[canon_id]
-
-                fridge_moved += FridgeItem.objects.filter(product_id=dup_id).update(product_id=canon_id)
-                recipe_moved += RecipeProduct.objects.filter(product_id=dup_id).update(product_id=canon_id)
-                shop_moved += ShoppingListItem.objects.filter(product_id=dup_id).update(product_id=canon_id)
-
-                # алиасы дубля -> канон (с учётом unique alias_norm)
-                for a in ProductAlias.objects.filter(product_id=dup_id):
-                    if ProductAlias.objects.filter(alias_norm=a.alias_norm).exclude(id=a.id).exists():
-                        a.delete()
-                    else:
-                        a.product_id = canon_id
-                        a.save(update_fields=["product"])
-
-                # перенос КБЖУ в канон, если у него пусто, а у дубля есть
-                if not _has_kbju(canon) and _has_kbju(dup):
-                    canon.nutrition = dup.nutrition
-                    canon.calories_per_100g = dup.calories_per_100g
-                    canon.save(update_fields=["nutrition", "calories_per_100g"])
-                    kbju_filled += 1
-
-                # имя дубля -> синоним канона (на будущее)
-                learn_alias(dup.name, canon, source="merge")
-
-                Product.objects.filter(id=dup_id).delete()
+                s = merge_product_into(pmap[dup_id], pmap[canon_id])
+                fridge_moved += s["fridge"]
+                recipe_moved += s["recipe"]
+                shop_moved += s["shop"]
+                kbju_filled += s["kbju"]
                 deleted += 1
 
         self.stdout.write(
