@@ -20,7 +20,8 @@ import '../premium/paywall_screen.dart';
 import '../premium/premium_gate_cubit.dart';
 import '../widgets/main_shell.dart';
 
-const _premiumOnlyPaths = {'/fridge', '/diary'};
+// freemium: дневник открыт free-юзерам (как в вебе). Холодильник остаётся premium.
+const _premiumOnlyPaths = {'/fridge'};
 
 class AppRouter {
   static GoRouter create({required AuthState authState, required ApiClient apiClient, required PremiumGateCubit premiumGate}) {

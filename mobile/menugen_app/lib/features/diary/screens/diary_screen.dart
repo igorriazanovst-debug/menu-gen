@@ -1,3 +1,5 @@
+import 'dart:async'; // DIARY_FREEMIUM: debounce поиска в добавлении
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -348,7 +350,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
   void _onAddManualTap() async {
     final result = await showDialog<_ManualEntry?>(
       context: context,
-      builder: (_) => const _AddManualDialog(),
+      builder: (_) => _AddManualDialog(apiClient: context.read<DiaryBloc>().apiClient),
     );
     if (result == null) return;
     if (!mounted) return;
@@ -899,151 +901,437 @@ class _ManualEntry {
   });
 }
 
+// DIARY_FREEMIUM: число из dynamic (num | String | {value:..} | null).
+num _toNum(dynamic v) {
+  if (v == null) return 0;
+  if (v is num) return v;
+  if (v is String) return double.tryParse(v.replaceAll(',', '.')) ?? 0;
+  if (v is Map && v.containsKey('value')) return _toNum(v['value']);
+  return 0;
+}
+
+double _r1(num v) => (v * 10).round() / 10;
+
 class _AddManualDialog extends StatefulWidget {
-  const _AddManualDialog();
+  final ApiClient apiClient;
+  const _AddManualDialog({required this.apiClient});
   @override
   State<_AddManualDialog> createState() => _AddManualDialogState();
 }
 
-class _AddManualDialogState extends State<_AddManualDialog> {
+class _AddManualDialogState extends State<_AddManualDialog>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tab;
   MealType _meal = MealType.breakfast;
+
+  // Вручную
   final _name = TextEditingController();
   final _qty = TextEditingController(text: '1');
   final _cal = TextEditingController();
   final _prot = TextEditingController();
   final _fat = TextEditingController();
   final _carb = TextEditingController();
+
+  // Рецепт
+  final _recipeQuery = TextEditingController();
+  final _recipeAmount = TextEditingController(text: '100');
+  List<Map<String, dynamic>> _recipeResults = const [];
+  Map<String, dynamic>? _recipe;
+  bool _recipeGrams = true; // false => порции (нет веса порции)
+  bool _recipeLoading = false;
+  Timer? _recipeDebounce;
+
+  // Продукт
+  final _productQuery = TextEditingController();
+  final _productGrams = TextEditingController(text: '100');
+  List<Map<String, dynamic>> _productResults = const [];
+  Map<String, dynamic>? _product;
+  bool _productLoading = false;
+  Timer? _productDebounce;
+
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 3, vsync: this);
+    _tab.addListener(() => setState(() => _error = null));
+  }
+
+  @override
   void dispose() {
+    _tab.dispose();
     _name.dispose();
     _qty.dispose();
     _cal.dispose();
     _prot.dispose();
     _fat.dispose();
     _carb.dispose();
+    _recipeQuery.dispose();
+    _recipeAmount.dispose();
+    _productQuery.dispose();
+    _productGrams.dispose();
+    _recipeDebounce?.cancel();
+    _productDebounce?.cancel();
     super.dispose();
   }
 
-  num? _n(TextEditingController c) {
-    final v = double.tryParse(c.text.trim().replaceAll(',', '.'));
-    return v;
+  num? _n(TextEditingController c) => double.tryParse(c.text.trim().replaceAll(',', '.'));
+
+  dynamic _body(dynamic r) {
+    try {
+      return r.data;
+    } catch (_) {
+      return r;
+    }
+  }
+
+  List<Map<String, dynamic>> _resultsOf(dynamic d) {
+    if (d is List) return d.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    if (d is Map) {
+      return (d['results'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return const [];
+  }
+
+  void _searchRecipes(String q) {
+    _recipeDebounce?.cancel();
+    if (q.trim().length < 2) {
+      setState(() => _recipeResults = const []);
+      return;
+    }
+    setState(() => _recipeLoading = true);
+    _recipeDebounce = Timer(const Duration(milliseconds: 350), () async {
+      try {
+        final r = await widget.apiClient.get('/recipes/', params: {'search': q.trim(), 'page_size': 12});
+        final list = _resultsOf(_body(r));
+        if (mounted) setState(() {
+          _recipeResults = list;
+          _recipeLoading = false;
+        });
+      } catch (_) {
+        if (mounted) setState(() {
+          _recipeResults = const [];
+          _recipeLoading = false;
+        });
+      }
+    });
+  }
+
+  void _searchProducts(String q) {
+    _productDebounce?.cancel();
+    if (q.trim().length < 2) {
+      setState(() => _productResults = const []);
+      return;
+    }
+    setState(() => _productLoading = true);
+    _productDebounce = Timer(const Duration(milliseconds: 350), () async {
+      try {
+        final r = await widget.apiClient.get('/fridge/products/search/', params: {'q': q.trim()});
+        final list = _resultsOf(_body(r));
+        if (mounted) setState(() {
+          _productResults = list;
+          _productLoading = false;
+        });
+      } catch (_) {
+        if (mounted) setState(() {
+          _productResults = const [];
+          _productLoading = false;
+        });
+      }
+    });
+  }
+
+  void _pickRecipe(Map<String, dynamic> r) {
+    final hasPer100 = _toNum(r['kcal_per_100g']) > 0;
+    setState(() {
+      _recipe = r;
+      _recipeResults = const [];
+      _recipeGrams = hasPer100;
+      final pg = _toNum(r['portion_g']);
+      _recipeAmount.text = hasPer100 ? (pg > 0 ? pg.round().toString() : '100') : '1';
+    });
+  }
+
+  void _pickProduct(Map<String, dynamic> p) {
+    setState(() {
+      _product = p;
+      _productResults = const [];
+      _productGrams.text = '100';
+    });
+  }
+
+  // (calories, proteins, fats, carbs) — итог для выбранного количества.
+  List<num> _recipeTotals() {
+    final r = _recipe;
+    if (r == null) return const [0, 0, 0, 0];
+    if (_recipeGrams) {
+      final f = (_n(_recipeAmount) ?? 0) / 100;
+      return [
+        _toNum(r['kcal_per_100g']) * f,
+        _toNum(r['proteins_per_100g']) * f,
+        _toNum(r['fats_per_100g']) * f,
+        _toNum(r['carbs_per_100g']) * f,
+      ];
+    }
+    final p = _n(_recipeAmount) ?? 0;
+    return [
+      _toNum(r['kcal']) * p,
+      _toNum(r['proteins']) * p,
+      _toNum(r['fats']) * p,
+      _toNum(r['carbs']) * p,
+    ];
+  }
+
+  List<num> _productTotals() {
+    final p = _product;
+    if (p == null) return const [0, 0, 0, 0];
+    final f = (_n(_productGrams) ?? 0) / 100;
+    final n = (p['nutrition'] is Map) ? p['nutrition'] as Map : const {};
+    final cal100 = _toNum(p['calories_per_100g']) != 0 ? _toNum(p['calories_per_100g']) : _toNum(n['calories']);
+    return [cal100 * f, _toNum(n['proteins']) * f, _toNum(n['fats']) * f, _toNum(n['carbs']) * f];
+  }
+
+  InputDecoration _dec(String label) => InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: const OutlineInputBorder(),
+      );
+
+  void _submit() {
+    final idx = _tab.index;
+    if (idx == 0) {
+      if (_recipe == null) {
+        setState(() => _error = 'Выберите рецепт');
+        return;
+      }
+      final amount = _n(_recipeAmount) ?? 0;
+      if (amount <= 0) {
+        setState(() => _error = 'Укажите количество');
+        return;
+      }
+      final t = _recipeTotals();
+      final suffix = _recipeGrams ? '${amount.round()} г' : '$amount порц.';
+      Navigator.pop(
+        context,
+        _ManualEntry(
+          mealType: _meal,
+          name: '${_recipe!['title']}, $suffix',
+          quantity: 1,
+          calories: t[0].round(),
+          proteins: _r1(t[1]),
+          fats: _r1(t[2]),
+          carbs: _r1(t[3]),
+        ),
+      );
+    } else if (idx == 1) {
+      if (_product == null) {
+        setState(() => _error = 'Выберите продукт');
+        return;
+      }
+      final g = _n(_productGrams) ?? 0;
+      if (g <= 0) {
+        setState(() => _error = 'Укажите граммовку');
+        return;
+      }
+      final t = _productTotals();
+      Navigator.pop(
+        context,
+        _ManualEntry(
+          mealType: _meal,
+          name: '${_product!['name']}, ${g.round()} г',
+          quantity: 1,
+          calories: t[0].round(),
+          proteins: _r1(t[1]),
+          fats: _r1(t[2]),
+          carbs: _r1(t[3]),
+        ),
+      );
+    } else {
+      if (_name.text.trim().isEmpty) {
+        setState(() => _error = 'Укажите название блюда');
+        return;
+      }
+      Navigator.pop(
+        context,
+        _ManualEntry(
+          mealType: _meal,
+          name: _name.text.trim(),
+          quantity: _n(_qty)?.toDouble() ?? 1.0,
+          calories: _n(_cal),
+          proteins: _n(_prot),
+          fats: _n(_fat),
+          carbs: _n(_carb),
+        ),
+      );
+    }
+  }
+
+  Widget _previewLine(List<num> t) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          '≈ ${t[0].round()} ккал · Б ${_r1(t[1])} · Ж ${_r1(t[2])} · У ${_r1(t[3])}',
+          style: const TextStyle(color: Colors.grey, fontSize: 13),
+        ),
+      );
+
+  Widget _searchResults(List<Map<String, dynamic>> items, void Function(Map<String, dynamic>) onTap,
+      String Function(Map<String, dynamic>) label) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      constraints: const BoxConstraints(maxHeight: 180),
+      decoration: BoxDecoration(border: Border.all(color: Colors.black12), borderRadius: BorderRadius.circular(8)),
+      child: ListView(
+        shrinkWrap: true,
+        children: items
+            .map((it) => ListTile(
+                  dense: true,
+                  title: Text(label(it), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () => onTap(it),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _recipeTab() {
+    return ListView(
+      padding: const EdgeInsets.only(top: 4),
+      children: [
+        if (_recipe == null) ...[
+          TextField(
+            controller: _recipeQuery,
+            decoration: _dec('Поиск рецепта (от 2 букв)'),
+            onChanged: _searchRecipes,
+          ),
+          if (_recipeLoading) const Padding(padding: EdgeInsets.all(8), child: Text('Поиск…')),
+          _searchResults(_recipeResults, _pickRecipe, (r) => (r['title'] ?? '').toString()),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(child: Text(_recipe!['title']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
+              TextButton(
+                onPressed: () => setState(() {
+                  _recipe = null;
+                  _recipeQuery.clear();
+                }),
+                child: const Text('сменить'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _recipeAmount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: _dec(_recipeGrams ? 'Количество (г)' : 'Количество (порций) — нет веса порции'),
+            onChanged: (_) => setState(() {}),
+          ),
+          _previewLine(_recipeTotals()),
+        ],
+      ],
+    );
+  }
+
+  Widget _productTab() {
+    return ListView(
+      padding: const EdgeInsets.only(top: 4),
+      children: [
+        if (_product == null) ...[
+          TextField(
+            controller: _productQuery,
+            decoration: _dec('Поиск продукта (от 2 букв)'),
+            onChanged: _searchProducts,
+          ),
+          if (_productLoading) const Padding(padding: EdgeInsets.all(8), child: Text('Поиск…')),
+          _searchResults(_productResults, _pickProduct, (p) => (p['name'] ?? '').toString()),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(child: Text(_product!['name']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
+              TextButton(
+                onPressed: () => setState(() {
+                  _product = null;
+                  _productQuery.clear();
+                }),
+                child: const Text('сменить'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _productGrams,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: _dec('Количество (г)'),
+            onChanged: (_) => setState(() {}),
+          ),
+          _previewLine(_productTotals()),
+        ],
+      ],
+    );
+  }
+
+  Widget _manualTab() {
+    return ListView(
+      padding: const EdgeInsets.only(top: 4),
+      children: [
+        TextField(controller: _name, decoration: _dec('Название')),
+        const SizedBox(height: 12),
+        TextField(controller: _qty, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Количество (порций)')),
+        const SizedBox(height: 12),
+        TextField(controller: _cal, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Калории (ккал)')),
+        const SizedBox(height: 12),
+        TextField(controller: _prot, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Белки (г)')),
+        const SizedBox(height: 12),
+        TextField(controller: _fat, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Жиры (г)')),
+        const SizedBox(height: 12),
+        TextField(controller: _carb, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Углеводы (г)')),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Добавить вручную'),
-      content: SingleChildScrollView(
+      title: const Text('Добавить в дневник'),
+      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 440,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // DIARY_COPY_V3: spaced fields — fixes overlapping labels (#3).
             DropdownButtonFormField<MealType>(
               value: _meal,
               isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Приём пищи',
-                isDense: true,
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              ),
-              items: MealType.values
-                  .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
-                  .toList(),
+              decoration: _dec('Приём пищи'),
+              items: MealType.values.map((m) => DropdownMenuItem(value: m, child: Text(m.label))).toList(),
               onChanged: (v) => setState(() => _meal = v ?? MealType.breakfast),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(
-                labelText: 'Название',
-                isDense: true,
-                border: OutlineInputBorder(),
+            const SizedBox(height: 8),
+            TabBar(
+              controller: _tab,
+              labelColor: Theme.of(context).colorScheme.primary,
+              tabs: const [Tab(text: 'Рецепт'), Tab(text: 'Продукт'), Tab(text: 'Вручную')],
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tab,
+                children: [_recipeTab(), _productTab(), _manualTab()],
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _qty,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Количество (порций)',
-                isDense: true,
-                border: OutlineInputBorder(),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _cal,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Калории (ккал)',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _prot,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Белки (г)',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _fat,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Жиры (г)',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _carb,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Углеводы (г)',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-            ],
           ],
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Отмена')),
-        FilledButton(
-          onPressed: () {
-            if (_name.text.trim().isEmpty) {
-              setState(() => _error = 'Укажите название блюда');
-              return;
-            }
-            Navigator.pop(
-              context,
-              _ManualEntry(
-                mealType: _meal,
-                name: _name.text.trim(),
-                quantity: _n(_qty)?.toDouble() ?? 1.0,
-                calories: _n(_cal),
-                proteins: _n(_prot),
-                fats: _n(_fat),
-                carbs: _n(_carb),
-              ),
-            );
-          },
-          child: const Text('Добавить'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('Добавить')),
       ],
     );
   }

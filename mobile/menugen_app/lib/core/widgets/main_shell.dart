@@ -23,7 +23,8 @@ class MainShell extends StatelessWidget {
     (icon: Icons.person,          label: 'Профиль',     path: '/profile'),
   ];
 
-  static const _premiumOnlyPaths = {'/fridge', '/diary'};
+  // freemium: дневник открыт free-юзерам (как в вебе). Холодильник остаётся premium.
+  static const _premiumOnlyPaths = {'/fridge'};
 
   List<_Tab> _visibleTabs(PremiumStatus status) {
     if (status == PremiumStatus.lockedForRead) {
