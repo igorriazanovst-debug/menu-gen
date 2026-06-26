@@ -85,9 +85,15 @@ class Command(BaseCommand):
 
         filled = not_food = failed = 0
         samples = []
+        nchunks = (len(targets) + batch - 1) // batch
 
         for base in range(0, len(targets), batch):
             grp = targets[base : base + batch]
+            # живой прогресс: длинный прогон не должен выглядеть зависшим
+            self.stdout.write(
+                f"  чанк {base // batch + 1}/{nchunks} (заполнено: {filled}, не еда: {not_food})…"
+            )
+            self.stdout.flush()
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
                 raw = client.complete(prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0)
