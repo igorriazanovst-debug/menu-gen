@@ -4,7 +4,15 @@ import type {
   DiaryEntry, DiaryDayStats, DiaryWaterLog, MealType,
 } from '../types';
 
-export interface DiaryListParams { date: string; member_id?: number; }
+// DIARY_MULTIDAY: одиночная дата (date) ИЛИ диапазон (from/to). page_size — чтобы
+// диапазон уместился в одну страницу (бэкенд: PageNumberPagination, default 20).
+export interface DiaryListParams {
+  date?: string;
+  from?: string;
+  to?: string;
+  page_size?: number;
+  member_id?: number;
+}
 export interface DiaryCreatePayload {
   date: string;
   meal_type: MealType;

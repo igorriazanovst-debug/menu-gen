@@ -328,19 +328,25 @@ class _DiaryScreenState extends State<DiaryScreen> {
   void _onImportTap() async {
     final bloc = context.read<DiaryBloc>();
     // MG_DIARYMENU: выбор меню из выпадающего списка вместо ввода сырого ID.
-    final menuId = await showDialog<int?>(
+    // DIARY_MULTIDAY: + выбор даты старта (дни меню разносятся от неё по датам).
+    final sel = await showDialog<_ImportSelection?>(
       context: context,
       builder: (_) => _ImportMenuDialog(
         initialDate: _selected,
         apiClient: bloc.apiClient,
       ),
     );
-    if (menuId == null) return;
+    if (sel == null) return;
     if (!mounted) return;
+    // Переносим anchor дневника на дату старта — сразу видно залитые дни.
+    setState(() {
+      _selected = sel.startDate;
+      _focusedDay = sel.startDate;
+    });
     bloc.add(
       DiaryImportFromMenuRequested(
-        menuId: menuId,
-        date: DateFormat('yyyy-MM-dd').format(_selected),
+        menuId: sel.menuId,
+        date: DateFormat('yyyy-MM-dd').format(sel.startDate),
         memberId: _memberId,
       ),
     );
@@ -414,8 +420,9 @@ class _LoadedView extends StatefulWidget {
 }
 
 class _LoadedViewState extends State<_LoadedView> {
-  // Свёрнутые ветки приёмов (по умолчанию все развёрнуты).
-  final Set<MealType> _collapsed = <MealType>{};
+  // DIARY_MULTIDAY: свёрнутые ветки приёмов. Ключ «<дата>|<meal>» —
+  // сворачивание независимо для каждого дня.
+  final Set<String> _collapsed = <String>{};
 
   static const List<MealType> _mealOrder = [
     MealType.breakfast,
@@ -424,13 +431,37 @@ class _LoadedViewState extends State<_LoadedView> {
     MealType.snack,
   ];
 
+  // Калорийность одной записи (nutrition.calories: num | String | {value}).
+  double _entryKcal(DiaryEntry e) {
+    final raw = e.nutrition['calories'];
+    double n = 0;
+    if (raw is num) {
+      n = raw.toDouble();
+    } else if (raw is String) {
+      n = double.tryParse(raw.replaceAll(',', '.')) ?? 0;
+    } else if (raw is Map && raw['value'] != null) {
+      n = double.tryParse('${raw['value']}'.replaceAll(',', '.')) ?? 0;
+    }
+    return n * e.quantity;
+  }
+
+  String _cap(String s) =>
+      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
   @override
   Widget build(BuildContext context) {
-    final planned = widget.state.plannedEntries;
-    final manual = widget.state.manualEntries;
+    // DIARY_MULTIDAY: группируем записи по дате → секции с относительной подписью.
+    final byDate = <String, List<DiaryEntry>>{};
+    for (final e in widget.state.entries) {
+      byDate.putIfAbsent(e.date, () => <DiaryEntry>[]).add(e);
+    }
+    // Выбранная (anchor) дата видна всегда — туда уходят добавление/импорт.
+    byDate.putIfAbsent(widget.state.date, () => <DiaryEntry>[]);
+    final dates = byDate.keys.toList()..sort();
+
     return Column(
       children: [
-        // MG_SKIN: «прилеплённая» сводка КБЖУ — не уезжает при скролле.
+        // MG_SKIN: «прилеплённая» сводка КБЖУ за выбранный день.
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
           child: DiaryStatsCard(stats: widget.state.stats),
@@ -441,24 +472,7 @@ class _LoadedViewState extends State<_LoadedView> {
             key: const PageStorageKey('diary-entries'),
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
             children: [
-              if (planned.isEmpty && manual.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 32),
-                  child: Center(child: Text('Нет записей')),
-                ),
-              if (planned.isNotEmpty) ..._buildPlanTree(planned),
-              if (manual.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _SectionHeader(
-                  icon: Icons.restaurant,
-                  title: 'Факт (${manual.length})',
-                ),
-                ...manual.map((e) => _EntryTile(
-                      entry: e,
-                      onToggleEaten: null, // manual entries are always actual
-                      onDelete: () => widget.onDelete(e),
-                    )),
-              ],
+              for (final d in dates) ..._buildDaySection(context, d, byDate[d]!),
               const SizedBox(height: 96),
             ],
           ),
@@ -467,8 +481,94 @@ class _LoadedViewState extends State<_LoadedView> {
     );
   }
 
-  // MG_SKIN: «дерево» плана — мастер-чекбокс + ветки приёмов + листья.
-  List<Widget> _buildPlanTree(List<DiaryEntry> planned) {
+  // DIARY_MULTIDAY: секция одного дня — цветная шапка (Сегодня/Вчера/Завтра/
+  // день недели + дата) + дерево приёмов и факт за этот день.
+  List<Widget> _buildDaySection(
+      BuildContext context, String dateStr, List<DiaryEntry> dayEntries) {
+    final cs = Theme.of(context).colorScheme;
+    final d = DateTime.tryParse(dateStr) ?? DateTime.now();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final diff = DateTime(d.year, d.month, d.day).difference(today).inDays;
+
+    String label;
+    Color headerBg;
+    Color labelColor = cs.onSurface;
+    if (diff == 0) {
+      label = 'Сегодня';
+      headerBg = cs.primary.withOpacity(0.14);
+      labelColor = cs.primary;
+    } else if (diff == -1) {
+      label = 'Вчера';
+      headerBg = cs.primary.withOpacity(0.06);
+    } else if (diff == 1) {
+      label = 'Завтра';
+      headerBg = cs.primary.withOpacity(0.06);
+    } else {
+      label = _cap(DateFormat('EEEE', 'ru').format(d));
+      headerBg = Colors.grey.withOpacity(0.10);
+    }
+    final dateSub = _cap(DateFormat('d MMMM', 'ru').format(d));
+
+    final planned = dayEntries.where((e) => e.isPlanned).toList();
+    final manual = dayEntries.where((e) => !e.isPlanned).toList();
+    final kcal = dayEntries.fold<double>(0, (s, e) => s + _entryKcal(e));
+
+    final out = <Widget>[];
+    out.add(Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: headerBg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 14, color: labelColor)),
+          const SizedBox(width: 8),
+          Text(dateSub,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          const Spacer(),
+          if (kcal > 0)
+            Text('${kcal.round()} ккал',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+        ],
+      ),
+    ));
+
+    if (planned.isEmpty && manual.isEmpty) {
+      out.add(const Padding(
+        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        child: Text('Нет записей',
+            style: TextStyle(color: Colors.grey, fontSize: 13)),
+      ));
+      return out;
+    }
+
+    if (planned.isNotEmpty) out.addAll(_buildPlanTree(dateStr, planned));
+    if (manual.isNotEmpty) {
+      out.add(Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+        child: Row(children: [
+          Icon(Icons.restaurant, size: 16, color: Colors.grey.shade600),
+          const SizedBox(width: 6),
+          Text('Факт (${manual.length})',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        ]),
+      ));
+      out.addAll(manual.map((e) => _EntryTile(
+            entry: e,
+            onToggleEaten: null, // manual entries are always actual
+            onDelete: () => widget.onDelete(e),
+          )));
+    }
+    return out;
+  }
+
+  // Дерево плана за конкретную дату — мастер-чекбокс дня + ветки приёмов + листья.
+  List<Widget> _buildPlanTree(String dateStr, List<DiaryEntry> planned) {
     final total = planned.length;
     final eaten = planned.where((e) => e.isEaten).length;
     final allEaten = total > 0 && eaten == total;
@@ -477,7 +577,7 @@ class _LoadedViewState extends State<_LoadedView> {
 
     final out = <Widget>[];
 
-    // Мастер-строка: чекнуть/снять весь план.
+    // Мастер-строка: чекнуть/снять весь план дня.
     out.add(Row(
       children: [
         Checkbox(
@@ -489,7 +589,7 @@ class _LoadedViewState extends State<_LoadedView> {
         const SizedBox(width: 6),
         const Expanded(
           child: Text('План',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         ),
         Text('$eaten/$total',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
@@ -504,12 +604,13 @@ class _LoadedViewState extends State<_LoadedView> {
       final mAll = mEaten == items.length;
       final mNone = mEaten == 0;
       final mIds = items.map((e) => e.id).toList();
-      final collapsed = _collapsed.contains(mt);
+      final key = '$dateStr|${mt.value}';
+      final collapsed = _collapsed.contains(key);
 
       // Заголовок ветки: чекбокс всей ветки + сворачивание.
       out.add(InkWell(
         onTap: () => setState(() {
-          if (!_collapsed.remove(mt)) _collapsed.add(mt);
+          if (!_collapsed.remove(key)) _collapsed.add(key);
         }),
         child: Padding(
           padding: const EdgeInsets.only(left: 8, top: 2),
@@ -549,24 +650,6 @@ class _LoadedViewState extends State<_LoadedView> {
       }
     }
     return out;
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  const _SectionHeader({required this.icon, required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-      child: Row(children: [
-        Icon(icon, size: 18, color: Colors.grey.shade600),
-        const SizedBox(width: 6),
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-      ]),
-    );
   }
 }
 
@@ -649,6 +732,13 @@ class _PremiumLockView extends StatelessWidget {
   }
 }
 
+// DIARY_MULTIDAY: результат диалога импорта — меню + дата старта плана.
+class _ImportSelection {
+  final int menuId;
+  final DateTime startDate;
+  const _ImportSelection(this.menuId, this.startDate);
+}
+
 // MG_DIARYMENU: выпадающий список меню вместо ручного ввода ID (ID — внутреннее
 // обозначение, пользователю не известно). Грузим /menu/ как в shopping_create_sheet.
 class _ImportMenuDialog extends StatefulWidget {
@@ -664,11 +754,30 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
   int? _menuId;
   bool _loading = true;
   String? _err;
+  late DateTime _startDate; // DIARY_MULTIDAY: дата старта плана
 
   @override
   void initState() {
     super.initState();
+    _startDate = widget.initialDate;
     _loadMenus();
+  }
+
+  // DIARY_MULTIDAY: число дней в меню (для подсказки итогового диапазона).
+  int _spanDays(Map<String, dynamic>? m) {
+    if (m == null) return 1;
+    final s = DateTime.tryParse('${m['start_date']}');
+    final e = DateTime.tryParse('${m['end_date']}');
+    if (s == null || e == null) return 1;
+    final n = e.difference(s).inDays + 1;
+    return n < 1 ? 1 : n;
+  }
+
+  Map<String, dynamic>? get _selectedMenu {
+    for (final m in _menus) {
+      if (m['id'] == _menuId) return m;
+    }
+    return null;
   }
 
   // Человекочитаемый лейбл меню (автор + диапазон дат), как в списках покупок.
@@ -716,16 +825,38 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final span = _spanDays(_selectedMenu);
+    final endDate = _startDate.add(Duration(days: span - 1));
     return AlertDialog(
       title: const Text('Импорт из меню'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'На дату: ${DateFormat('d MMMM yyyy', 'ru').format(widget.initialDate)}',
-            style: const TextStyle(fontSize: 13, color: Colors.grey),
+          // DIARY_MULTIDAY: дата старта — дни меню разносятся от неё по датам.
+          OutlinedButton.icon(
+            onPressed: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _startDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2030),
+                locale: const Locale('ru'),
+              );
+              if (picked != null) setState(() => _startDate = picked);
+            },
+            icon: const Icon(Icons.event, size: 18),
+            label: Text('Старт: ${DateFormat('d MMMM yyyy', 'ru').format(_startDate)}'),
           ),
+          if (span > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Дни лягут: ${DateFormat('d MMM', 'ru').format(_startDate)} – '
+                '${DateFormat('d MMM', 'ru').format(endDate)} ($span дн.)',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
           const SizedBox(height: 12),
           if (_loading)
             const Padding(
@@ -763,7 +894,7 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
         FilledButton(
           onPressed: (_loading || _menuId == null)
               ? null
-              : () => Navigator.pop(context, _menuId),
+              : () => Navigator.pop(context, _ImportSelection(_menuId!, _startDate)),
           child: const Text('Импортировать'),
         ),
       ],

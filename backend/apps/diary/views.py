@@ -1,9 +1,10 @@
-from datetime import date
+from datetime import date, timedelta
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -56,9 +57,18 @@ def _resolve_target_member(request, current_member):
     return target
 
 
+class DiaryRangePagination(PageNumberPagination):
+    """DIARY_MULTIDAY: дневник грузится диапазоном дат (многодневная лента),
+    поэтому клиент может запросить большой page_size одним запросом."""
+
+    page_size_query_param = "page_size"
+    max_page_size = 1000
+
+
 class DiaryListCreateView(generics.ListCreateAPIView):
     # freemium: дневник открыт free-юзерам.
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DiaryRangePagination
 
     def get_member(self):
         if not hasattr(self, "_member"):
@@ -82,9 +92,17 @@ class DiaryListCreateView(generics.ListCreateAPIView):
             return DiaryEntry.objects.none()
         target = self._target_member()
         qs = DiaryEntry.objects.filter(member=target).select_related("recipe").order_by("date", "meal_type")
+        # DIARY_MULTIDAY: одиночная дата (?date=) ИЛИ диапазон (?from=&to=).
         day = self.request.query_params.get("date")
         if day:
             qs = qs.filter(date=day)
+        else:
+            dfrom = self.request.query_params.get("from")
+            dto = self.request.query_params.get("to")
+            if dfrom:
+                qs = qs.filter(date__gte=dfrom)
+            if dto:
+                qs = qs.filter(date__lte=dto)
         return qs
 
     def get_serializer_class(self):
@@ -98,6 +116,9 @@ class DiaryListCreateView(generics.ListCreateAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter("date", str, description="Фильтр по дате YYYY-MM-DD"),
+            OpenApiParameter("from", str, description="DIARY_MULTIDAY: начало диапазона YYYY-MM-DD (если нет date)"),
+            OpenApiParameter("to", str, description="DIARY_MULTIDAY: конец диапазона YYYY-MM-DD (если нет date)"),
+            OpenApiParameter("page_size", int, description="DIARY_MULTIDAY: размер страницы (до 1000)"),
             OpenApiParameter("member_id", int, description="MG-605.C: просмотр дневника члена семьи (только HEAD)"),
         ],
         responses={200: DiaryEntrySerializer(many=True)},
@@ -264,13 +285,17 @@ class DiaryImportFromMenuView(APIView):
     """MG-605.D: POST /api/v1/diary/import-from-menu/?menu_id=&date=
 
     Импортирует все MenuItem указанного меню как плановые записи DiaryEntry
-    на указанную дату для target-члена семьи.
+    для target-члена семьи.
 
     Правила:
     - target_member определяется через _resolve_target_member (?member_id=),
       по умолчанию = текущий FamilyMember; MEMBER не может импортировать чужим.
     - Импортируются только MenuItem с (member == target ИЛИ member IS NULL).
-    - Идемпотентно: записи с уже существующим planned_menu_item пропускаются (no-op).
+    - DIARY_MULTIDAY: ?date= — это дата СТАРТА плана (день 0 меню). Каждый
+      MenuItem ложится на (date + его day_offset), т.е. дни меню разносятся по
+      реальным датам, а не сваливаются на один день.
+    - Идемпотентно: записи с уже существующим planned_menu_item пропускаются (no-op);
+      их дата при повторном импорте не меняется.
     - Меню должно принадлежать семье target-члена; иначе 404.
     - Ответ 200: {created: N, skipped: M, entries: [...]} (полный список DiaryEntry
       для этого меню+target, включая ранее существующие, чтобы UI мог сразу отрисовать).
@@ -282,7 +307,7 @@ class DiaryImportFromMenuView(APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter("menu_id", int, description="ID меню для импорта"),
-            OpenApiParameter("date", str, description="Дата плана YYYY-MM-DD"),
+            OpenApiParameter("date", str, description="DIARY_MULTIDAY: дата старта плана YYYY-MM-DD (день 0 меню)"),
             OpenApiParameter("member_id", int, description="Импорт за члена семьи (только HEAD)"),
         ],
         responses={200: DiaryEntrySerializer(many=True)},
@@ -327,11 +352,13 @@ class DiaryImportFromMenuView(APIView):
         with transaction.atomic():
             for mi in items_qs:
                 # Идемпотентность через UNIQUE на planned_menu_item.
+                # DIARY_MULTIDAY: день меню → реальная дата = старт + day_offset.
+                entry_date = plan_date + timedelta(days=mi.day_offset or 0)
                 entry, was_created = DiaryEntry.objects.get_or_create(
                     planned_menu_item=mi,
                     defaults={
                         "member": target,
-                        "date": plan_date,
+                        "date": entry_date,
                         "meal_type": mi.meal_type,
                         "recipe": mi.recipe,
                         "custom_name": "",

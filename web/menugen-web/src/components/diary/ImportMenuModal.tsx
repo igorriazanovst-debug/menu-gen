@@ -13,8 +13,16 @@ interface Props {
   date: string;
   memberId?: number;
   onClose: () => void;
-  onImported: () => void;
+  // DIARY_MULTIDAY: startDate — куда лёг день 0 плана (страница перецентрируется на него).
+  onImported: (startDate?: string) => void;
 }
+
+// DIARY_MULTIDAY: сдвиг ISO-даты на N дней.
+const addDaysIso = (iso: string, n: number): string => {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+};
 
 const MEAL_SLOT_LABEL: Record<string, string> = {
   breakfast: 'Завтрак', snack1: 'Перекус 1', lunch: 'Обед',
@@ -33,6 +41,7 @@ const fmtRange = (m: Menu) => {
 export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onImported }) => {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [menuId, setMenuId] = useState<number | null>(null);
+  const [baseDate, setBaseDate] = useState(date); // DIARY_MULTIDAY: дата старта плана
   const [detail, setDetail] = useState<Menu | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loadingList, setLoadingList] = useState(true);
@@ -89,11 +98,10 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
     return byDay;
   }, [detail]);
 
+  // DIARY_MULTIDAY: день меню ляжет на baseDate + offset (не на собственные даты меню).
   const dayDate = (offset: number): string => {
-    if (!detail) return '';
-    const d = new Date(detail.start_date);
-    d.setDate(d.getDate() + offset);
-    return d.toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'short' });
+    const iso = addDaysIso(baseDate, offset);
+    return new Date(`${iso}T00:00:00`).toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'short' });
   };
 
   const toggle = (id: number) =>
@@ -118,8 +126,8 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
     if (selected.size === 0) { setError('Выберите хотя бы один приём'); return; }
     setBusy(true); setError('');
     try {
-      await diaryApi.importFromMenu(menuId, date, memberId, Array.from(selected));
-      onImported();
+      await diaryApi.importFromMenu(menuId, baseDate, memberId, Array.from(selected));
+      onImported(baseDate);
       onClose();
     } catch (e) {
       setError(getErrorMessage(e));
@@ -135,7 +143,15 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
       <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
             onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-chocolate mb-1">Заполнить из меню</h2>
-        <p className="text-xs text-gray-500 mb-4">Выбранные приёмы добавятся в план на {date}</p>
+        <p className="text-xs text-gray-500 mb-3">
+          Дни меню разнесутся по датам, начиная с выбранной даты старта.
+        </p>
+
+        {/* DIARY_MULTIDAY: дата старта плана (день 0 меню). */}
+        <label className="block text-xs text-gray-500 mb-1">Дата начала плана</label>
+        <input type="date" value={baseDate}
+               onChange={(e) => setBaseDate(e.target.value || date)}
+               className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm mb-4 focus:ring-2 focus:ring-tomato/40 focus:border-tomato outline-none" />
 
         {loadingList ? (
           <div className="py-8 flex justify-center"><Spinner size="md" /></div>

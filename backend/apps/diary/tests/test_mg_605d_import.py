@@ -8,7 +8,8 @@
 - MEMBER не может импортировать за другого (403)
 - меню чужой семьи → 404
 - меню не существует → 404
-- нет Premium → 403
+- freemium: free-юзер тоже может импортировать (200)
+- DIARY_MULTIDAY: дни меню разносятся по датам = старт + day_offset
 """
 
 from datetime import date, timedelta
@@ -132,6 +133,60 @@ class TestDiaryImportFromMenu:
         assert entry.is_eaten is False
         assert entry.recipe_id == r.id
 
+    def test_import_spreads_days_by_offset(self, client):
+        """DIARY_MULTIDAY: дни меню разносятся по реальным датам = старт + day_offset."""
+        head_user = _user("head@example.com")
+        fam, head, _ = _premium_family(head_user)
+        r = _recipe()
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=fam.owner_id,
+            period_days=3,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=2),
+            status=Menu.Status.ACTIVE,
+        )
+        mi0 = _menu_item(menu, r, member=head, day_offset=0, meal_type="breakfast", meal_slot="breakfast")
+        mi1 = _menu_item(menu, r, member=head, day_offset=1, meal_type="lunch", meal_slot="lunch")
+        mi2 = _menu_item(menu, r, member=head, day_offset=2, meal_type="dinner", meal_slot="dinner")
+
+        start = date.today() + timedelta(days=1)  # старт в будущем (сценарий «поход»)
+        client.force_authenticate(head_user)
+        resp = client.post(
+            reverse("diary-import-from-menu"),
+            QUERY_STRING=f"menu_id={menu.id}&date={start}",
+        )
+        assert resp.status_code == 200, resp.data
+        assert resp.data["created"] == 3
+        assert DiaryEntry.objects.get(planned_menu_item=mi0).date == start
+        assert DiaryEntry.objects.get(planned_menu_item=mi1).date == start + timedelta(days=1)
+        assert DiaryEntry.objects.get(planned_menu_item=mi2).date == start + timedelta(days=2)
+
+    def test_range_filter_returns_multiple_days(self, client):
+        """DIARY_MULTIDAY: GET /diary/?from=&to= отдаёт записи всех дат диапазона."""
+        head_user = _user("head@example.com")
+        fam, head, _ = _premium_family(head_user)
+        r = _recipe()
+        menu = Menu.objects.create(
+            family=fam,
+            creator_id=fam.owner_id,
+            period_days=2,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+            status=Menu.Status.ACTIVE,
+        )
+        _menu_item(menu, r, member=head, day_offset=0, meal_type="breakfast", meal_slot="breakfast")
+        _menu_item(menu, r, member=head, day_offset=1, meal_type="lunch", meal_slot="lunch")
+        client.force_authenticate(head_user)
+        client.post(reverse("diary-import-from-menu"), QUERY_STRING=f"menu_id={menu.id}&date={date.today()}")
+
+        d0 = date.today()
+        d1 = date.today() + timedelta(days=1)
+        resp = client.get(reverse("diary-list"), {"from": str(d0), "to": str(d1), "page_size": 1000})
+        assert resp.status_code == 200
+        dates = sorted({e["date"] for e in resp.data["results"]})
+        assert dates == [str(d0), str(d1)]
+
     def test_import_idempotent(self, client):
         head_user = _user("head@example.com")
         fam, head, _ = _premium_family(head_user)
@@ -236,7 +291,8 @@ class TestDiaryImportFromMenu:
         )
         assert resp.status_code == 404
 
-    def test_no_premium_403(self, client):
+    def test_free_user_can_import(self, client):
+        # freemium: дневник (вкл. импорт из меню) открыт free-юзерам — больше не 403.
         user = _user("nopremium@example.com")
         fam = Family.objects.create(owner=user)
         FamilyMember.objects.create(family=fam, user=user, role=FamilyMember.Role.HEAD)
@@ -249,7 +305,8 @@ class TestDiaryImportFromMenu:
             reverse("diary-import-from-menu"),
             QUERY_STRING=f"menu_id={menu.id}&date={date.today()}",
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 200, resp.data
+        assert resp.data["created"] == 1
 
     def test_invalid_query_params(self, client):
         head_user = _user("head@example.com")

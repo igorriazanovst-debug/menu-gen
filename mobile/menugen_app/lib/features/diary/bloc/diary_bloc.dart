@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
@@ -102,7 +103,16 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
   ) async {
     emit(const DiaryLoading());
     try {
-      final params = <String, dynamic>{'date': e.date};
+      // DIARY_MULTIDAY: грузим записи диапазоном вокруг выбранной (anchor) даты,
+      // чтобы показать многодневную ленту (импорт меню разносит дни по датам).
+      final anchor = DateTime.parse(e.date);
+      final fromStr = DateFormat('yyyy-MM-dd').format(anchor.subtract(const Duration(days: 7)));
+      final toStr = DateFormat('yyyy-MM-dd').format(anchor.add(const Duration(days: 30)));
+      final params = <String, dynamic>{
+        'from': fromStr,
+        'to': toStr,
+        'page_size': 1000,
+      };
       if (e.memberId != null) params['member_id'] = e.memberId;
       final listResp = await apiClient.get('/diary/', params: params);
       final entries = _parseEntries(listResp);
