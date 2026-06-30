@@ -17,24 +17,6 @@ const today = () => new Date().toISOString().split('T')[0];
 const WATER_GOAL_ML = 2000;
 const WATER_STEPS = [250, 500];
 
-// DIARY_MULTIDAY: сдвиг ISO-даты на N дней (без таймзонных сюрпризов).
-const addDays = (iso: string, n: number): string => {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
-};
-
-// DIARY_MULTIDAY: относительная подпись секции дня.
-type DayRel = 'today' | 'yesterday' | 'tomorrow' | 'other';
-const dayLabel = (iso: string): { label: string; rel: DayRel } => {
-  const t = today();
-  if (iso === t) return { label: 'Сегодня', rel: 'today' };
-  if (iso === addDays(t, -1)) return { label: 'Вчера', rel: 'yesterday' };
-  if (iso === addDays(t, 1)) return { label: 'Завтра', rel: 'tomorrow' };
-  const d = new Date(`${iso}T00:00:00`);
-  const s = d.toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' });
-  return { label: s.charAt(0).toUpperCase() + s.slice(1), rel: 'other' };
-};
 
 const emptyBucket = { calories: 0, proteins: 0, fats: 0, carbs: 0 };
 
@@ -104,9 +86,9 @@ export const DiaryPage: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      // DIARY_MULTIDAY: грузим записи диапазоном вокруг выбранной (anchor) даты.
+      // DIARY: грузим записи только за выбранный день.
       const [e, s, w] = await Promise.all([
-        diaryApi.list({ from: addDays(date, -7), to: addDays(date, 30), page_size: 1000, member_id: memberId }),
+        diaryApi.list({ date, page_size: 1000, member_id: memberId }),
         diaryApi.stats(date, date, memberId).catch(() => [] as DiaryDayStats[]),
         diaryApi.getWater(date).catch(() => ({ date, water_ml: 0 })),
       ]);
@@ -165,21 +147,11 @@ export const DiaryPage: React.FC = () => {
   // DIARY_COPY_V3: plan = is_planned OR legacy planned_menu_item.
   const isPlan = (e: DiaryEntry) => e.is_planned === true || e.planned_menu_item != null;
 
-  // DIARY_HIER_PRINT_V5: group a day's entries by meal type for hierarchical view.
+  // DIARY_HIER_PRINT_V5: записи выбранного дня сгруппированы по типу приёма.
   const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
-  const mealGroupsFor = (items: DiaryEntry[]) =>
-    MEAL_ORDER
-      .map((mt) => ({ mt, items: items.filter((e) => e.meal_type === mt) }))
-      .filter((g) => g.items.length > 0);
-
-  // DIARY_MULTIDAY: записи сгруппированы по дате; anchor-дата видна всегда.
-  const byDate = new Map<string, DiaryEntry[]>();
-  for (const e of entries) {
-    const arr = byDate.get(e.date);
-    if (arr) arr.push(e); else byDate.set(e.date, [e]);
-  }
-  if (!byDate.has(date)) byDate.set(date, []);
-  const sortedDates = Array.from(byDate.keys()).sort();
+  const mealGroups = MEAL_ORDER
+    .map((mt) => ({ mt, items: entries.filter((e) => e.meal_type === mt) }))
+    .filter((g) => g.items.length > 0);
   // DIARY_HIER_PRINT_V5: read a nutrition field that may be flat (number) or {value,unit}.
   const nutriVal = (e: DiaryEntry, key: 'calories' | 'proteins' | 'fats' | 'carbs'): number => {
     const raw = (e.nutrition as Record<string, unknown> | undefined)?.[key];
@@ -297,62 +269,39 @@ export const DiaryPage: React.FC = () => {
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
 
-      {/* DIARY_MULTIDAY: многодневная лента — секции по датам (Сегодня/Вчера/Завтра + дата). */}
-      {loading ? <PageSpinner /> : (
-        <div className="space-y-5">
-          {sortedDates.map((d) => {
-            const dayEntries = byDate.get(d) ?? [];
-            const { label, rel } = dayLabel(d);
-            const groups = mealGroupsFor(dayEntries);
-            const dayKcal = dayEntries.reduce((sum, e) => sum + nutriVal(e, 'calories'), 0);
-            const sub = new Date(`${d}T00:00:00`).toLocaleDateString('ru', { day: 'numeric', month: 'long' });
-            const headerCls =
-              rel === 'today' ? 'bg-tomato/10 ring-1 ring-tomato/30'
-              : rel === 'yesterday' || rel === 'tomorrow' ? 'bg-tomato/5'
-              : 'bg-rice';
-            return (
-              <div key={d} className="space-y-2">
-                <div className={`flex items-center justify-between rounded-xl px-3 py-2 ${headerCls}`}>
-                  <div className="flex items-baseline gap-2 min-w-0">
-                    <span className={`font-semibold ${rel === 'today' ? 'text-tomato' : 'text-chocolate'}`}>{label}</span>
-                    {rel !== 'other' && <span className="text-xs text-gray-500 truncate">{sub}</span>}
-                  </div>
-                  {dayKcal > 0 && <span className="text-sm text-gray-500 whitespace-nowrap">{Math.round(dayKcal)} ккал</span>}
-                </div>
-
-                {groups.length === 0 ? (
-                  <p className="text-sm text-gray-400 px-3">Нет записей</p>
-                ) : groups.map((g) => {
-                  const key = `${d}|${g.mt}`;
-                  return (
-                    <details key={key} open={openMeals.has(key)}
-                      onToggle={(ev) => {
-                        const isOpen = (ev.target as HTMLDetailsElement).open;
-                        setOpenMeals((prev) => {
-                          const n = new Set(prev);
-                          if (isOpen) n.add(key); else n.delete(key);
-                          return n;
-                        });
-                      }}
-                      className="rounded-2xl border border-border bg-surface overflow-hidden">
-                      <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between">
-                        <span className="font-semibold text-chocolate">
-                          {MEAL_LABELS[g.mt] ?? g.mt}
-                          <span className="text-gray-400 font-normal"> · {g.items.length}</span>
-                        </span>
-                        <span className="text-sm text-gray-500">{mealKcal(g.items)} ккал</span>
-                      </summary>
-                      <div className="px-3 pb-3 space-y-2">
-                        {g.items.map((e) => <Entry key={e.id} e={e} canCheck={isPlan(e)} />)}
-                      </div>
-                    </details>
-                  );
-                })}
-              </div>
-            );
-          })}
+      {/* DIARY: только выбранный день — приёмы пищи списком. */}
+      {loading ? <PageSpinner /> : (entries.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <div className="text-5xl mb-4">📔</div>
+          <p>Нет записей за этот день</p>
         </div>
-      )}
+      ) : (
+        <div className="space-y-3">
+          {mealGroups.map((g) => (
+            <details key={g.mt} open={openMeals.has(g.mt)}
+              onToggle={(ev) => {
+                const isOpen = (ev.target as HTMLDetailsElement).open;
+                setOpenMeals((prev) => {
+                  const n = new Set(prev);
+                  if (isOpen) n.add(g.mt); else n.delete(g.mt);
+                  return n;
+                });
+              }}
+              className="rounded-2xl border border-border bg-surface overflow-hidden">
+              <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between">
+                <span className="font-semibold text-chocolate">
+                  {MEAL_LABELS[g.mt] ?? g.mt}
+                  <span className="text-gray-400 font-normal"> · {g.items.length}</span>
+                </span>
+                <span className="text-sm text-gray-500">{mealKcal(g.items)} ккал</span>
+              </summary>
+              <div className="px-3 pb-3 space-y-2">
+                {g.items.map((e) => <Entry key={e.id} e={e} canCheck={isPlan(e)} />)}
+              </div>
+            </details>
+          ))}
+        </div>
+      ))}
 
       {showAdd && (
         <AddDiaryEntryModal date={date} memberId={memberId}

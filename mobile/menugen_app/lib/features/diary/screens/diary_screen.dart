@@ -459,37 +459,12 @@ class _LoadedViewState extends State<_LoadedView> {
     MealType.snack,
   ];
 
-  // Калорийность одной записи (nutrition.calories: num | String | {value}).
-  double _entryKcal(DiaryEntry e) {
-    final raw = e.nutrition['calories'];
-    double n = 0;
-    if (raw is num) {
-      n = raw.toDouble();
-    } else if (raw is String) {
-      n = double.tryParse(raw.replaceAll(',', '.')) ?? 0;
-    } else if (raw is Map && raw['value'] != null) {
-      n = double.tryParse('${raw['value']}'.replaceAll(',', '.')) ?? 0;
-    }
-    return n * e.quantity;
-  }
-
-  String _cap(String s) =>
-      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
-
   @override
   Widget build(BuildContext context) {
-    // DIARY_MULTIDAY: группируем записи по дате → секции с относительной подписью.
-    final byDate = <String, List<DiaryEntry>>{};
-    for (final e in widget.state.entries) {
-      byDate.putIfAbsent(e.date, () => <DiaryEntry>[]).add(e);
-    }
-    // Выбранная (anchor) дата видна всегда — туда уходят добавление/импорт.
-    byDate.putIfAbsent(widget.state.date, () => <DiaryEntry>[]);
-    // DIARY_MULTIDAY: «сегодня» показываем всегда (требование «информация за
-    // текущий день»), даже если фокус/импорт увели на другую дату.
-    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    byDate.putIfAbsent(todayStr, () => <DiaryEntry>[]);
-    final dates = byDate.keys.toList()..sort();
+    // DIARY: показываем РОВНО выбранный день (записи уже отфильтрованы по дате).
+    final entries = widget.state.entries;
+    final planned = entries.where((e) => e.isPlanned).toList();
+    final manual = entries.where((e) => !e.isPlanned).toList();
 
     return Column(
       children: [
@@ -504,7 +479,31 @@ class _LoadedViewState extends State<_LoadedView> {
             key: const PageStorageKey('diary-entries'),
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
             children: [
-              for (final d in dates) ..._buildDaySection(context, d, byDate[d]!),
+              if (planned.isEmpty && manual.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 32),
+                  child: Center(child: Text('Нет записей')),
+                ),
+              if (planned.isNotEmpty) ..._buildPlanTree(widget.state.date, planned),
+              if (manual.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+                  child: Row(children: [
+                    Icon(Icons.restaurant, size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 6),
+                    Text('Факт (${manual.length})',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                  ]),
+                ),
+                ...manual.map((e) => _EntryTile(
+                      entry: e,
+                      accent: _mealColor(e.mealType), // DIARY_COLOR
+                      onToggleEaten: null, // manual entries are always actual
+                      onDelete: () => widget.onDelete(e),
+                      onEdit: () => widget.onEdit(e),
+                    )),
+              ],
               const SizedBox(height: 96),
             ],
           ),
@@ -513,95 +512,7 @@ class _LoadedViewState extends State<_LoadedView> {
     );
   }
 
-  // DIARY_MULTIDAY: секция одного дня — цветная шапка (Сегодня/Вчера/Завтра/
-  // день недели + дата) + дерево приёмов и факт за этот день.
-  List<Widget> _buildDaySection(
-      BuildContext context, String dateStr, List<DiaryEntry> dayEntries) {
-    final cs = Theme.of(context).colorScheme;
-    final d = DateTime.tryParse(dateStr) ?? DateTime.now();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final diff = DateTime(d.year, d.month, d.day).difference(today).inDays;
-
-    String label;
-    Color headerBg;
-    Color labelColor = cs.onSurface;
-    if (diff == 0) {
-      label = 'Сегодня';
-      headerBg = cs.primary.withOpacity(0.14);
-      labelColor = cs.primary;
-    } else if (diff == -1) {
-      label = 'Вчера';
-      headerBg = cs.primary.withOpacity(0.06);
-    } else if (diff == 1) {
-      label = 'Завтра';
-      headerBg = cs.primary.withOpacity(0.06);
-    } else {
-      label = _cap(DateFormat('EEEE', 'ru').format(d));
-      headerBg = Colors.grey.withOpacity(0.10);
-    }
-    final dateSub = _cap(DateFormat('d MMMM', 'ru').format(d));
-
-    final planned = dayEntries.where((e) => e.isPlanned).toList();
-    final manual = dayEntries.where((e) => !e.isPlanned).toList();
-    final kcal = dayEntries.fold<double>(0, (s, e) => s + _entryKcal(e));
-
-    final out = <Widget>[];
-    out.add(Container(
-      margin: const EdgeInsets.only(top: 10, bottom: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: headerBg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Text(label,
-              style: TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 14, color: labelColor)),
-          const SizedBox(width: 8),
-          Text(dateSub,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-          const Spacer(),
-          if (kcal > 0)
-            Text('${kcal.round()} ккал',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
-        ],
-      ),
-    ));
-
-    if (planned.isEmpty && manual.isEmpty) {
-      out.add(const Padding(
-        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        child: Text('Нет записей',
-            style: TextStyle(color: Colors.grey, fontSize: 13)),
-      ));
-      return out;
-    }
-
-    if (planned.isNotEmpty) out.addAll(_buildPlanTree(dateStr, planned));
-    if (manual.isNotEmpty) {
-      out.add(Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
-        child: Row(children: [
-          Icon(Icons.restaurant, size: 16, color: Colors.grey.shade600),
-          const SizedBox(width: 6),
-          Text('Факт (${manual.length})',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-        ]),
-      ));
-      out.addAll(manual.map((e) => _EntryTile(
-            entry: e,
-            accent: _mealColor(e.mealType), // DIARY_COLOR
-            onToggleEaten: null, // manual entries are always actual
-            onDelete: () => widget.onDelete(e),
-            onEdit: () => widget.onEdit(e),
-          )));
-    }
-    return out;
-  }
-
-  // Дерево плана за конкретную дату — мастер-чекбокс дня + ветки приёмов + листья.
+  // Дерево плана за выбранный день — мастер-чекбокс дня + ветки приёмов + листья.
   List<Widget> _buildPlanTree(String dateStr, List<DiaryEntry> planned) {
     final total = planned.length;
     final eaten = planned.where((e) => e.isEaten).length;
