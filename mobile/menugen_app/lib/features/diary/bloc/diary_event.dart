@@ -76,18 +76,21 @@ class DiaryUpdateRequested extends DiaryEvent {
   List<Object?> get props => [entryId, fields];
 }
 
-/// MG-605.D — import all MenuItems of a menu into the diary for a given day.
+/// MG-605.D — import MenuItems of a menu into the diary starting from a date.
+/// FILL_FROM_MENU: itemIds — выбранное подмножество позиций (пусто/null = всё меню).
 class DiaryImportFromMenuRequested extends DiaryEvent {
   final int menuId;
   final String date;
   final int? memberId;
+  final List<int>? itemIds;
   const DiaryImportFromMenuRequested({
     required this.menuId,
     required this.date,
     this.memberId,
+    this.itemIds,
   });
   @override
-  List<Object?> get props => [menuId, date, memberId];
+  List<Object?> get props => [menuId, date, memberId, itemIds];
 }
 
 // DIARY_V2: water tracker events.

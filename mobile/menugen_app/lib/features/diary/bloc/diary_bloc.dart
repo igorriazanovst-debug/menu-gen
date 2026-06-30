@@ -318,7 +318,11 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
       final qs = params.entries
           .map((kv) => '${kv.key}=${Uri.encodeQueryComponent('${kv.value}')}')
           .join('&');
-      await apiClient.post('/diary/import-from-menu/?$qs');
+      // FILL_FROM_MENU: выбранные позиции уходят телом (backend читает item_ids из body).
+      final body = (e.itemIds != null && e.itemIds!.isNotEmpty)
+          ? <String, dynamic>{'item_ids': e.itemIds}
+          : null;
+      await apiClient.post('/diary/import-from-menu/?$qs', data: body);
       // DIARY_MULTIDAY: после импорта фокус остаётся на текущей выбранной дате
       // (обычно «сегодня»), а не уезжает на дату старта плана.
       add(DiaryLoadRequested(

@@ -347,6 +347,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
         menuId: sel.menuId,
         date: DateFormat('yyyy-MM-dd').format(sel.startDate),
         memberId: _memberId,
+        itemIds: sel.itemIds,
       ),
     );
   }
@@ -719,15 +720,27 @@ class _PremiumLockView extends StatelessWidget {
   }
 }
 
-// DIARY_MULTIDAY: результат диалога импорта — меню + дата старта плана.
+// DIARY: результат диалога импорта — меню + дата старта + выбранные позиции.
 class _ImportSelection {
   final int menuId;
   final DateTime startDate;
-  const _ImportSelection(this.menuId, this.startDate);
+  final List<int> itemIds;
+  const _ImportSelection(this.menuId, this.startDate, this.itemIds);
 }
 
-// MG_DIARYMENU: выпадающий список меню вместо ручного ввода ID (ID — внутреннее
-// обозначение, пользователю не известно). Грузим /menu/ как в shopping_create_sheet.
+// FILL_FROM_MENU: лейблы/порядок слотов приёмов в меню (как на web).
+const Map<String, String> _mealSlotLabel = {
+  'breakfast': 'Завтрак',
+  'snack1': 'Перекус 1',
+  'lunch': 'Обед',
+  'snack2': 'Перекус 2',
+  'dinner': 'Ужин',
+  'snack': 'Перекус',
+};
+const List<String> _slotOrder = ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner', 'snack'];
+
+// MG_DIARYMENU/FILL_FROM_MENU: выбор меню + даты старта + КОНКРЕТНЫХ позиций
+// (по дням/приёмам/блюдам), а не «всё активное меню».
 class _ImportMenuDialog extends StatefulWidget {
   final DateTime initialDate;
   final ApiClient apiClient;
@@ -739,9 +752,14 @@ class _ImportMenuDialog extends StatefulWidget {
 class _ImportMenuDialogState extends State<_ImportMenuDialog> {
   List<Map<String, dynamic>> _menus = const [];
   int? _menuId;
-  bool _loading = true;
+  bool _loading = true; // загрузка списка меню
   String? _err;
-  late DateTime _startDate; // DIARY_MULTIDAY: дата старта плана
+  late DateTime _startDate;
+
+  // Детали выбранного меню + выбор позиций.
+  List<Map<String, dynamic>> _items = const [];
+  bool _loadingDetail = false;
+  final Set<int> _selected = <int>{};
 
   @override
   void initState() {
@@ -750,24 +768,6 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
     _loadMenus();
   }
 
-  // DIARY_MULTIDAY: число дней в меню (для подсказки итогового диапазона).
-  int _spanDays(Map<String, dynamic>? m) {
-    if (m == null) return 1;
-    final s = DateTime.tryParse('${m['start_date']}');
-    final e = DateTime.tryParse('${m['end_date']}');
-    if (s == null || e == null) return 1;
-    final n = e.difference(s).inDays + 1;
-    return n < 1 ? 1 : n;
-  }
-
-  Map<String, dynamic>? get _selectedMenu {
-    for (final m in _menus) {
-      if (m['id'] == _menuId) return m;
-    }
-    return null;
-  }
-
-  // Человекочитаемый лейбл меню (автор + диапазон дат), как в списках покупок.
   String _menuLabel(Map<String, dynamic> m) {
     String dm(Object? iso) {
       final s = iso?.toString() ?? '';
@@ -793,11 +793,13 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
+        final firstId = menus.isNotEmpty ? menus.first['id'] as int? : null;
         setState(() {
           _menus = menus;
-          _menuId = menus.isNotEmpty ? menus.first['id'] as int? : null;
+          _menuId = firstId;
           _loading = false;
         });
+        if (firstId != null) _loadDetail(firstId);
       } else {
         setState(() => _loading = false);
       }
@@ -810,68 +812,160 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
     }
   }
 
+  Future<void> _loadDetail(int id) async {
+    setState(() {
+      _loadingDetail = true;
+      _items = const [];
+      _selected.clear();
+    });
+    try {
+      final r = await widget.apiClient.get('/menu/$id/');
+      if (!mounted) return;
+      final raw = (r is Map ? (r['items'] as List? ?? const []) : const []);
+      final items = raw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      setState(() {
+        _items = items;
+        _selected.addAll(items.map(_idOf)); // по умолчанию выбрано всё
+        _loadingDetail = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingDetail = false);
+    }
+  }
+
+  int _idOf(Map<String, dynamic> it) => (it['id'] as num).toInt();
+
+  void _toggleMany(Iterable<int> ids, bool on) {
+    setState(() {
+      if (on) {
+        _selected.addAll(ids);
+      } else {
+        _selected.removeAll(ids);
+      }
+    });
+  }
+
+  // items → день → слот.
+  Map<int, Map<String, List<Map<String, dynamic>>>> _grouped() {
+    final byDay = <int, Map<String, List<Map<String, dynamic>>>>{};
+    for (final it in _items) {
+      final day = (it['day_offset'] as num?)?.toInt() ?? 0;
+      final slot = (it['meal_slot'] ?? it['meal_type'] ?? 'snack').toString();
+      byDay.putIfAbsent(day, () => <String, List<Map<String, dynamic>>>{});
+      byDay[day]!.putIfAbsent(slot, () => <Map<String, dynamic>>[]);
+      byDay[day]![slot]!.add(it);
+    }
+    return byDay;
+  }
+
+  String _dayDate(int offset) =>
+      DateFormat('EEE, d MMM', 'ru').format(_startDate.add(Duration(days: offset)));
+
   @override
   Widget build(BuildContext context) {
-    final span = _spanDays(_selectedMenu);
-    final endDate = _startDate.add(Duration(days: span - 1));
+    final allIds = _items.map(_idOf).toList();
+    final allChecked = allIds.isNotEmpty && _selected.length == allIds.length;
+    // Итоговый диапазон по выбранным позициям (старт + макс. day_offset).
+    final selOffsets = _items
+        .where((it) => _selected.contains(_idOf(it)))
+        .map((it) => (it['day_offset'] as num?)?.toInt() ?? 0);
+    final maxOff = selOffsets.isEmpty ? 0 : selOffsets.reduce((a, b) => a > b ? a : b);
+    final endDate = _startDate.add(Duration(days: maxOff));
+    final grouped = _grouped();
+    final days = grouped.keys.toList()..sort();
+
     return AlertDialog(
       title: const Text('Импорт из меню'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // DIARY_MULTIDAY: дата старта — дни меню разносятся от неё по датам.
-          OutlinedButton.icon(
-            onPressed: () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: _startDate,
-                firstDate: DateTime(2020),
-                lastDate: DateTime(2030),
-                locale: const Locale('ru'),
-              );
-              if (picked != null) setState(() => _startDate = picked);
-            },
-            icon: const Icon(Icons.event, size: 18),
-            label: Text('Старт: ${DateFormat('d MMMM yyyy', 'ru').format(_startDate)}'),
-          ),
-          if (span > 1)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                'Дни лягут: ${DateFormat('d MMM', 'ru').format(_startDate)} – '
-                '${DateFormat('d MMM', 'ru').format(endDate)} ($span дн.)',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+      scrollable: true, // весь контент прокручивается целиком (без вложенных скроллов)
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Дата старта — дни меню разносятся от неё по реальным датам.
+            OutlinedButton.icon(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _startDate,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2030),
+                  locale: const Locale('ru'),
+                );
+                if (picked != null) setState(() => _startDate = picked);
+              },
+              icon: const Icon(Icons.event, size: 18),
+              label: Text('Старт: ${DateFormat('d MMMM yyyy', 'ru').format(_startDate)}'),
+            ),
+            if (_selected.isNotEmpty && maxOff > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Лягут: ${DateFormat('d MMM', 'ru').format(_startDate)} – '
+                  '${DateFormat('d MMM', 'ru').format(endDate)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ),
-            ),
-          const SizedBox(height: 12),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_menus.isEmpty)
-            Text(
-              _err ?? 'Нет доступных меню. Сначала сгенерируйте меню.',
-              style: const TextStyle(fontSize: 13, color: Colors.grey),
-            )
-          else
-            DropdownButtonFormField<int>(
-              value: _menuId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Меню'),
-              items: _menus
-                  .map((m) => DropdownMenuItem<int>(
-                        value: m['id'] as int?,
-                        child: Text(
-                          _menuLabel(m),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ))
-                  .toList(),
-              onChanged: (v) => setState(() => _menuId = v),
-            ),
-        ],
+            const SizedBox(height: 10),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_menus.isEmpty)
+              Text(
+                _err ?? 'Нет доступных меню. Сначала сгенерируйте меню.',
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              )
+            else ...[
+              DropdownButtonFormField<int>(
+                value: _menuId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Меню', isDense: true),
+                items: _menus
+                    .map((m) => DropdownMenuItem<int>(
+                          value: m['id'] as int?,
+                          child: Text(_menuLabel(m), overflow: TextOverflow.ellipsis),
+                        ))
+                    .toList(),
+                onChanged: (v) {
+                  setState(() => _menuId = v);
+                  if (v != null) _loadDetail(v);
+                },
+              ),
+              const SizedBox(height: 6),
+              if (_loadingDetail)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_items.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('В меню нет позиций',
+                      style: TextStyle(fontSize: 13, color: Colors.grey)),
+                )
+              else ...[
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text('Выбрать всё (${allIds.length})',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  value: allChecked,
+                  onChanged: (v) => _toggleMany(allIds, v == true),
+                ),
+                const Divider(height: 1),
+                for (final day in days) ..._buildDay(day, grouped[day]!),
+              ],
+            ],
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -879,13 +973,78 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
           child: const Text('Отмена'),
         ),
         FilledButton(
-          onPressed: (_loading || _menuId == null)
+          onPressed: (_menuId == null || _selected.isEmpty)
               ? null
-              : () => Navigator.pop(context, _ImportSelection(_menuId!, _startDate)),
-          child: const Text('Импортировать'),
+              : () => Navigator.pop(
+                  context, _ImportSelection(_menuId!, _startDate, _selected.toList())),
+          child: Text('Импортировать (${_selected.length})'),
         ),
       ],
     );
+  }
+
+  List<Widget> _buildDay(int day, Map<String, List<Map<String, dynamic>>> slots) {
+    final slotKeys = slots.keys.toList()
+      ..sort((a, b) {
+        final ia = _slotOrder.indexOf(a);
+        final ib = _slotOrder.indexOf(b);
+        return (ia < 0 ? 99 : ia).compareTo(ib < 0 ? 99 : ib);
+      });
+    final dayIds = slots.values.expand((l) => l).map(_idOf).toList();
+    final daySel = dayIds.where(_selected.contains).length;
+    final dayAll = dayIds.isNotEmpty && daySel == dayIds.length;
+    final dayNone = daySel == 0;
+
+    final out = <Widget>[];
+    out.add(CheckboxListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      tristate: true,
+      value: dayAll ? true : (dayNone ? false : null),
+      onChanged: (_) => _toggleMany(dayIds, !dayAll),
+      title: Text('День ${day + 1} · ${_dayDate(day)}',
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+    ));
+
+    for (final sk in slotKeys) {
+      final items = slots[sk]!;
+      out.add(Padding(
+        padding: const EdgeInsets.only(left: 16, top: 6, bottom: 2),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(_mealSlotLabel[sk] ?? sk,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600)),
+        ),
+      ));
+      for (final it in items) {
+        final id = _idOf(it);
+        final title =
+            ((it['recipe'] is Map ? it['recipe']['title'] : null) ?? 'Без названия')
+                .toString();
+        out.add(Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _selected.contains(id),
+            onChanged: (v) => setState(() {
+              if (v == true) {
+                _selected.add(id);
+              } else {
+                _selected.remove(id);
+              }
+            }),
+            title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ));
+      }
+    }
+    return out;
   }
 }
 
