@@ -318,6 +318,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
             onDelete: (entry) {
               context.read<DiaryBloc>().add(DiaryDeleteRequested(entry.id));
             },
+            onEdit: _onEditEntry, // DIARY_EDIT
           );
         }
         return const SizedBox.shrink();
@@ -338,11 +339,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
     );
     if (sel == null) return;
     if (!mounted) return;
-    // Переносим anchor дневника на дату старта — сразу видно залитые дни.
-    setState(() {
-      _selected = sel.startDate;
-      _focusedDay = sel.startDate;
-    });
+    // DIARY_MULTIDAY: фокус дневника НЕ уводим с текущего дня (см. требование
+    // «показывать информацию за текущий день») — залитые дни видны в ленте,
+    // сегодня всегда остаётся в фокусе и в шапке.
     bloc.add(
       DiaryImportFromMenuRequested(
         menuId: sel.menuId,
@@ -382,6 +381,19 @@ class _DiaryScreenState extends State<DiaryScreen> {
         ));
   }
 
+  // DIARY_EDIT: редактирование записи (приём/название/кол-во/КБЖУ) → PATCH.
+  void _onEditEntry(DiaryEntry entry) async {
+    final fields = await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder: (_) => _EditEntryDialog(entry: entry),
+    );
+    if (fields == null) return;
+    if (!mounted) return;
+    context
+        .read<DiaryBloc>()
+        .add(DiaryUpdateRequested(entryId: entry.id, fields: fields));
+  }
+
   // DIARY_COPY_V3: copy-from-day dialog (#4).
   void _onCopyTap() async {
     final bloc = context.read<DiaryBloc>();
@@ -408,15 +420,31 @@ class _LoadedView extends StatefulWidget {
   final void Function(DiaryEntry, bool) onMarkEaten;
   final void Function(List<int>, bool) onMarkMany; // MG_SKIN: branch / all
   final void Function(DiaryEntry) onDelete;
+  final void Function(DiaryEntry) onEdit; // DIARY_EDIT
   const _LoadedView({
     required this.state,
     required this.onMarkEaten,
     required this.onMarkMany,
     required this.onDelete,
+    required this.onEdit,
   });
 
   @override
   State<_LoadedView> createState() => _LoadedViewState();
+}
+
+// DIARY_COLOR: фиксированный цвет приёма пищи для визуального разделения.
+Color _mealColor(MealType m) {
+  switch (m) {
+    case MealType.breakfast:
+      return const Color(0xFFFB8C00); // оранжевый
+    case MealType.lunch:
+      return const Color(0xFF43A047); // зелёный
+    case MealType.dinner:
+      return const Color(0xFF3949AB); // синий
+    case MealType.snack:
+      return const Color(0xFF8E24AA); // фиолетовый
+  }
 }
 
 class _LoadedViewState extends State<_LoadedView> {
@@ -457,6 +485,10 @@ class _LoadedViewState extends State<_LoadedView> {
     }
     // Выбранная (anchor) дата видна всегда — туда уходят добавление/импорт.
     byDate.putIfAbsent(widget.state.date, () => <DiaryEntry>[]);
+    // DIARY_MULTIDAY: «сегодня» показываем всегда (требование «информация за
+    // текущий день»), даже если фокус/импорт увели на другую дату.
+    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    byDate.putIfAbsent(todayStr, () => <DiaryEntry>[]);
     final dates = byDate.keys.toList()..sort();
 
     return Column(
@@ -560,8 +592,10 @@ class _LoadedViewState extends State<_LoadedView> {
       ));
       out.addAll(manual.map((e) => _EntryTile(
             entry: e,
+            accent: _mealColor(e.mealType), // DIARY_COLOR
             onToggleEaten: null, // manual entries are always actual
             onDelete: () => widget.onDelete(e),
+            onEdit: () => widget.onEdit(e),
           )));
     }
     return out;
@@ -606,14 +640,20 @@ class _LoadedViewState extends State<_LoadedView> {
       final mIds = items.map((e) => e.id).toList();
       final key = '$dateStr|${mt.value}';
       final collapsed = _collapsed.contains(key);
+      final color = _mealColor(mt); // DIARY_COLOR
 
-      // Заголовок ветки: чекбокс всей ветки + сворачивание.
+      // Заголовок ветки: чекбокс всей ветки + сворачивание (цвет приёма).
       out.add(InkWell(
         onTap: () => setState(() {
           if (!_collapsed.remove(key)) _collapsed.add(key);
         }),
-        child: Padding(
-          padding: const EdgeInsets.only(left: 8, top: 2),
+        child: Container(
+          margin: const EdgeInsets.only(left: 6, top: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border(left: BorderSide(color: color, width: 4)),
+          ),
           child: Row(
             children: [
               Checkbox(
@@ -623,14 +663,14 @@ class _LoadedViewState extends State<_LoadedView> {
               ),
               Expanded(
                 child: Text('${mt.label} ($mEaten/${items.length})',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                    style: TextStyle(fontWeight: FontWeight.w700, color: color)),
               ),
               AnimatedRotation(
                 turns: collapsed ? -0.25 : 0.0,
                 duration: const Duration(milliseconds: 180),
-                child: const Icon(Icons.keyboard_arrow_down, size: 22),
+                child: Icon(Icons.keyboard_arrow_down, size: 22, color: color),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
             ],
           ),
         ),
@@ -642,8 +682,10 @@ class _LoadedViewState extends State<_LoadedView> {
             padding: const EdgeInsets.only(left: 16),
             child: _EntryTile(
               entry: e,
+              accent: color,
               onToggleEaten: (v) => widget.onMarkEaten(e, v),
               onDelete: () => widget.onDelete(e),
+              onEdit: () => widget.onEdit(e),
             ),
           ));
         }
@@ -655,17 +697,22 @@ class _LoadedViewState extends State<_LoadedView> {
 
 class _EntryTile extends StatelessWidget {
   final DiaryEntry entry;
+  final Color? accent; // DIARY_COLOR
   final void Function(bool)? onToggleEaten;
   final VoidCallback onDelete;
+  final VoidCallback? onEdit; // DIARY_EDIT
 
   const _EntryTile({
     required this.entry,
+    this.accent,
     required this.onToggleEaten,
     required this.onDelete,
+    this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
+    final qty = '×${entry.quantity.toStringAsFixed(entry.quantity == entry.quantity.roundToDouble() ? 0 : 1)}';
     return Dismissible(
       key: ValueKey('diary-${entry.id}'),
       direction: DismissDirection.endToStart,
@@ -678,18 +725,47 @@ class _EntryTile extends StatelessWidget {
       onDismissed: (_) => onDelete(),
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 4),
-        child: ListTile(
-          leading: onToggleEaten != null
-              ? Checkbox(
-                  value: entry.isEaten,
-                  onChanged: (v) => onToggleEaten!(v ?? false),
-                )
-              : const Icon(Icons.check_circle, color: Colors.green),
-          title: Text(
-            entry.displayTitle.isNotEmpty ? entry.displayTitle : '—',
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          // DIARY_COLOR: цветная левая полоса по цвету приёма.
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: accent ?? Colors.transparent, width: 5),
+            ),
           ),
-          subtitle: Text(entry.mealType.label),
-          trailing: Text('×${entry.quantity.toStringAsFixed(entry.quantity == entry.quantity.roundToDouble() ? 0 : 1)}'),
+          child: ListTile(
+            leading: onToggleEaten != null
+                ? Checkbox(
+                    value: entry.isEaten,
+                    onChanged: (v) => onToggleEaten!(v ?? false),
+                  )
+                : const Icon(Icons.check_circle, color: Colors.green),
+            title: Text(
+              entry.displayTitle.isNotEmpty ? entry.displayTitle : '—',
+            ),
+            subtitle: Text(entry.mealType.label),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(qty, style: TextStyle(color: Colors.grey.shade600)),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  tooltip: 'Действия',
+                  onSelected: (v) {
+                    if (v == 'edit') {
+                      onEdit?.call();
+                    } else if (v == 'delete') {
+                      onDelete();
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem<String>(value: 'edit', child: Text('Изменить')),
+                    PopupMenuItem<String>(value: 'delete', child: Text('Удалить')),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1463,6 +1539,162 @@ class _AddManualDialogState extends State<_AddManualDialog>
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Отмена')),
         FilledButton(onPressed: _submit, child: const Text('Добавить')),
+      ],
+    );
+  }
+}
+
+
+// DIARY_EDIT: редактирование записи дневника. Возвращает тело PATCH /diary/{id}/
+// (meal_type/quantity/nutrition, + custom_name для ручных записей).
+class _EditEntryDialog extends StatefulWidget {
+  final DiaryEntry entry;
+  const _EditEntryDialog({required this.entry});
+  @override
+  State<_EditEntryDialog> createState() => _EditEntryDialogState();
+}
+
+class _EditEntryDialogState extends State<_EditEntryDialog> {
+  late MealType _meal;
+  late final TextEditingController _name;
+  late final TextEditingController _qty;
+  late final TextEditingController _cal;
+  late final TextEditingController _prot;
+  late final TextEditingController _fat;
+  late final TextEditingController _carb;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.entry;
+    _meal = e.mealType;
+    _name = TextEditingController(text: e.displayTitle);
+    _qty = TextEditingController(text: _fmtNum(e.quantity));
+    final n = e.nutrition;
+    _cal = TextEditingController(text: _fmtNum(_toNum(n['calories'])));
+    _prot = TextEditingController(text: _fmtNum(_toNum(n['proteins'])));
+    _fat = TextEditingController(text: _fmtNum(_toNum(n['fats'])));
+    _carb = TextEditingController(text: _fmtNum(_toNum(n['carbs'])));
+  }
+
+  String _fmtNum(num v) {
+    final d = v.toDouble();
+    return d == d.roundToDouble() ? d.toStringAsFixed(0) : d.toString();
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _qty.dispose();
+    _cal.dispose();
+    _prot.dispose();
+    _fat.dispose();
+    _carb.dispose();
+    super.dispose();
+  }
+
+  num? _n(TextEditingController c) => double.tryParse(c.text.trim().replaceAll(',', '.'));
+
+  InputDecoration _dec(String l) =>
+      InputDecoration(labelText: l, isDense: true, border: const OutlineInputBorder());
+
+  void _save() {
+    final isRecipe = widget.entry.recipeId != null;
+    if (!isRecipe && _name.text.trim().isEmpty) {
+      setState(() => _error = 'Укажите название блюда');
+      return;
+    }
+    final qty = _n(_qty)?.toDouble() ?? 0;
+    if (qty <= 0) {
+      setState(() => _error = 'Количество должно быть больше 0');
+      return;
+    }
+    final fields = <String, dynamic>{
+      'meal_type': _meal.value,
+      'quantity': qty,
+      'nutrition': {
+        'calories': {'value': (_n(_cal) ?? 0).toString(), 'unit': 'ккал'},
+        'proteins': {'value': (_n(_prot) ?? 0).toString(), 'unit': 'г'},
+        'fats': {'value': (_n(_fat) ?? 0).toString(), 'unit': 'г'},
+        'carbs': {'value': (_n(_carb) ?? 0).toString(), 'unit': 'г'},
+      },
+    };
+    // Имя меняем только у ручных записей (у рецепта заголовок берётся из рецепта).
+    if (!isRecipe) fields['custom_name'] = _name.text.trim();
+    Navigator.pop(context, fields);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isRecipe = widget.entry.recipeId != null;
+    return AlertDialog(
+      title: const Text('Изменить запись'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              DropdownButtonFormField<MealType>(
+                value: _meal,
+                isExpanded: true,
+                decoration: _dec('Приём пищи'),
+                items: MealType.values
+                    .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
+                    .toList(),
+                onChanged: (v) => setState(() => _meal = v ?? _meal),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _name,
+                enabled: !isRecipe,
+                decoration: _dec(isRecipe ? 'Название (из рецепта)' : 'Название'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _qty,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: _dec('Количество'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _cal,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: _dec('Калории (ккал)'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _prot,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: _dec('Белки (г)'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _fat,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: _dec('Жиры (г)'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _carb,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: _dec('Углеводы (г)'),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_error!,
+                      style: const TextStyle(color: Colors.red, fontSize: 13)),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Отмена')),
+        FilledButton(onPressed: _save, child: const Text('Сохранить')),
       ],
     );
   }

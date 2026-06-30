@@ -67,6 +67,15 @@ class DiaryDeleteRequested extends DiaryEvent {
   List<Object?> get props => [entryId];
 }
 
+/// DIARY_EDIT: PATCH одной записи (название/приём/кол-во/КБЖУ).
+class DiaryUpdateRequested extends DiaryEvent {
+  final int entryId;
+  final Map<String, dynamic> fields; // тело PATCH /diary/{id}/
+  const DiaryUpdateRequested({required this.entryId, required this.fields});
+  @override
+  List<Object?> get props => [entryId, fields];
+}
+
 /// MG-605.D — import all MenuItems of a menu into the diary for a given day.
 class DiaryImportFromMenuRequested extends DiaryEvent {
   final int menuId;

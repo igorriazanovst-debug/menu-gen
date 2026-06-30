@@ -41,6 +41,7 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     on<DiaryMarkManyEatenRequested>(_onMarkMany);
     on<DiaryAddManualRequested>(_onAddManual);
     on<DiaryDeleteRequested>(_onDelete);
+    on<DiaryUpdateRequested>(_onUpdate); // DIARY_EDIT
     on<DiaryImportFromMenuRequested>(_onImportFromMenu);
     on<DiaryWaterSetRequested>(_onWaterSet); // DIARY_V2
     on<DiaryCopyRequested>(_onCopy); // DIARY_COPY_V3
@@ -106,8 +107,8 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
       // DIARY_MULTIDAY: грузим записи диапазоном вокруг выбранной (anchor) даты,
       // чтобы показать многодневную ленту (импорт меню разносит дни по датам).
       final anchor = DateTime.parse(e.date);
-      final fromStr = DateFormat('yyyy-MM-dd').format(anchor.subtract(const Duration(days: 7)));
-      final toStr = DateFormat('yyyy-MM-dd').format(anchor.add(const Duration(days: 30)));
+      final fromStr = DateFormat('yyyy-MM-dd').format(anchor.subtract(const Duration(days: 14)));
+      final toStr = DateFormat('yyyy-MM-dd').format(anchor.add(const Duration(days: 45)));
       final params = <String, dynamic>{
         'from': fromStr,
         'to': toStr,
@@ -290,6 +291,23 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     }
   }
 
+  // DIARY_EDIT: PATCH записи, затем перезагрузка вокруг текущей даты.
+  Future<void> _onUpdate(
+    DiaryUpdateRequested e,
+    Emitter<DiaryState> emit,
+  ) async {
+    final prev = state;
+    try {
+      await apiClient.patch('/diary/${e.entryId}/', data: e.fields);
+      add(DiaryLoadRequested(
+        date: prev is DiaryLoaded ? prev.date : DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        memberId: prev is DiaryLoaded ? prev.memberId : null,
+      ));
+    } catch (err) {
+      emit(_toErrorState(err, isWrite: true));
+    }
+  }
+
   Future<void> _onImportFromMenu(
     DiaryImportFromMenuRequested e,
     Emitter<DiaryState> emit,
@@ -308,8 +326,10 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
           .map((kv) => '${kv.key}=${Uri.encodeQueryComponent('${kv.value}')}')
           .join('&');
       await apiClient.post('/diary/import-from-menu/?$qs');
+      // DIARY_MULTIDAY: после импорта фокус остаётся на текущей выбранной дате
+      // (обычно «сегодня»), а не уезжает на дату старта плана.
       add(DiaryLoadRequested(
-        date: e.date,
+        date: prev is DiaryLoaded ? prev.date : e.date,
         memberId: prev is DiaryLoaded ? prev.memberId : null,
       ));
     } catch (err) {

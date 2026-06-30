@@ -48,6 +48,28 @@ const StatBox: React.FC<{ label: string; planned: number; actual: number; unit: 
   </div>
 );
 
+// DIARY_CHART: круговая диаграмма «факт/план» по калориям (SVG-кольцо, без зависимостей).
+const CalorieDonut: React.FC<{ fact: number; plan: number }> = ({ fact, plan }) => {
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  const ratio = plan > 0 ? Math.min(1, Math.max(0, fact / plan)) : (fact > 0 ? 1 : 0);
+  const pct = plan > 0 ? Math.round((fact / plan) * 100) : null;
+  return (
+    <div className="relative shrink-0" style={{ width: 88, height: 88 }}>
+      <svg width="88" height="88" viewBox="0 0 88 88" className="-rotate-90">
+        <circle cx="44" cy="44" r={r} fill="none" stroke="#F26B5E33" strokeWidth="8" />
+        <circle cx="44" cy="44" r={r} fill="none" stroke="#F26B5E" strokeWidth="8"
+          strokeLinecap="round" strokeDasharray={`${ratio * c} ${c}`} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
+        <span className="text-sm font-bold text-tomato">{Math.round(fact)}</span>
+        <span className="text-[10px] text-gray-400">/ {plan > 0 ? Math.round(plan) : '—'} ккал</span>
+        {pct !== null && <span className="text-[10px] text-gray-400">{pct}%</span>}
+      </div>
+    </div>
+  );
+};
+
 export const DiaryPage: React.FC = () => {
   const [date, setDate] = useState(today());
   const [memberId, setMemberId] = useState<number | undefined>(undefined);
@@ -231,15 +253,17 @@ export const DiaryPage: React.FC = () => {
         )}
       </div>
 
-      {/* Stats card (план / факт) */}
+      {/* Stats card (план / факт) — DIARY_CHART: кольцо калорий + макросы */}
       {stats && (
         <Card className="p-4">
           <div className="text-sm font-semibold text-chocolate mb-3">Итог за день (факт / план)</div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <StatBox label="Калории" planned={stats.planned.calories} actual={stats.actual.calories} unit="ккал" />
-            <StatBox label="Белки" planned={stats.planned.proteins} actual={stats.actual.proteins} unit="г" />
-            <StatBox label="Жиры" planned={stats.planned.fats} actual={stats.actual.fats} unit="г" />
-            <StatBox label="Углеводы" planned={stats.planned.carbs} actual={stats.actual.carbs} unit="г" />
+          <div className="flex items-center gap-4">
+            <CalorieDonut fact={stats.actual.calories} plan={stats.planned.calories} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
+              <StatBox label="Белки" planned={stats.planned.proteins} actual={stats.actual.proteins} unit="г" />
+              <StatBox label="Жиры" planned={stats.planned.fats} actual={stats.actual.fats} unit="г" />
+              <StatBox label="Углеводы" planned={stats.planned.carbs} actual={stats.actual.carbs} unit="г" />
+            </div>
           </div>
         </Card>
       )}
