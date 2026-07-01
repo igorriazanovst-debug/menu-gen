@@ -105,17 +105,17 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
     }
     // внутренние map блюд → массивы (сохраняя порядок)
     const out = new Map<number, Map<string, Dish[]>>();
-    for (const [day, slots] of byDay) {
+    byDay.forEach((slots, day) => {
       const s = new Map<string, Dish[]>();
-      for (const [slot, dishes] of slots) s.set(slot, Array.from(dishes.values()));
+      slots.forEach((dishes, slot) => s.set(slot, Array.from(dishes.values())));
       out.set(day, s);
-    }
+    });
     return out;
   }, [detail]);
 
   const dishList = useMemo(() => {
     const arr: Dish[] = [];
-    for (const slots of grouped.values()) for (const dishes of slots.values()) arr.push(...dishes);
+    grouped.forEach((slots) => slots.forEach((dishes) => arr.push(...dishes)));
     return arr;
   }, [grouped]);
 
