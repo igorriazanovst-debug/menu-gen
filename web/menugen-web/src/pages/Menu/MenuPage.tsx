@@ -272,7 +272,6 @@ interface MealCardProps {
 }
 
 const MealCard: React.FC<MealCardProps> = ({ slot, items, warnings, onOpenModal }) => {
-  const [expanded, setExpanded] = useState(false);
   const sorted = useMemo(() => sortByRole(items), [items]);
   const dbType = slotToMealType(slot);
   const label  = MEAL_SLOT_LABEL[slot] || MEAL_LABELS[dbType] || slot;
@@ -290,58 +289,50 @@ const MealCard: React.FC<MealCardProps> = ({ slot, items, warnings, onOpenModal 
     );
   }
 
-  const roleIcons = sorted.map(i =>
-    COMPONENT_ROLE_ICONS[(i.component_role || 'other') as ComponentRole]
-  ).join('');
-
+  // DIARY_CHART/menu: приём показываем карточками блюд (миниатюра + название +
+  // КБЖУ) — как в mobile; клик по карточке открывает подробности.
   return (
-    <div className={[
-      'p-3 rounded-xl transition-all',
-      hasWarn ? 'border-2 border-red-400 bg-red-50' : 'bg-rice',
-    ].join(' ')}>
-      <button
-        type="button"
-        className="w-full text-left"
-        onClick={() => setExpanded(e => !e)}
-        aria-expanded={expanded}
-      >
-        <div className="flex items-center gap-1 mb-1">
-          <span>{MEAL_ICONS[dbType] ?? '🍽'}</span>
-          <span className="text-xs text-gray-500">{label}</span>
-          <span className="ml-auto text-xs text-gray-400">
-            {expanded ? '▾' : '▸'}
-          </span>
-        </div>
-        <p className="text-xs text-chocolate font-medium">
-          {sorted.length} {sorted.length === 1 ? 'компонент' : sorted.length < 5 ? 'компонента' : 'компонентов'}
-        </p>
-        <p className="text-sm mt-0.5">{roleIcons}</p>
-        {hasWarn && <p className="text-xs text-red-600 mt-1">⚠️</p>}
-      </button>
-
-      {expanded && (
-        <div className="mt-2 pt-2 border-t border-border space-y-1.5">
-          {sorted.map(item => {
-            const role = (item.component_role || 'other') as ComponentRole;
-            return (
-              <div key={item.id} className="flex items-start gap-2 text-xs">
-                <span className="flex-shrink-0">{COMPONENT_ROLE_ICONS[role]}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-chocolate line-clamp-2 leading-tight">{item.recipe.title}</p>
-                  <p className="text-[10px] text-gray-400">{COMPONENT_ROLE_LABELS[role]}</p>
+    <div
+      role="button"
+      onClick={onOpenModal}
+      className={[
+        'p-3 rounded-xl transition-all cursor-pointer hover:ring-1 hover:ring-tomato/40',
+        hasWarn ? 'border-2 border-red-400 bg-red-50' : 'bg-rice',
+      ].join(' ')}
+    >
+      <div className="flex items-center gap-1 mb-2">
+        <span>{MEAL_ICONS[dbType] ?? '🍽'}</span>
+        <span className="text-xs text-gray-500">{label}</span>
+        <span className="ml-auto text-xs text-gray-400">{sorted.length}</span>
+      </div>
+      <div className="space-y-1.5">
+        {sorted.map(item => {
+          const role = (item.component_role || 'other') as ComponentRole;
+          const cal = item.recipe.nutrition?.calories;
+          return (
+            <div key={item.id} className="flex items-center gap-2">
+              {item.recipe.image_url ? (
+                <img src={item.recipe.image_url} alt=""
+                     className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-lg flex-shrink-0">
+                  {COMPONENT_ROLE_ICONS[role]}
                 </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-chocolate leading-tight line-clamp-2">{item.recipe.title}</p>
+                <p className="text-[10px] text-gray-400 truncate">
+                  {COMPONENT_ROLE_LABELS[role]}
+                  {cal && ` · 🔥 ${cal.value} ${cal.unit}`}
+                </p>
               </div>
-            );
-          })}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onOpenModal(); }}
-            className="mt-2 w-full text-xs text-tomato hover:underline"
-          >
-            Подробнее →
-          </button>
-        </div>
-      )}
+            </div>
+          );
+        })}
+      </div>
+      {hasWarn && <p className="text-xs text-red-600 mt-1">⚠️</p>}
+      <p className="mt-2 text-xs text-tomato">Подробнее →</p>
     </div>
   );
 };

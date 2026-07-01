@@ -1,4 +1,4 @@
-// MG_204_V_summary = 1
+// MG_204_V_summary — DIARY_CHART: калораж дня цветной донат-диаграммой (как в mobile).
 import React from 'react';
 import type { MenuItem, NutritionTargets } from '../../types';
 
@@ -38,73 +38,91 @@ function sumTotals(items: MenuItem[]): Totals {
   );
 }
 
-/** % от цели; 0 если цель не задана / 0 */
-const pct = (actual: number, target: number) =>
-  target > 0 ? Math.round((actual / target) * 100) : 0;
+const fmt = (v: number, digits = 0) =>
+  digits > 0 ? v.toFixed(digits) : Math.round(v).toString();
 
-/** Цвет полоски: зелёный 85-115%, жёлтый 60-130%, красный иначе */
-const barColor = (p: number): string => {
-  if (p === 0) return 'bg-gray-300';
-  if (p >= 85 && p <= 115) return 'bg-green-500';
-  if (p >= 60 && p <= 130) return 'bg-amber-500';
-  return 'bg-red-500';
-};
+// Цвета макросов — как в mobile MenuSummaryCard: У синий, Ж янтарный, Б томат.
+const CARB_COLOR = '#5B9BD5';
+const FAT_COLOR = '#FBBF24';
+const PRO_COLOR = '#F26B5E';
 
-interface RowProps {
-  label: string;
-  actual: number;
-  target: number;
-  unit: string;
-  fractionDigits?: number;
-}
-
-const NutrRow: React.FC<RowProps> = ({ label, actual, target, unit, fractionDigits = 0 }) => {
-  const p = pct(actual, target);
-  const widthPct = Math.min(p, 130); // визуально режем до 130%
-  const fmt = (n: number) =>
-    fractionDigits > 0 ? n.toFixed(fractionDigits) : Math.round(n).toString();
+// DIARY_CHART: донат распределения калорий по макросам (SVG, без зависимостей).
+const MacroDonut: React.FC<{ carbCal: number; fatCal: number; proCal: number; size?: number }> =
+({ carbCal, fatCal, proCal, size = 60 }) => {
+  const stroke = 9;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const cx = size / 2;
+  const cy = size / 2;
+  const total = carbCal + fatCal + proCal;
+  const segs = [
+    { v: carbCal, color: CARB_COLOR },
+    { v: fatCal, color: FAT_COLOR },
+    { v: proCal, color: PRO_COLOR },
+  ];
+  let offset = 0;
   return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-600">{label}</span>
-        <span className="text-gray-700 tabular-nums">
-          {fmt(actual)}
-          {target > 0 && <span className="text-gray-400"> / {fmt(target)} {unit}</span>}
-          {target === 0 && <span className="text-gray-400"> {unit}</span>}
-          {target > 0 && <span className="ml-2 text-gray-400">{p}%</span>}
-        </span>
-      </div>
-      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full ${barColor(p)} transition-all`}
-          style={{ width: `${widthPct}%` }}
-        />
-      </div>
-    </div>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90 shrink-0">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#E5E7EB" strokeWidth={stroke} />
+      {total > 0 && segs.map((s, i) => {
+        if (s.v <= 0) return null;
+        const len = (s.v / total) * c;
+        const el = (
+          <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={s.color} strokeWidth={stroke}
+            strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} />
+        );
+        offset += len;
+        return el;
+      })}
+    </svg>
   );
 };
+
+const Legend: React.FC<{ color: string; label: string; grams: number }> = ({ color, label, grams }) => (
+  <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+    <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+    {fmt(grams, 1)} г {label}
+  </span>
+);
 
 export const DayNutritionSummary: React.FC<Props> = ({ items, targets }) => {
   if (!items || items.length === 0) return null;
 
   const t = sumTotals(items);
   const tgt = targets ?? null;
+  const calTarget = numToFloat(tgt?.calorie_target);
+  const calPct = calTarget > 0 ? Math.round((t.calories / calTarget) * 100) : null;
+
+  const carbCal = t.carbs * 4;
+  const fatCal = t.fats * 9;
+  const proCal = t.proteins * 4;
 
   return (
-    <div className="px-3 py-3 bg-rice/40 rounded-xl border border-border space-y-2">
-      <div className="text-xs font-medium text-chocolate/80">
-        Итог за день
-        {!tgt && (
-          <span className="ml-2 text-gray-400 font-normal">
-            (цели не заданы — заполните профиль)
-          </span>
-        )}
+    <div className="px-3 py-3 bg-rice/40 rounded-xl border border-border">
+      <div className="flex items-center gap-4">
+        <MacroDonut carbCal={carbCal} fatCal={fatCal} proCal={proCal} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-lg font-bold text-chocolate">{fmt(t.calories)} ккал</span>
+            {calTarget > 0 && (
+              <span className="text-xs text-gray-400">
+                / {fmt(calTarget)} ккал · {calPct}%
+              </span>
+            )}
+            {!tgt && <span className="text-xs text-gray-400">(цели не заданы)</span>}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+            <Legend color={CARB_COLOR} label="У" grams={t.carbs} />
+            <Legend color={FAT_COLOR} label="Ж" grams={t.fats} />
+            <Legend color={PRO_COLOR} label="Б" grams={t.proteins} />
+            {t.fiber > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                Клетчатка {fmt(t.fiber, 1)} г
+              </span>
+            )}
+          </div>
+        </div>
       </div>
-      <NutrRow label="Калории" actual={t.calories} target={numToFloat(tgt?.calorie_target)}    unit="ккал" />
-      <NutrRow label="Белок"   actual={t.proteins} target={numToFloat(tgt?.protein_target_g)}  unit="г" fractionDigits={1} />
-      <NutrRow label="Жиры"    actual={t.fats}     target={numToFloat(tgt?.fat_target_g)}      unit="г" fractionDigits={1} />
-      <NutrRow label="Углев"   actual={t.carbs}    target={numToFloat(tgt?.carb_target_g)}     unit="г" fractionDigits={1} />
-      <NutrRow label="Клетч"   actual={t.fiber}    target={numToFloat(tgt?.fiber_target_g)}    unit="г" fractionDigits={1} />
     </div>
   );
 };

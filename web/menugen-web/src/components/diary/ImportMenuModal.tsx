@@ -33,6 +33,9 @@ const SLOT_ORDER = ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner', 'snack']
 const slotKey = (it: MenuItem): string =>
   (it.meal_slot && String(it.meal_slot)) || it.meal_type;
 
+// FILL_FROM_MENU: одно блюдо в списке импорта; ids — все копии (по членам семьи).
+interface Dish { title: string; ids: number[]; }
+
 const fmtRange = (m: Menu) => {
   const f = (d: string) => new Date(d).toLocaleDateString('ru', { day: 'numeric', month: 'short' });
   return `${f(m.start_date)} – ${f(m.end_date)}`;
@@ -83,33 +86,44 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
 
   useEffect(() => { if (menuId != null) loadDetail(menuId); }, [menuId, loadDetail]);
 
-  // Group items by day_offset → slot.
+  // FILL_FROM_MENU: схлопываем копии блюда (в family-меню одно блюдо продублировано
+  // под каждого члена семьи). Блюдо = (recipe.id + component_role); храним все id-копии,
+  // отправляем их — бэкенд импортирует копию нужного члена.
   const grouped = useMemo(() => {
     const items = detail?.items ?? [];
-    const byDay = new Map<number, Map<string, MenuItem[]>>();
+    const byDay = new Map<number, Map<string, Map<string, Dish>>>();
     for (const it of items) {
       const day = it.day_offset ?? 0;
       const slot = slotKey(it);
+      const key = `${it.recipe?.id ?? it.recipe?.title ?? ''}|${it.component_role ?? ''}`;
       if (!byDay.has(day)) byDay.set(day, new Map());
       const slots = byDay.get(day)!;
-      if (!slots.has(slot)) slots.set(slot, []);
-      slots.get(slot)!.push(it);
+      if (!slots.has(slot)) slots.set(slot, new Map());
+      const dishes = slots.get(slot)!;
+      if (!dishes.has(key)) dishes.set(key, { title: it.recipe?.title ?? 'Без названия', ids: [] });
+      dishes.get(key)!.ids.push(it.id);
     }
-    return byDay;
+    // внутренние map блюд → массивы (сохраняя порядок)
+    const out = new Map<number, Map<string, Dish[]>>();
+    for (const [day, slots] of byDay) {
+      const s = new Map<string, Dish[]>();
+      for (const [slot, dishes] of slots) s.set(slot, Array.from(dishes.values()));
+      out.set(day, s);
+    }
+    return out;
   }, [detail]);
+
+  const dishList = useMemo(() => {
+    const arr: Dish[] = [];
+    for (const slots of grouped.values()) for (const dishes of slots.values()) arr.push(...dishes);
+    return arr;
+  }, [grouped]);
 
   // DIARY_MULTIDAY: день меню ляжет на baseDate + offset (не на собственные даты меню).
   const dayDate = (offset: number): string => {
     const iso = addDaysIso(baseDate, offset);
     return new Date(`${iso}T00:00:00`).toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'short' });
   };
-
-  const toggle = (id: number) =>
-    setSelected((prev) => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
 
   const toggleMany = (ids: number[], on: boolean) =>
     setSelected((prev) => {
@@ -120,6 +134,9 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
 
   const allIds = useMemo(() => (detail?.items ?? []).map((i) => i.id), [detail]);
   const allChecked = allIds.length > 0 && selected.size === allIds.length;
+  // Счётчики по УНИКАЛЬНЫМ блюдам (а не по id-копиям).
+  const totalDishes = dishList.length;
+  const selectedDishes = dishList.filter((d) => d.ids.every((id) => selected.has(id))).length;
 
   const run = async () => {
     if (menuId == null) return;
@@ -177,7 +194,7 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
                   <input type="checkbox" checked={allChecked}
                          onChange={() => toggleMany(allIds, !allChecked)}
                          className="w-4 h-4 accent-tomato" />
-                  Выбрать всё ({allIds.length})
+                  Выбрать всё ({totalDishes})
                 </label>
 
                 <div className="space-y-4">
@@ -192,9 +209,9 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
                         </div>
                         <div className="p-2 space-y-2">
                           {slotKeys.map((sk) => {
-                            const its = slots.get(sk)!;
-                            const ids = its.map((i) => i.id);
-                            const on = ids.every((i) => selected.has(i));
+                            const dishes = slots.get(sk)!;
+                            const ids = dishes.flatMap((d) => d.ids);
+                            const on = ids.length > 0 && ids.every((i) => selected.has(i));
                             return (
                               <div key={sk}>
                                 <label className="flex items-center gap-2 text-xs font-medium text-gray-500 mb-1 cursor-pointer select-none">
@@ -204,18 +221,18 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
                                   {MEAL_SLOT_LABEL[sk] ?? MEAL_LABELS[sk as MealType] ?? sk}
                                 </label>
                                 <div className="pl-5 space-y-1">
-                                  {its.map((it) => (
-                                    <label key={it.id}
-                                           className="flex items-center gap-2 text-sm text-chocolate cursor-pointer select-none">
-                                      <input type="checkbox" checked={selected.has(it.id)}
-                                             onChange={() => toggle(it.id)}
-                                             className="w-4 h-4 accent-tomato" />
-                                      <span className="truncate">
-                                        {it.recipe?.title ?? 'Без названия'}
-                                        {it.quantity !== 1 && <span className="text-gray-400"> ×{it.quantity}</span>}
-                                      </span>
-                                    </label>
-                                  ))}
+                                  {dishes.map((dish, di) => {
+                                    const checked = dish.ids.every((id) => selected.has(id));
+                                    return (
+                                      <label key={di}
+                                             className="flex items-center gap-2 text-sm text-chocolate cursor-pointer select-none">
+                                        <input type="checkbox" checked={checked}
+                                               onChange={() => toggleMany(dish.ids, !checked)}
+                                               className="w-4 h-4 accent-tomato" />
+                                        <span className="truncate">{dish.title}</span>
+                                      </label>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             );
@@ -237,7 +254,7 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
         <div className="flex gap-2 justify-end mt-4">
           <Button variant="ghost" onClick={onClose} disabled={busy}>Отмена</Button>
           <Button onClick={run} disabled={busy || selected.size === 0}>
-            {busy ? 'Добавление…' : `Добавить (${selected.size})`}
+            {busy ? 'Добавление…' : `Добавить (${selectedDishes})`}
           </Button>
         </div>
       </Card>
