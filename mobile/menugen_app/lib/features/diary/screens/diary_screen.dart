@@ -739,6 +739,15 @@ const Map<String, String> _mealSlotLabel = {
 };
 const List<String> _slotOrder = ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner', 'snack'];
 
+// FILL_FROM_MENU: одно блюдо в диалоге (в family-меню одно блюдо продублировано
+// под каждого члена семьи — схлопываем в одну строку, но храним все id-копии,
+// чтобы бэкенд импортировал копию нужного члена).
+class _MenuDish {
+  final String title;
+  final List<int> ids;
+  const _MenuDish(this.title, this.ids);
+}
+
 // MG_DIARYMENU/FILL_FROM_MENU: выбор меню + даты старта + КОНКРЕТНЫХ позиций
 // (по дням/приёмам/блюдам), а не «всё активное меню».
 class _ImportMenuDialog extends StatefulWidget {
@@ -849,17 +858,39 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
     });
   }
 
-  // items → день → слот.
-  Map<int, Map<String, List<Map<String, dynamic>>>> _grouped() {
-    final byDay = <int, Map<String, List<Map<String, dynamic>>>>{};
+  // items → день → слот → блюда (схлопнуты дубли по (рецепт+роль),
+  // т.е. копии одного блюда под разных членов семьи склеены в одно).
+  Map<int, Map<String, List<_MenuDish>>> _groupedDishes() {
+    final byDay = <int, Map<String, Map<String, _MenuDish>>>{};
     for (final it in _items) {
       final day = (it['day_offset'] as num?)?.toInt() ?? 0;
       final slot = (it['meal_slot'] ?? it['meal_type'] ?? 'snack').toString();
-      byDay.putIfAbsent(day, () => <String, List<Map<String, dynamic>>>{});
-      byDay[day]!.putIfAbsent(slot, () => <Map<String, dynamic>>[]);
-      byDay[day]![slot]!.add(it);
+      final rec = it['recipe'] is Map ? it['recipe'] as Map : null;
+      final rid = (rec?['id'] ?? rec?['title'] ?? '').toString();
+      final role = (it['component_role'] ?? '').toString();
+      final title = (rec?['title'] ?? 'Без названия').toString();
+      final key = '$rid|$role';
+      byDay.putIfAbsent(day, () => <String, Map<String, _MenuDish>>{});
+      byDay[day]!.putIfAbsent(slot, () => <String, _MenuDish>{});
+      final slotMap = byDay[day]![slot]!;
+      slotMap.putIfAbsent(key, () => _MenuDish(title, <int>[]));
+      slotMap[key]!.ids.add(_idOf(it));
     }
-    return byDay;
+    return byDay.map((d, slots) =>
+        MapEntry(d, slots.map((s, dishes) => MapEntry(s, dishes.values.toList()))));
+  }
+
+  // Кол-во уникальных блюд (для «Выбрать всё» и счётчика на кнопке).
+  int _countDishes(Map<int, Map<String, List<_MenuDish>>> g, {required bool selectedOnly}) {
+    var c = 0;
+    for (final slots in g.values) {
+      for (final dishes in slots.values) {
+        for (final dish in dishes) {
+          if (!selectedOnly || dish.ids.every(_selected.contains)) c++;
+        }
+      }
+    }
+    return c;
   }
 
   String _dayDate(int offset) =>
@@ -875,8 +906,10 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
         .map((it) => (it['day_offset'] as num?)?.toInt() ?? 0);
     final maxOff = selOffsets.isEmpty ? 0 : selOffsets.reduce((a, b) => a > b ? a : b);
     final endDate = _startDate.add(Duration(days: maxOff));
-    final grouped = _grouped();
+    final grouped = _groupedDishes();
     final days = grouped.keys.toList()..sort();
+    final totalDishes = _countDishes(grouped, selectedOnly: false);
+    final selectedDishes = _countDishes(grouped, selectedOnly: true);
 
     return AlertDialog(
       title: const Text('Импорт из меню'),
@@ -955,7 +988,7 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   controlAffinity: ListTileControlAffinity.leading,
-                  title: Text('Выбрать всё (${allIds.length})',
+                  title: Text('Выбрать всё ($totalDishes)',
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                   value: allChecked,
                   onChanged: (v) => _toggleMany(allIds, v == true),
@@ -977,20 +1010,20 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
               ? null
               : () => Navigator.pop(
                   context, _ImportSelection(_menuId!, _startDate, _selected.toList())),
-          child: Text('Импортировать (${_selected.length})'),
+          child: Text('Импортировать ($selectedDishes)'),
         ),
       ],
     );
   }
 
-  List<Widget> _buildDay(int day, Map<String, List<Map<String, dynamic>>> slots) {
+  List<Widget> _buildDay(int day, Map<String, List<_MenuDish>> slots) {
     final slotKeys = slots.keys.toList()
       ..sort((a, b) {
         final ia = _slotOrder.indexOf(a);
         final ib = _slotOrder.indexOf(b);
         return (ia < 0 ? 99 : ia).compareTo(ib < 0 ? 99 : ib);
       });
-    final dayIds = slots.values.expand((l) => l).map(_idOf).toList();
+    final dayIds = slots.values.expand((l) => l).expand((d) => d.ids).toList();
     final daySel = dayIds.where(_selected.contains).length;
     final dayAll = dayIds.isNotEmpty && daySel == dayIds.length;
     final dayNone = daySel == 0;
@@ -1008,7 +1041,7 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
     ));
 
     for (final sk in slotKeys) {
-      final items = slots[sk]!;
+      final dishes = slots[sk]!;
       out.add(Padding(
         padding: const EdgeInsets.only(left: 16, top: 6, bottom: 2),
         child: Align(
@@ -1020,26 +1053,17 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
                   color: Colors.grey.shade600)),
         ),
       ));
-      for (final it in items) {
-        final id = _idOf(it);
-        final title =
-            ((it['recipe'] is Map ? it['recipe']['title'] : null) ?? 'Без названия')
-                .toString();
+      for (final dish in dishes) {
+        final checked = dish.ids.isNotEmpty && dish.ids.every(_selected.contains);
         out.add(Padding(
           padding: const EdgeInsets.only(left: 12),
           child: CheckboxListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
             controlAffinity: ListTileControlAffinity.leading,
-            value: _selected.contains(id),
-            onChanged: (v) => setState(() {
-              if (v == true) {
-                _selected.add(id);
-              } else {
-                _selected.remove(id);
-              }
-            }),
-            title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            value: checked,
+            onChanged: (v) => _toggleMany(dish.ids, v == true),
+            title: Text(dish.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ));
       }
