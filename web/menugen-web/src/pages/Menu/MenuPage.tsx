@@ -8,7 +8,7 @@ import { initAuth } from '../../store/slices/authSlice'; // Freemium: refresh qu
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
-import type { Menu, MenuItem, MealType, ComponentRole } from '../../types';
+import type { Menu, MenuItem, MealType, ComponentRole, Recipe } from '../../types';
 import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../types';
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
 import { DayNutritionSummary } from '../../components/menu/DayNutritionSummary';
@@ -154,6 +154,97 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
   );
 };
 
+// ── RecipeDetailModal ───────────────────────────────────────────────────────
+// В меню у блюда только «список»-рецепт (без ingredients/steps) — догружаем полный.
+
+const stepText = (s: unknown): string =>
+  typeof s === 'string' ? s : (s && typeof s === 'object' && 'text' in (s as object)
+    ? String((s as { text: unknown }).text) : '');
+
+const RecipeDetailModal: React.FC<{ recipeId: number; onClose: () => void }> = ({ recipeId, onClose }) => {
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    setLoading(true); setErr(null);
+    recipesApi.get(recipeId)
+      .then(res => { if (!cancel) setRecipe(res.data); })
+      .catch(() => { if (!cancel) setErr('Не удалось загрузить рецепт'); })
+      .finally(() => { if (!cancel) setLoading(false); });
+    return () => { cancel = true; };
+  }, [recipeId]);
+
+  const cal = recipe?.nutrition?.calories;
+  const ingredients = recipe?.ingredients ?? [];
+  const steps = recipe?.steps ?? [];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
+         onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div className="bg-surface rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        {loading ? (
+          <div className="p-10 flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-tomato" />
+          </div>
+        ) : err ? (
+          <div className="p-6">
+            <p className="text-red-600 text-sm">{err}</p>
+            <button onClick={onClose} className="mt-3 text-sm text-tomato hover:underline">Закрыть</button>
+          </div>
+        ) : recipe ? (
+          <>
+            {recipe.image_url && (
+              <img src={recipe.image_url} alt=""
+                   className="w-full h-52 object-cover rounded-t-2xl"
+                   onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            )}
+            <div className="p-6">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <h2 className="text-xl font-bold text-chocolate">{recipe.title}</h2>
+                <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-4">
+                {recipe.cook_time && <span>⏱ {recipe.cook_time}</span>}
+                {cal && <span>🔥 {cal.value} {cal.unit}</span>}
+                {recipe.servings ? <span>🍽 {recipe.servings} порц.</span> : null}
+              </div>
+
+              {ingredients.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="font-semibold text-chocolate mb-1">Ингредиенты</h3>
+                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-0.5">
+                    {ingredients.map((ing, i) => (
+                      <li key={i}>
+                        {ing.name}{ing.quantity ? `: ${ing.quantity}` : ''}{ing.unit ? ` ${ing.unit}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {steps.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-chocolate mb-1">Приготовление</h3>
+                  <ol className="list-decimal pl-5 text-sm text-gray-700 space-y-1">
+                    {steps.map((s, i) => <li key={i}>{stepText(s)}</li>)}
+                  </ol>
+                </div>
+              )}
+
+              {ingredients.length === 0 && steps.length === 0 && (
+                <p className="text-sm text-gray-400">У этого рецепта не заполнены ингредиенты и шаги.</p>
+              )}
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
 // ── MealDetailModal ─────────────────────────────────────────────────────────
 
 interface MealDetailModalProps {
@@ -167,37 +258,54 @@ interface MealDetailModalProps {
 
 const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, dayLabel, onClose, menuId, onSwapped }) => {
   const sorted = useMemo(() => sortByRole(items), [items]);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [printing, setPrinting] = useState(false);
 
-  const handlePrintRecipes = () => {
+  const handlePrintRecipes = async () => {
+    // В меню — только «список»-рецепты (без ingredients/steps): догружаем полные.
+    // Окно открываем СРАЗУ (в обработчике клика), иначе блокировщик попапов сработает.
     const win = window.open('', '_blank');
     if (!win) return;
-    const html = sorted.map(item => {
-      const r = item.recipe;
-      const ings = (r.ingredients || []).map((i: any) =>
-        `<li>${i.name}${i.quantity ? ': ' + i.quantity : ''}${i.unit ? ' ' + i.unit : ''}</li>`).join('');
-      const steps = (r.steps || []).map((s: any) => `<li>${s.text || s}</li>`).join('');
-      const cal = r.nutrition?.calories ? `${r.nutrition.calories.value} ${r.nutrition.calories.unit}` : '';
-      const role = item.component_role || 'other';
-      const roleLabel = COMPONENT_ROLE_LABELS[role as ComponentRole] || role;
-      return `
-        <h2>${COMPONENT_ROLE_ICONS[role as ComponentRole] || '🍽'} ${r.title}</h2>
-        <p><em>Роль: ${roleLabel}</em></p>
-        ${cal ? `<p>Калории: ${cal}</p>` : ''}
-        ${r.cook_time ? `<p>Время: ${r.cook_time}</p>` : ''}
-        ${ings ? `<h3>Ингредиенты</h3><ul>${ings}</ul>` : ''}
-        ${steps ? `<h3>Приготовление</h3><ol>${steps}</ol>` : ''}
-        <hr/>
-      `;
-    }).join('');
-    win.document.write(`
-      <html><head><title>${mealLabel} — ${dayLabel}</title>
-      <style>body{font-family:sans-serif;max-width:680px;margin:24px auto;padding:0 16px;color:#222}
-      h1{color:#c2410c}h2{color:#444;margin-top:24px}h3{margin-top:12px}
-      ul,ol{padding-left:22px}li{margin:4px 0}hr{border:0;border-top:1px solid #ddd;margin:24px 0}</style>
-      </head><body><h1>${mealLabel} · ${dayLabel}</h1>${html}</body></html>
-    `);
-    win.document.close();
-    setTimeout(() => win.print(), 300);
+    win.document.write('<p style="font-family:sans-serif;margin:24px">Загрузка рецептов…</p>');
+    setPrinting(true);
+    try {
+      const full = await Promise.all(
+        sorted.map(async (item) => ({ item, recipe: (await recipesApi.get(item.recipe.id)).data })),
+      );
+      const html = full.map(({ item, recipe: r }) => {
+        const ings = (r.ingredients || []).map((i) =>
+          `<li>${i.name}${i.quantity ? ': ' + i.quantity : ''}${i.unit ? ' ' + i.unit : ''}</li>`).join('');
+        const steps = (r.steps || []).map((s) => `<li>${stepText(s)}</li>`).join('');
+        const cal = r.nutrition?.calories ? `${r.nutrition.calories.value} ${r.nutrition.calories.unit}` : '';
+        const role = item.component_role || 'other';
+        const roleLabel = COMPONENT_ROLE_LABELS[role as ComponentRole] || role;
+        return `
+          <h2>${COMPONENT_ROLE_ICONS[role as ComponentRole] || '🍽'} ${r.title}</h2>
+          <p><em>Роль: ${roleLabel}</em></p>
+          ${cal ? `<p>Калории: ${cal}</p>` : ''}
+          ${r.cook_time ? `<p>Время: ${r.cook_time}</p>` : ''}
+          ${ings ? `<h3>Ингредиенты</h3><ul>${ings}</ul>` : ''}
+          ${steps ? `<h3>Приготовление</h3><ol>${steps}</ol>` : ''}
+          <hr/>
+        `;
+      }).join('');
+      win.document.open();
+      win.document.write(`
+        <html><head><title>${mealLabel} — ${dayLabel}</title>
+        <style>body{font-family:sans-serif;max-width:680px;margin:24px auto;padding:0 16px;color:#222}
+        h1{color:#c2410c}h2{color:#444;margin-top:24px}h3{margin-top:12px}
+        ul,ol{padding-left:22px}li{margin:4px 0}hr{border:0;border-top:1px solid #ddd;margin:24px 0}</style>
+        </head><body><h1>${mealLabel} · ${dayLabel}</h1>${html}</body></html>
+      `);
+      win.document.close();
+      setTimeout(() => win.print(), 300);
+    } catch {
+      win.document.open();
+      win.document.write('<p style="font-family:sans-serif;margin:24px;color:#c00">Не удалось загрузить рецепты для печати.</p>');
+      win.document.close();
+    } finally {
+      setPrinting(false);
+    }
   };
 
   return (
@@ -210,9 +318,9 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
             <p className="text-sm text-gray-500 capitalize">{dayLabel}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handlePrintRecipes}
-              className="px-3 py-1.5 rounded-xl bg-tomato text-white text-sm hover:bg-tomato/90">
-              🖨 Печать
+            <button onClick={handlePrintRecipes} disabled={printing}
+              className="px-3 py-1.5 rounded-xl bg-tomato text-white text-sm hover:bg-tomato/90 disabled:opacity-60">
+              {printing ? '…' : '🖨 Печать'}
             </button>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
           </div>
@@ -238,19 +346,28 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
                         {COMPONENT_ROLE_ICONS[role]} {COMPONENT_ROLE_LABELS[role]}
                       </span>
                     </div>
-                    <h3 className="font-semibold text-chocolate">{item.recipe.title}</h3>
+                    <button type="button" onClick={() => setDetailId(item.recipe.id)}
+                            className="text-left font-semibold text-chocolate hover:text-tomato">
+                      {item.recipe.title}
+                    </button>
                     <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
                       {item.recipe.cook_time && <span>⏱ {item.recipe.cook_time}</span>}
                       {item.recipe.nutrition?.calories &&
                         <span>🔥 {item.recipe.nutrition.calories.value} {item.recipe.nutrition.calories.unit}</span>}
                     </div>
-                    <SwapInline
-                      itemId={item.id}
-                      menuId={menuId}
-                      foodGroup={(item.recipe as any).food_group ?? null}
-                      currentRecipeId={item.recipe.id}
-                      onSwapped={onSwapped}
-                    />
+                    <div className="flex items-center gap-3 mt-1">
+                      <button type="button" onClick={() => setDetailId(item.recipe.id)}
+                              className="text-xs text-tomato hover:underline">
+                        📖 Рецепт
+                      </button>
+                      <SwapInline
+                        itemId={item.id}
+                        menuId={menuId}
+                        foodGroup={(item.recipe as any).food_group ?? null}
+                        currentRecipeId={item.recipe.id}
+                        onSwapped={onSwapped}
+                      />
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -258,6 +375,10 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
           })}
         </div>
       </div>
+
+      {detailId != null && (
+        <RecipeDetailModal recipeId={detailId} onClose={() => setDetailId(null)} />
+      )}
     </div>
   );
 };
