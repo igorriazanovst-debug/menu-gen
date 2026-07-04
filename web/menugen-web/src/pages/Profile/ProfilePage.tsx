@@ -243,8 +243,8 @@ export const ProfilePage: React.FC = () => {
       <Card className="p-6">
         <h2 className="text-lg font-bold text-chocolate mb-1">Аллергены</h2>
         <p className="text-xs text-gray-500 mb-4">
-          Блюда с этими продуктами исключаются из генерации меню. Ищите по каталогу продуктов
-          или введите свой аллерген и нажмите Enter.
+          Блюда с этими продуктами исключаются из генерации меню. Отметьте продукты в списке
+          ниже, найдите нужное через поиск или добавьте свой аллерген.
         </p>
         <AllergenEditor value={allergies} onChange={saveAllergies} />
         {allergenSaving ? (

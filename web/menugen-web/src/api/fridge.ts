@@ -73,6 +73,13 @@ export const fridgeApi = {
     return Array.isArray(data) ? data : (data.results ?? []);
   },
 
+  // MG_ALLERGEN: freemium-открытый каталог продуктов для выбора аллергенов.
+  // Ответ — голый массив (pagination_class=None). ?q — необязательный фильтр.
+  catalog: (q?: string): Promise<Product[]> =>
+    client
+      .get<Product[]>('/fridge/products/catalog/', { params: q ? { q } : {} })
+      .then((r) => r.data),
+
   products: (params?: { category?: string | number; seed?: boolean }) => {
     const query: Record<string, string> = {};
     if (params?.category != null) query.category = String(params.category);

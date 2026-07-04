@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    AllergenCatalogView,
     BarcodeLookupView,
     FridgeExpiredBulkDeleteView,
     FridgeHistoryEntryView,
@@ -21,6 +22,7 @@ urlpatterns = [
     path("scan/", BarcodeLookupView.as_view(), name="fridge-scan"),
     path("products/", ProductListView.as_view(), name="product-list"),
     path("products/search/", ProductSearchView.as_view(), name="product-search"),
+    path("products/catalog/", AllergenCatalogView.as_view(), name="product-catalog"),
     path("products/history/", FridgeHistoryView.as_view(), name="fridge-history"),
     path("products/history/<str:name>/", FridgeHistoryEntryView.as_view(), name="fridge-history-entry"),
     path("expired/delete/", FridgeExpiredBulkDeleteView.as_view(), name="fridge-expired-bulk-delete"),

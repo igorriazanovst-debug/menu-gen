@@ -225,6 +225,33 @@ class ProductSearchView(generics.ListAPIView):
         return Product.objects.filter(cond).distinct().order_by("name")[:20]
 
 
+# ─── MG_ALLERGEN: freemium browsable catalog for allergen picking ────────────
+class AllergenCatalogView(generics.ListAPIView):
+    """GET /fridge/products/catalog/?q=  — browsable product catalog.
+
+    Freemium-open (как ProductSearchView): это общий справочник продуктов, а не
+    данные холодильника семьи. Используется выбором аллергенов в профиле —
+    показывает список продуктов, по которому можно скроллить/искать и отмечать.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ProductSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = Product.objects.select_related("category_fk").all()
+        q = self.request.query_params.get("q", "").strip()
+        if q:
+            from .aliases import normalize_alias
+
+            cond = Q(name__icontains=q)
+            qn = normalize_alias(q)
+            if qn:
+                cond |= Q(aliases__alias_norm__icontains=qn)
+            qs = qs.filter(cond).distinct()
+        return qs.order_by("category_fk__sort_order", "category_fk__name_ru", "name")[:1000]
+
+
 # ─── MG-609: category list ──────────────────────────────────────────────────
 class ProductCategoryListView(generics.ListAPIView):
     """GET /fridge/categories/  — list active product categories."""

@@ -1,16 +1,16 @@
-// MG_ALLERGEN_V_web = 1
-// Редактор аллергенов профиля: чипы выбранных + поиск по каталогу продуктов
-// (/fridge/products/search/) + ручной ввод произвольного аллергена.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+// MG_ALLERGEN_V_web = 3
+// Редактор аллергенов профиля: выбор ИЗ СПИСКА продуктов (каталог загружается
+// сразу и виден), поиск по каталогу (серверный, для полного охвата) и ввод
+// произвольного аллергена.
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fridgeApi } from '../../api/fridge';
 import type { Product } from '../../types';
 
 interface Props {
-  /** Текущий список аллергенов (нижний регистр не гарантируется). */
+  /** Текущий список аллергенов. */
   value: string[];
   /** Вызывается с новым списком; родитель сохраняет на бэкенд. */
   onChange: (next: string[]) => void;
-  disabled?: boolean;
 }
 
 /** Есть ли уже такой аллерген (без учёта регистра/пробелов). */
@@ -19,80 +19,93 @@ function has(list: string[], name: string): boolean {
   return list.some((a) => a.trim().toLowerCase() === n);
 }
 
-export const AllergenEditor: React.FC<Props> = ({ value, onChange, disabled }) => {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
+interface Group {
+  cat: string;
+  items: Product[];
+}
 
-  // Закрывать выпадашку по клику вне.
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  const runSearch = useCallback((q: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const t = q.trim();
-    if (t.length < 2) {
-      setResults([]);
-      setLoading(false);
-      return;
+/** Группировка списка продуктов по названию категории (для заголовков). */
+function group(list: Product[]): Group[] {
+  const byCat: Record<string, Product[]> = {};
+  const order: string[] = [];
+  list.forEach((p) => {
+    const cat = p.category_name || 'Прочее';
+    if (!byCat[cat]) {
+      byCat[cat] = [];
+      order.push(cat);
     }
-    setLoading(true);
-    debounceRef.current = setTimeout(async () => {
+    byCat[cat].push(p);
+  });
+  return order.map((cat) => ({ cat, items: byCat[cat] }));
+}
+
+export const AllergenEditor: React.FC<Props> = ({ value, onChange }) => {
+  const [browse, setBrowse] = useState<Product[]>([]); // полный каталог (обзор)
+  const [results, setResults] = useState<Product[]>([]); // серверный поиск
+  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [loadErr, setLoadErr] = useState(false);
+  const [query, setQuery] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Каталог для обзора грузится один раз.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
       try {
-        const list = await fridgeApi.searchProducts(t);
-        setResults(list);
+        const list = await fridgeApi.catalog();
+        if (!cancelled) setBrowse(list);
       } catch {
-        setResults([]);
+        if (!cancelled) setLoadErr(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    }, 350);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
   const onQuery = (q: string) => {
     setQuery(q);
-    setOpen(true);
-    runSearch(q);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const t = q.trim();
+    if (t.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const list = await fridgeApi.catalog(t);
+        setResults(list);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
   };
 
-  const add = (name: string) => {
+  const toggle = (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    if (!has(value, trimmed)) {
+    if (has(value, trimmed)) {
+      onChange(value.filter((a) => a.trim().toLowerCase() !== trimmed.toLowerCase()));
+    } else {
       onChange([...value, trimmed]);
     }
-    setQuery('');
-    setResults([]);
-    setOpen(false);
   };
 
-  const remove = (name: string) => {
-    onChange(value.filter((a) => a !== name));
-  };
+  const remove = (name: string) => onChange(value.filter((a) => a !== name));
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (query.trim()) add(query);
-    }
-  };
-
+  const searchMode = query.trim().length >= 2;
+  const groups = useMemo(() => group(searchMode ? results : browse), [searchMode, results, browse]);
   const canAddCustom = query.trim().length > 0 && !has(value, query);
 
   return (
@@ -106,16 +119,14 @@ export const AllergenEditor: React.FC<Props> = ({ value, onChange, disabled }) =
               className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-tomato/10 text-tomato text-sm border border-tomato/20"
             >
               {a}
-              {!disabled && (
-                <button
-                  type="button"
-                  onClick={() => remove(a)}
-                  aria-label={`Убрать ${a}`}
-                  className="text-tomato/70 hover:text-tomato font-bold leading-none"
-                >
-                  ×
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => remove(a)}
+                aria-label={`Убрать ${a}`}
+                className="text-tomato/70 hover:text-tomato font-bold leading-none"
+              >
+                ×
+              </button>
             </span>
           ))}
         </div>
@@ -123,58 +134,76 @@ export const AllergenEditor: React.FC<Props> = ({ value, onChange, disabled }) =
         <p className="text-sm text-gray-400 mb-3">Аллергены не выбраны.</p>
       )}
 
-      {!disabled && (
-        <div className="relative" ref={boxRef}>
-          <input
-            value={query}
-            onChange={(e) => onQuery(e.target.value)}
-            onFocus={() => query.trim() && setOpen(true)}
-            onKeyDown={onKeyDown}
-            placeholder="Поиск продукта или свой аллерген…"
-            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-tomato/40 focus:border-tomato"
-          />
+      {/* Поиск по каталогу */}
+      <input
+        value={query}
+        onChange={(e) => onQuery(e.target.value)}
+        placeholder="Поиск по списку или свой аллерген…"
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-tomato/40 focus:border-tomato"
+      />
 
-          {open && (loading || results.length > 0 || canAddCustom) && (
-            <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto rounded-xl border border-gray-200 bg-white shadow-lg">
-              {loading && (
-                <div className="px-3 py-2 text-sm text-gray-400">Поиск…</div>
-              )}
+      {/* Добавить произвольный аллерген (когда нет в списке) */}
+      {canAddCustom && (
+        <button
+          type="button"
+          onClick={() => {
+            toggle(query);
+            onQuery('');
+          }}
+          className="mt-2 w-full text-left px-3 py-2 rounded-xl text-sm text-avocado bg-avocado/5 hover:bg-avocado/10 border border-avocado/20"
+        >
+          + Добавить свой аллерген «{query.trim()}»
+        </button>
+      )}
 
-              {!loading &&
-                results.map((p) => {
-                  const already = has(value, p.name);
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      disabled={already}
-                      onClick={() => add(p.name)}
+      {/* Список продуктов каталога */}
+      <div className="mt-2 max-h-72 overflow-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+        {loading && <div className="px-3 py-3 text-sm text-gray-400">Загрузка каталога…</div>}
+        {!loading && loadErr && (
+          <div className="px-3 py-3 text-sm text-red-500">
+            Не удалось загрузить каталог. Можно ввести аллерген вручную выше.
+          </div>
+        )}
+        {!loading && !loadErr && searching && (
+          <div className="px-3 py-3 text-sm text-gray-400">Поиск…</div>
+        )}
+        {!loading && !loadErr && !searching && groups.length === 0 && (
+          <div className="px-3 py-3 text-sm text-gray-400">Ничего не найдено.</div>
+        )}
+        {!loading &&
+          !loadErr &&
+          !searching &&
+          groups.map((g) => (
+            <div key={g.cat}>
+              <div className="sticky top-0 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-500">
+                {g.cat}
+              </div>
+              {g.items.map((p) => {
+                const checked = has(value, p.name);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => toggle(p.name)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-tomato/5"
+                  >
+                    <span
                       className={
-                        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm ' +
-                        (already
-                          ? 'text-gray-300 cursor-default'
-                          : 'text-gray-700 hover:bg-tomato/5')
+                        'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border text-xs ' +
+                        (checked
+                          ? 'bg-tomato border-tomato text-white'
+                          : 'border-gray-300 text-transparent')
                       }
                     >
-                      <span className="truncate flex-1">{p.name}</span>
-                      {already && <span className="text-xs">добавлен</span>}
-                    </button>
-                  );
-                })}
-
-              {!loading && canAddCustom && (
-                <button
-                  type="button"
-                  onClick={() => add(query)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-avocado hover:bg-avocado/5 border-t border-gray-100"
-                >
-                  + Добавить «{query.trim()}»
-                </button>
-              )}
+                      ✓
+                    </span>
+                    <span className="truncate flex-1">{p.name}</span>
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
-      )}
+          ))}
+      </div>
     </div>
   );
 };

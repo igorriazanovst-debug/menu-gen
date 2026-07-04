@@ -322,7 +322,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 4),
                         const Text(
                           'Блюда с этими продуктами исключаются из генерации меню. '
-                          'Ищите по каталогу или введите свой аллерген.',
+                          'Отметьте продукты в списке, найдите нужное через поиск '
+                          'или добавьте свой аллерген.',
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                         const SizedBox(height: 12),
