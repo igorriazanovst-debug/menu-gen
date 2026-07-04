@@ -11,6 +11,7 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { SkinSwitcher } from '../../components/ui/SkinSwitcher'; // MG_SKIN
 import { TargetField, type TargetLoader } from '../../components/profile/TargetField';
+import { AllergenEditor } from '../../components/profile/AllergenEditor'; // MG_ALLERGEN
 import { getErrorMessage } from '../../utils/api';
 import type {
   MealPlan,
@@ -39,6 +40,10 @@ export const ProfilePage: React.FC = () => {
 
   const [name, setName]   = useState(user?.name ?? '');
   const [mealPlan, setMealPlan] = useState<MealPlan>(user?.profile?.meal_plan_type ?? '3');
+  // MG_ALLERGEN: список аллергенов пользователя (сохраняется отдельно, on change).
+  const [allergies, setAllergies] = useState<string[]>(user?.allergies ?? []);
+  const [allergenSaving, setAllergenSaving] = useState(false);
+  const [allergenMsg, setAllergenMsg] = useState('');
   // MG_RUBRIC007_state: family currency.
   const [family, setFamily] = useState<Family | null>(null);
   const [currency, setCurrency] = useState('RUB');
@@ -51,7 +56,8 @@ export const ProfilePage: React.FC = () => {
   useEffect(() => {
     setName(user?.name ?? '');
     setMealPlan(user?.profile?.meal_plan_type ?? '3');
-  }, [user?.id, user?.name, user?.profile?.meal_plan_type]);
+    setAllergies(user?.allergies ?? []);
+  }, [user?.id, user?.name, user?.profile?.meal_plan_type, user?.allergies]);
 
   // MG_RUBRIC007_load: fetch family to read/set its currency.
   useEffect(() => {
@@ -117,6 +123,24 @@ export const ProfilePage: React.FC = () => {
     } catch (e) { setError(getErrorMessage(e)); }
     finally { setSaving(false); }
   };
+
+  // MG_ALLERGEN: сохранить список аллергенов сразу при изменении (оптимистично).
+  const saveAllergies = useCallback(async (next: string[]) => {
+    const prev = allergies;
+    setAllergies(next);
+    setAllergenSaving(true);
+    setAllergenMsg('');
+    try {
+      const { data } = await authApi.updateMe({ allergies: next });
+      dispatch(setUser(data));
+      setAllergenMsg('Аллергены сохранены');
+    } catch (e) {
+      setAllergies(prev);
+      setAllergenMsg(getErrorMessage(e));
+    } finally {
+      setAllergenSaving(false);
+    }
+  }, [allergies, dispatch]);
 
   const reloadMe = useCallback(async () => {
     try {
@@ -213,6 +237,21 @@ export const ProfilePage: React.FC = () => {
           )}
           {curMsg && <p className="text-xs text-gray-500 mt-1">{curMsg}</p>}
         </div>
+      </Card>
+
+      {/* MG_ALLERGEN: аллергены пользователя */}
+      <Card className="p-6">
+        <h2 className="text-lg font-bold text-chocolate mb-1">Аллергены</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Блюда с этими продуктами исключаются из генерации меню. Ищите по каталогу продуктов
+          или введите свой аллерген и нажмите Enter.
+        </p>
+        <AllergenEditor value={allergies} onChange={saveAllergies} />
+        {allergenSaving ? (
+          <p className="text-xs text-gray-400 mt-2">Сохранение…</p>
+        ) : (
+          allergenMsg && <p className="text-xs text-gray-500 mt-2">{allergenMsg}</p>
+        )}
       </Card>
 
       {/* MG_SKIN: выбор скина оформления */}

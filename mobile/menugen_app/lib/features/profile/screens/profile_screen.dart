@@ -11,6 +11,7 @@ import '../../../core/theme/skin_selector.dart'; // MG_SKIN
 import '../../../core/widgets/macro_pill.dart';
 import '../../../core/widgets/target_field.dart';
 import '../../../core/premium/premium_badge.dart';
+import '../widgets/allergen_editor.dart'; // MG_ALLERGEN
 
 class ProfileScreen extends StatefulWidget {
   final ApiClient apiClient;
@@ -26,6 +27,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _saving = false;
   String? _error;
   String _mealPlanType = '3';
+  List<String> _allergies = const []; // MG_ALLERGEN
+  bool _allergenSaving = false;
 
   @override
   void initState() {
@@ -47,6 +50,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _me = data;
         _mealPlanType = (profile?['meal_plan_type'] as String?) ?? '3';
+        _allergies = ((data['allergies'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList();
         _loading = false;
       });
     } catch (e) {
@@ -83,6 +89,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  // MG_ALLERGEN: сохранить список аллергенов (оптимистично, PATCH /users/me/).
+  Future<void> _saveAllergies(List<String> next) async {
+    final prev = _allergies;
+    setState(() {
+      _allergies = next;
+      _allergenSaving = true;
+      _error = null;
+    });
+    try {
+      await widget.apiClient.patch('/users/me/', data: {'allergies': next});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Аллергены сохранены')),
+      );
+    } catch (e) {
+      setState(() {
+        _allergies = prev;
+        _error = e.toString();
+      });
+    } finally {
+      if (mounted) setState(() => _allergenSaving = false);
     }
   }
 
@@ -256,6 +286,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   color: Colors.red, fontSize: 12),
                             ),
                           ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── Аллергены ───────────────────────────────────────
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Аллергены',
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            if (_allergenSaving)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Блюда с этими продуктами исключаются из генерации меню. '
+                          'Ищите по каталогу или введите свой аллерген.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 12),
+                        AllergenEditor(
+                          apiClient: widget.apiClient,
+                          value: _allergies,
+                          onChanged: _saveAllergies,
+                        ),
                       ],
                     ),
                   ),
