@@ -131,6 +131,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = config("MEDIA_URL", default="/media/")
 MEDIA_ROOT = BASE_DIR / "media"
 
+# MG_SHOPIMG: изображения товаров приходят как base64 в JSON-теле — поднимаем
+# лимит тела запроса (дефолт Django 2.5 МБ мал для фото). Фронт дополнительно
+# сжимает картинку до ~сотен КБ, но держим запас.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15 MB
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {

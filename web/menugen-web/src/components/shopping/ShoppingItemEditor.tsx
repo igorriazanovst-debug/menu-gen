@@ -25,6 +25,47 @@ function fileToDataUrl(file: File | Blob): Promise<string> {
   });
 }
 
+// MG_SHOPIMG: уменьшаем и сжимаем изображение в браузере, чтобы payload
+// (base64 в JSON) был лёгким — фото с диска на 3+ МБ иначе упирается в лимиты
+// тела запроса. Экспорт в JPEG ~0.82, максимум по стороне 1600px.
+function loadCompressed(file: File | Blob, maxDim = 1600, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth || img.width;
+      let h = img.naturalHeight || img.height;
+      if (!w || !h) {
+        reject(new Error('bad image'));
+        return;
+      }
+      const scale = Math.min(1, maxDim / Math.max(w, h));
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('no ctx'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } catch (e) {
+        reject(e as Error);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('img load failed'));
+    };
+    img.src = url;
+  });
+}
+
 export const ShoppingItemEditor: React.FC<Props> = ({ listId, item, onClose, onSaved }) => {
   const [note, setNote] = useState(item.note ?? '');
   const [urlInput, setUrlInput] = useState(item.image_url ?? '');
@@ -36,9 +77,15 @@ export const ShoppingItemEditor: React.FC<Props> = ({ listId, item, onClose, onS
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const pickFile = async (file: File) => {
+  const pickFile = async (file: File | Blob) => {
     try {
-      const dataUrl = await fileToDataUrl(file);
+      let dataUrl: string;
+      try {
+        // Сжимаем/уменьшаем; при неудаче — исходный файл как есть.
+        dataUrl = await loadCompressed(file);
+      } catch {
+        dataUrl = await fileToDataUrl(file);
+      }
       setB64(dataUrl);
       setPreview(dataUrl);
       setMode('file');
