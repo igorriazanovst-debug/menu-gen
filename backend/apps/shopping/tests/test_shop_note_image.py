@@ -38,16 +38,17 @@ class TestShopItemNoteImage:
     def test_create_with_note_and_image_url(self, setup):
         u, sl = setup
         c = self._client(u)
+        url = "https://example.com/y.png"
         r = c.post(
             reverse("shopping-items", args=[sl.id]),
-            {"name": "Молоко", "note": "2.5%", "image_url": "https://x/y.png"},
+            {"name": "Молоко", "note": "2.5%", "image_url": url},
             format="json",
         )
         assert r.status_code == 201, r.content
         assert r.data["note"] == "2.5%"
-        assert r.data["image_url"] == "https://x/y.png"
+        assert r.data["image_url"] == url
         # без загруженного файла resolved image = сам url
-        assert r.data["image"] == "https://x/y.png"
+        assert r.data["image"] == url
 
     def test_create_with_image_b64(self, setup):
         u, sl = setup
