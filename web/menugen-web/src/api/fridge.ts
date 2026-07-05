@@ -10,14 +10,6 @@ import type {
   RecognizePhotoResponse,
 } from '../types';
 
-// MG_ALLERGEN: схлопнутый аллерген (база продукта) из каталога.
-export interface AllergenOption {
-  key: string;          // канонический базовый ключ (нижний регистр)
-  name: string;         // отображаемое имя («Сыр»)
-  category_name: string;
-  examples: string[];   // исходные варианты («Сыр гауда», …)
-}
-
 export const fridgeApi = {
   list: () => client.get<PaginatedResponse<FridgeItem>>('/fridge/'),
 
@@ -80,13 +72,6 @@ export const fridgeApi = {
     );
     return Array.isArray(data) ? data : (data.results ?? []);
   },
-
-  // MG_ALLERGEN: freemium-открытый каталог аллергенов (схлопнутый по базовому
-  // продукту). Ответ — голый массив AllergenOption. ?q — необязательный фильтр.
-  catalog: (q?: string): Promise<AllergenOption[]> =>
-    client
-      .get<AllergenOption[]>('/fridge/products/catalog/', { params: q ? { q } : {} })
-      .then((r) => r.data),
 
   products: (params?: { category?: string | number; seed?: boolean }) => {
     const query: Record<string, string> = {};

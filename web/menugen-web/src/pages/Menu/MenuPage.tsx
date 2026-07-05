@@ -12,6 +12,7 @@ import type { Menu, MenuItem, MealType, ComponentRole, Recipe } from '../../type
 import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../types';
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
 import { DayNutritionSummary } from '../../components/menu/DayNutritionSummary';
+import { AllergenBadges } from '../../components/recipe/AllergenBadges';
 // MG_607_V_menupage
 import { GenerateMenuForm } from '../../components/menu/GenerateMenuForm';
 
@@ -211,6 +212,8 @@ const RecipeDetailModal: React.FC<{ recipeId: number; onClose: () => void }> = (
                 {cal && <span>🔥 {cal.value} {cal.unit}</span>}
                 {recipe.servings ? <span>🍽 {recipe.servings} порц.</span> : null}
               </div>
+
+              <AllergenBadges allergens={recipe.allergens} className="mb-4" />
 
               {ingredients.length > 0 && (
                 <div className="mb-4">

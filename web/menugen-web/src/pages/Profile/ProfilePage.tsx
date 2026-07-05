@@ -239,12 +239,12 @@ export const ProfilePage: React.FC = () => {
         </div>
       </Card>
 
-      {/* MG_ALLERGEN: аллергены пользователя */}
+      {/* MG_ALLERGEN14: аллергены пользователя (список 14 по ТР ТС 022) */}
       <Card className="p-6">
         <h2 className="text-lg font-bold text-chocolate mb-1">Аллергены</h2>
         <p className="text-xs text-gray-500 mb-4">
-          Блюда с этими продуктами исключаются из генерации меню. Отметьте продукты в списке
-          ниже, найдите нужное через поиск или добавьте свой аллерген.
+          Отметьте аллергены из обязательного перечня (ТР ТС 022/2011) — блюда с ними
+          исключаются из генерации меню. Можно добавить и свой аллерген вне списка.
         </p>
         <AllergenEditor value={allergies} onChange={saveAllergies} />
         {allergenSaving ? (

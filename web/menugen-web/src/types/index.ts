@@ -66,6 +66,7 @@ export interface Recipe {
   categories: string[]; image_url?: string; video_url?: string;
   country?: string; is_custom: boolean; author_name?: string; created_at: string;
   food_group?: FoodGroup | null;
+  allergens?: string[];                        // MG_ALLERGEN14: ключи аллергенов
   suitable_for?: SuitableMeal[];
   protein_type?: ProteinType | null;
   grain_type?: GrainType | null;

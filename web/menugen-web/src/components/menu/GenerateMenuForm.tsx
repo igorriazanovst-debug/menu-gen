@@ -13,6 +13,7 @@ import { recipesApi } from '../../api/recipes';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import type { Menu, MealPlan, UserProfile, MenuQuota } from '../../types';
+import { allergenLabel } from '../../constants/allergens';
 
 // Маппинг кодов стран → display names. Если кода нет в маппинге — показываем как есть.
 const COUNTRY_LABELS: Record<string, string> = {
@@ -337,7 +338,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
           checked={respectAllergies}
           onChange={setRespectAllergies}
           title="Учитывать аллергены из Профиля"
-          subtitle={userAllergies.length > 0 ? userAllergies.join(', ') : 'Список пуст'}
+          subtitle={userAllergies.length > 0 ? userAllergies.map(allergenLabel).join(', ') : 'Список пуст'}
           disabled={userAllergies.length === 0}
         />
         <ToggleRow

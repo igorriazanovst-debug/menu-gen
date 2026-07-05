@@ -1,215 +1,148 @@
-// MG_ALLERGEN_V_web = 4
-// Редактор аллергенов профиля: выбор ИЗ СПИСКА продуктов, схлопнутого по
-// базовому продукту («Сыр гауда», «Сыр тёртый» → «Сыр»), поиск по каталогу
-// (серверный) и ввод произвольного аллергена.
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { fridgeApi, type AllergenOption } from '../../api/fridge';
+// MG_ALLERGEN14_V_web = 1
+// Редактор аллергенов профиля: фиксированный список 14 (ТР ТС 022/2011)
+// чекбоксами + возможность добавить свой (внесписочный) аллерген текстом.
+import React, { useMemo, useState } from 'react';
+import { ALLERGENS, ALLERGEN_KEYS, allergenLabel } from '../../constants/allergens';
+// Примечание: намеренно без Set/Map-итераций (CRA target ES5).
 
 interface Props {
-  /** Текущий список аллергенов. */
+  /** Текущий список: ключи из 14 + произвольные строки (кастомные). */
   value: string[];
   /** Вызывается с новым списком; родитель сохраняет на бэкенд. */
   onChange: (next: string[]) => void;
 }
 
-/** Есть ли уже такой аллерген (без учёта регистра/пробелов). */
-function has(list: string[], name: string): boolean {
-  const n = name.trim().toLowerCase();
-  return list.some((a) => a.trim().toLowerCase() === n);
-}
-
-interface Group {
-  cat: string;
-  items: AllergenOption[];
-}
-
-/** Группировка по названию категории (для заголовков). */
-function group(list: AllergenOption[]): Group[] {
-  const byCat: Record<string, AllergenOption[]> = {};
-  const order: string[] = [];
-  list.forEach((p) => {
-    const cat = p.category_name || 'Прочее';
-    if (!byCat[cat]) {
-      byCat[cat] = [];
-      order.push(cat);
-    }
-    byCat[cat].push(p);
-  });
-  return order.map((cat) => ({ cat, items: byCat[cat] }));
-}
-
 export const AllergenEditor: React.FC<Props> = ({ value, onChange }) => {
-  const [browse, setBrowse] = useState<AllergenOption[]>([]); // весь каталог (обзор)
-  const [results, setResults] = useState<AllergenOption[]>([]); // серверный поиск
-  const [loading, setLoading] = useState(true);
-  const [searching, setSearching] = useState(false);
-  const [loadErr, setLoadErr] = useState(false);
-  const [query, setQuery] = useState('');
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [custom, setCustom] = useState('');
 
-  // Каталог для обзора грузится один раз.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await fridgeApi.catalog();
-        if (!cancelled) setBrowse(list);
-      } catch {
-        if (!cancelled) setLoadErr(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Кастомные (внесписочные) значения — всё, что не входит в 14 ключей.
+  const customValues = useMemo(
+    () => value.filter((v) => !ALLERGEN_KEYS.includes(v)),
+    [value],
+  );
 
-  useEffect(() => () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-  }, []);
-
-  const onQuery = (q: string) => {
-    setQuery(q);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const t = q.trim();
-    if (t.length < 2) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const list = await fridgeApi.catalog(t);
-        setResults(list);
-      } catch {
-        setResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
-  };
-
-  const toggle = (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    if (has(value, trimmed)) {
-      onChange(value.filter((a) => a.trim().toLowerCase() !== trimmed.toLowerCase()));
+  const toggle = (key: string) => {
+    if (value.includes(key)) {
+      onChange(value.filter((v) => v !== key));
     } else {
-      onChange([...value, trimmed]);
+      onChange([...value, key]);
     }
   };
 
-  const remove = (name: string) => onChange(value.filter((a) => a !== name));
+  const addCustom = () => {
+    const t = custom.trim();
+    if (!t) return;
+    // не дублируем и не пересекаем со стандартным списком по названию
+    const exists = value.some((v) => v.toLowerCase() === t.toLowerCase());
+    const isStd = ALLERGENS.some((a) => a.label.toLowerCase() === t.toLowerCase());
+    if (!exists && !isStd) onChange([...value, t]);
+    setCustom('');
+  };
 
-  const searchMode = query.trim().length >= 2;
-  const groups = useMemo(() => group(searchMode ? results : browse), [searchMode, results, browse]);
-  const canAddCustom = query.trim().length > 0 && !has(value, query);
+  const removeCustom = (v: string) => onChange(value.filter((x) => x !== v));
+
+  // Группируем 14 по group для аккуратных секций.
+  const groups = useMemo(() => {
+    const byGroup: Record<string, typeof ALLERGENS> = {};
+    const order: string[] = [];
+    ALLERGENS.forEach((a) => {
+      if (!byGroup[a.group]) {
+        byGroup[a.group] = [];
+        order.push(a.group);
+      }
+      byGroup[a.group].push(a);
+    });
+    return order.map((g) => ({ group: g, items: byGroup[g] }));
+  }, []);
 
   return (
     <div>
-      {/* Чипы выбранных аллергенов */}
-      {value.length > 0 ? (
-        <div className="flex flex-wrap gap-2 mb-3">
-          {value.map((a) => (
-            <span
-              key={a}
-              className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-tomato/10 text-tomato text-sm border border-tomato/20"
-            >
-              {a}
-              <button
-                type="button"
-                onClick={() => remove(a)}
-                aria-label={`Убрать ${a}`}
-                className="text-tomato/70 hover:text-tomato font-bold leading-none"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-gray-400 mb-3">Аллергены не выбраны.</p>
-      )}
-
-      {/* Поиск по каталогу */}
-      <input
-        value={query}
-        onChange={(e) => onQuery(e.target.value)}
-        placeholder="Поиск по списку или свой аллерген…"
-        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-tomato/40 focus:border-tomato"
-      />
-
-      {/* Добавить произвольный аллерген (когда нет в списке) */}
-      {canAddCustom && (
-        <button
-          type="button"
-          onClick={() => {
-            toggle(query);
-            onQuery('');
-          }}
-          className="mt-2 w-full text-left px-3 py-2 rounded-xl text-sm text-avocado bg-avocado/5 hover:bg-avocado/10 border border-avocado/20"
-        >
-          + Добавить свой аллерген «{query.trim()}»
-        </button>
-      )}
-
-      {/* Список аллергенов (схлопнутый каталог) */}
-      <div className="mt-2 max-h-72 overflow-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {loading && <div className="px-3 py-3 text-sm text-gray-400">Загрузка каталога…</div>}
-        {!loading && loadErr && (
-          <div className="px-3 py-3 text-sm text-red-500">
-            Не удалось загрузить каталог. Можно ввести аллерген вручную выше.
-          </div>
-        )}
-        {!loading && !loadErr && searching && (
-          <div className="px-3 py-3 text-sm text-gray-400">Поиск…</div>
-        )}
-        {!loading && !loadErr && !searching && groups.length === 0 && (
-          <div className="px-3 py-3 text-sm text-gray-400">Ничего не найдено.</div>
-        )}
-        {!loading &&
-          !loadErr &&
-          !searching &&
-          groups.map((g) => (
-            <div key={g.cat}>
-              <div className="sticky top-0 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-500">
-                {g.cat}
-              </div>
-              {g.items.map((p) => {
-                const checked = has(value, p.name);
-                const hint = p.examples.filter((e) => e.toLowerCase() !== p.name.toLowerCase());
+      {/* Фиксированный список 14 — чекбоксами по группам */}
+      <div className="space-y-3">
+        {groups.map((g) => (
+          <div key={g.group}>
+            <div className="text-xs font-semibold text-gray-500 mb-1">{g.group}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+              {g.items.map((a) => {
+                const checked = value.includes(a.key);
                 return (
                   <button
-                    key={p.key}
+                    key={a.key}
                     type="button"
-                    onClick={() => toggle(p.name)}
-                    className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-tomato/5"
+                    onClick={() => toggle(a.key)}
+                    title={a.full}
+                    className={
+                      'flex items-center gap-2 px-3 py-2 rounded-xl border text-left text-sm transition ' +
+                      (checked
+                        ? 'border-tomato bg-tomato/10 text-chocolate'
+                        : 'border-border bg-surface hover:border-tomato/40 text-gray-700')
+                    }
                   >
                     <span
                       className={
-                        'mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border text-xs ' +
-                        (checked
-                          ? 'bg-tomato border-tomato text-white'
-                          : 'border-gray-300 text-transparent')
+                        'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border text-xs ' +
+                        (checked ? 'bg-tomato border-tomato text-white' : 'border-gray-300 text-transparent')
                       }
                     >
                       ✓
                     </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block truncate">{p.name}</span>
-                      {hint.length > 0 && (
-                        <span className="block truncate text-xs text-gray-400">
-                          {hint.join(', ')}
-                        </span>
-                      )}
-                    </span>
+                    <span className="flex-1">{a.label}</span>
                   </button>
                 );
               })}
             </div>
-          ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Кастомные (внесписочные) аллергены */}
+      <div className="mt-4 pt-4 border-t border-border">
+        <div className="text-xs font-semibold text-gray-500 mb-2">Свой аллерген (вне списка)</div>
+        {customValues.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {customValues.map((v) => (
+              <span
+                key={v}
+                className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-avocado/10 text-avocado text-sm border border-avocado/20"
+              >
+                {allergenLabel(v)}
+                <button
+                  type="button"
+                  onClick={() => removeCustom(v)}
+                  aria-label={`Убрать ${v}`}
+                  className="text-avocado/70 hover:text-avocado font-bold leading-none"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addCustom();
+              }
+            }}
+            placeholder="Напр. кориандр"
+            className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-avocado/40 focus:border-avocado"
+          />
+          <button
+            type="button"
+            onClick={addCustom}
+            disabled={!custom.trim()}
+            className="px-4 py-2 rounded-xl bg-avocado text-white text-sm font-semibold disabled:opacity-40"
+          >
+            Добавить
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Внесписочные аллергены исключаются по совпадению в названиях ингредиентов.
+        </p>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { RecipeEditModal } from '../../components/recipes/RecipeEditModal';
+import { AllergenBadges } from '../../components/recipe/AllergenBadges';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import type { Recipe } from '../../types';
 
@@ -369,6 +370,8 @@ const RecipeModal: React.FC<{
               ))}
             </div>
           )}
+
+          <AllergenBadges allergens={recipe.allergens} className="mt-4" />
 
           {(recipe.ingredients ?? []).length > 0 && (
             <div className="mt-4">
