@@ -30,6 +30,9 @@ export interface AddItemPayload {
   product_id?: number | null;
   category_slug?: string;
   price_per_unit?: number | null; // MG_RUBRIC008
+  note?: string;                   // MG_SHOPNOTE
+  image_url?: string;              // MG_SHOPIMG (ссылка)
+  image_b64?: string;              // MG_SHOPIMG (камера/буфер → data-URL)
 }
 
 export interface GrantAccessPayload {
@@ -77,8 +80,11 @@ export const shoppingApi = {
   addItem: (listId: number, item: AddItemPayload) =>
     client.post<ShoppingV2Item>(`/shopping/lists/${listId}/items/`, item),
 
-  updateItem: (listId: number, itemId: number, item: Partial<ShoppingV2Item>) =>
-    client.patch<ShoppingV2Item>(`/shopping/lists/${listId}/items/${itemId}/`, item),
+  updateItem: (
+    listId: number,
+    itemId: number,
+    item: Partial<ShoppingV2Item> & { image_b64?: string }, // MG_SHOPIMG
+  ) => client.patch<ShoppingV2Item>(`/shopping/lists/${listId}/items/${itemId}/`, item),
 
   removeItem: (listId: number, itemId: number) =>
     client.delete(`/shopping/lists/${listId}/items/${itemId}/`),

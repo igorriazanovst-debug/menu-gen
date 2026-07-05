@@ -352,6 +352,9 @@ export interface ShoppingV2Item {
   line_total?: string | null;
   in_fridge?: boolean; // MG_SHOP2FRIDGE
   fridge_eligible?: boolean; // MG_SHOP2FRIDGE (non-food excluded)
+  note?: string; // MG_SHOPNOTE
+  image?: string | null; // MG_SHOPIMG resolved url
+  image_url?: string | null; // MG_SHOPIMG raw url
   is_purchased: boolean;
   purchased_by?: number | null;
   purchased_by_name?: string | null;

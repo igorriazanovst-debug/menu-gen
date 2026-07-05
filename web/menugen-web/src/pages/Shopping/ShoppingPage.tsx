@@ -12,9 +12,11 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { printShoppingList } from '../../utils/printShoppingList';
 import { enqueueToggle, flushQueue, SYNC_FLUSHED_EVENT } from '../../utils/syncQueue'; // MG_T08
 import { ItemAutocomplete } from './ItemAutocomplete';
+import { ShoppingItemEditor } from '../../components/shopping/ShoppingItemEditor'; // MG_SHOPNOTE/IMG
 import type {
   ShoppingV2ListBrief,
   ShoppingV2List,
+  ShoppingV2Item, // MG_SHOPNOTE/IMG
   ShoppingV2Access,
   ShoppingV2PendingList, // MG_SHAREACCEPT
   ShoppingV2HistoryEntry,
@@ -289,6 +291,7 @@ const ListDetail: React.FC<{
   // MG_RUBRIC005_state_removed: add-item state moved into ItemAutocomplete.
   // MG_SHOPBUG_EDITMODE: global edit mode (delete + inline fields gated).
   const [editMode, setEditMode] = useState(false);
+  const [editorItem, setEditorItem] = useState<ShoppingV2Item | null>(null); // MG_SHOPNOTE/IMG
   const [onlyUnpurchased, setOnlyUnpurchased] = useState(false); // MG_T09
   const UNITS = ['шт','г','кг','мл','л','упак','банка','пучок','головка','бутылка','тюбик'];
 
@@ -468,14 +471,30 @@ const ListDetail: React.FC<{
                       className="flex-1 rounded-lg border border-border px-2 py-0.5 text-sm"
                     />
                   ) : (
-                    <span className={it.is_purchased ? 'line-through text-gray-400 flex-1' : 'flex-1'}>
-                      {it.name}
-                      {it.quantity != null && (
-                        <span className="text-gray-500 text-sm"> — {it.quantity}{it.unit ? ` ${it.unit}` : ''}</span>
+                    <>
+                      {/* MG_SHOPIMG: миниатюра изображения товара */}
+                      {it.image && (
+                        <img
+                          src={it.image}
+                          alt=""
+                          className="w-8 h-8 rounded object-cover border border-gray-200 flex-shrink-0 cursor-pointer"
+                          onClick={() => setEditorItem(it)}
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                        />
                       )}
-                      {/* MG_SHOP2FRIDGE: in-fridge indicator */}
-                      {it.in_fridge && <span className="ml-1" title="В холодильнике">❄</span>}
-                    </span>
+                      <span className={it.is_purchased ? 'line-through text-gray-400 flex-1 min-w-0' : 'flex-1 min-w-0'}>
+                        <span className="block">
+                          {it.name}
+                          {it.quantity != null && (
+                            <span className="text-gray-500 text-sm"> — {it.quantity}{it.unit ? ` ${it.unit}` : ''}</span>
+                          )}
+                          {/* MG_SHOP2FRIDGE: in-fridge indicator */}
+                          {it.in_fridge && <span className="ml-1" title="В холодильнике">❄</span>}
+                        </span>
+                        {/* MG_SHOPNOTE: комментарий к товару */}
+                        {it.note && <span className="block text-xs text-gray-400 truncate">🗒 {it.note}</span>}
+                      </span>
+                    </>
                   )}
                   {editMode && caps?.manage && (
                     <>
@@ -519,6 +538,16 @@ const ListDetail: React.FC<{
                       {fmtMoney(it.line_total)} {currency}
                     </span>
                   )}
+                  {/* MG_SHOPNOTE/IMG: комментарий + изображение товара */}
+                  {caps?.manage && (
+                    <button
+                      onClick={() => setEditorItem(it)}
+                      title="Комментарий и изображение"
+                      className="text-gray-400 hover:text-tomato text-sm flex-shrink-0"
+                    >
+                      🗒
+                    </button>
+                  )}
                   {/* MG_SHOPBUG_EDITMODE: delete only in edit mode */}
                   {editMode && caps?.manage && (
                     <button onClick={() => delItem(it.id)} className="text-red-400 hover:text-red-600 text-sm">✕</button>
@@ -542,6 +571,15 @@ const ListDetail: React.FC<{
         </div>
       )}
 
+      {/* MG_SHOPNOTE/IMG: модалка комментария и изображения товара */}
+      {editorItem && (
+        <ShoppingItemEditor
+          listId={detail.id}
+          item={editorItem}
+          onClose={() => setEditorItem(null)}
+          onSaved={onReload}
+        />
+      )}
     </Card>
   );
 };
