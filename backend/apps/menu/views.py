@@ -83,34 +83,36 @@ def _can_delete_menu(user, family, menu):
 
 
 def _collect_allergens(family):
-    """Все аллергены из профилей семьи (объединение).
-
-    MG_ALLERGEN: схлопываем к базовому слову («Сыр гауда» → «сыр»), чтобы
-    предупреждение о свапе срабатывало на любой вариант продукта.
-    """
-    from apps.fridge.aliases import canonical_allergen
-
+    """Все аллергены из профилей семьи (объединение, как в профиле)."""
     allergens = set()
     for m in FamilyMember.objects.filter(family=family).select_related("user"):
         if isinstance(m.user.allergies, list):
-            for a in m.user.allergies:
-                if isinstance(a, str):
-                    base = canonical_allergen(a)
-                    if base:
-                        allergens.add(base)
+            allergens.update(a.lower() for a in m.user.allergies if isinstance(a, str))
     return allergens
 
 
 def _check_allergens(recipe, allergens):
-    """Возвращает список аллергенов, найденных в рецепте."""
+    """Возвращает список аллергенов, найденных в рецепте.
+
+    MG_ALLERGEN14: значение из профиля, распознанное как один из 14 аллергенов,
+    матчится по размеченному recipe.allergens; иначе — подстрочно по именам
+    ингредиентов (кастомные/внесписочные аллергены).
+    """
     if not allergens:
         return []
+    from apps.common.allergens import resolve_allergy
+
+    recipe_keys = set(recipe.allergens or [])
+    ing_names = [ing.get("name", "").lower() for ing in recipe.ingredients]
     found = []
-    for ing in recipe.ingredients:
-        name = ing.get("name", "").lower()
-        for a in allergens:
-            if a in name and a not in found:
-                found.append(a)
+    for a in allergens:
+        key = resolve_allergy(a)
+        hit = (key in recipe_keys) if key else False
+        if not hit:
+            al = a.lower()
+            hit = any(al in name for name in ing_names)
+        if hit and a not in found:
+            found.append(a)
     return found
 
 

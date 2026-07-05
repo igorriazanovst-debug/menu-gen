@@ -225,58 +225,6 @@ class ProductSearchView(generics.ListAPIView):
         return Product.objects.filter(cond).distinct().order_by("name")[:20]
 
 
-# ─── MG_ALLERGEN: freemium collapsed catalog for allergen picking ────────────
-# Непищевые категории и готовые блюда — не аллергены-продукты, исключаем из
-# каталога выбора аллергенов (только продукты-ингредиенты).
-NON_FOOD_CATEGORY_SLUGS = ("household", "hygiene", "pets", "ready")
-
-
-class AllergenCatalogView(APIView):
-    """GET /fridge/products/catalog/?q=  — схлопнутый список аллергенов.
-
-    Freemium-open (как ProductSearchView): это общий справочник продуктов, а не
-    данные холодильника семьи. Варианты одного продукта схлопываются в один
-    базовый аллерген (canonical_allergen): «Сыр гауда», «Сыр тёртый» → «Сыр».
-    Непищевые категории (бытовая химия, гигиена, зоотовары) и готовые блюда
-    исключаются — аллергены только из продуктов-ингредиентов.
-    Возвращает список объектов:
-        {key, name, category_name, examples: [оригинальные названия]}
-    """
-
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        from .aliases import canonical_allergen, normalize_alias
-
-        qs = Product.objects.select_related("category_fk").exclude(category_fk__slug__in=NON_FOOD_CATEGORY_SLUGS)
-        q = request.query_params.get("q", "").strip()
-        if q:
-            cond = Q(name__icontains=q)
-            qn = normalize_alias(q)
-            if qn:
-                cond |= Q(aliases__alias_norm__icontains=qn)
-            qs = qs.filter(cond).distinct()
-
-        collapsed = {}
-        for p in qs.order_by("category_fk__sort_order", "category_fk__name_ru", "name")[:2000]:
-            base = canonical_allergen(p.name)
-            if not base:
-                continue
-            entry = collapsed.get(base)
-            if entry is None:
-                collapsed[base] = {
-                    "key": base,
-                    "name": base[:1].upper() + base[1:],
-                    "category_name": p.category_fk.name_ru if p.category_fk_id else "Прочее",
-                    "examples": [p.name],
-                }
-            elif len(entry["examples"]) < 4 and p.name not in entry["examples"]:
-                entry["examples"].append(p.name)
-
-        rows = sorted(collapsed.values(), key=lambda r: (r["category_name"], r["name"]))
-        return Response(rows)
-
-
 # ─── MG-609: category list ──────────────────────────────────────────────────
 class ProductCategoryListView(generics.ListAPIView):
     """GET /fridge/categories/  — list active product categories."""

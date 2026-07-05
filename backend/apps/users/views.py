@@ -15,6 +15,18 @@ from .serializers import (
 )
 
 
+class AllergenListView(APIView):
+    """GET /users/allergens/ — фиксированный список аллергенов (ТР ТС 022/2011,
+    14 позиций) для выбора в профиле. Публичный справочник."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from apps.common.allergens import public_allergens
+
+        return Response(public_allergens())
+
+
 class RegisterView(APIView):
     permission_classes = (permissions.AllowAny,)
 
@@ -202,6 +214,7 @@ class TargetResetView(APIView):
 
 class CalculatorPreviewView(APIView):
     """POST /users/me/calculator/preview/ — расчёт без сохранения."""
+
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
@@ -222,6 +235,7 @@ class CalculatorApplyView(APIView):
     Сохраняет в Profile как сами параметры (height/weight/birth_year/...),
     так и целевые КБЖУ. Аудит пишется с source='user'.
     """
+
     permission_classes = (permissions.IsAuthenticated,)
 
     def post(self, request):
@@ -240,8 +254,7 @@ class CalculatorApplyView(APIView):
         profile, _ = Profile.objects.get_or_create(user=request.user)
 
         # 1) Сохранить input-параметры (если переданы)
-        params_fields = ("height_cm", "weight_kg", "birth_year",
-                         "gender", "activity_level", "goal")
+        params_fields = ("height_cm", "weight_kg", "birth_year", "gender", "activity_level", "goal")
         for f in params_fields:
             v = ser.validated_data.get(f)
             if v not in (None, ""):
@@ -249,11 +262,11 @@ class CalculatorApplyView(APIView):
 
         # 2) Сохранить целевые КБЖУ + аудит с source='user'
         target_field_map = {
-            "calorie_target":   result["calorie_target"],
+            "calorie_target": result["calorie_target"],
             "protein_target_g": result["protein_target_g"],
-            "fat_target_g":     result["fat_target_g"],
-            "carb_target_g":    result["carb_target_g"],
-            "fiber_target_g":   result["fiber_target_g"],
+            "fat_target_g": result["fat_target_g"],
+            "carb_target_g": result["carb_target_g"],
+            "fiber_target_g": result["fiber_target_g"],
         }
         old_values = {f: getattr(profile, f, None) for f in target_field_map}
         for f, new_v in target_field_map.items():

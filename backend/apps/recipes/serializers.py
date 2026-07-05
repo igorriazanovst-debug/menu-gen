@@ -109,8 +109,6 @@ class _FavoriteStateMixin(serializers.Serializer):
         return bool(f and not f.is_favorite)
 
 
-
-
 # MG_FIX_IMAGE_URL_ABSOLUTE / MG_PUBLIC_BACKEND_URL
 import os as _mg_os
 
@@ -143,7 +141,10 @@ class _AbsoluteImageUrlMixin:
             return request.build_absolute_uri(url)
         return url
 
-class RecipeListSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _AbsoluteImageUrlMixin, serializers.ModelSerializer):
+
+class RecipeListSerializer(
+    _NutritionNormalizeMixin, _FavoriteStateMixin, _AbsoluteImageUrlMixin, serializers.ModelSerializer
+):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
     image_url = serializers.SerializerMethodField()  # MG_FIX_IMAGE_URL_ABSOLUTE
     fridge_match_count = serializers.SerializerMethodField()
@@ -166,6 +167,7 @@ class RecipeListSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _Absol
                 "is_favorite",
                 "is_disliked",
                 "fridge_match_count",
+                "allergens",  # MG_ALLERGEN14
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS
@@ -179,7 +181,9 @@ class RecipeListSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _Absol
         return scores.get(obj.id, 0)
 
 
-class RecipeDetailSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _AbsoluteImageUrlMixin, serializers.ModelSerializer):
+class RecipeDetailSerializer(
+    _NutritionNormalizeMixin, _FavoriteStateMixin, _AbsoluteImageUrlMixin, serializers.ModelSerializer
+):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
     image_url = serializers.SerializerMethodField()  # MG_FIX_IMAGE_URL_ABSOLUTE
 
@@ -207,6 +211,7 @@ class RecipeDetailSerializer(_NutritionNormalizeMixin, _FavoriteStateMixin, _Abs
                 "updated_at",
                 "is_favorite",
                 "is_disliked",
+                "allergens",  # MG_ALLERGEN14
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS

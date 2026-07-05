@@ -130,7 +130,17 @@ class _WeeklyTracker:
         # day_offset -> member_id -> {"plant": int, "animal": int, "mixed": int}
         # MG_502_503_V_generator: добавлены oil_tsp (float) и sweet_count (int)
         self._daily: Dict[int, Dict[int, Dict[str, float]]] = defaultdict(
-            lambda: defaultdict(lambda: {"plant": 0, "animal": 0, "mixed": 0, "oil_tsp": 0.0, "sweet_count": 0, "dessert_count": 0, "bakery_count": 0})
+            lambda: defaultdict(
+                lambda: {
+                    "plant": 0,
+                    "animal": 0,
+                    "mixed": 0,
+                    "oil_tsp": 0.0,
+                    "sweet_count": 0,
+                    "dessert_count": 0,
+                    "bakery_count": 0,
+                }
+            )
         )
 
     @staticmethod
@@ -205,7 +215,7 @@ class MenuGenerator:
         self.meal_types = MEAL_PLAN_5 if str(meal_count) == "5" else MEAL_PLAN_3
         # MG_610_V_generator: with_soup
         _with_soup = self.filters.get("with_soup", True)
-        self.with_soup: bool = (_with_soup is not False)
+        self.with_soup: bool = _with_soup is not False
         # MG_STRAT: 1=current, 2=composition, 3=plate
         self.strategy = str(self.filters.get("strategy", "1") or "1")
         # MG_605A_V_generator: режим мульти-член
@@ -224,6 +234,7 @@ class MenuGenerator:
     def generate(self) -> List[dict]:
         # MG_610_V_generator: align start_date to Monday
         from datetime import timedelta as _td610
+
         _wd = self.start_date.weekday()
         if _wd != 0:
             self.start_date = self.start_date - _td610(days=_wd)
@@ -752,8 +763,10 @@ class MenuGenerator:
     # MG_605A_V_generator: family-режим — один прогон, дублирование под членов
     def _generate_family(self) -> List[dict]:
         from .portions import member_quantity_for_recipe
+
         # MG_610_V_generator: align start_date to Monday
         from datetime import timedelta as _td610f
+
         _wd = self.start_date.weekday()
         if _wd != 0:
             self.start_date = self.start_date - _td610f(days=_wd)
@@ -857,38 +870,50 @@ class MenuGenerator:
         self.last_warnings = warnings
         return items
 
-    # MG_ALLERGEN: аллергены схлопываются к базовому слову («Сыр гауда» → «сыр»),
-    # чтобы один аллерген исключал все варианты продукта из меню.
+    # MG_ALLERGEN14: аллерген из профиля — либо ключ из 14 (ТР ТС 022, тогда
+    # матч по размеченному recipe.allergens), либо произвольный текст (тогда
+    # подстрочный матч по именам ингредиентов). Дизлайки — всегда подстрочно.
     @staticmethod
-    def _canon_allergens(items):
-        from apps.fridge.aliases import canonical_allergen
+    def _split_allergies(items):
+        """→ (allergen_keys:set, custom_substrings:set)."""
+        from apps.common.allergens import resolve_allergy
 
-        out = set()
+        keys = set()
+        subs = set()
         for a in items or []:
             if not isinstance(a, str):
                 continue
-            base = canonical_allergen(a)
-            if base:
-                out.add(base)
-        return out
+            k = resolve_allergy(a)
+            if k:
+                keys.add(k)
+            else:
+                t = a.strip().lower()
+                if t:
+                    subs.add(t)
+        return keys, subs
 
     # MG_605A_V_generator: «виртуальный представитель семьи»
     def _family_virtual_member(self) -> dict:
         # MG_607_V_generator: per-request override
         override_a = self.filters.get("exclude_allergens")
         override_d = self.filters.get("exclude_disliked")
-        exclude = set()
+        akeys = set()
+        subs = set()
         cals = []
         if override_a is not None:
-            exclude.update(self._canon_allergens(override_a))
+            k, s = self._split_allergies(override_a)
+            akeys |= k
+            subs |= s
         if override_d is not None and self.features.get("disliked"):
-            exclude.update(d.lower() for d in override_d if isinstance(d, str))
+            subs.update(d.lower() for d in override_d if isinstance(d, str))
         for m in self.members:
             user = m.user
             if override_a is None and isinstance(user.allergies, list):
-                exclude.update(self._canon_allergens(user.allergies))
+                k, s = self._split_allergies(user.allergies)
+                akeys |= k
+                subs |= s
             if override_d is None and self.features.get("disliked") and isinstance(user.disliked_products, list):
-                exclude.update(d.lower() for d in user.disliked_products)
+                subs.update(d.lower() for d in user.disliked_products)
             if self.features.get("calories"):
                 try:
                     c = user.profile.calorie_target
@@ -897,28 +922,35 @@ class MenuGenerator:
                 except Exception:
                     pass
         avg_cal = int(sum(cals) / len(cals)) if cals else None
-        return {"hard_exclude": exclude, "calorie_target": avg_cal}
+        return {"hard_exclude": {"allergens": akeys, "substr": subs}, "calorie_target": avg_cal}
 
-    def _get_hard_exclude(self, member) -> set:
+    def _get_hard_exclude(self, member) -> dict:
         # MG_607_V_generator: per-request override через filters.exclude_allergens / exclude_disliked
         override_a = self.filters.get("exclude_allergens")
         override_d = self.filters.get("exclude_disliked")
-        exclude = set()
+        akeys = set()
+        subs = set()
         user = member.user
         if override_a is not None:
-            exclude.update(self._canon_allergens(override_a))
+            k, s = self._split_allergies(override_a)
+            akeys |= k
+            subs |= s
         elif isinstance(user.allergies, list):
-            exclude.update(self._canon_allergens(user.allergies))
+            k, s = self._split_allergies(user.allergies)
+            akeys |= k
+            subs |= s
         if override_d is not None:
             if self.features.get("disliked"):
-                exclude.update(d.lower() for d in override_d if isinstance(d, str))
+                subs.update(d.lower() for d in override_d if isinstance(d, str))
         elif self.features.get("disliked") and isinstance(user.disliked_products, list):
-            exclude.update(d.lower() for d in user.disliked_products)
+            subs.update(d.lower() for d in user.disliked_products)
         if override_a is None and self.features.get("allergies_family"):
             for m in self.members:
                 if isinstance(m.user.allergies, list):
-                    exclude.update(self._canon_allergens(m.user.allergies))
-        return exclude
+                    k, s = self._split_allergies(m.user.allergies)
+                    akeys |= k
+                    subs |= s
+        return {"allergens": akeys, "substr": subs}
 
     def _get_calorie_target(self, member) -> Optional[int]:
         if not self.features.get("calories"):
@@ -928,13 +960,18 @@ class MenuGenerator:
         except Exception:
             return None
 
-    def _recipe_passes_hard(self, recipe: Recipe, hard_exclude: set) -> bool:
+    def _recipe_passes_hard(self, recipe: Recipe, hard_exclude: dict) -> bool:
         if not hard_exclude:
             return True
-        for ing in recipe.ingredients:
-            name = ing.get("name", "").lower()
-            if any(ex in name for ex in hard_exclude):
-                return False
+        akeys = hard_exclude.get("allergens")
+        if akeys and set(recipe.allergens or []) & akeys:
+            return False
+        subs = hard_exclude.get("substr")
+        if subs:
+            for ing in recipe.ingredients:
+                name = ing.get("name", "").lower()
+                if any(ex in name for ex in subs):
+                    return False
         return True
 
     def _recipe_cal(self, recipe: Recipe) -> Optional[float]:
@@ -988,7 +1025,6 @@ class MenuGenerator:
             )
         except Exception:  # noqa: BLE001
             logger.exception("MG-301: audit log write failed (non-fatal)")
-
 
     # ── MG_STRAT: helpers & alternative strategies ────────────────────────────
     _MACRO_ROLE_RU = {
@@ -1051,7 +1087,9 @@ class MenuGenerator:
             cands = cands[:10]
         return random.choice(cands)
 
-    def _place_s2(self, items, member, db_meal_type, meal_slot, day, recipe, used, component_role=None):  # MG_STRAT2_ROLE
+    def _place_s2(
+        self, items, member, db_meal_type, meal_slot, day, recipe, used, component_role=None
+    ):  # MG_STRAT2_ROLE
         """MG_STRAT: положить выбранный рецепт в items + учёт в tracker/калориях."""
         used.add(recipe.id)
         self.tracker.add(member.id, day, recipe)
@@ -1087,10 +1125,7 @@ class MenuGenerator:
             cands = [r for r in snack_pool if r.id not in used and self._recipe_passes_hard(r, hard_exclude)]
             if not cands:
                 break
-            fit = [
-                r for r in cands
-                if 0 < (self._recipe_kcal_portion(r) or 0) <= remaining * 1.05
-            ]
+            fit = [r for r in cands if 0 < (self._recipe_kcal_portion(r) or 0) <= remaining * 1.05]
             rec = random.choice(fit if fit else cands)
             self.tracker.add(member.id, day, rec)
             used.add(rec.id)
@@ -1158,10 +1193,14 @@ class MenuGenerator:
                     )
                     if anchor is None:
                         raise EmptyRolePoolError(
-                            role=anchor_dt, meal_slot=meal_slot, day_offset=day,
+                            role=anchor_dt,
+                            meal_slot=meal_slot,
+                            day_offset=day,
                             member_name=self._member_display_name(member),
                         )
-                    self._place_s2(items, member, db_meal_type, meal_slot, day, anchor, used, component_role=anchor_dt)  # MG_STRAT2_ROLE
+                    self._place_s2(
+                        items, member, db_meal_type, meal_slot, day, anchor, used, component_role=anchor_dt
+                    )  # MG_STRAT2_ROLE
                     covered = set(_mr.recipe_roles(anchor))
 
                     for role in MEAL_ROLES[meal_slot]:
@@ -1173,11 +1212,15 @@ class MenuGenerator:
                         rec = self._pick_role_addon_s2(role, db_meal_type, role_pools, used, hard_exclude, fridge_ids)
                         if rec is None:
                             raise EmptyRolePoolError(
-                                role=role, meal_slot=meal_slot, day_offset=day,
+                                role=role,
+                                meal_slot=meal_slot,
+                                day_offset=day,
                                 member_name=self._member_display_name(member),
                                 reason_hint=f"Не хватает рецептов: {self._MACRO_ROLE_RU.get(role, role)}.",
                             )
-                        self._place_s2(items, member, db_meal_type, meal_slot, day, rec, used, component_role=str(role))  # MG_STRAT2_ROLE
+                        self._place_s2(
+                            items, member, db_meal_type, meal_slot, day, rec, used, component_role=str(role)
+                        )  # MG_STRAT2_ROLE
                         covered |= _mr.recipe_roles(rec)
 
                     if meal_slot == "lunch":
@@ -1187,7 +1230,16 @@ class MenuGenerator:
                             _mr.CARB_COMPLEX, db_meal_type, role_pools, used, hard_exclude, fridge_ids
                         )
                         if rec is not None:
-                            self._place_s2(items, member, db_meal_type, meal_slot, day, rec, used, component_role=str(_mr.CARB_COMPLEX))  # MG_STRAT2_ROLE
+                            self._place_s2(
+                                items,
+                                member,
+                                db_meal_type,
+                                meal_slot,
+                                day,
+                                rec,
+                                used,
+                                component_role=str(_mr.CARB_COMPLEX),
+                            )  # MG_STRAT2_ROLE
 
                 if target_cal:  # MG_STRAT3: перекусы-добор по КБЖУ безусловны
                     self._fill_snacks_s2(items, member, day, used, hard_exclude, fridge_ids, pools, float(target_cal))
@@ -1247,6 +1299,7 @@ class MenuGenerator:
         Форма 25/25/50 ЗАДАЁТСЯ масштабом каждого компонента под массу тарелки M
         (M подбирается под target_meal_cal, при отсутствии — PLATE_MASS_DEFAULT_G).
         Возврат: (p, c, v, qp, qc, qv) или None."""
+
         def _flt(pool):
             out = []
             for r in pool:
@@ -1262,7 +1315,11 @@ class MenuGenerator:
                 out.append(r)
             return out
 
-        P, C, V = _flt(plate_pools.get("protein", [])), _flt(plate_pools.get("carb", [])), _flt(plate_pools.get("veg", []))
+        P, C, V = (
+            _flt(plate_pools.get("protein", [])),
+            _flt(plate_pools.get("carb", [])),
+            _flt(plate_pools.get("veg", [])),
+        )
         if not (P and C and V):
             return None
 
@@ -1294,11 +1351,7 @@ class MenuGenerator:
             tot = gp + gc + gv
             if tot <= 0:
                 return (9.9, qp, qc, qv)
-            form_err = (
-                abs(gp / tot - sh["protein"])
-                + abs(gc / tot - sh["carb"])
-                + abs(gv / tot - sh["veg"])
-            )
+            form_err = abs(gp / tot - sh["protein"]) + abs(gc / tot - sh["carb"]) + abs(gv / tot - sh["veg"])
             if target_meal_cal:
                 cal = sum((self._recipe_kcal_portion(r) or 0) * q for r, q in ((p, qp), (c, qc), (v, qv)))
                 cal_err = abs(float(cal) - float(target_meal_cal)) / float(target_meal_cal)
@@ -1341,7 +1394,9 @@ class MenuGenerator:
                     plate = self._pick_plate_s3(plate_pools, used, hard_exclude, db_meal_type, per_meal_cal)
                     if plate is None:
                         raise EmptyRolePoolError(
-                            role="plate", meal_slot=meal_slot, day_offset=day,
+                            role="plate",
+                            meal_slot=meal_slot,
+                            day_offset=day,
                             member_name=self._member_display_name(member),
                             reason_hint="Нет тройки рецептов (белок/гарнир/овощи) с разметкой тарелки и формой 25/25/50.",
                         )

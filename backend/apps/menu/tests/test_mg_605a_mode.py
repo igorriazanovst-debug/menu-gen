@@ -271,8 +271,9 @@ class TestFamilyVirtualMember:
             filters={"mode": "family"},
         )
         virt = gen._family_virtual_member()
-        assert "орех" in virt["hard_exclude"]
-        assert "молоко" in virt["hard_exclude"]
+        # MG_ALLERGEN14: hard_exclude — dict; аллергены хранятся ключами (14).
+        assert "nuts" in virt["hard_exclude"]["allergens"]
+        assert "milk" in virt["hard_exclude"]["allergens"]
 
     def test_avg_calorie_target(self, family_with_three):
         family, members = family_with_three

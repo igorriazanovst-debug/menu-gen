@@ -16,6 +16,9 @@ class Recipe(models.Model):
     steps = models.JSONField(default=list)
     nutrition = models.JSONField(default=dict)
     categories = models.JSONField(default=list)
+    # MG_ALLERGEN14: ключи аллергенов (ТР ТС 022/2011), найденных в рецепте.
+    # Заполняется классификатором (apps.common.allergens) по ингредиентам+названию.
+    allergens = models.JSONField(default=list, blank=True)
     image_url = models.URLField(null=True, blank=True, max_length=1024)
     video_url = models.URLField(null=True, blank=True, max_length=1024)
     source_url = models.URLField(null=True, blank=True, max_length=1024)
@@ -118,6 +121,7 @@ class Recipe(models.Model):
         blank=True,
         help_text="Тип блюда (первое/второе/десерт...). RB-001.",
     )
+
     class PlateComponent(models.TextChoices):  # MG_STRAT_PLATE
         PROTEIN = "protein", "Plate: protein"
         CARB = "carb", "Plate: carb (side)"
@@ -214,6 +218,19 @@ class Recipe(models.Model):
 
     def __str__(self):
         return self.title
+
+    # MG_ALLERGEN14: держим allergens в синхроне с ингредиентами/названием.
+    # Пересчитываем только при полном сохранении (без update_fields), чтобы не
+    # мешать частичным .save(update_fields=[...]) и точечным .update() из команд.
+    def save(self, *args, **kwargs):
+        if kwargs.get("update_fields") is None:
+            try:
+                from apps.common.allergens import classify_recipe
+
+                self.allergens = classify_recipe(self)
+            except Exception:
+                pass
+        super().save(*args, **kwargs)
 
 
 class RecipeAuthor(models.Model):
@@ -322,9 +339,7 @@ class RecipeImportSession(models.Model):
         ERROR = "error", "Ошибка"
 
     uploaded_file = models.FileField(upload_to="recipe_imports/", verbose_name="Файл xlsx")
-    status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name="Статус"
-    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name="Статус")
     preview_data = models.JSONField(default=list, blank=True, verbose_name="Данные превью")
     parse_errors = models.JSONField(default=list, blank=True, verbose_name="Ошибки парсинга")
     warnings = models.JSONField(default=list, blank=True, verbose_name="Предупреждения")
@@ -350,12 +365,9 @@ class RecipeImportSession(models.Model):
         return f"ImportSession #{self.pk} [{self.status}] {self.created_at:%Y-%m-%d %H:%M}"
 
 
-
 # ── MG_RECIPELINK: recipe <-> rubricator product link ───────────────────────
 class RecipeProduct(models.Model):
-    recipe = models.ForeignKey(
-        "recipes.Recipe", on_delete=models.CASCADE, related_name="product_links"
-    )
+    recipe = models.ForeignKey("recipes.Recipe", on_delete=models.CASCADE, related_name="product_links")
     product = models.ForeignKey(
         "fridge.Product",
         on_delete=models.SET_NULL,
