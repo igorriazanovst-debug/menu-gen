@@ -7,6 +7,7 @@ Missing lines:
   11  IsAuthorOrAdmin: user_type == 'admin' → True
   20  IsRecipeAuthorRole: SAFE_METHODS → True
 """
+
 import pytest
 
 from apps.recipes.permissions import IsAuthorOrAdmin, IsRecipeAuthorRole

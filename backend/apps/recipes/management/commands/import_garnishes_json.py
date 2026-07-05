@@ -13,7 +13,6 @@ import json
 import logging
 import re
 import time
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
@@ -41,9 +40,21 @@ def _parse_raw_ingredient(raw: str) -> dict:
 
 # теги-категории, которые иногда попадают в хвост ингредиентов без «;»
 _TAG_MARKERS = (
-    "рецепт", "блюда из", "пошаговый", "с фото", "с видео", "вегетариан",
-    "на скорую руку", "для детей", "праздничн", "в мультиварке", "в духовке",
-    "на сковороде", "на пару", "время приготовления", "затраты времени",
+    "рецепт",
+    "блюда из",
+    "пошаговый",
+    "с фото",
+    "с видео",
+    "вегетариан",
+    "на скорую руку",
+    "для детей",
+    "праздничн",
+    "в мультиварке",
+    "в духовке",
+    "на сковороде",
+    "на пару",
+    "время приготовления",
+    "затраты времени",
 )
 
 
@@ -52,9 +63,7 @@ def _normalize_ingredients(raw_list: list) -> list:
     Старый формат [{raw}] — склеиваем, обрезаем по «;», парсим."""
     raw_list = raw_list or []
     # новый формат таблицы: есть name и нет raw — отдаём как есть
-    if raw_list and all(
-        isinstance(i, dict) and "raw" not in i and i.get("name") for i in raw_list
-    ):
+    if raw_list and all(isinstance(i, dict) and "raw" not in i and i.get("name") for i in raw_list):
         return raw_list
 
     raws = []
@@ -80,15 +89,54 @@ def _normalize_ingredients(raw_list: list) -> list:
 def _guess_food_group(title: str) -> str:
     t = title.lower()
     grain_kw = (
-        "рис", "гречк", "пшен", "булгур", "кускус", "макарон", "паст", "спагетти",
-        "лапш", "перловк", "овсян", "чечевиц", "горох", "фасол", "нут", "полент",
-        "ячмен", "пшениц", "киноа", "кукуруз",
+        "рис",
+        "гречк",
+        "пшен",
+        "булгур",
+        "кускус",
+        "макарон",
+        "паст",
+        "спагетти",
+        "лапш",
+        "перловк",
+        "овсян",
+        "чечевиц",
+        "горох",
+        "фасол",
+        "нут",
+        "полент",
+        "ячмен",
+        "пшениц",
+        "киноа",
+        "кукуруз",
     )
     veg_kw = (
-        "картофел", "картошк", "капуст", "цветная", "брокколи", "морков",
-        "свекл", "тыкв", "кабачк", "баклажан", "цуккин", "помидор", "томат",
-        "огурц", "перец", "шпинат", "спаржа", "артишок", "фенхель", "сельдер",
-        "репа", "пастернак", "батат", "авокадо", "грибы", "гриб",
+        "картофел",
+        "картошк",
+        "капуст",
+        "цветная",
+        "брокколи",
+        "морков",
+        "свекл",
+        "тыкв",
+        "кабачк",
+        "баклажан",
+        "цуккин",
+        "помидор",
+        "томат",
+        "огурц",
+        "перец",
+        "шпинат",
+        "спаржа",
+        "артишок",
+        "фенхель",
+        "сельдер",
+        "репа",
+        "пастернак",
+        "батат",
+        "авокадо",
+        "грибы",
+        "гриб",
     )
     for kw in grain_kw:
         if kw in t:
@@ -107,7 +155,9 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true", default=False)
         parser.add_argument("--skip-existing", action="store_true", default=True)
         parser.add_argument(
-            "--update-existing", action="store_true", default=False,
+            "--update-existing",
+            action="store_true",
+            default=False,
             help="Обновлять ингредиенты/шаги существующих рецептов по source_url (не создавать новые)",
         )
 
@@ -130,10 +180,7 @@ class Command(BaseCommand):
 
         existing_urls: set[str] = set()
         if skip_existing:
-            existing_urls = set(
-                Recipe.objects.filter(source_url__isnull=False)
-                .values_list("source_url", flat=True)
-            )
+            existing_urls = set(Recipe.objects.filter(source_url__isnull=False).values_list("source_url", flat=True))
             self.stdout.write(f"Уже в БД: {len(existing_urls)}")
 
         saved = skipped = failed = 0

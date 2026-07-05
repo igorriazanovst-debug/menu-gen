@@ -23,7 +23,9 @@ def _family():
 class TestDedupProducts:
     def test_alias_merge_repoints_and_deletes(self, db):
         canon = Product.objects.create(
-            name="Огурцы", is_seed=True, calories_per_100g=15,
+            name="Огурцы",
+            is_seed=True,
+            calories_per_100g=15,
             nutrition={"calories": 15, "proteins": 0.8, "fats": 0.1, "carbs": 2.8},
         )
         dup = Product.objects.create(name="Огурец")  # авто-дубль без КБЖУ
@@ -44,7 +46,8 @@ class TestDedupProducts:
         # «Творог» и «творог» — один и тот же продукт (нормализация совпадает)
         a = Product.objects.create(name="Творог")
         b = Product.objects.create(
-            name="творог", calories_per_100g=121,
+            name="творог",
+            calories_per_100g=121,
             nutrition={"calories": 121, "proteins": 17.2, "fats": 5.0, "carbs": 1.8},
         )
         _run("--apply")

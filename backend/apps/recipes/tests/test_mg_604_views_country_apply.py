@@ -6,6 +6,7 @@ Missing lines:
   24-33   RecipeCountryListView.get (целиком)
   141-145 RecipeAuthorApplyView.perform_create (duplicate check + save)
 """
+
 import pytest
 from django.urls import reverse
 

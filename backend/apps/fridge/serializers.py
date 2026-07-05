@@ -204,9 +204,7 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         if category_slug is not None:
             instance.category_fk = self._cat_from_slug(category_slug)
             if not validated_data.get("product"):
-                product = self._resolve_product(
-                    instance.name, category_slug, calories, nutrition
-                )
+                product = self._resolve_product(instance.name, category_slug, calories, nutrition)
                 if product is not None:
                     instance.product = product
 

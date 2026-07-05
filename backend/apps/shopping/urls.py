@@ -1,12 +1,13 @@
 # MG_SHOP001_urls
 from django.urls import path
 
+from .views import PendingSharedListsView  # MG_SHAREACCEPT
+from .views import SharedAccessRespondView  # MG_SHAREACCEPT
+from .views import ShoppingAddToFridgeView  # MG_SHOP2FRIDGE
+from .views import ShoppingCountsView  # MG_T09
 from .views import (
-    PendingSharedListsView,  # MG_SHAREACCEPT
     PurchaseHistoryView,
     RubricSearchView,
-    SharedAccessRespondView,  # MG_SHAREACCEPT
-    ShoppingAddToFridgeView,  # MG_SHOP2FRIDGE
     ShoppingItemDetailView,
     ShoppingItemsView,
     ShoppingItemToggleView,
@@ -14,7 +15,6 @@ from .views import (
     ShoppingListDetailView,
     ShoppingListExportView,
     ShoppingListsView,
-    ShoppingCountsView,  # MG_T09
 )
 
 urlpatterns = [

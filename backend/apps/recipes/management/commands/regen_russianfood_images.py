@@ -43,22 +43,29 @@ class Command(BaseCommand):
     help = "Заменяет чужие картинки russianfood.com на сгенерированные YandexART."
 
     def add_arguments(self, parser):
-        parser.add_argument("--dry-run", action="store_true", default=False,
-                            help="Только посчитать и показать примеры промтов; ничего не менять.")
-        parser.add_argument("--purge", action="store_true", default=False,
-                            help="Занулить чужие image_url (с бэкапом в povar_raw). Без генерации.")
-        parser.add_argument("--limit", type=int, default=0,
-                            help="Максимум рецептов для генерации за прогон (0 = без лимита).")
-        parser.add_argument("--samples", type=int, default=3,
-                            help="Сколько примеров промтов показать в --dry-run.")
-        parser.add_argument("--sleep", type=float, default=1.0,
-                            help="Пауза между рецептами при генерации, сек.")
-        parser.add_argument("--retries", type=int, default=3,
-                            help="Повторы генерации на рецепт при ошибке API.")
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            default=False,
+            help="Только посчитать и показать примеры промтов; ничего не менять.",
+        )
+        parser.add_argument(
+            "--purge",
+            action="store_true",
+            default=False,
+            help="Занулить чужие image_url (с бэкапом в povar_raw). Без генерации.",
+        )
+        parser.add_argument(
+            "--limit", type=int, default=0, help="Максимум рецептов для генерации за прогон (0 = без лимита)."
+        )
+        parser.add_argument("--samples", type=int, default=3, help="Сколько примеров промтов показать в --dry-run.")
+        parser.add_argument("--sleep", type=float, default=1.0, help="Пауза между рецептами при генерации, сек.")
+        parser.add_argument("--retries", type=int, default=3, help="Повторы генерации на рецепт при ошибке API.")
 
     # ── helpers ─────────────────────────────────────────────────────────────
     def _base_qs(self):
         from apps.recipes.models import Recipe
+
         return Recipe.objects.filter(source="parsed").filter(_RF)
 
     def _save_image(self, data: bytes) -> str:
@@ -118,8 +125,9 @@ class Command(BaseCommand):
 
     # ── purge: null foreign image_url with backup ─────────────────────────────
     def _purge(self, base):
-        from apps.recipes.models import Recipe
         from django.utils import timezone
+
+        from apps.recipes.models import Recipe
 
         qs = base.filter(image_url__icontains="russianfood")
         n = qs.count()
@@ -144,8 +152,8 @@ class Command(BaseCommand):
 
     # ── generate: prompt -> YandexART -> media -> image_url ───────────────────
     def _generate(self, base, limit: int, sleep_s: float, retries: int):
+        from apps.common.image_gen import ImageGenError, generate_image
         from apps.recipes.image_prompt import build_prompt
-        from apps.common.image_gen import generate_image, ImageGenError
 
         qs = base.filter(_NEEDS).order_by("id")
         if limit and limit > 0:
@@ -178,7 +186,7 @@ class Command(BaseCommand):
                     if attempt >= retries:
                         self.stderr.write(f"  [{i}/{total}] ! «{r.title}» (#{r.id}) ART: {exc}")
                     else:
-                        time.sleep(min(2 ** attempt, 16))
+                        time.sleep(min(2**attempt, 16))
             if data is None:
                 failed += 1
                 continue
@@ -199,6 +207,4 @@ class Command(BaseCommand):
 
         elapsed = time.time() - t0
         self.stdout.write("")
-        self.stdout.write(self.style.SUCCESS(
-            f"  Готово: ок={ok} ошибок={failed} за {elapsed:.0f}с."
-        ))
+        self.stdout.write(self.style.SUCCESS(f"  Готово: ок={ok} ошибок={failed} за {elapsed:.0f}с."))

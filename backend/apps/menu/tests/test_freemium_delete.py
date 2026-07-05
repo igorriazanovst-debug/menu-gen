@@ -73,7 +73,7 @@ class TestFreemiumDelete:
     def test_free_can_list_quarantine(self, client, db):
         # Карантин виден free-семье (200), не за premium-гейтом.
         head = _user(email="fd_q@x.com")
-        fam = _free_family(head)
+        _free_family(head)
         client.force_authenticate(head)
         resp = client.get(reverse("menu-quarantine"))
         assert resp.status_code == 200

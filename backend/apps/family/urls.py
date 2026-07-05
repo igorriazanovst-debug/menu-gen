@@ -1,8 +1,8 @@
 from django.urls import path
 
+from .views import FamilyAttachAccountView  # MG_MANAGEDMEMBER
+from .views import FamilyCreateManagedMemberView  # MG_MANAGEDMEMBER
 from .views import (
-    FamilyAttachAccountView,  # MG_MANAGEDMEMBER
-    FamilyCreateManagedMemberView,  # MG_MANAGEDMEMBER
     FamilyDetailView,
     FamilyInviteView,
     FamilyMemberTargetHistoryView,

@@ -26,7 +26,7 @@ SYSTEM = (
     "JSON-массив объектов {i, kcal, protein, fat, carb}: kcal — целое число "
     "(ккал), protein/fat/carb — граммы (число, можно дробное). Если позиция НЕ "
     "еда (бытовая химия, посуда, упаковка, бессмысленное название) — верни "
-    '{i, food: false}. Отвечай ТОЛЬКО валидным JSON-массивом, без пояснений.'
+    "{i, food: false}. Отвечай ТОЛЬКО валидным JSON-массивом, без пояснений."
 )
 
 
@@ -90,9 +90,7 @@ class Command(BaseCommand):
         for base in range(0, len(targets), batch):
             grp = targets[base : base + batch]
             # живой прогресс: длинный прогон не должен выглядеть зависшим
-            self.stdout.write(
-                f"  чанк {base // batch + 1}/{nchunks} (заполнено: {filled}, не еда: {not_food})…"
-            )
+            self.stdout.write(f"  чанк {base // batch + 1}/{nchunks} (заполнено: {filled}, не еда: {not_food})…")
             self.stdout.flush()
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
@@ -141,7 +139,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("DRY-RUN — ничего не записано. Для записи: --apply"))
         self.stdout.write(
             self.style.SUCCESS(
-                f"Готово. Заполнено: {filled}; не еда (пропущено): {not_food}; "
-                f"не удалось распознать: {failed}."
+                f"Готово. Заполнено: {filled}; не еда (пропущено): {not_food}; " f"не удалось распознать: {failed}."
             )
         )

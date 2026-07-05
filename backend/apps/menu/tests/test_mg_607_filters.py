@@ -9,6 +9,7 @@ MG-607: тесты расширенных полей GenerateMenuSerializer и �
   - exclude_allergens (per-request) переопределяет profile.allergies
   - exclude_disliked (per-request) переопределяет profile.disliked_products
 """
+
 # MG_607_V_tests
 from __future__ import annotations
 

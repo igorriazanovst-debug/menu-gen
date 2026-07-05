@@ -241,8 +241,7 @@ class _StepsWidget(forms.Widget):
         for it in items:
             rows.append(self._row(name, it.get("text", ""), h_del))
         empty_row = self._row(name, "", h_del)
-        return mark_safe(
-            """
+        return mark_safe("""
 <div class="mg-steps" data-name="{name}">
   <ol class="mg-steps-body" style="padding-left:20px;max-width:820px;">{rows}</ol>
   <template class="mg-steps-tpl">{empty}</template>
@@ -258,10 +257,7 @@ class _StepsWidget(forms.Widget):
     var li=document.createElement('li');li.innerHTML=tpl.innerHTML;body.appendChild(li);bindDel(li);}});
   bindDel(root);
 }})();</script>
-""".format(
-                name=name, h_add=h_add, h_step=h_step, rows="".join(rows), empty=empty_row
-            )
-        )
+""".format(name=name, h_add=h_add, h_step=h_step, rows="".join(rows), empty=empty_row))
 
     @staticmethod
     def _row(name, text, h_del):
@@ -366,8 +362,6 @@ class _MediaUploadWidget(forms.TextInput):
 # ── /PHOTO_UPLOAD_ADMIN ──────────────────────────────────────────────────────
 
 
-
-
 class _CuisineSelectWidget(forms.Select):
     """<select> populated live from Cuisine table (active only, sorted)."""
 
@@ -388,6 +382,7 @@ class _CuisineSelectWidget(forms.Select):
 
     def value_from_datadict(self, data, files, name):
         return data.get(name, "")
+
 
 # ── The admin form ────────────────────────────────────────────────────────────
 class RecipeAdminForm(forms.ModelForm):
@@ -438,4 +433,3 @@ class RecipeChangelistForm(forms.ModelForm):
     class Meta:
         model = Recipe
         fields = ("title", "dish_type", "country", "source")
-

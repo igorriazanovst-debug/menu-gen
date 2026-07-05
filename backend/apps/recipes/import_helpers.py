@@ -17,14 +17,38 @@ ALLERG_OK = {"nuts", "eggs", "fish", "shellfish", "milk", "gluten", "soy", "pean
 EXAMPLE_TITLES = {"Борщ классический", "Овсяная каша на молоке"}
 
 COLS = [
-    "row_id", "title", "description", "ingredients", "steps",
-    "cook_time_min", "difficulty", "image_url", "video_url", "portion_g",
-    "kcal_per_100g", "proteins_per_100g", "fats_per_100g", "carbs_per_100g",
-    "sugars_per_100g", "dish_type", "meal_category", "food_group",
-    "protein_type", "grain_type", "is_red_meat", "is_fatty_fish",
-    "has_added_sugar", "cooking_method", "oil_tsp", "is_vegan",
-    "is_vegetarian", "is_gluten_free", "is_lactose_free", "allergens",
-    "source", "country",
+    "row_id",
+    "title",
+    "description",
+    "ingredients",
+    "steps",
+    "cook_time_min",
+    "difficulty",
+    "image_url",
+    "video_url",
+    "portion_g",
+    "kcal_per_100g",
+    "proteins_per_100g",
+    "fats_per_100g",
+    "carbs_per_100g",
+    "sugars_per_100g",
+    "dish_type",
+    "meal_category",
+    "food_group",
+    "protein_type",
+    "grain_type",
+    "is_red_meat",
+    "is_fatty_fish",
+    "has_added_sugar",
+    "cooking_method",
+    "oil_tsp",
+    "is_vegan",
+    "is_vegetarian",
+    "is_gluten_free",
+    "is_lactose_free",
+    "allergens",
+    "source",
+    "country",
 ]
 
 
@@ -270,11 +294,7 @@ def enrich_kbju(data_list, use_ai=True):
     """
     warnings = []
     for d in data_list:
-        need = (
-            d["proteins_per_100g"] is None
-            or d["fats_per_100g"] is None
-            or d["carbs_per_100g"] is None
-        )
+        need = d["proteins_per_100g"] is None or d["fats_per_100g"] is None or d["carbs_per_100g"] is None
         if not need:
             continue
         kbju, unresolved = compute_kbju_100g(d["ingredients"], d["kcal_per_100g"], use_ai)
@@ -283,9 +303,7 @@ def enrich_kbju(data_list, use_ai=True):
                 d["kcal_per_100g"] = Decimal(str(kbju["kcal"]))
                 kc = float(kbju["kcal"])
                 if kc < KCAL_100G_MIN or kc > KCAL_100G_MAX:
-                    warnings.append(
-                        f"{d['tag']}: ⚠ kcal/100г={kc} вне нормы ({KCAL_100G_MIN}..{KCAL_100G_MAX})"
-                    )
+                    warnings.append(f"{d['tag']}: ⚠ kcal/100г={kc} вне нормы ({KCAL_100G_MIN}..{KCAL_100G_MAX})")
             if d["proteins_per_100g"] is None:
                 d["proteins_per_100g"] = Decimal(str(kbju["proteins"]))
             if d["fats_per_100g"] is None:

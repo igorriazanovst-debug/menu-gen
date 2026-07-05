@@ -10,11 +10,11 @@ from apps.menu.models import Menu
 
 from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, ShoppingListItem
 from .permissions import access_level, get_user_family, is_family_head
+from .serializers import PendingSharedListSerializer  # MG_SHAREACCEPT
 from .serializers import (
     CreateListSerializer,
     GrantAccessSerializer,
     PurchaseHistoryEntrySerializer,
-    PendingSharedListSerializer,  # MG_SHAREACCEPT
     ShoppingListAccessSerializer,
     ShoppingListBriefSerializer,
     ShoppingListItemSerializer,
@@ -75,9 +75,7 @@ class ShoppingCountsView(APIView):
             .distinct()
             .count()
         )
-        history = (
-            PurchaseHistoryEntry.objects.filter(family=family).count() if family else 0
-        )
+        history = PurchaseHistoryEntry.objects.filter(family=family).count() if family else 0
         return Response(
             {
                 "active": active,
@@ -149,10 +147,12 @@ class ShoppingListsView(APIView):
         # MG_RECIPELINK_VIEW_B: set category cache string + FK + product FK so the
         # imported list is grouped/coloured by section.
         from apps.fridge.models import ProductCategory
+
         _cat_name = {c.id: c.name_ru for c in ProductCategory.objects.all()}
 
         def _mx(f):
             return ShoppingListItem._meta.get_field(f).max_length
+
         _nm, _un, _ct = _mx("name"), _mx("unit"), _mx("category")
         bulk = []
         for i, d in enumerate(items_data):
@@ -194,9 +194,9 @@ class ShoppingListDetailView(APIView):
         # fridge_eligible don't N+1.
         from django.db.models import Prefetch
 
-        items_qs = ShoppingListItem.objects.select_related(
-            "category_fk", "product__category_fk"
-        ).prefetch_related("fridge_items")
+        items_qs = ShoppingListItem.objects.select_related("category_fk", "product__category_fk").prefetch_related(
+            "fridge_items"
+        )
         sl = (
             _annotate(ShoppingList.objects.filter(id=sl.id))
             .prefetch_related(Prefetch("items", queryset=items_qs))
@@ -424,10 +424,7 @@ class ShoppingAddToFridgeView(APIView):
             except (TypeError, ValueError):
                 return Response({"detail": "Некорректные item_ids."}, status=status.HTTP_400_BAD_REQUEST)
             items = items.filter(id__in=ids)
-        items = (
-            items.select_related("product", "product__category_fk", "category_fk")
-            .prefetch_related("fridge_items")
-        )
+        items = items.select_related("product", "product__category_fk", "category_fk").prefetch_related("fridge_items")
 
         added = 0
         skipped = 0
@@ -525,7 +522,7 @@ class ShoppingListExportView(APIView):
         if not caps["export"]:
             return Response({"detail": "Нет прав на экспорт."}, status=status.HTTP_403_FORBIDDEN)
         # MG_RUBRIC006_export
-        from decimal import Decimal, ROUND_HALF_UP  # MG_SHOPBUG_BE
+        from decimal import ROUND_HALF_UP, Decimal  # MG_SHOPBUG_BE
 
         items = ShoppingListItem.objects.filter(shopping_list=sl)
         by_cat = {}
@@ -658,11 +655,7 @@ class SharedAccessRespondView(APIView):
         acc = ShoppingListAccess.objects.filter(shopping_list_id=list_id, user=request.user).first()
         if not acc:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        acc.status = (
-            ShoppingListAccess.Status.ACCEPTED
-            if action == "accept"
-            else ShoppingListAccess.Status.REJECTED
-        )
+        acc.status = ShoppingListAccess.Status.ACCEPTED if action == "accept" else ShoppingListAccess.Status.REJECTED
         acc.responded_at = timezone.now()
         acc.save(update_fields=["status", "responded_at"])
         return Response(ShoppingListAccessSerializer(acc).data)

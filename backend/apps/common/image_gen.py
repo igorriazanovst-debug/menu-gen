@@ -61,9 +61,7 @@ def _clean_key(raw: str) -> str:
     плейсхолдера) — Yandex иначе отдаёт 401 «Unknown api key».
     """
     k = (raw or "").strip()
-    if len(k) >= 2 and (
-        (k[0] == k[-1] and k[0] in "\"'") or (k[0] == "<" and k[-1] == ">")
-    ):
+    if len(k) >= 2 and ((k[0] == k[-1] and k[0] in "\"'") or (k[0] == "<" and k[-1] == ">")):
         k = k[1:-1].strip()
     return k
 
@@ -75,9 +73,7 @@ def _model_uri() -> str:
         return model
     # ART runs under its own service account/folder ("menugen-image"); allow a
     # dedicated folder, fall back to the shared text folder.
-    folder_id = (
-        getattr(settings, "AI_IMAGE_FOLDER_ID", "") or getattr(settings, "AI_FOLDER_ID", "") or ""
-    ).strip()
+    folder_id = (getattr(settings, "AI_IMAGE_FOLDER_ID", "") or getattr(settings, "AI_FOLDER_ID", "") or "").strip()
     if not folder_id:
         raise ImageGenConfigError("AI_IMAGE_FOLDER_ID/AI_FOLDER_ID is not set for image generation.")
     return f"art://{folder_id}/{model}/latest"
@@ -109,8 +105,12 @@ def generate_image(
         raise ImageGenConfigError("AI_IMAGE_API_KEY/AI_API_KEY is not set for image generation.")
 
     req_timeout = float(getattr(settings, "AI_IMAGE_TIMEOUT", 30.0) or 30.0)
-    poll_timeout = float(poll_timeout if poll_timeout is not None else getattr(settings, "AI_IMAGE_POLL_TIMEOUT", 120.0))
-    poll_interval = float(poll_interval if poll_interval is not None else getattr(settings, "AI_IMAGE_POLL_INTERVAL", 2.0))
+    poll_timeout = float(
+        poll_timeout if poll_timeout is not None else getattr(settings, "AI_IMAGE_POLL_TIMEOUT", 120.0)
+    )
+    poll_interval = float(
+        poll_interval if poll_interval is not None else getattr(settings, "AI_IMAGE_POLL_INTERVAL", 2.0)
+    )
 
     host = _host_root()
     headers = {

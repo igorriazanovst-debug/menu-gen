@@ -16,6 +16,7 @@ MG-602: целенаправленное покрытие apps/menu/views.py (67
 - ShoppingListView / ShoppingItemToggleView (целиком)
 - _build_shopping_list: fridge skip, bad quantity
 """
+
 import datetime
 from decimal import Decimal
 

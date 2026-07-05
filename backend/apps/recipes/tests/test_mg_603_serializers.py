@@ -10,6 +10,7 @@ Missing lines до патча:
  127         food_group=grain без grain_type
  131         food_group=protein без protein_type
 """
+
 import pytest
 
 from apps.recipes.models import Recipe

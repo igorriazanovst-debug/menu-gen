@@ -15,8 +15,7 @@ HELP = {
     "servings_normalized": _("Normalized servings count used by the generator."),
     "portion_g": _("Weight of one serving, grams."),
     "ingredients": _(
-        "List of ingredients. Each row: name, quantity, unit, grams. "
-        "Grams are used to compute nutrition."
+        "List of ingredients. Each row: name, quantity, unit, grams. " "Grams are used to compute nutrition."
     ),
     "steps": _("Ordered cooking steps. Numbering is assigned automatically."),
     "nutrition": _("Per-100g nutrition object: calories, proteins, fats, carbs, sugars."),
@@ -25,8 +24,7 @@ HELP = {
         "soup, main, salad, side, dessert, drink, bakery, sauce, snack, breakfast_dish."
     ),
     "allergens": _(
-        "Allergens present in the dish. Allowed: eggs, milk, gluten, fish, "
-        "shellfish, nuts, peanuts, soy, sesame."
+        "Allergens present in the dish. Allowed: eggs, milk, gluten, fish, " "shellfish, nuts, peanuts, soy, sesame."
     ),
     "suitable_for": _("Meal slots this dish fits. Allowed: breakfast, lunch, dinner, snack."),
     "dish_type": _("Dish type (first course / main / dessert ...). One value."),
@@ -292,11 +290,12 @@ class RecipeFavoriteAdmin(admin.ModelAdmin):
     raw_id_fields = ("user", "recipe")
     search_fields = ("recipe__title", "user__email", "user__name")
 
-# MG_IMPORT_TOOL_V1_admin
-from django.urls import path as _url_path
 
-from .admin_import_views import ImportPreviewView, ImportUploadView
-from .models import RecipeImportSession
+# MG_IMPORT_TOOL_V1_admin
+from django.urls import path as _url_path  # noqa: E402
+
+from .admin_import_views import ImportPreviewView, ImportUploadView  # noqa: E402
+from .models import RecipeImportSession  # noqa: E402
 
 
 @admin.register(RecipeImportSession)
@@ -305,8 +304,15 @@ class RecipeImportSessionAdmin(admin.ModelAdmin):
     list_display = ("id", "status", "recipes_count", "imported_count", "created_by", "created_at")
     list_filter = ("status",)
     readonly_fields = (
-        "status", "preview_data", "parse_errors", "warnings",
-        "recipes_count", "imported_count", "created_by", "created_at", "updated_at",
+        "status",
+        "preview_data",
+        "parse_errors",
+        "warnings",
+        "recipes_count",
+        "imported_count",
+        "created_by",
+        "created_at",
+        "updated_at",
     )
     ordering = ("-created_at",)
 
@@ -339,4 +345,3 @@ class RecipeImportSessionAdmin(admin.ModelAdmin):
         if obj and obj.status == RecipeImportSession.Status.PREVIEW:
             extra_context["preview_url"] = f"../{object_id}/preview/"
         return super().change_view(request, object_id, form_url, extra_context)
-

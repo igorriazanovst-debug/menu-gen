@@ -11,6 +11,7 @@ MenuGenerator(...).generate() и через API POST /menu/generate/.
 - MG-503: has_added_sugar=True не попадает в основные приёмы
 - MG-302: красное мясо не превышает 500 г / неделю
 """
+
 import datetime
 from decimal import Decimal
 

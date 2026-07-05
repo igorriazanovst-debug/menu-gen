@@ -252,7 +252,12 @@ def _is_seedable(canon_disp, cat_id):
 
 
 def rebuild_recipe_links(
-    recipe, canon_map=None, prod_index=None, cat_id_by_slug=None, force=False, ref_index=None,
+    recipe,
+    canon_map=None,
+    prod_index=None,
+    cat_id_by_slug=None,
+    force=False,
+    ref_index=None,
     create_missing=False,  # MG_T04C
 ):  # MG_PRODALIAS
     """(Re)build RecipeProduct rows for one recipe. Idempotent (replace).

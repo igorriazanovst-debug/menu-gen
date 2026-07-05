@@ -19,9 +19,8 @@
 
 from __future__ import annotations
 
-import random
 from collections import Counter, defaultdict
-from datetime import date, timedelta
+from datetime import date
 
 from django.core.management.base import BaseCommand
 
@@ -80,10 +79,9 @@ class Command(BaseCommand):
 
         # Размер пула по каждой роли
         pool_sizes: Counter = Counter()
-        role_pools_sample: dict = {}
 
-        repeat_counter: Counter = Counter()          # recipe_id → сколько прогонов содержат этот рецепт
-        run_sets: dict = defaultdict(set)            # recipe_id → set of run indices
+        repeat_counter: Counter = Counter()  # recipe_id → сколько прогонов содержат этот рецепт
+        run_sets: dict = defaultdict(set)  # recipe_id → set of run indices
 
         total_slots = 0
         total_distinct_per_run: list[int] = []
@@ -247,7 +245,5 @@ class Command(BaseCommand):
                 status = "🟢 ок"
             else:
                 status = "🟢 отлично"
-            self.stdout.write(
-                f"  {role:<16} {n:>4} {demand3:>3} {demand5:>3} {mn:>4} {good:>5} {great:>6}  {status}"
-            )
+            self.stdout.write(f"  {role:<16} {n:>4} {demand3:>3} {demand5:>3} {mn:>4} {good:>5} {great:>6}  {status}")
         self.stdout.write("")

@@ -8,6 +8,7 @@ Missing lines:
   81-82  recipe_portion_grams: exception в блоке 1 (nutrition)
   93-94  recipe_portion_grams: exception в блоке 2 (povar_raw)
 """
+
 import pytest
 
 from apps.menu.portions import _age_multiplier, _member_age, daily_target_grams, recipe_portion_grams

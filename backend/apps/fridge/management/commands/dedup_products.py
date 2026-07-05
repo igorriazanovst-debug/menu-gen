@@ -52,9 +52,7 @@ class Command(BaseCommand):
         # ВАЖНО: для слияния доверяем ТОЛЬКО выверенным синонимам (manual/merge).
         # Авто-синонимы (source=auto) из канонизации ингредиентов шумные и сливали
         # разные продукты (напр. «Мука пшеничная» -> «Мука») — их не используем.
-        alias_index = {
-            a.alias_norm: a.product_id for a in ProductAlias.objects.exclude(source="auto")
-        }
+        alias_index = {a.alias_norm: a.product_id for a in ProductAlias.objects.exclude(source="auto")}
 
         # группы по нормализованному имени -> выбранный канон группы
         by_norm = defaultdict(list)

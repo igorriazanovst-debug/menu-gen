@@ -110,7 +110,7 @@ class _FavoriteStateMixin(serializers.Serializer):
 
 
 # MG_FIX_IMAGE_URL_ABSOLUTE / MG_PUBLIC_BACKEND_URL
-import os as _mg_os
+import os as _mg_os  # noqa: E402
 
 
 def _mg_public_backend_url():

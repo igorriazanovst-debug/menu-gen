@@ -1,5 +1,6 @@
 # MG_501_V_tests
 """MG-501 tests: новые поля Recipe + сериализаторы."""
+
 from decimal import Decimal
 
 import pytest

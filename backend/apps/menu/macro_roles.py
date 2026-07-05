@@ -5,6 +5,7 @@ a recipe "has" a role if >=1 of its linked ingredients belongs to a category
 mapping to that role. Source of truth = this module (Python constant).
 Per-product overrides and admin editing -> BACKLOG.
 """
+
 from __future__ import annotations
 
 # Macro roles
@@ -18,29 +19,29 @@ CARB_ANY = frozenset({CARB_COMPLEX, CARB_SIMPLE})
 
 # category slug -> set of roles (confirmed mapping, chat strategy)
 MACRO_ROLES = {
-    "meat":       frozenset({PROTEIN}),
-    "fish":       frozenset({PROTEIN}),
-    "eggs":       frozenset({PROTEIN}),
-    "cheese":     frozenset({PROTEIN, FAT}),
-    "sausages":   frozenset({PROTEIN, FAT}),
-    "dairy":      frozenset({PROTEIN, FAT}),
-    "grains":     frozenset({CARB_COMPLEX}),
-    "bakery":     frozenset({CARB_COMPLEX}),
-    "sweets":     frozenset({CARB_SIMPLE}),
-    "oils":       frozenset({FAT}),
+    "meat": frozenset({PROTEIN}),
+    "fish": frozenset({PROTEIN}),
+    "eggs": frozenset({PROTEIN}),
+    "cheese": frozenset({PROTEIN, FAT}),
+    "sausages": frozenset({PROTEIN, FAT}),
+    "dairy": frozenset({PROTEIN, FAT}),
+    "grains": frozenset({CARB_COMPLEX}),
+    "bakery": frozenset({CARB_COMPLEX}),
+    "sweets": frozenset({CARB_SIMPLE}),
+    "oils": frozenset({FAT}),
     "vegetables": frozenset({FIBER}),
-    "fruits":     frozenset({FIBER}),
+    "fruits": frozenset({FIBER}),
     # no role (cannot be split by category alone / non-food):
-    "canned":     frozenset(),
-    "frozen":     frozenset(),
-    "ready":      frozenset(),
-    "sauces":     frozenset(),
+    "canned": frozenset(),
+    "frozen": frozenset(),
+    "ready": frozenset(),
+    "sauces": frozenset(),
     "condiments": frozenset(),
-    "drinks":     frozenset(),
-    "other":      frozenset(),
-    "household":  frozenset(),
-    "hygiene":    frozenset(),
-    "pets":       frozenset(),
+    "drinks": frozenset(),
+    "other": frozenset(),
+    "household": frozenset(),
+    "hygiene": frozenset(),
+    "pets": frozenset(),
 }
 
 

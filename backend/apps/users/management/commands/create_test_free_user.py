@@ -29,9 +29,7 @@ class Command(BaseCommand):
         password = options["password"]
         name = options["name"]
 
-        user, created = User.objects.get_or_create(
-            email=email, defaults={"name": name, "user_type": "user"}
-        )
+        user, created = User.objects.get_or_create(email=email, defaults={"name": name, "user_type": "user"})
         # set_password обходит валидаторы паролей (они срабатывают только в формах/
         # сериализаторах), поэтому простой пароль вроде "1234!" допустим для теста.
         user.name = name
@@ -43,14 +41,11 @@ class Command(BaseCommand):
         family = Family.objects.filter(owner=user).first()
         if family is None:
             family = Family.objects.create(owner=user, name=f"Семья {name}")
-        FamilyMember.objects.get_or_create(
-            family=family, user=user, defaults={"role": FamilyMember.Role.HEAD}
-        )
+        FamilyMember.objects.get_or_create(family=family, user=user, defaults={"role": FamilyMember.Role.HEAD})
 
         action = "создан" if created else "обновлён"
         self.stdout.write(
             self.style.SUCCESS(
-                f"Free-пользователь {action}: {email} / {password} "
-                f"(семья «{family.name}», без premium-подписки)."
+                f"Free-пользователь {action}: {email} / {password} " f"(семья «{family.name}», без premium-подписки)."
             )
         )

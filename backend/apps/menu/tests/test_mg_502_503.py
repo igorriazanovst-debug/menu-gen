@@ -1,5 +1,6 @@
 # MG_502_503_V_tests
 """MG-502 (контроль масла) + MG-503 (исключение сахара) — тесты."""
+
 from __future__ import annotations
 
 from datetime import date

@@ -25,11 +25,11 @@ Activity factors:
 Goal deltas:
   lose_weight -500 / maintain 0 / gain_weight +300 / healthy 0
 """
+
 from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Any
 
 MG_206_V = 1
 
@@ -59,24 +59,24 @@ SYSTEMS = {
 }
 
 DIET_PRESETS = {
-    "balanced":     {"name": "Сбалансированный",  "p": 0.20, "f": 0.30, "c": 0.50},
-    "high_protein": {"name": "Высокобелковый",    "p": 0.35, "f": 0.25, "c": 0.40},
-    "low_carb":     {"name": "Низкоуглеводный",   "p": 0.30, "f": 0.45, "c": 0.25},
+    "balanced": {"name": "Сбалансированный", "p": 0.20, "f": 0.30, "c": 0.50},
+    "high_protein": {"name": "Высокобелковый", "p": 0.35, "f": 0.25, "c": 0.40},
+    "low_carb": {"name": "Низкоуглеводный", "p": 0.30, "f": 0.45, "c": 0.25},
 }
 
 ACTIVITY_FACTORS = {
-    "sedentary":   1.2,
-    "light":       1.375,
-    "moderate":    1.55,
-    "active":      1.725,
+    "sedentary": 1.2,
+    "light": 1.375,
+    "moderate": 1.55,
+    "active": 1.725,
     "very_active": 1.9,
 }
 
 GOAL_DELTAS = {
-    "lose_weight":  -500,
-    "maintain":      0,
+    "lose_weight": -500,
+    "maintain": 0,
     "gain_weight": +300,
-    "healthy":       0,
+    "healthy": 0,
 }
 
 FIBER_PER_1000_KCAL = 14
@@ -90,6 +90,7 @@ VALID_CUSTOM_MODES = ("grams", "percents")
 
 
 # ─── BMR formulas ───────────────────────────────────────────────────────────
+
 
 def bmr_mifflin(weight: float, height: float, age: int, gender: str) -> float:
     base = 10.0 * weight + 6.25 * height - 5.0 * age
@@ -131,6 +132,7 @@ def age_from_birth_year(birth_year: int | None, ref_date: date | None = None) ->
 
 # ─── Result helpers ─────────────────────────────────────────────────────────
 
+
 def _round1(x: float) -> Decimal:
     return Decimal(f"{round(float(x), 1):.1f}")
 
@@ -138,8 +140,8 @@ def _round1(x: float) -> Decimal:
 def _macros_from_pcts(calories: int, p_pct: float, f_pct: float, c_pct: float) -> dict:
     """% уже как доли (0.20 / 0.30 / 0.50). Сумма должна быть ~1.0."""
     protein_g = round((calories * p_pct) / 4.0, 1)
-    fat_g     = round((calories * f_pct) / 9.0, 1)
-    carb_g    = round((calories * c_pct) / 4.0, 1)
+    fat_g = round((calories * f_pct) / 9.0, 1)
+    carb_g = round((calories * c_pct) / 4.0, 1)
     return {"protein_g": protein_g, "fat_g": fat_g, "carb_g": carb_g}
 
 
@@ -148,6 +150,7 @@ def _fiber_default(calories: int) -> float:
 
 
 # ─── Main entrypoints ───────────────────────────────────────────────────────
+
 
 def calculate_preset(data: dict) -> dict:
     """
@@ -182,11 +185,11 @@ def calculate_preset(data: dict) -> dict:
         "age": age,
         "bmr": int(round(bmr)),
         "tdee": int(round(tdee_val)),
-        "calorie_target":   calories,
+        "calorie_target": calories,
         "protein_target_g": _round1(macros["protein_g"]),
-        "fat_target_g":     _round1(macros["fat_g"]),
-        "carb_target_g":    _round1(macros["carb_g"]),
-        "fiber_target_g":   _round1(fiber),
+        "fat_target_g": _round1(macros["fat_g"]),
+        "carb_target_g": _round1(macros["carb_g"]),
+        "fiber_target_g": _round1(fiber),
     }
 
 
@@ -198,10 +201,10 @@ def calculate_custom_grams(data: dict) -> dict:
         custom_carb_g, custom_fiber_g
     }
     """
-    cals  = int(data["custom_calorie_target"])
-    prot  = float(data["custom_protein_g"])
-    fat   = float(data["custom_fat_g"])
-    carb  = float(data["custom_carb_g"])
+    cals = int(data["custom_calorie_target"])
+    prot = float(data["custom_protein_g"])
+    fat = float(data["custom_fat_g"])
+    carb = float(data["custom_carb_g"])
     fiber = float(data["custom_fiber_g"])
     return {
         "system": "custom",
@@ -209,11 +212,11 @@ def calculate_custom_grams(data: dict) -> dict:
         "age": age_from_birth_year(data.get("birth_year")),
         "bmr": None,
         "tdee": None,
-        "calorie_target":   cals,
+        "calorie_target": cals,
         "protein_target_g": _round1(prot),
-        "fat_target_g":     _round1(fat),
-        "carb_target_g":    _round1(carb),
-        "fiber_target_g":   _round1(fiber),
+        "fat_target_g": _round1(fat),
+        "carb_target_g": _round1(carb),
+        "fiber_target_g": _round1(fiber),
     }
 
 
@@ -251,11 +254,11 @@ def calculate_custom_percents(data: dict) -> dict:
         "age": age,
         "bmr": int(round(bmr)),
         "tdee": int(round(tdee_val)),
-        "calorie_target":   calories,
+        "calorie_target": calories,
         "protein_target_g": _round1(macros["protein_g"]),
-        "fat_target_g":     _round1(macros["fat_g"]),
-        "carb_target_g":    _round1(macros["carb_g"]),
-        "fiber_target_g":   _round1(fiber),
+        "fat_target_g": _round1(macros["fat_g"]),
+        "carb_target_g": _round1(macros["carb_g"]),
+        "fiber_target_g": _round1(fiber),
     }
 
 

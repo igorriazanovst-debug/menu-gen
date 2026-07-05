@@ -5,14 +5,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Family, FamilyMember
-from .serializers import (
-    AttachAccountSerializer,  # MG_MANAGEDMEMBER
-    CreateManagedMemberSerializer,  # MG_MANAGEDMEMBER
-    FamilyMemberSerializer,
-    FamilyMemberUpdateSerializer,
-    FamilySerializer,
-    InviteMemberSerializer,
-)
+from .serializers import AttachAccountSerializer  # MG_MANAGEDMEMBER
+from .serializers import CreateManagedMemberSerializer  # MG_MANAGEDMEMBER
+from .serializers import FamilyMemberSerializer, FamilyMemberUpdateSerializer, FamilySerializer, InviteMemberSerializer
 
 User = get_user_model()
 
@@ -145,9 +140,7 @@ class FamilyCreateManagedMemberView(APIView):
                 setattr(profile, attr, value)
             profile.save()
 
-        member = FamilyMember.objects.create(
-            family=family, user=member_user, role=FamilyMember.Role.MEMBER
-        )
+        member = FamilyMember.objects.create(family=family, user=member_user, role=FamilyMember.Role.MEMBER)
         return Response(FamilyMemberSerializer(member).data, status=status.HTTP_201_CREATED)
 
 

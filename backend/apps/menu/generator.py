@@ -30,9 +30,9 @@ from typing import Dict, List, Optional, Tuple
 from apps.fridge.models import FridgeItem
 from apps.recipes.models import Recipe
 
+from . import macro_roles as _mr  # MG_STRAT
 from .exceptions import EmptyRolePoolError
 from .portions import daily_target_grams, recipe_portion_grams  # MG_304_V_generator
-from . import macro_roles as _mr  # MG_STRAT
 
 logger = logging.getLogger(__name__)
 
@@ -762,10 +762,10 @@ class MenuGenerator:
 
     # MG_605A_V_generator: family-режим — один прогон, дублирование под членов
     def _generate_family(self) -> List[dict]:
-        from .portions import member_quantity_for_recipe
-
         # MG_610_V_generator: align start_date to Monday
         from datetime import timedelta as _td610f
+
+        from .portions import member_quantity_for_recipe
 
         _wd = self.start_date.weekday()
         if _wd != 0:
@@ -1376,7 +1376,6 @@ class MenuGenerator:
         per_member; MG-303/304 off; MG-302 поверх (через warnings); перекусы — отдельным параметром позже."""
         all_recipes = self._build_recipe_pool()
         plate_pools = self._build_plate_pools_s3(all_recipes)
-        fridge_ids = self._get_fridge_ingredient_names()
         items = []
         used_per_member = {m.id: set() for m in self.members}
         MEALS = ["breakfast", "lunch", "dinner"]
@@ -1398,7 +1397,9 @@ class MenuGenerator:
                             meal_slot=meal_slot,
                             day_offset=day,
                             member_name=self._member_display_name(member),
-                            reason_hint="Нет тройки рецептов (белок/гарнир/овощи) с разметкой тарелки и формой 25/25/50.",
+                            reason_hint=(
+                                "Нет тройки рецептов (белок/гарнир/овощи) " "с разметкой тарелки и формой 25/25/50."
+                            ),
                         )
                     p, c, v, qp, qc, qv = plate  # MG_STRAT3_PLATEFORM
                     _S3_ROLE = {"protein": "main", "carb": "side", "veg": "salad"}  # MG_STRAT3_ROLE

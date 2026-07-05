@@ -1,18 +1,15 @@
 # MG_IMPORT_TOOL_V1 — кастомные views для импорта рецептов через Django Admin
 from __future__ import annotations
 
-import json
-
 from django import forms
-from django.contrib import admin, messages
+from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import path
 from django.utils.decorators import method_decorator
 from django.views import View
 
-
 # ── форма загрузки ────────────────────────────────────────────────────────────
+
 
 class UploadImportForm(forms.Form):
     xlsx_file = forms.FileField(
@@ -27,6 +24,7 @@ class UploadImportForm(forms.Form):
 
 
 # ── helper: сериализуем preview_data (Decimal → float) ───────────────────────
+
 
 def _prep_preview(data_list):
     """Конвертирует Decimal/int в float/int для JSON."""
@@ -45,6 +43,7 @@ def _prep_preview(data_list):
 
 
 # ── view: загрузка + парсинг + превью ────────────────────────────────────────
+
 
 @method_decorator(staff_member_required, name="dispatch")
 class ImportUploadView(View):
@@ -79,7 +78,7 @@ class ImportUploadView(View):
             session.parse_errors = [str(exc)]
             session.save()
             messages.error(request, f"Ошибка чтения файла: {exc}")
-            return redirect(f"../")
+            return redirect("../")
 
         all_errors = []
         prepared = []
@@ -121,6 +120,7 @@ class ImportUploadView(View):
 
 # ── view: превью ─────────────────────────────────────────────────────────────
 
+
 @method_decorator(staff_member_required, name="dispatch")
 class ImportPreviewView(View):
     template_name = "admin/recipes/recipe_import_preview.html"
@@ -149,7 +149,7 @@ class ImportPreviewView(View):
 
     def post(self, request, session_pk):
         """Пользователь нажал «Подтвердить импорт»."""
-        from .import_helpers import enrich_kbju, save_recipes
+        from .import_helpers import save_recipes
         from .models import RecipeImportSession
 
         session = get_object_or_404(RecipeImportSession, pk=session_pk)

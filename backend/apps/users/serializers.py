@@ -303,14 +303,12 @@ class UserMeUpdateSerializer(serializers.ModelSerializer):
 # MG_206_V_serializers = 1
 # Калькулятор КБЖУ: preview/apply сериалайзеры
 # ─────────────────────────────────────────────────────────────────────────────
-from apps.users.calculator import (
-    VALID_SYSTEMS as _CALC_SYSTEMS,
-    VALID_DIETS as _CALC_DIETS,
-    VALID_CUSTOM_MODES as _CALC_MODES,
-    VALID_ACTIVITIES as _CALC_ACTIVITIES,
-    VALID_GENDERS as _CALC_GENDERS,
-    VALID_GOALS as _CALC_GOALS,
-)
+from apps.users.calculator import VALID_ACTIVITIES as _CALC_ACTIVITIES  # noqa: E402
+from apps.users.calculator import VALID_CUSTOM_MODES as _CALC_MODES  # noqa: E402
+from apps.users.calculator import VALID_DIETS as _CALC_DIETS  # noqa: E402
+from apps.users.calculator import VALID_GENDERS as _CALC_GENDERS  # noqa: E402
+from apps.users.calculator import VALID_GOALS as _CALC_GOALS  # noqa: E402
+from apps.users.calculator import VALID_SYSTEMS as _CALC_SYSTEMS  # noqa: E402
 
 
 class CalculatorRequestSerializer(serializers.Serializer):
@@ -320,31 +318,32 @@ class CalculatorRequestSerializer(serializers.Serializer):
       - custom + grams: требуются custom_calorie_target + custom_*_g
       - custom + percents: требуются базовые поля + custom_*_pct + custom_calorie_delta
     """
+
     system = serializers.ChoiceField(choices=[(s, s) for s in _CALC_SYSTEMS])
     diet = serializers.ChoiceField(choices=[(d, d) for d in _CALC_DIETS], required=False, allow_null=True)
 
     # base inputs (для preset и для custom_mode=percents)
     height_cm = serializers.IntegerField(min_value=50, max_value=250, required=False)
-    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=1,
-                                         min_value=20, max_value=400, required=False)
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=1, min_value=20, max_value=400, required=False)
     birth_year = serializers.IntegerField(min_value=1900, max_value=2030, required=False)
     gender = serializers.ChoiceField(choices=[(g, g) for g in _CALC_GENDERS], required=False)
     activity_level = serializers.ChoiceField(choices=[(a, a) for a in _CALC_ACTIVITIES], required=False)
     goal = serializers.ChoiceField(choices=[(g, g) for g in _CALC_GOALS], required=False)
 
     # custom mode
-    custom_mode = serializers.ChoiceField(choices=[(m, m) for m in _CALC_MODES],
-                                          required=False, allow_null=True)
+    custom_mode = serializers.ChoiceField(choices=[(m, m) for m in _CALC_MODES], required=False, allow_null=True)
     # grams branch
     custom_calorie_target = serializers.IntegerField(min_value=500, max_value=10000, required=False)
-    custom_protein_g = serializers.DecimalField(max_digits=6, decimal_places=1,
-                                                min_value=0, max_value=1000, required=False)
-    custom_fat_g = serializers.DecimalField(max_digits=6, decimal_places=1,
-                                            min_value=0, max_value=1000, required=False)
-    custom_carb_g = serializers.DecimalField(max_digits=6, decimal_places=1,
-                                             min_value=0, max_value=2000, required=False)
-    custom_fiber_g = serializers.DecimalField(max_digits=6, decimal_places=1,
-                                              min_value=0, max_value=200, required=False)
+    custom_protein_g = serializers.DecimalField(
+        max_digits=6, decimal_places=1, min_value=0, max_value=1000, required=False
+    )
+    custom_fat_g = serializers.DecimalField(max_digits=6, decimal_places=1, min_value=0, max_value=1000, required=False)
+    custom_carb_g = serializers.DecimalField(
+        max_digits=6, decimal_places=1, min_value=0, max_value=2000, required=False
+    )
+    custom_fiber_g = serializers.DecimalField(
+        max_digits=6, decimal_places=1, min_value=0, max_value=200, required=False
+    )
     # percents branch
     custom_calorie_delta = serializers.IntegerField(min_value=-2000, max_value=2000, required=False)
     custom_protein_pct = serializers.FloatField(min_value=0, max_value=100, required=False)
@@ -367,8 +366,7 @@ class CalculatorRequestSerializer(serializers.Serializer):
         if mode not in _CALC_MODES:
             raise serializers.ValidationError({"custom_mode": "Укажите режим: grams или percents."})
         if mode == "grams":
-            required = ["custom_calorie_target", "custom_protein_g",
-                        "custom_fat_g", "custom_carb_g", "custom_fiber_g"]
+            required = ["custom_calorie_target", "custom_protein_g", "custom_fat_g", "custom_carb_g", "custom_fiber_g"]
             missing = [f for f in required if attrs.get(f) in (None, "")]
             if missing:
                 raise serializers.ValidationError({m: "Обязательное поле в режиме grams." for m in missing})
@@ -378,9 +376,9 @@ class CalculatorRequestSerializer(serializers.Serializer):
             missing = [f for f in (required_base + required_pcts) if attrs.get(f) in (None, "")]
             if missing:
                 raise serializers.ValidationError({m: "Обязательное поле в режиме percents." for m in missing})
-            total = (float(attrs["custom_protein_pct"])
-                     + float(attrs["custom_fat_pct"])
-                     + float(attrs["custom_carb_pct"]))
+            total = (
+                float(attrs["custom_protein_pct"]) + float(attrs["custom_fat_pct"]) + float(attrs["custom_carb_pct"])
+            )
             if abs(total - 100.0) > 0.5:
                 raise serializers.ValidationError(
                     {"custom_protein_pct": f"Сумма Б/Ж/У должна быть 100%, сейчас {total:.1f}%."}
@@ -390,6 +388,7 @@ class CalculatorRequestSerializer(serializers.Serializer):
 
 class CalculatorResultSerializer(serializers.Serializer):
     """Результат расчёта (preview и apply возвращают одинаковый формат)."""
+
     system = serializers.CharField()
     diet = serializers.CharField(allow_null=True, required=False)
     age = serializers.IntegerField(allow_null=True, required=False)

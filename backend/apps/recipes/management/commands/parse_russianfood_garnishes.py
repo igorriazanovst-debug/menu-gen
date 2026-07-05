@@ -17,10 +17,10 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import re
 import time
-import logging
 from decimal import Decimal, InvalidOperation
 
 import requests
@@ -49,6 +49,7 @@ SESSION.headers.update(HEADERS)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _get(url: str, delay: float = 1.5) -> BeautifulSoup | None:
     retry_waits = [15, 45, 90]
@@ -91,6 +92,7 @@ def _parse_int(val) -> int | None:
 
 # ── list page parser ──────────────────────────────────────────────────────────
 
+
 def parse_list_page(url: str, delay: float) -> tuple[list[str], str | None]:
     """Возвращает (список url рецептов, url следующей страницы или None)."""
     soup = _get(url, delay)
@@ -124,6 +126,7 @@ def parse_list_page(url: str, delay: float) -> tuple[list[str], str | None]:
 
 # ── recipe page parser ────────────────────────────────────────────────────────
 
+
 def parse_recipe_page(url: str, delay: float) -> dict | None:
     soup = _get(url, delay)
     if not soup:
@@ -152,10 +155,7 @@ def parse_recipe_page(url: str, delay: float) -> dict | None:
     # ── cook_time и servings из HTML-комментария ──
     # <!-- ... время приготовления 40 мин., затраты времени 15 мин., на 3 порций" -->
     raw_html = str(soup)
-    comment_m = re.search(
-        r'время приготовления\s+(\d+)\s*мин.*?на\s+(\d+)\s*пор',
-        raw_html, re.I
-    )
+    comment_m = re.search(r"время приготовления\s+(\d+)\s*мин.*?на\s+(\d+)\s*пор", raw_html, re.I)
     if comment_m:
         total_min = int(comment_m.group(1))
         data["cook_time_min"] = total_min
@@ -167,11 +167,11 @@ def parse_recipe_page(url: str, delay: float) -> dict | None:
     if desc_meta:
         desc = desc_meta.get("content", "")
         # «Рецепт ..., cостав: ингр1 (кол), ингр2, ...»
-        m = re.search(r'[сc]остав\s*:\s*(.+)', desc, re.I)
+        m = re.search(r"[сc]остав\s*:\s*(.+)", desc, re.I)
         if m:
             raw_ingr = m.group(1).strip()
             # разбиваем по запятой, но не внутри скобок
-            parts = re.split(r',\s*(?![^(]*\))', raw_ingr)
+            parts = re.split(r",\s*(?![^(]*\))", raw_ingr)
             for part in parts:
                 part = part.strip().rstrip(".")
                 if part and len(part) > 1:
@@ -192,6 +192,7 @@ def parse_recipe_page(url: str, delay: float) -> dict | None:
 
 
 # ── management command ────────────────────────────────────────────────────────
+
 
 class Command(BaseCommand):
     help = "Парсит гарниры с russianfood.com и импортирует в БД"
@@ -250,10 +251,7 @@ class Command(BaseCommand):
         # ── проверить уже существующие ──
         existing_urls: set[str] = set()
         if skip_existing:
-            existing_urls = set(
-                Recipe.objects.filter(source_url__isnull=False)
-                .values_list("source_url", flat=True)
-            )
+            existing_urls = set(Recipe.objects.filter(source_url__isnull=False).values_list("source_url", flat=True))
             self.stdout.write(f"Уже в БД (по source_url): {len(existing_urls)}")
 
         # ── парсить каждый рецепт ──
@@ -274,7 +272,7 @@ class Command(BaseCommand):
             data = parse_recipe_page(url, delay)
 
             if not data or not data.get("title"):
-                self.stdout.write(f"    FAIL (нет данных)")
+                self.stdout.write("    FAIL (нет данных)")
                 failed += 1
                 continue
 
@@ -321,20 +319,60 @@ class Command(BaseCommand):
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+
 def _guess_food_group(title: str, ingredients: list) -> str:
     """Эвристика: определяем food_group по названию."""
     t = title.lower()
     # крупы/макароны/бобовые → grain
     grain_kw = (
-        "рис", "гречк", "пшен", "булгур", "кускус", "макарон", "паст", "спагетти",
-        "лапш", "перловк", "овсян", "чечевиц", "горох", "фасол", "нут", "полент",
-        "ячмен", "пшениц", "киноа", "кукуруз"
+        "рис",
+        "гречк",
+        "пшен",
+        "булгур",
+        "кускус",
+        "макарон",
+        "паст",
+        "спагетти",
+        "лапш",
+        "перловк",
+        "овсян",
+        "чечевиц",
+        "горох",
+        "фасол",
+        "нут",
+        "полент",
+        "ячмен",
+        "пшениц",
+        "киноа",
+        "кукуруз",
     )
     veg_kw = (
-        "картофел", "картошк", "капуст", "цветная", "брокколи", "морков",
-        "свекл", "тыкв", "кабачк", "баклажан", "цуккин", "помидор", "томат",
-        "огурц", "перец", "шпинат", "спаржа", "артишок", "фенхель", "сельдер",
-        "репа", "пастернак", "батат", "авокадо", "грибы", "гриб"
+        "картофел",
+        "картошк",
+        "капуст",
+        "цветная",
+        "брокколи",
+        "морков",
+        "свекл",
+        "тыкв",
+        "кабачк",
+        "баклажан",
+        "цуккин",
+        "помидор",
+        "томат",
+        "огурц",
+        "перец",
+        "шпинат",
+        "спаржа",
+        "артишок",
+        "фенхель",
+        "сельдер",
+        "репа",
+        "пастернак",
+        "батат",
+        "авокадо",
+        "грибы",
+        "гриб",
     )
     for kw in grain_kw:
         if kw in t:
@@ -349,10 +387,25 @@ def _save_recipe(data: dict):
     from apps.recipes.models import Recipe
 
     fields = {
-        "title", "source_url", "image_url", "cook_time", "cook_time_min",
-        "servings", "ingredients", "steps", "nutrition", "categories",
-        "dish_type", "food_group", "is_published", "is_custom", "source",
-        "kcal_per_100g", "proteins_per_100g", "fats_per_100g", "carbs_per_100g",
+        "title",
+        "source_url",
+        "image_url",
+        "cook_time",
+        "cook_time_min",
+        "servings",
+        "ingredients",
+        "steps",
+        "nutrition",
+        "categories",
+        "dish_type",
+        "food_group",
+        "is_published",
+        "is_custom",
+        "source",
+        "kcal_per_100g",
+        "proteins_per_100g",
+        "fats_per_100g",
+        "carbs_per_100g",
         "portion_g",
     }
     kwargs = {k: v for k, v in data.items() if k in fields and v is not None}

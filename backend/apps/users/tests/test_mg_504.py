@@ -1,5 +1,6 @@
 # MG_504_V_tests
 """MG-504: поля Profile для cheat-meal и времени отхода ко сну."""
+
 from datetime import date
 
 import pytest

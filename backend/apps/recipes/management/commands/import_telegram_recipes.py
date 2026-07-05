@@ -31,9 +31,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 # ── эмодзи/мусор для чистки заголовка ────────────────────────────────────────
-_EMOJI = re.compile(
-    "[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F000-\U0001F0FF←-⇿⬀-⯿️]+"
-)
+_EMOJI = re.compile("[\U0001f300-\U0001faff\U00002600-\U000027bf\U0001f000-\U0001f0ff←-⇿⬀-⯿️]+")
 
 # ── классификация dish_type ──────────────────────────────────────────────────
 # хэштег #tati_cooks_X → dish_type
@@ -110,10 +108,10 @@ def parse_recipe(text: str) -> dict | None:
     # ── ингредиенты: от «На N порций» до первого шага/КБЖУ ──
     ingredients = []
     total_g = 0.0
-    for l in lines[port_idx + 1:]:
-        if _STEP_RE.match(l) or _KBJU_RE.search(l) or l.strip().startswith("#"):
+    for ln in lines[port_idx + 1 :]:
+        if _STEP_RE.match(ln) or _KBJU_RE.search(ln) or ln.strip().startswith("#"):
             break
-        gm = _GRAM_RE.match(l)
+        gm = _GRAM_RE.match(ln)
         if gm:
             qty = gm.group(1)
             name = _clean_name(gm.group(2))
@@ -121,7 +119,7 @@ def parse_recipe(text: str) -> dict | None:
                 ingredients.append({"name": name, "quantity": qty, "unit": "г"})
                 total_g += _num(qty)
             continue
-        pm = _PLUS_RE.match(l)
+        pm = _PLUS_RE.match(ln)
         if pm:
             name = _clean_name(pm.group(1))
             if name:
@@ -131,9 +129,9 @@ def parse_recipe(text: str) -> dict | None:
 
     # ── шаги: нумерованные строки ──
     steps = []
-    for l in lines:
-        if _STEP_RE.match(l):
-            txt = re.sub(r"^\s*\d+[.)]\s+", "", l).strip()
+    for ln in lines:
+        if _STEP_RE.match(ln):
+            txt = re.sub(r"^\s*\d+[.)]\s+", "", ln).strip()
             if txt:
                 steps.append({"step": len(steps) + 1, "text": txt})
 
@@ -152,7 +150,7 @@ def parse_recipe(text: str) -> dict | None:
         return round(x / portion_g * 100, 1) if portion_g else None
 
     # ── заголовок (best-effort, требует ревью) ──
-    head_lines = [l.strip() for l in lines[:port_idx] if l.strip() and not l.strip().startswith("#")]
+    head_lines = [ln.strip() for ln in lines[:port_idx] if ln.strip() and not ln.strip().startswith("#")]
     title, title_review = _guess_title(head_lines)
 
     head = text[:300]
@@ -197,12 +195,13 @@ _INTRO_WORDS = (
 def _guess_title(head_lines: list[str]) -> tuple[str, bool]:
     """Подбираем короткую «именную» строку, ближайшую к «На N порций».
     Заголовки в канале неаккуратные — флаг review=True требует ручной правки."""
+
     def strip(s: str) -> str:
         return _EMOJI.sub("", s).rstrip(" :").strip()
 
     cand = []
-    for l in head_lines:
-        s = strip(l)
+    for ln in head_lines:
+        s = strip(ln)
         if not s or _GRAM_RE.match(s) or _STEP_RE.match(s):
             continue
         if re.search(r"[.!?…]$", s):  # законченное предложение — скорее вступление
@@ -237,11 +236,15 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true", default=False)
         parser.add_argument("--apply", action="store_true", default=False)
         parser.add_argument(
-            "--types", default="salad,soup,main,breakfast_dish",
+            "--types",
+            default="salad,soup,main,breakfast_dish",
             help="dish_type через запятую (по умолч. salad,soup,main,breakfast_dish)",
         )
-        parser.add_argument("--from-json", action="store_true",
-                            help="export_file — уже распарсенный _parsed.json (после ручной правки title)")
+        parser.add_argument(
+            "--from-json",
+            action="store_true",
+            help="export_file — уже распарсенный _parsed.json (после ручной правки title)",
+        )
 
     def handle(self, *args, **options):
         from apps.recipes.models import Recipe
@@ -281,6 +284,7 @@ class Command(BaseCommand):
 
         # ── сводка по типам ──
         from collections import Counter
+
         by_type = Counter(r["dish_type"] for r in recipes)
         for dt, c in by_type.most_common():
             self.stdout.write(f"  {dt:<16} {c}")
@@ -307,8 +311,7 @@ class Command(BaseCommand):
             out = path.with_name(path.stem + "_parsed.json")
             out.write_text(json.dumps(recipes, ensure_ascii=False, indent=2), encoding="utf-8")
             self.stdout.write(f"\nВыгружено для ревью: {out}")
-            self.stdout.write("Поправьте title (⚠ — обязательно), затем: "
-                              f"--from-json {out.name} --apply")
+            self.stdout.write("Поправьте title (⚠ — обязательно), затем: " f"--from-json {out.name} --apply")
 
         if dry_run:
             self.stdout.write("\nDRY-RUN. Записи нет. Запустите с --apply.")
@@ -316,9 +319,7 @@ class Command(BaseCommand):
 
         # ── запись в БД ──
         saved = skipped = failed = 0
-        existing_titles = set(
-            Recipe.objects.filter(source="parsed").values_list("title", flat=True)
-        )
+        existing_titles = set(Recipe.objects.filter(source="parsed").values_list("title", flat=True))
         total = len(recipes)
         for n, r in enumerate(recipes, 1):
             if r["title"] in existing_titles or r["title"] == "Без названия":
@@ -362,8 +363,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"  ... обработано {n}/{total} (сохранено {saved})")
 
         self.stdout.write(
-            f"\n{'='*50}\nИтог [APPLY]:\n"
-            f"  Сохранено: {saved}\n  Пропущено: {skipped}\n  Ошибок:    {failed}\n"
+            f"\n{'='*50}\nИтог [APPLY]:\n" f"  Сохранено: {saved}\n  Пропущено: {skipped}\n  Ошибок:    {failed}\n"
         )
         self.stdout.write(
             "\nПосле импорта (перелинковка продуктов делается отдельно, т.к.\n"

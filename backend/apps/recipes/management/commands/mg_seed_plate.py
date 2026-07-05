@@ -9,6 +9,7 @@
   (ручные правки в админке не затираются).
 По умолчанию dry-run; запись только с --apply.
 """
+
 from collections import Counter
 
 from django.core.management.base import BaseCommand
@@ -38,8 +39,8 @@ class Command(BaseCommand):
         qs = Recipe.objects.filter(is_published=True, plate_component__isnull=True).order_by("id")
 
         assign = Counter()
-        skip_dish = Counter()       # dish_type вне whitelist
-        skip_fg = Counter()         # food_group без маппинга
+        skip_dish = Counter()  # dish_type вне whitelist
+        skip_fg = Counter()  # food_group без маппинга
         to_update = []
         samples = []
 
@@ -61,7 +62,7 @@ class Command(BaseCommand):
 
         if apply and to_update:
             for i in range(0, len(to_update), 500):
-                Recipe.objects.bulk_update(to_update[i:i + 500], ["plate_component"])
+                Recipe.objects.bulk_update(to_update[i : i + 500], ["plate_component"])
 
         mode = "APPLIED" if apply else "DRY-RUN"
         self.stdout.write("")
