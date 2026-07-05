@@ -1,10 +1,7 @@
 """MG_SHOPNOTE / MG_SHOPIMG: комментарий + изображение товара в списке покупок."""
 
-import tempfile
-
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -26,9 +23,13 @@ def setup(db):
     return u, sl
 
 
-@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 @pytest.mark.django_db
 class TestShopItemNoteImage:
+    # pytest-django: MEDIA_ROOT во временную папку (image_b64 пишет файл).
+    @pytest.fixture(autouse=True)
+    def _tmp_media(self, settings, tmp_path):
+        settings.MEDIA_ROOT = str(tmp_path)
+
     def _client(self, u):
         c = APIClient()
         c.force_authenticate(u)
