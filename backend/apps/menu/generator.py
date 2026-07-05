@@ -857,6 +857,21 @@ class MenuGenerator:
         self.last_warnings = warnings
         return items
 
+    # MG_ALLERGEN: аллергены схлопываются к базовому слову («Сыр гауда» → «сыр»),
+    # чтобы один аллерген исключал все варианты продукта из меню.
+    @staticmethod
+    def _canon_allergens(items):
+        from apps.fridge.aliases import canonical_allergen
+
+        out = set()
+        for a in items or []:
+            if not isinstance(a, str):
+                continue
+            base = canonical_allergen(a)
+            if base:
+                out.add(base)
+        return out
+
     # MG_605A_V_generator: «виртуальный представитель семьи»
     def _family_virtual_member(self) -> dict:
         # MG_607_V_generator: per-request override
@@ -865,13 +880,13 @@ class MenuGenerator:
         exclude = set()
         cals = []
         if override_a is not None:
-            exclude.update(a.lower() for a in override_a if isinstance(a, str))
+            exclude.update(self._canon_allergens(override_a))
         if override_d is not None and self.features.get("disliked"):
             exclude.update(d.lower() for d in override_d if isinstance(d, str))
         for m in self.members:
             user = m.user
             if override_a is None and isinstance(user.allergies, list):
-                exclude.update(a.lower() for a in user.allergies)
+                exclude.update(self._canon_allergens(user.allergies))
             if override_d is None and self.features.get("disliked") and isinstance(user.disliked_products, list):
                 exclude.update(d.lower() for d in user.disliked_products)
             if self.features.get("calories"):
@@ -891,9 +906,9 @@ class MenuGenerator:
         exclude = set()
         user = member.user
         if override_a is not None:
-            exclude.update(a.lower() for a in override_a if isinstance(a, str))
+            exclude.update(self._canon_allergens(override_a))
         elif isinstance(user.allergies, list):
-            exclude.update(a.lower() for a in user.allergies)
+            exclude.update(self._canon_allergens(user.allergies))
         if override_d is not None:
             if self.features.get("disliked"):
                 exclude.update(d.lower() for d in override_d if isinstance(d, str))
@@ -902,7 +917,7 @@ class MenuGenerator:
         if override_a is None and self.features.get("allergies_family"):
             for m in self.members:
                 if isinstance(m.user.allergies, list):
-                    exclude.update(a.lower() for a in m.user.allergies)
+                    exclude.update(self._canon_allergens(m.user.allergies))
         return exclude
 
     def _get_calorie_target(self, member) -> Optional[int]:

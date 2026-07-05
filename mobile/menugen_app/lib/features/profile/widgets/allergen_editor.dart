@@ -1,7 +1,7 @@
-// MG_ALLERGEN_V_mobile = 3
-// Редактор аллергенов профиля: выбор ИЗ СПИСКА продуктов (каталог грузится сразу
-// и виден), поиск по каталогу (серверный, для полного охвата) и ввод
-// произвольного аллергена.
+// MG_ALLERGEN_V_mobile = 4
+// Редактор аллергенов профиля: выбор ИЗ СПИСКА продуктов, схлопнутого по
+// базовому продукту («Сыр гауда», «Сыр тёртый» → «Сыр»), поиск по каталогу
+// (серверный) и ввод произвольного аллергена.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -250,14 +250,24 @@ class _AllergenEditorState extends State<AllergenEditor> {
         final p = items[i];
         final name = (p['name'] ?? '').toString();
         final checked = _has(name);
+        // Примеры исходных вариантов (без самого базового имени) — подсказка,
+        // что именно схлопнуто под этот аллерген.
+        final examples = ((p['examples'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .where((e) => e.toLowerCase() != name.toLowerCase())
+            .toList();
         final cat = (p['category_name'] ?? '').toString();
+        final sub = examples.isNotEmpty ? examples.join(', ') : cat;
         return CheckboxListTile(
           dense: true,
           controlAffinity: ListTileControlAffinity.leading,
           value: checked,
           title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: cat.isNotEmpty
-              ? Text(cat, style: const TextStyle(fontSize: 11))
+          subtitle: sub.isNotEmpty
+              ? Text(sub,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11))
               : null,
           onChanged: (_) => _toggle(name),
         );

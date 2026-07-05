@@ -225,31 +225,49 @@ class ProductSearchView(generics.ListAPIView):
         return Product.objects.filter(cond).distinct().order_by("name")[:20]
 
 
-# ─── MG_ALLERGEN: freemium browsable catalog for allergen picking ────────────
-class AllergenCatalogView(generics.ListAPIView):
-    """GET /fridge/products/catalog/?q=  — browsable product catalog.
+# ─── MG_ALLERGEN: freemium collapsed catalog for allergen picking ────────────
+class AllergenCatalogView(APIView):
+    """GET /fridge/products/catalog/?q=  — схлопнутый список аллергенов.
 
     Freemium-open (как ProductSearchView): это общий справочник продуктов, а не
-    данные холодильника семьи. Используется выбором аллергенов в профиле —
-    показывает список продуктов, по которому можно скроллить/искать и отмечать.
+    данные холодильника семьи. Варианты одного продукта схлопываются в один
+    базовый аллерген (canonical_allergen): «Сыр гауда», «Сыр тёртый» → «Сыр».
+    Возвращает список объектов:
+        {key, name, category_name, examples: [оригинальные названия]}
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = ProductSerializer
-    pagination_class = None
 
-    def get_queryset(self):
+    def get(self, request):
+        from .aliases import canonical_allergen, normalize_alias
+
         qs = Product.objects.select_related("category_fk").all()
-        q = self.request.query_params.get("q", "").strip()
+        q = request.query_params.get("q", "").strip()
         if q:
-            from .aliases import normalize_alias
-
             cond = Q(name__icontains=q)
             qn = normalize_alias(q)
             if qn:
                 cond |= Q(aliases__alias_norm__icontains=qn)
             qs = qs.filter(cond).distinct()
-        return qs.order_by("category_fk__sort_order", "category_fk__name_ru", "name")[:1000]
+
+        collapsed = {}
+        for p in qs.order_by("category_fk__sort_order", "category_fk__name_ru", "name")[:2000]:
+            base = canonical_allergen(p.name)
+            if not base:
+                continue
+            entry = collapsed.get(base)
+            if entry is None:
+                collapsed[base] = {
+                    "key": base,
+                    "name": base[:1].upper() + base[1:],
+                    "category_name": p.category_fk.name_ru if p.category_fk_id else "Прочее",
+                    "examples": [p.name],
+                }
+            elif len(entry["examples"]) < 4 and p.name not in entry["examples"]:
+                entry["examples"].append(p.name)
+
+        rows = sorted(collapsed.values(), key=lambda r: (r["category_name"], r["name"]))
+        return Response(rows)
 
 
 # ─── MG-609: category list ──────────────────────────────────────────────────

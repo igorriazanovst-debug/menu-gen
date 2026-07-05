@@ -1,10 +1,9 @@
-// MG_ALLERGEN_V_web = 3
-// Редактор аллергенов профиля: выбор ИЗ СПИСКА продуктов (каталог загружается
-// сразу и виден), поиск по каталогу (серверный, для полного охвата) и ввод
-// произвольного аллергена.
+// MG_ALLERGEN_V_web = 4
+// Редактор аллергенов профиля: выбор ИЗ СПИСКА продуктов, схлопнутого по
+// базовому продукту («Сыр гауда», «Сыр тёртый» → «Сыр»), поиск по каталогу
+// (серверный) и ввод произвольного аллергена.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { fridgeApi } from '../../api/fridge';
-import type { Product } from '../../types';
+import { fridgeApi, type AllergenOption } from '../../api/fridge';
 
 interface Props {
   /** Текущий список аллергенов. */
@@ -21,12 +20,12 @@ function has(list: string[], name: string): boolean {
 
 interface Group {
   cat: string;
-  items: Product[];
+  items: AllergenOption[];
 }
 
-/** Группировка списка продуктов по названию категории (для заголовков). */
-function group(list: Product[]): Group[] {
-  const byCat: Record<string, Product[]> = {};
+/** Группировка по названию категории (для заголовков). */
+function group(list: AllergenOption[]): Group[] {
+  const byCat: Record<string, AllergenOption[]> = {};
   const order: string[] = [];
   list.forEach((p) => {
     const cat = p.category_name || 'Прочее';
@@ -40,8 +39,8 @@ function group(list: Product[]): Group[] {
 }
 
 export const AllergenEditor: React.FC<Props> = ({ value, onChange }) => {
-  const [browse, setBrowse] = useState<Product[]>([]); // полный каталог (обзор)
-  const [results, setResults] = useState<Product[]>([]); // серверный поиск
+  const [browse, setBrowse] = useState<AllergenOption[]>([]); // весь каталог (обзор)
+  const [results, setResults] = useState<AllergenOption[]>([]); // серверный поиск
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [loadErr, setLoadErr] = useState(false);
@@ -156,7 +155,7 @@ export const AllergenEditor: React.FC<Props> = ({ value, onChange }) => {
         </button>
       )}
 
-      {/* Список продуктов каталога */}
+      {/* Список аллергенов (схлопнутый каталог) */}
       <div className="mt-2 max-h-72 overflow-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
         {loading && <div className="px-3 py-3 text-sm text-gray-400">Загрузка каталога…</div>}
         {!loading && loadErr && (
@@ -180,16 +179,17 @@ export const AllergenEditor: React.FC<Props> = ({ value, onChange }) => {
               </div>
               {g.items.map((p) => {
                 const checked = has(value, p.name);
+                const hint = p.examples.filter((e) => e.toLowerCase() !== p.name.toLowerCase());
                 return (
                   <button
-                    key={p.id}
+                    key={p.key}
                     type="button"
                     onClick={() => toggle(p.name)}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-tomato/5"
+                    className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-tomato/5"
                   >
                     <span
                       className={
-                        'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border text-xs ' +
+                        'mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border text-xs ' +
                         (checked
                           ? 'bg-tomato border-tomato text-white'
                           : 'border-gray-300 text-transparent')
@@ -197,7 +197,14 @@ export const AllergenEditor: React.FC<Props> = ({ value, onChange }) => {
                     >
                       ✓
                     </span>
-                    <span className="truncate flex-1">{p.name}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block truncate">{p.name}</span>
+                      {hint.length > 0 && (
+                        <span className="block truncate text-xs text-gray-400">
+                          {hint.join(', ')}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}

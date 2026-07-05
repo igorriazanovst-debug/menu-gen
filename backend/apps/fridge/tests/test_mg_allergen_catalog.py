@@ -1,8 +1,9 @@
-"""MG_ALLERGEN: freemium browsable product catalog for allergen picking.
+"""MG_ALLERGEN: freemium collapsed product catalog for allergen picking.
 
 Проверяем, что /fridge/products/catalog/:
   - доступен обычному (free, без premium) пользователю — это общий справочник;
-  - возвращает продукты; поддерживает ?q= фильтр по названию.
+  - схлопывает варианты продукта в один базовый аллерген;
+  - поддерживает ?q= фильтр.
 """
 
 import pytest
@@ -39,16 +40,33 @@ class TestAllergenCatalog:
         rows = r.json()
         assert isinstance(rows, list)
         assert len(rows) > 0  # сиды продуктов присутствуют
-        # плоский (не пагинированный) список с ожидаемыми полями
         assert "name" in rows[0]
+        assert "key" in rows[0]
         assert "category_name" in rows[0]
+        assert "examples" in rows[0]
+
+    def test_variants_collapse_to_one_base(self, client, free_user):
+        Product.objects.create(name="Сыр гауда")
+        Product.objects.create(name="Сыр тёртый")
+        Product.objects.create(name="Сыр российский")
+        client.force_authenticate(free_user)
+        r = client.get(reverse("product-catalog"), {"q": "сыр"})
+        assert r.status_code == 200, r.content
+        rows = r.json()
+        cheese = [row for row in rows if row["key"] == "сыр"]
+        assert len(cheese) == 1, rows
+        entry = cheese[0]
+        assert entry["name"] == "Сыр"
+        # примеры включают исходные варианты
+        assert any("гауда" in e.lower() for e in entry["examples"])
+        assert any("тёртый" in e.lower() or "тертый" in e.lower() for e in entry["examples"])
 
     def test_query_filters(self, client, free_user):
-        Product.objects.create(name="Тестовый арахис")
-        Product.objects.create(name="Морковь тестовая")
+        Product.objects.create(name="Арахис жареный")
+        Product.objects.create(name="Морковь свежая")
         client.force_authenticate(free_user)
         r = client.get(reverse("product-catalog"), {"q": "арахис"})
         assert r.status_code == 200, r.content
-        names = [row["name"] for row in r.json()]
-        assert any("арахис" in n.lower() for n in names)
-        assert all("морковь" not in n.lower() for n in names)
+        keys = [row["key"] for row in r.json()]
+        assert "арахис" in keys
+        assert "морковь" not in keys

@@ -83,11 +83,21 @@ def _can_delete_menu(user, family, menu):
 
 
 def _collect_allergens(family):
-    """Все аллергены из профилей семьи (объединение)."""
+    """Все аллергены из профилей семьи (объединение).
+
+    MG_ALLERGEN: схлопываем к базовому слову («Сыр гауда» → «сыр»), чтобы
+    предупреждение о свапе срабатывало на любой вариант продукта.
+    """
+    from apps.fridge.aliases import canonical_allergen
+
     allergens = set()
     for m in FamilyMember.objects.filter(family=family).select_related("user"):
         if isinstance(m.user.allergies, list):
-            allergens.update(a.lower() for a in m.user.allergies)
+            for a in m.user.allergies:
+                if isinstance(a, str):
+                    base = canonical_allergen(a)
+                    if base:
+                        allergens.add(base)
     return allergens
 
 
