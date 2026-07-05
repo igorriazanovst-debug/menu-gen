@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.fridge.models import Product
+from apps.fridge.models import Product, ProductCategory
 
 User = get_user_model()
 
@@ -70,3 +70,20 @@ class TestAllergenCatalog:
         keys = [row["key"] for row in r.json()]
         assert "арахис" in keys
         assert "морковь" not in keys
+
+    def test_non_food_and_ready_excluded(self, client, free_user):
+        # непищевые категории и готовые блюда не должны попадать в аллергены
+        household = ProductCategory.objects.create(slug="household", name_ru="Бытовая химия")
+        ready = ProductCategory.objects.create(slug="ready", name_ru="Готовые блюда")
+        dairy, _ = ProductCategory.objects.get_or_create(slug="dairy", defaults={"name_ru": "Молочные продукты"})
+        Product.objects.create(name="Стиральный порошок", category_fk=household)
+        Product.objects.create(name="Плов готовый", category_fk=ready)
+        Product.objects.create(name="Кефир тестовый", category_fk=dairy)
+
+        client.force_authenticate(free_user)
+        r = client.get(reverse("product-catalog"))
+        assert r.status_code == 200, r.content
+        keys = [row["key"] for row in r.json()]
+        assert "стиральный" not in keys
+        assert "плов" not in keys
+        assert "кефир" in keys

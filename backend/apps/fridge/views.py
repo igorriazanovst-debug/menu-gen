@@ -226,12 +226,19 @@ class ProductSearchView(generics.ListAPIView):
 
 
 # ─── MG_ALLERGEN: freemium collapsed catalog for allergen picking ────────────
+# Непищевые категории и готовые блюда — не аллергены-продукты, исключаем из
+# каталога выбора аллергенов (только продукты-ингредиенты).
+NON_FOOD_CATEGORY_SLUGS = ("household", "hygiene", "pets", "ready")
+
+
 class AllergenCatalogView(APIView):
     """GET /fridge/products/catalog/?q=  — схлопнутый список аллергенов.
 
     Freemium-open (как ProductSearchView): это общий справочник продуктов, а не
     данные холодильника семьи. Варианты одного продукта схлопываются в один
     базовый аллерген (canonical_allergen): «Сыр гауда», «Сыр тёртый» → «Сыр».
+    Непищевые категории (бытовая химия, гигиена, зоотовары) и готовые блюда
+    исключаются — аллергены только из продуктов-ингредиентов.
     Возвращает список объектов:
         {key, name, category_name, examples: [оригинальные названия]}
     """
@@ -241,7 +248,7 @@ class AllergenCatalogView(APIView):
     def get(self, request):
         from .aliases import canonical_allergen, normalize_alias
 
-        qs = Product.objects.select_related("category_fk").all()
+        qs = Product.objects.select_related("category_fk").exclude(category_fk__slug__in=NON_FOOD_CATEGORY_SLUGS)
         q = request.query_params.get("q", "").strip()
         if q:
             cond = Q(name__icontains=q)
