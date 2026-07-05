@@ -1,14 +1,14 @@
-// MG_ALLERGEN_V_mobile = 4
-// Редактор аллергенов профиля: выбор ИЗ СПИСКА продуктов, схлопнутого по
-// базовому продукту («Сыр гауда», «Сыр тёртый» → «Сыр»), поиск по каталогу
-// (серверный) и ввод произвольного аллергена.
-import 'dart:async';
-
+// MG_ALLERGEN14_V_mobile = 1
+// Редактор аллергенов профиля: фиксированный список 14 (ТР ТС 022/2011)
+// чекбоксами по группам + возможность добавить свой (внесписочный) аллерген.
 import 'package:flutter/material.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/constants/allergens.dart';
 
 class AllergenEditor extends StatefulWidget {
+  // apiClient оставлен в сигнатуре для совместимости с вызовом в профиле,
+  // но список аллергенов теперь фиксированный (не требует запроса).
   final ApiClient apiClient;
   final List<String> value;
 
@@ -27,251 +27,133 @@ class AllergenEditor extends StatefulWidget {
 }
 
 class _AllergenEditorState extends State<AllergenEditor> {
-  final TextEditingController _query = TextEditingController();
-  Timer? _debounce;
-  List<Map<String, dynamic>> _browse = const []; // полный каталог (обзор)
-  List<Map<String, dynamic>> _results = const []; // серверный поиск
-  bool _loading = true;
-  bool _searching = false;
-  bool _loadErr = false;
-  String _q = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCatalog();
-  }
+  final TextEditingController _custom = TextEditingController();
 
   @override
   void dispose() {
-    _debounce?.cancel();
-    _query.dispose();
+    _custom.dispose();
     super.dispose();
   }
 
-  Future<void> _loadCatalog() async {
-    try {
-      final r = await widget.apiClient.get('/fridge/products/catalog/');
-      final list = _resultsOf(r);
-      if (mounted) {
-        setState(() {
-          _browse = list;
-          _loading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _loadErr = true;
-          _loading = false;
-        });
-      }
-    }
-  }
+  bool _has(String v) => widget.value.contains(v);
 
-  void _search(String q) {
-    _debounce?.cancel();
-    setState(() => _q = q);
-    if (q.trim().length < 2) {
-      setState(() {
-        _results = const [];
-        _searching = false;
-      });
-      return;
-    }
-    setState(() => _searching = true);
-    _debounce = Timer(const Duration(milliseconds: 300), () async {
-      try {
-        final r = await widget.apiClient
-            .get('/fridge/products/catalog/', params: {'q': q.trim()});
-        final list = _resultsOf(r);
-        if (mounted) {
-          setState(() {
-            _results = list;
-            _searching = false;
-          });
-        }
-      } catch (_) {
-        if (mounted) {
-          setState(() {
-            _results = const [];
-            _searching = false;
-          });
-        }
-      }
-    });
-  }
-
-  List<Map<String, dynamic>> _resultsOf(dynamic d) {
-    try {
-      d = d.data;
-    } catch (_) {}
-    if (d is List) {
-      return d.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    }
-    if (d is Map) {
-      return (d['results'] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
-    }
-    return const [];
-  }
-
-  bool _has(String name) {
-    final n = name.trim().toLowerCase();
-    return widget.value.any((a) => a.trim().toLowerCase() == n);
-  }
-
-  Future<void> _toggle(String name) async {
-    final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
-    final List<String> next;
-    if (_has(trimmed)) {
-      next = widget.value
-          .where((a) => a.trim().toLowerCase() != trimmed.toLowerCase())
-          .toList();
-    } else {
-      next = [...widget.value, trimmed];
-    }
+  Future<void> _toggle(String key) async {
+    final next = _has(key)
+        ? widget.value.where((v) => v != key).toList()
+        : [...widget.value, key];
     await widget.onChanged(next);
+  }
+
+  Future<void> _addCustom() async {
+    final t = _custom.text.trim();
+    if (t.isEmpty) return;
+    final exists = widget.value.any((v) => v.toLowerCase() == t.toLowerCase());
+    final isStd = kAllergens.any((a) => a.label.toLowerCase() == t.toLowerCase());
+    _custom.clear();
+    if (!exists && !isStd) {
+      await widget.onChanged([...widget.value, t]);
+    } else {
+      setState(() {});
+    }
+  }
+
+  Future<void> _removeCustom(String v) async {
+    await widget.onChanged(widget.value.where((x) => x != v).toList());
   }
 
   @override
   Widget build(BuildContext context) {
-    final custom = _q.trim();
-    final canAddCustom = custom.isNotEmpty && !_has(custom);
-    final searchMode = custom.length >= 2;
-    final items = searchMode ? _results : _browse;
+    // Группируем 14 по group (сохраняя порядок появления групп).
+    final groups = <String, List<AllergenDef>>{};
+    final order = <String>[];
+    for (final a in kAllergens) {
+      if (!groups.containsKey(a.group)) {
+        groups[a.group] = <AllergenDef>[];
+        order.add(a.group);
+      }
+      groups[a.group]!.add(a);
+    }
+
+    // Кастомные (внесписочные) значения.
+    final customValues =
+        widget.value.where((v) => !kAllergenKeys.contains(v)).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Чипы выбранных.
-        if (widget.value.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text('Аллергены не выбраны.',
-                style: TextStyle(fontSize: 13, color: Colors.grey)),
-          )
-        else
+        for (final g in order) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            child: Text(g,
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey)),
+          ),
+          for (final a in groups[g]!)
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: _has(a.key),
+              title: Text(a.label),
+              subtitle: Text(a.full,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              onChanged: (_) => _toggle(a.key),
+            ),
+        ],
+
+        const Divider(height: 24),
+
+        // Кастомные (внесписочные) аллергены.
+        const Text('Свой аллерген (вне списка)',
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey)),
+        const SizedBox(height: 8),
+        if (customValues.isNotEmpty)
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: widget.value
-                .map((a) => Chip(
-                      label: Text(a),
-                      onDeleted: () => _toggle(a),
+            children: customValues
+                .map((v) => Chip(
+                      label: Text(v),
+                      onDeleted: () => _removeCustom(v),
                       deleteIcon: const Icon(Icons.close, size: 16),
                     ))
                 .toList(),
           ),
         const SizedBox(height: 8),
-
-        // Поиск по списку.
-        TextField(
-          controller: _query,
-          decoration: const InputDecoration(
-            isDense: true,
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.search, size: 20),
-            hintText: 'Поиск по списку или свой аллерген…',
-          ),
-          onChanged: _search,
-        ),
-
-        // Добавить произвольный аллерген.
-        if (canAddCustom)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  _toggle(custom);
-                  _query.clear();
-                  _search('');
-                },
-                icon: const Icon(Icons.add, size: 18),
-                label: Text('Добавить свой аллерген «$custom»'),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _custom,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  hintText: 'Напр. кориандр',
+                ),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _addCustom(),
               ),
             ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _addCustom,
+              child: const Text('Добавить'),
+            ),
+          ],
+        ),
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'Внесписочные аллергены исключаются по совпадению в названиях ингредиентов.',
+            style: TextStyle(fontSize: 11, color: Colors.grey),
           ),
-
-        const SizedBox(height: 8),
-
-        // Список продуктов каталога.
-        Container(
-          constraints: const BoxConstraints(maxHeight: 300),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.black12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: _buildList(items, searchMode),
         ),
       ],
-    );
-  }
-
-  Widget _buildList(List<Map<String, dynamic>> items, bool searchMode) {
-    if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text('Загрузка каталога…',
-            style: TextStyle(fontSize: 13, color: Colors.grey)),
-      );
-    }
-    if (_loadErr) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text(
-          'Не удалось загрузить каталог. Можно ввести аллерген вручную выше.',
-          style: TextStyle(fontSize: 13, color: Colors.red),
-        ),
-      );
-    }
-    if (searchMode && _searching) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text('Поиск…',
-            style: TextStyle(fontSize: 13, color: Colors.grey)),
-      );
-    }
-    if (items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text('Ничего не найдено.',
-            style: TextStyle(fontSize: 13, color: Colors.grey)),
-      );
-    }
-    return ListView.builder(
-      shrinkWrap: true,
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final p = items[i];
-        final name = (p['name'] ?? '').toString();
-        final checked = _has(name);
-        // Примеры исходных вариантов (без самого базового имени) — подсказка,
-        // что именно схлопнуто под этот аллерген.
-        final examples = ((p['examples'] as List?) ?? const [])
-            .map((e) => e.toString())
-            .where((e) => e.toLowerCase() != name.toLowerCase())
-            .toList();
-        final cat = (p['category_name'] ?? '').toString();
-        final sub = examples.isNotEmpty ? examples.join(', ') : cat;
-        return CheckboxListTile(
-          dense: true,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: checked,
-          title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: sub.isNotEmpty
-              ? Text(sub,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11))
-              : null,
-          onChanged: (_) => _toggle(name),
-        );
-      },
     );
   }
 }

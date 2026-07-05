@@ -12,6 +12,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
 import '../bloc/menu_bloc.dart';
 
@@ -291,7 +292,7 @@ class _State extends State<GenerateMenuBottomSheet> {
                     title: 'Учитывать аллергены из Профиля',
                     subtitle: _userAllergies.isEmpty
                         ? 'Список пуст'
-                        : _userAllergies.join(', '),
+                        : _userAllergies.map(allergenLabel).join(', '),
                   ),
                   const SizedBox(height: 8),
 

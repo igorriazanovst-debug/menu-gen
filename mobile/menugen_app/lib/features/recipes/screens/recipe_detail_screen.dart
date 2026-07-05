@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// Полноэкранный экран рецепта. Грузит /recipes/:id/ напрямую через ApiClient.
@@ -170,6 +171,10 @@ class _DetailBody extends StatelessWidget {
   List<String> get _categories =>
       (recipe['categories'] as List?)?.whereType<String>().toList() ?? const [];
 
+  // MG_ALLERGEN14: ключи аллергенов рецепта.
+  List<String> get _allergens =>
+      (recipe['allergens'] as List?)?.map((e) => e.toString()).toList() ?? const [];
+
   @override
   Widget build(BuildContext context) {
     final cs = context.cs;
@@ -256,6 +261,10 @@ class _DetailBody extends StatelessWidget {
                   label: const Text('Смотреть видео'),
                 ),
               ],
+              if (_allergens.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _AllergenBadges(keys: _allergens),
+              ],
               if (_nutrition.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 _NutritionGrid(nutrition: _nutrition),
@@ -330,6 +339,34 @@ class _SectionTitle extends StatelessWidget {
       text,
       style: TextStyle(
           fontSize: 17, fontWeight: FontWeight.w700, color: context.cs.onSurface),
+    );
+  }
+}
+
+// MG_ALLERGEN14: бейджи аллергенов рецепта (ключи → метки ТР ТС 022).
+class _AllergenBadges extends StatelessWidget {
+  final List<String> keys;
+  const _AllergenBadges({required this.keys});
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        const Text('⚠️ Аллергены:',
+            style: TextStyle(fontSize: 12, color: Colors.grey)),
+        ...keys.map((k) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3E0),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFF0C888)),
+              ),
+              child: Text(allergenLabel(k),
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF8A5A00))),
+            )),
+      ],
     );
   }
 }
