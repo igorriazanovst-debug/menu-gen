@@ -1,9 +1,63 @@
 # MG_SHOP001_serializers
+import base64
+import os
+import uuid
+
+from django.core.files.base import ContentFile
 from rest_framework import serializers
 
 from apps.users.models import User
 
 from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, ShoppingListItem
+
+# MG_SHOPIMG: допустимые mime → расширение файла.
+_IMG_EXT = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+
+
+def save_item_image_from_b64(item, b64):
+    """Декодирует image_b64 (data-URL или голый base64) и сохраняет в item.image.
+
+    Пустая строка "" — очистить изображение; None — не трогать.
+    """
+    if b64 is None:
+        return
+    s = (b64 or "").strip()
+    if not s:
+        # очистка загруженного файла
+        if item.image:
+            item.image.delete(save=True)
+        return
+    ext = "png"
+    if s.lower().startswith("data:") and "," in s:
+        head, s = s.split(",", 1)
+        mime = head[5:].split(";", 1)[0].strip().lower()
+        ext = _IMG_EXT.get(mime, "png")
+    try:
+        raw = base64.b64decode(s, validate=False)
+    except Exception:
+        return
+    if not raw:
+        return
+    item.image.save(f"item_{uuid.uuid4().hex[:12]}.{ext}", ContentFile(raw), save=True)
+
+
+def resolve_item_image_url(item, request=None):
+    """Абсолютный URL изображения: загруженный файл (приоритет) или image_url."""
+    if item.image:
+        url = item.image.url
+        public = (os.environ.get("BACKEND_PUBLIC_URL") or "").rstrip("/")
+        if public and url.startswith("/"):
+            return public + url
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
+    return item.image_url or None
 
 
 class ShoppingListItemSerializer(serializers.ModelSerializer):
@@ -18,6 +72,11 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
     # MG_SHOP2FRIDGE: whether this item may be stored in the fridge (food only —
     # pet food / household chemistry / hygiene are excluded).
     fridge_eligible = serializers.SerializerMethodField()
+    # MG_SHOPIMG: резолвнутый абсолютный URL изображения (файл или ссылка).
+    image = serializers.SerializerMethodField()
+
+    def get_image(self, obj):
+        return resolve_item_image_url(obj, self.context.get("request"))
 
     def get_in_fridge(self, obj):
         return any(not fi.is_deleted for fi in obj.fridge_items.all())
@@ -53,6 +112,9 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
             "line_total",
             "in_fridge",  # MG_SHOP2FRIDGE
             "fridge_eligible",  # MG_SHOP2FRIDGE
+            "note",  # MG_SHOPNOTE
+            "image",  # MG_SHOPIMG (resolved url)
+            "image_url",  # MG_SHOPIMG (raw url)
             "is_purchased",
             "purchased_by",
             "purchased_by_name",
@@ -68,6 +130,9 @@ class ShoppingListItemWriteSerializer(serializers.ModelSerializer):
     product_id = serializers.IntegerField(required=False, allow_null=True)
     # MG_RUBRIC006_write_price
     price_per_unit = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+    # MG_SHOPIMG: изображение из камеры/буфера — data-URL или голый base64.
+    # "" очищает загруженный файл; поле не сохраняется в модель напрямую.
+    image_b64 = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     class Meta:
         model = ShoppingListItem
@@ -80,7 +145,21 @@ class ShoppingListItemWriteSerializer(serializers.ModelSerializer):
             "product_id",
             "price_per_unit",
             "sort_order",
+            "note",  # MG_SHOPNOTE
+            "image_url",  # MG_SHOPIMG
+            "image_b64",  # MG_SHOPIMG (write-only)
         )
+
+    def update(self, instance, validated_data):
+        # MG_SHOPIMG: image_b64 обрабатываем отдельно (не модельное поле).
+        image_b64 = validated_data.pop("image_b64", None)
+        # category_slug/product_id — не модельные поля, в PATCH их игнорируем.
+        validated_data.pop("category_slug", None)
+        validated_data.pop("product_id", None)
+        instance = super().update(instance, validated_data)
+        if image_b64 is not None:
+            save_item_image_from_b64(instance, image_b64)
+        return instance
 
 
 class ShoppingListAccessSerializer(serializers.ModelSerializer):

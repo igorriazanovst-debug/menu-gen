@@ -202,7 +202,7 @@ class ShoppingListDetailView(APIView):
             .prefetch_related(Prefetch("items", queryset=items_qs))
             .first()
         )
-        out = ShoppingListSerializer(sl).data
+        out = ShoppingListSerializer(sl, context={"request": request}).data
         out["capabilities"] = caps
         return Response(out)
 
@@ -284,8 +284,19 @@ class ShoppingItemsView(APIView):
             quantity=data.get("quantity"),
             unit=data.get("unit") or (product.default_unit if product else ""),
             sort_order=data.get("sort_order", 0),
+            note=data.get("note", ""),  # MG_SHOPNOTE
+            image_url=data.get("image_url", ""),  # MG_SHOPIMG
         )
-        return Response(ShoppingListItemSerializer(item).data, status=status.HTTP_201_CREATED)
+        # MG_SHOPIMG: сохранить изображение из камеры/буфера (base64), если пришло.
+        image_b64 = data.get("image_b64")
+        if image_b64:
+            from .serializers import save_item_image_from_b64
+
+            save_item_image_from_b64(item, image_b64)
+        return Response(
+            ShoppingListItemSerializer(item, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ShoppingItemDetailView(APIView):
@@ -312,7 +323,7 @@ class ShoppingItemDetailView(APIView):
         ser = ShoppingListItemWriteSerializer(item, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         ser.save()
-        return Response(ShoppingListItemSerializer(item).data)
+        return Response(ShoppingListItemSerializer(item, context={"request": request}).data)
 
     def delete(self, request, list_id, item_id):
         sl, caps, item = self._get(request.user, list_id, item_id)

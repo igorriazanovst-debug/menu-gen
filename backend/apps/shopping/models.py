@@ -84,6 +84,11 @@ class ShoppingListItem(models.Model):
     sort_order = models.PositiveIntegerField(default=0)
     # MG_RUBRIC006: per-unit price snapshot for this list.
     price_per_unit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # MG_SHOPNOTE: свободный комментарий к товару.
+    note = models.TextField(blank=True, default="")
+    # MG_SHOPIMG: изображение товара — загруженный файл (камера/буфер) и/или URL.
+    image = models.ImageField(upload_to="shopping_items/", null=True, blank=True)
+    image_url = models.URLField(max_length=1024, blank=True, default="")
 
     class Meta:
         db_table = "shopping_v2_items"
