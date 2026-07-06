@@ -12,6 +12,7 @@ import '../models/shopping_models.dart';
 import 'shopping_access_sheet.dart';
 import 'shopping_add_item.dart';
 import 'shopping_item_edit_row.dart'; // MG_SHOPBUG_EDITMODE
+import 'shopping_item_note_image_sheet.dart'; // MG_SHOPNOTE/IMG
 
 class ShoppingDetailScreen extends StatefulWidget {
   final int listId;
@@ -278,6 +279,37 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
             )
           : null,
     );
+  }
+
+  // MG_SHOPNOTE: подпись + строка комментария под товаром.
+  Widget? _itemSubtitleWithNote(ShoppingItem it, String sym) {
+    final base = _itemSubtitle(it, sym);
+    if (it.note.isEmpty) return base;
+    final noteLine = Text(
+      '🗒 ${it.note}',
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 12, color: Colors.grey),
+    );
+    if (base == null) return noteLine;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [base, noteLine],
+    );
+  }
+
+  // MG_SHOPNOTE/IMG: открыть редактор комментария и изображения товара.
+  Future<void> _openNoteImage(ShoppingListDetail d, ShoppingItem it) async {
+    final api = context.read<ShoppingBloc>().apiClient;
+    final saved = await showItemNoteImageSheet(
+      context: context,
+      api: api,
+      listId: d.id,
+      item: it,
+    );
+    if (saved && mounted) {
+      context.read<ShoppingBloc>().add(ShoppingDetailRequested(d.id));
+    }
   }
 
   void _toggleEditMode() {
@@ -584,6 +616,23 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                               // MG_SHOP2FRIDGE: ❄ marks items in the fridge.
                                               title: Row(
                                                 children: [
+                                                  // MG_SHOPIMG: миниатюра изображения.
+                                                  if (it.image != null &&
+                                                      it.image!.isNotEmpty) ...[
+                                                    ClipRRect(
+                                                      borderRadius:
+                                                          BorderRadius.circular(4),
+                                                      child: Image.network(
+                                                        it.image!,
+                                                        width: 30,
+                                                        height: 30,
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder: (_, __, ___) =>
+                                                            const SizedBox.shrink(),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                  ],
                                                   Flexible(
                                                     child: Text(
                                                       it.name,
@@ -606,8 +655,21 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                                   ],
                                                 ],
                                               ),
-                                              subtitle:
-                                                  _itemSubtitle(it, sym),
+                                              subtitle: _itemSubtitleWithNote(
+                                                  it, sym),
+                                              // MG_SHOPNOTE/IMG: кнопка редактора.
+                                              secondary: caps.manage
+                                                  ? IconButton(
+                                                      icon: const Icon(
+                                                          Icons
+                                                              .sticky_note_2_outlined,
+                                                          size: 20),
+                                                      tooltip:
+                                                          'Комментарий и фото',
+                                                      onPressed: () =>
+                                                          _openNoteImage(d, it),
+                                                    )
+                                                  : null,
                                             ),
                                       ],
                                     ),

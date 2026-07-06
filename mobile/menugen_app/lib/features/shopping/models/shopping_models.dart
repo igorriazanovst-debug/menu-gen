@@ -35,6 +35,9 @@ class ShoppingItem extends Equatable {
   final bool inFridge; // MG_SHOP2FRIDGE
   final bool fridgeEligible; // MG_SHOP2FRIDGE (non-food excluded)
   final String? purchasedByName;
+  final String note; // MG_SHOPNOTE
+  final String? image; // MG_SHOPIMG resolved url
+  final String? imageUrl; // MG_SHOPIMG raw url
 
   const ShoppingItem({
     required this.id,
@@ -50,6 +53,9 @@ class ShoppingItem extends Equatable {
     this.inFridge = false, // MG_SHOP2FRIDGE
     this.fridgeEligible = true, // MG_SHOP2FRIDGE
     this.purchasedByName,
+    this.note = '', // MG_SHOPNOTE
+    this.image, // MG_SHOPIMG
+    this.imageUrl, // MG_SHOPIMG
   });
 
   factory ShoppingItem.fromJson(Map<String, dynamic> j) {
@@ -68,6 +74,9 @@ class ShoppingItem extends Equatable {
       inFridge: j['in_fridge'] as bool? ?? false, // MG_SHOP2FRIDGE
       fridgeEligible: j['fridge_eligible'] as bool? ?? true, // MG_SHOP2FRIDGE
       purchasedByName: j['purchased_by_name'] as String?,
+      note: j['note'] as String? ?? '', // MG_SHOPNOTE
+      image: j['image'] as String?, // MG_SHOPIMG
+      imageUrl: j['image_url'] as String?, // MG_SHOPIMG
     );
   }
 
@@ -86,11 +95,27 @@ class ShoppingItem extends Equatable {
         inFridge: inFridge ?? this.inFridge, // MG_SHOP2FRIDGE
         fridgeEligible: fridgeEligible, // MG_SHOP2FRIDGE
         purchasedByName: purchasedByName,
+        note: note, // MG_SHOPNOTE
+        image: image, // MG_SHOPIMG
+        imageUrl: imageUrl, // MG_SHOPIMG
       );
 
   @override
-  List<Object?> get props =>
-      [id, name, quantity, unit, category, categorySlug, pricePerUnit, isPurchased, inFridge, fridgeEligible];
+  List<Object?> get props => [
+        id,
+        name,
+        quantity,
+        unit,
+        category,
+        categorySlug,
+        pricePerUnit,
+        isPurchased,
+        inFridge,
+        fridgeEligible,
+        note,
+        image,
+        imageUrl,
+      ];
 }
 
 class ShoppingCapabilities extends Equatable {
