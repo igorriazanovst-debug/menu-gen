@@ -416,7 +416,33 @@ class RecipeAdminForm(forms.ModelForm):
 
     class Meta:
         model = Recipe
-        fields = "__all__"
+        # MG_KBJU_ADMIN: объект `nutrition` не редактируется вручную (много ошибок) —
+        # собираем его из полей КБЖУ на 100 г в save().
+        exclude = ("nutrition",)
+
+    # MG_KBJU_ADMIN: per-100g поля → плоский объект nutrition (как хранит БД:
+    # {"calories": .., "proteins": .., "fats": .., "carbs": .., "sugars": ..}).
+    _NUTRITION_FROM_PER100G = {
+        "calories": "kcal_per_100g",
+        "proteins": "proteins_per_100g",
+        "fats": "fats_per_100g",
+        "carbs": "carbs_per_100g",
+        "sugars": "sugars_per_100g",
+    }
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        # Сохраняем прочие ключи (fiber/weight и т.п.), перезаписываем 5 основных.
+        nutrition = dict(instance.nutrition) if isinstance(instance.nutrition, dict) else {}
+        for obj_key, field_name in self._NUTRITION_FROM_PER100G.items():
+            value = self.cleaned_data.get(field_name)
+            if value is not None:
+                nutrition[obj_key] = float(value)
+        instance.nutrition = nutrition
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
 # MG_RA002b_country_select_list

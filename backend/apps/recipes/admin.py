@@ -217,8 +217,9 @@ class RecipeAdmin(admin.ModelAdmin):
         (
             _("Nutrition"),
             {
+                # MG_KBJU_ADMIN: объект `nutrition` больше не редактируется вручную —
+                # система собирает его из полей на 100 г при сохранении.
                 "fields": (
-                    "nutrition",
                     "kcal",
                     "proteins",
                     "fats",
@@ -228,6 +229,9 @@ class RecipeAdmin(admin.ModelAdmin):
                     "fats_per_100g",
                     "carbs_per_100g",
                     "sugars_per_100g",
+                ),
+                "description": _(
+                    "Введите КБЖУ на 100 г в отдельных полях ниже — объект nutrition " "система соберёт автоматически."
                 ),
             },
         ),
