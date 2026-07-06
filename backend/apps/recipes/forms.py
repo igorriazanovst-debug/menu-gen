@@ -403,12 +403,16 @@ class RecipeAdminForm(forms.ModelForm):
         label=_("Country / cuisine"),
     )
 
-    image_url = forms.URLField(
+    # MG_IMGFIX: CharField (не URLField) — принимаем и относительные пути
+    # (/media/...), и внешние ссылки без строгой валидации схемы. URLField
+    # отклонял относительные URL, из-за чего при редактировании приходилось
+    # очищать поле и картинка терялась.
+    image_url = forms.CharField(
         required=False,
         widget=_MediaUploadWidget(media_type="image"),
         label=_("Image URL"),
     )
-    video_url = forms.URLField(
+    video_url = forms.CharField(
         required=False,
         widget=_MediaUploadWidget(media_type="video"),
         label=_("Video URL"),

@@ -19,9 +19,14 @@ class Recipe(models.Model):
     # MG_ALLERGEN14: ключи аллергенов (ТР ТС 022/2011), найденных в рецепте.
     # Заполняется классификатором (apps.common.allergens) по ингредиентам+названию.
     allergens = models.JSONField(default=list, blank=True)
-    image_url = models.URLField(null=True, blank=True, max_length=1024)
-    video_url = models.URLField(null=True, blank=True, max_length=1024)
-    source_url = models.URLField(null=True, blank=True, max_length=1024)
+    # MG_IMGFIX: CharField (не URLField). URLField прогонял URLValidator в
+    # Recipe.full_clean() (ModelForm._post_clean в админке) и отклонял
+    # относительные пути `/media/...`. А сериализатор (_AbsoluteImageUrlMixin)
+    # штатно поддерживает относительные пути и сам добавляет префикс backend.
+    # Из-за валидации при сохранении рецепта в админке терялось изображение.
+    image_url = models.CharField(null=True, blank=True, max_length=1024)
+    video_url = models.CharField(null=True, blank=True, max_length=1024)
+    source_url = models.CharField(null=True, blank=True, max_length=1024)
     country = models.CharField(max_length=100, null=True, blank=True)
     is_custom = models.BooleanField(default=False)
     author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="recipes")

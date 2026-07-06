@@ -335,11 +335,15 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
             return (
               <Card key={item.id} className="p-4">
                 <div className="flex items-start gap-3">
+                  {/* MG_IMGFIX: клик по изображению открывает рецепт */}
                   {item.recipe.image_url ? (
-                    <img src={item.recipe.image_url} alt="" className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+                    <img src={item.recipe.image_url} alt=""
+                         className="w-20 h-20 rounded-xl object-cover flex-shrink-0 cursor-pointer"
+                         onClick={() => setDetailId(item.recipe.id)}
                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                   ) : (
-                    <div className="w-20 h-20 rounded-xl bg-rice flex items-center justify-center text-3xl flex-shrink-0">
+                    <div onClick={() => setDetailId(item.recipe.id)}
+                         className="w-20 h-20 rounded-xl bg-rice flex items-center justify-center text-3xl flex-shrink-0 cursor-pointer">
                       {COMPONENT_ROLE_ICONS[role]}
                     </div>
                   )}
