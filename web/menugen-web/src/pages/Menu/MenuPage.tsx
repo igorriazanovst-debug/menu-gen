@@ -13,6 +13,7 @@ import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
 import { DayNutritionSummary } from '../../components/menu/DayNutritionSummary';
 import { AllergenBadges } from '../../components/recipe/AllergenBadges';
+import { useEscapeKey } from '../../hooks/useEscapeKey'; // MG_ESC
 // MG_607_V_menupage
 import { GenerateMenuForm } from '../../components/menu/GenerateMenuForm';
 
@@ -166,6 +167,7 @@ const RecipeDetailModal: React.FC<{ recipeId: number; onClose: () => void }> = (
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  useEscapeKey(onClose); // MG_ESC: закрытие карточки рецепта по Escape
 
   useEffect(() => {
     let cancel = false;
@@ -263,6 +265,9 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
   const sorted = useMemo(() => sortByRole(items), [items]);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [printing, setPrinting] = useState(false);
+  // MG_ESC: Escape закрывает окно блюда, но только если поверх не открыта
+  // карточка рецепта (её Escape закрывает её же).
+  useEscapeKey(() => { if (detailId == null) onClose(); });
 
   const handlePrintRecipes = async () => {
     // В меню — только «список»-рецепты (без ingredients/steps): догружаем полные.

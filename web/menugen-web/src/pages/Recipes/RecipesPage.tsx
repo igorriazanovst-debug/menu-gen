@@ -7,6 +7,7 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { RecipeEditModal } from '../../components/recipes/RecipeEditModal';
 import { AllergenBadges } from '../../components/recipe/AllergenBadges';
 import { useAppSelector } from '../../hooks/useAppDispatch';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { Recipe } from '../../types';
 
 const MEAL_TYPES = [
@@ -14,11 +15,6 @@ const MEAL_TYPES = [
   { value: 'lunch',     label: 'Обед'    },
   { value: 'dinner',    label: 'Ужин'    },
   { value: 'snack',     label: 'Перекус' },
-];
-
-const CUISINES = [
-  'Русская','Итальянская','Французская','Американская','Японская',
-  'Китайская','Мексиканская','Индийская','Средиземноморская',
 ];
 
 interface Filters {
@@ -40,6 +36,9 @@ export const RecipesPage: React.FC = () => {
   const [editing,  setEditing]  = useState<Recipe | null>(null);
   const [filters,  setFilters]  = useState<Filters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
+  // MG_COUNTRYFILTER: список стран берём из БД (значения совпадают с сохранёнными
+  // в рецептах), иначе фильтр по стране ничего не находит.
+  const [countries, setCountries] = useState<string[]>([]);
 
   const user    = useAppSelector((s) => s.auth.user);
   const isAdmin = (user as any)?.user_type === 'admin';
@@ -62,6 +61,16 @@ export const RecipesPage: React.FC = () => {
   }, [search, page, filters]);
 
   useEffect(() => { load(); }, []);
+
+  // MG_COUNTRYFILTER: подтягиваем реальные страны из БД для селекта фильтра.
+  useEffect(() => {
+    recipesApi.countries()
+      .then(({ data }) => {
+        const list = Array.isArray(data) ? data : ((data as any)?.countries ?? []);
+        setCountries(list.filter(Boolean));
+      })
+      .catch(() => { /* оставляем пустой список */ });
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,7 +165,7 @@ export const RecipesPage: React.FC = () => {
                 className="w-full rounded-xl border border-border px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-tomato"
               >
                 <option value="">Все</option>
-                {CUISINES.map(c => (
+                {countries.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
@@ -302,6 +311,7 @@ const RecipeModal: React.FC<{
   // MG_RECIPETEXT: карточка приходит из списка (RecipeListSerializer) без
   // ingredients/steps — догружаем полный рецепт по id, иначе в окне нет текста.
   const [full, setFull] = useState<Recipe>(recipe);
+  useEscapeKey(onClose); // MG_ESC: закрытие по Escape
   useEffect(() => {
     let cancel = false;
     recipesApi.get(recipe.id)
