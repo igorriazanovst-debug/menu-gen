@@ -299,6 +299,16 @@ const RecipeModal: React.FC<{
 }> = ({ recipe, isAdmin, onClose, onEdit, onDeleted }) => {
   const [confirming, setConfirming] = useState(false);
   const [deleting,   setDeleting]   = useState(false);
+  // MG_RECIPETEXT: карточка приходит из списка (RecipeListSerializer) без
+  // ingredients/steps — догружаем полный рецепт по id, иначе в окне нет текста.
+  const [full, setFull] = useState<Recipe>(recipe);
+  useEffect(() => {
+    let cancel = false;
+    recipesApi.get(recipe.id)
+      .then(res => { if (!cancel) setFull(res.data); })
+      .catch(() => { /* оставляем данные из списка */ });
+    return () => { cancel = true; };
+  }, [recipe.id]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -314,13 +324,13 @@ const RecipeModal: React.FC<{
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-surface rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        {recipe.image_url && (
-          <img src={recipe.image_url} alt={recipe.title}
+        {full.image_url && (
+          <img src={full.image_url} alt={full.title}
             className="w-full object-contain rounded-t-2xl bg-gray-50" />
         )}
         <div className="p-6">
           <div className="flex items-start justify-between gap-4">
-            <h2 className="text-xl font-bold text-chocolate">{recipe.title}</h2>
+            <h2 className="text-xl font-bold text-chocolate">{full.title}</h2>
             <div className="flex items-center gap-2 shrink-0">
               {isAdmin && !confirming && (
                 <>
@@ -351,15 +361,15 @@ const RecipeModal: React.FC<{
             </div>
           </div>
 
-          {recipe.nutrition && (
+          {full.nutrition && (
             <div className="flex gap-4 mt-3 p-3 bg-rice rounded-xl flex-wrap">
               {[
-                ['Калории',   recipe.nutrition.calories],
-                ['Белки',     recipe.nutrition.proteins],
-                ['Жиры',      recipe.nutrition.fats],
-                ['Углеводы',  recipe.nutrition.carbs],
-                ['Клетчатка', recipe.nutrition.fiber],
-                ['Вес',       recipe.nutrition.weight],
+                ['Калории',   full.nutrition.calories],
+                ['Белки',     full.nutrition.proteins],
+                ['Жиры',      full.nutrition.fats],
+                ['Углеводы',  full.nutrition.carbs],
+                ['Клетчатка', full.nutrition.fiber],
+                ['Вес',       full.nutrition.weight],
               ].map(([label, val]) => val && (
                 <div key={String(label)} className="text-center">
                   <p className="text-xs text-gray-500">{String(label)}</p>
@@ -371,13 +381,13 @@ const RecipeModal: React.FC<{
             </div>
           )}
 
-          <AllergenBadges allergens={recipe.allergens} className="mt-4" />
+          <AllergenBadges allergens={full.allergens} className="mt-4" />
 
-          {(recipe.ingredients ?? []).length > 0 && (
+          {(full.ingredients ?? []).length > 0 && (
             <div className="mt-4">
               <h3 className="font-semibold mb-2">Ингредиенты</h3>
               <ul className="space-y-1">
-                {(recipe.ingredients ?? []).map((ing, i) => (
+                {(full.ingredients ?? []).map((ing, i) => (
                   <li key={i} className="text-sm flex gap-2">
                     <span className="text-tomato">•</span>
                     <span>{ing.name}</span>
@@ -388,11 +398,11 @@ const RecipeModal: React.FC<{
             </div>
           )}
 
-          {(recipe.steps ?? []).length > 0 && (
+          {(full.steps ?? []).length > 0 && (
             <div className="mt-4">
               <h3 className="font-semibold mb-2">Приготовление</h3>
               <ol className="space-y-3">
-                {(recipe.steps ?? []).map((step, i) => (
+                {(full.steps ?? []).map((step, i) => (
                   <li key={i} className="flex gap-3 text-sm">
                     <span className="shrink-0 w-6 h-6 rounded-full bg-tomato text-white text-xs flex items-center justify-center font-bold">
                       {i + 1}
