@@ -4,6 +4,7 @@ Provider-agnostic AI text client.
 Selects backend via AI_PROVIDER env:
   - "yandex"    -> Yandex Cloud Foundation Models (OpenAI-compatible endpoint)
   - "anthropic" -> Anthropic Claude
+  - "openai"    -> OpenAI (or any OpenAI-compatible /chat/completions endpoint)
 
 All configuration comes from environment (decouple.config). No hardcoded
 URLs, keys or model names.
@@ -112,6 +113,66 @@ class YandexAIClient(BaseAIClient):
             raise AIRequestError(f"Unexpected Yandex AI response: {data}") from exc
 
 
+class OpenAIAIClient(BaseAIClient):
+    """OpenAI (or any OpenAI-compatible) chat-completions endpoint.
+
+    Uses only ``requests`` (no new dependency). Works against api.openai.com
+    or any compatible gateway via ``AI_BASE_URL``. Auth is a Bearer token.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        text_model: str,
+        timeout: float,
+    ) -> None:
+        if not api_key:
+            raise AIConfigError("AI_API_KEY is not set for provider 'openai'.")
+        self._api_key = api_key
+        self._base_url = base_url.rstrip("/")
+        self._text_model = text_model
+        self._timeout = timeout
+
+    def complete(
+        self,
+        prompt: str,
+        system: str = "",
+        max_tokens: int = 256,
+        temperature: float = 0.0,
+    ) -> str:
+        import requests  # local import to avoid hard dependency at import time
+
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": self._text_model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": messages,
+        }
+        url = f"{self._base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=self._timeout)
+        except requests.RequestException as exc:
+            raise AIRequestError(f"OpenAI request failed: {exc}") from exc
+
+        if resp.status_code != 200:
+            raise AIRequestError(f"OpenAI HTTP {resp.status_code}: {resp.text[:500]}")
+        data = resp.json()
+        try:
+            return data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise AIRequestError(f"Unexpected OpenAI response: {data}") from exc
+
+
 class AnthropicAIClient(BaseAIClient):
     """Anthropic Claude (kept for parity / fallback)."""
 
@@ -144,9 +205,9 @@ def get_ai_client(provider: Optional[str] = None) -> BaseAIClient:
     """Factory. Reads configuration from environment.
 
     Env vars:
-      AI_PROVIDER     "yandex" | "anthropic"            (default: "yandex")
+      AI_PROVIDER     "yandex" | "anthropic" | "openai"  (default: "yandex")
       AI_API_KEY      provider API key                   (required)
-      AI_BASE_URL     OpenAI-compatible base URL          (yandex default below)
+      AI_BASE_URL     OpenAI-compatible base URL          (yandex/openai default below)
       AI_FOLDER_ID    Yandex folder id                    (required for yandex)
       AI_TEXT_MODEL   model id or full URI                (per-provider default)
       AI_TIMEOUT      request timeout, seconds            (default 30)
@@ -162,6 +223,16 @@ def get_ai_client(provider: Optional[str] = None) -> BaseAIClient:
         return YandexAIClient(
             api_key=api_key,
             folder_id=folder_id,
+            base_url=base_url,
+            text_model=text_model,
+            timeout=timeout,
+        )
+
+    if provider == "openai":
+        base_url = config("AI_BASE_URL", default="https://api.openai.com/v1")
+        text_model = config("AI_TEXT_MODEL", default="gpt-4o-mini")
+        return OpenAIAIClient(
+            api_key=api_key,
             base_url=base_url,
             text_model=text_model,
             timeout=timeout,
