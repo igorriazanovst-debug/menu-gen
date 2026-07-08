@@ -127,7 +127,7 @@ def _has_grams(recipe):
 
 def _default_json_path():
     return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "russianfood_ingredients.json"
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "seed", "russianfood_ingredients.json"
     )
 
 
