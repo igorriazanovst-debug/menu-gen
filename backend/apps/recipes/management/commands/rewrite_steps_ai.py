@@ -62,12 +62,14 @@ class Command(BaseCommand):
         parser.add_argument(
             "--force", action="store_true", help="Переписать заново даже уже переписанные (игнор метки rw)."
         )
+        parser.add_argument("--full", action="store_true", help="Печатать все шаги целиком (для оценки стиля).")
 
     def handle(self, *args, **opts):
         apply = opts["apply"]
         limit = opts["limit"]
         src = opts["source_url"]
         force = opts["force"]
+        full = opts["full"]
 
         try:
             from apps.common.ai_provider import get_ai_client
@@ -126,7 +128,12 @@ class Command(BaseCommand):
                 continue
 
             new_steps = [{"text": data[j].strip(), "order": j + 1, "rw": 1} for j in range(len(data))]
-            if len(samples) < 3:
+            if full:
+                self.stdout.write(f"  === #{r.id} {r.title} — все шаги ===")
+                for st in new_steps:
+                    self.stdout.write(f"  {st['order']}. {st['text']}")
+                self.stdout.write("")
+            elif len(samples) < 3:
                 samples.append(f"    #{r.id} шаг1: {new_steps[0]['text'][:120]}")
             if apply:
                 r.steps = new_steps
