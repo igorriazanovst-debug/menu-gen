@@ -15,10 +15,24 @@
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 
 from django.core.management.base import BaseCommand
 
 from apps.recipes.models import Recipe
+
+
+def _complete_with_timeout(client, prompt, system, max_tokens, temperature, timeout):
+    """AI-вызов с жёстким лимитом времени: по истечении — TimeoutError,
+    зависший поток бросаем (shutdown wait=False), чтобы не блокировать прогон."""
+    ex = ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(client.complete, prompt=prompt, system=system, max_tokens=max_tokens, temperature=temperature)
+    try:
+        return fut.result(timeout=timeout)
+    finally:
+        ex.shutdown(wait=False)
+
 
 SYSTEM = (
     "Ты — кулинарный редактор. Перепиши шаги рецепта своими словами: живым, "
@@ -65,6 +79,7 @@ class Command(BaseCommand):
             "--force", action="store_true", help="Переписать заново даже уже переписанные (игнор метки rw)."
         )
         parser.add_argument("--full", action="store_true", help="Печатать все шаги целиком (для оценки стиля).")
+        parser.add_argument("--timeout", type=float, default=90.0, help="Лимит на один рецепт, сек (потом пропуск).")
 
     def handle(self, *args, **opts):
         apply = opts["apply"]
@@ -72,6 +87,7 @@ class Command(BaseCommand):
         src = opts["source_url"]
         force = opts["force"]
         full = opts["full"]
+        timeout = opts["timeout"]
 
         try:
             from apps.common.ai_provider import get_ai_client
@@ -112,10 +128,19 @@ class Command(BaseCommand):
             self.stdout.write(f"  [{i}/{len(targets)}] #{r.id} {r.title[:45]} ({len(texts)} шагов)…")
             self.stdout.flush()
             try:
-                raw = client.complete(
-                    prompt=json.dumps(texts, ensure_ascii=False), system=SYSTEM, max_tokens=3500, temperature=0.5
+                raw = _complete_with_timeout(
+                    client,
+                    prompt=json.dumps(texts, ensure_ascii=False),
+                    system=SYSTEM,
+                    max_tokens=3500,
+                    temperature=0.5,
+                    timeout=timeout,
                 )
                 data = _parse_json_loose(raw)
+            except FuturesTimeout:
+                self.stderr.write(self.style.WARNING(f"    таймаут {timeout:.0f}s — пропуск (вернёмся при повторе)"))
+                failed += 1
+                continue
             except Exception as e:
                 self.stderr.write(self.style.WARNING(f"    ошибка AI: {e}"))
                 failed += 1
