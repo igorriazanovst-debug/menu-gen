@@ -15,12 +15,37 @@
 """
 
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.recipes.models import Recipe
+
+
+def _default_skip_path():
+    return os.path.join(settings.MEDIA_ROOT, "rewrite_skiplist.json")
+
+
+def _load_skip(path):
+    """{id: {id, title, reason}} из файла-скиплиста; пустой при отсутствии/ошибке."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return {int(e["id"]): e for e in data if isinstance(e, dict) and "id" in e}
+    except Exception:
+        return {}
+
+
+def _save_skip(path, skip):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(list(skip.values()), f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 
 def _complete_with_timeout(client, prompt, system, max_tokens, temperature, timeout):
@@ -80,6 +105,10 @@ class Command(BaseCommand):
         )
         parser.add_argument("--full", action="store_true", help="Печатать все шаги целиком (для оценки стиля).")
         parser.add_argument("--timeout", type=float, default=90.0, help="Лимит на один рецепт, сек (потом пропуск).")
+        parser.add_argument("--skip-file", default="", help="JSON-скиплист (по умолчанию MEDIA/rewrite_skiplist.json).")
+        parser.add_argument(
+            "--ignore-skip", action="store_true", help="Не исключать рецепты из скиплиста (попробовать снова)."
+        )
 
     def handle(self, *args, **opts):
         apply = opts["apply"]
@@ -88,6 +117,10 @@ class Command(BaseCommand):
         force = opts["force"]
         full = opts["full"]
         timeout = opts["timeout"]
+        skip_path = opts["skip_file"] or _default_skip_path()
+        ignore_skip = opts["ignore_skip"]
+        skip = _load_skip(skip_path)
+        skip_ids = set() if ignore_skip else set(skip.keys())
 
         try:
             from apps.common.ai_provider import get_ai_client
@@ -115,11 +148,16 @@ class Command(BaseCommand):
                 continue
             if _is_rewritten(r) and not force:
                 continue
+            if r.id in skip_ids:
+                continue
             targets.append(r)
             if limit and len(targets) >= limit:
                 break
 
-        self.stdout.write(f"Рецептов к рерайту: {len(targets)} (фильтр source_url={src or '—'}).")
+        self.stdout.write(
+            f"Рецептов к рерайту: {len(targets)} (фильтр source_url={src or '—'}, "
+            f"в скиплисте {len(skip)} — пропускаются)."
+        )
 
         done = failed = 0
         samples = []
@@ -138,10 +176,13 @@ class Command(BaseCommand):
                 )
                 data = _parse_json_loose(raw)
             except FuturesTimeout:
-                self.stderr.write(self.style.WARNING(f"    таймаут {timeout:.0f}s — пропуск (вернёмся при повторе)"))
+                self.stderr.write(self.style.WARNING(f"    таймаут {timeout:.0f}s — в скиплист"))
+                skip[r.id] = {"id": r.id, "title": r.title, "reason": "timeout"}
+                _save_skip(skip_path, skip)
                 failed += 1
                 continue
             except Exception as e:
+                # временная ошибка AI (сеть/шлюз) — НЕ в скиплист, попробуем в другой раз
                 self.stderr.write(self.style.WARNING(f"    ошибка AI: {e}"))
                 failed += 1
                 continue
@@ -150,7 +191,9 @@ class Command(BaseCommand):
                 or len(data) != len(texts)
                 or not all(isinstance(x, str) and x.strip() for x in data)
             ):
-                self.stderr.write(self.style.WARNING("    ответ не совпал по формату/длине — пропуск"))
+                self.stderr.write(self.style.WARNING("    ответ не по формату/длине — в скиплист"))
+                skip[r.id] = {"id": r.id, "title": r.title, "reason": "format"}
+                _save_skip(skip_path, skip)
                 failed += 1
                 continue
 
@@ -171,5 +214,6 @@ class Command(BaseCommand):
         for s in samples:
             self.stdout.write(s)
         self.stdout.write(f"Готово. Переписано: {done}; не удалось: {failed}.")
+        self.stdout.write(f"Скиплист (тайм-аут/дроп, пропускаются впредь): {len(skip)} → {skip_path}")
         if not apply:
             self.stdout.write(self.style.WARNING("DRY-RUN — ничего не записано. Для записи: --apply"))
