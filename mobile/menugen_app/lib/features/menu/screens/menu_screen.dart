@@ -142,13 +142,31 @@ class _MenuScreenState extends State<MenuScreen> {
           builder: (context, state) {
             if (state is MenuLoaded && state.menus.length > 1) {
               final activeId = state.active?['id'];
+              // Фон AppBar светлый → закрытый вид дропдауна рисуем тёмным
+              // (onSurface). Открытый список на фоне primary — там пункты белые.
+              final onBar = Theme.of(context).colorScheme.onSurface;
               return DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
                   value: activeId is int ? activeId : null,
                   isExpanded: true,
-                  iconEnabledColor: Colors.white,
+                  iconEnabledColor: onBar,
                   dropdownColor: Theme.of(context).colorScheme.primary,
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  style: TextStyle(color: onBar, fontSize: 16),
+                  // Закрытый вид (выбранное меню в AppBar) — тёмным, видимым.
+                  selectedItemBuilder: (context) => state.menus.map((m) {
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _shortRange(m),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: onBar,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    );
+                  }).toList(),
                   items: state.menus.map((m) {
                     return DropdownMenuItem<int>(
                       value: m['id'] as int,
