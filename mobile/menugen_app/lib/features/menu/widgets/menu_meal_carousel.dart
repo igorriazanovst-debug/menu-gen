@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// Список крупных карточек блюд для выбранного приёма пищи.
@@ -218,6 +219,7 @@ class _RecipeBigCard extends StatelessWidget {
                       )
                     : CachedNetworkImage(
                         imageUrl: _imageUrl!,
+                        cacheManager: RecipeImageCache.instance,
                         fit: BoxFit.cover,
                         placeholder: (_, __) => Container(
                           color: context.tokens.surfaceAlt,

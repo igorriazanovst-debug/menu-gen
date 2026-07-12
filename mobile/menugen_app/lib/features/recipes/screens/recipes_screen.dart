@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/cache/media_prefetch_service.dart'; // офлайн-прекэш фото
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/theme/app_theme.dart'; // MG_SKIN
 import '../bloc/recipes_bloc.dart';
@@ -41,6 +42,17 @@ class _RecipesScreenState extends State<RecipesScreen> {
     _scrollCtrl.addListener(_onScroll);
     _fetchSidecars();
     _reload();
+    _prefetchMediaForOffline();
+  }
+
+  /// Фоновый прекэш фото всех рецептов — чтобы раздел работал без сети.
+  /// Запускаем только онлайн; сервис сам троттлит (не чаще раза в сутки).
+  void _prefetchMediaForOffline() {
+    if (context.read<ConnectivityCubit>().state == ConnectivityStatus.offline) {
+      return;
+    }
+    // fire-and-forget: не блокирует UI, ошибки глушатся внутри сервиса.
+    MediaPrefetchService.instance.prefetchAllRecipeImages(widget.apiClient);
   }
 
   @override

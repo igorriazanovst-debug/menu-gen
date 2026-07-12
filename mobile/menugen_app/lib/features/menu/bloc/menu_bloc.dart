@@ -146,6 +146,22 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
       final id = m['id'];
       if (id is int) {
         await _writeLastMenuId(id);
+        // MG_608: после генерации перечитываем список меню и отдаём MenuLoaded,
+        // чтобы дропдаун сразу показывал новое меню и позволял переключаться.
+        try {
+          final listResp = await apiClient.get('/menu/');
+          final list =
+              (listResp is Map ? (listResp['results'] as List? ?? []) : [])
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList();
+          final detail = await apiClient.get('/menu/$id/');
+          premiumGate?.reportReadSuccess();
+          emit(MenuLoaded(menus: list, active: _asMap(detail)));
+          return;
+        } catch (_) {
+          // сеть/список не отдались — покажем хотя бы сгенерированное меню
+        }
       }
       emit(MenuGenerated(m));
     } catch (err) {

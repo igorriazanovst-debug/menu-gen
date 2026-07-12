@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/theme/app_theme.dart';
 
 class RecipeCard extends StatelessWidget {
@@ -58,6 +59,7 @@ class RecipeCard extends StatelessWidget {
                   child: _imageUrl != null && _imageUrl!.isNotEmpty
                       ? CachedNetworkImage(
                           imageUrl: _imageUrl!,
+                          cacheManager: RecipeImageCache.instance,
                           fit: BoxFit.cover,
                           placeholder: (_, __) => Container(color: tokens.surfaceAlt),
                           errorWidget: (_, __, ___) => _placeholder(context),

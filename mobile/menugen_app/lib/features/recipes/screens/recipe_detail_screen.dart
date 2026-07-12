@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -193,6 +194,7 @@ class _DetailBody extends StatelessWidget {
               child: (_imageUrl != null && _imageUrl!.isNotEmpty)
                   ? CachedNetworkImage(
                       imageUrl: _imageUrl!,
+                      cacheManager: RecipeImageCache.instance,
                       fit: BoxFit.cover,
                       placeholder: (_, __) => Container(color: tokens.surfaceAlt),
                       errorWidget: (_, __, ___) => Container(

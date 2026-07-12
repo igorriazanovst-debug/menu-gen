@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// MG_SKIN: матрица меню «приёмы × дни» (редизайн меню, mobile).
@@ -306,6 +307,7 @@ class _Cell extends StatelessWidget {
           else
             CachedNetworkImage(
               imageUrl: img,
+              cacheManager: RecipeImageCache.instance,
               fit: BoxFit.cover,
               placeholder: (_, __) => const Center(
                 child: SizedBox(

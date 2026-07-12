@@ -26,6 +26,24 @@ interface Filters {
 
 const EMPTY_FILTERS: Filters = { meal_type: '', country: '', calories_min: '', calories_max: '' };
 
+const PAGE_SIZE = 20;
+
+// Список страниц для пагинатора: всегда первая/последняя, окно вокруг текущей,
+// «…» на разрывах. Напр. 1 … 4 5 [6] 7 8 … 20.
+function pageWindow(current: number, totalPages: number): (number | '…')[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  const out: (number | '…')[] = [1];
+  const from = Math.max(2, current - 1);
+  const to = Math.min(totalPages - 1, current + 1);
+  if (from > 2) out.push('…');
+  for (let p = from; p <= to; p++) out.push(p);
+  if (to < totalPages - 1) out.push('…');
+  out.push(totalPages);
+  return out;
+}
+
 export const RecipesPage: React.FC = () => {
   const [recipes,  setRecipes]  = useState<Recipe[]>([]);
   const [total,    setTotal]    = useState(0);
@@ -217,19 +235,37 @@ export const RecipesPage: React.FC = () => {
         </div>
       )}
 
-      {total > 20 && (
-        <div className="flex justify-center gap-2 mt-4">
-          {page > 1 && (
-            <button onClick={() => { setPage(page-1); load(search, page-1, filters); }}
-              className="px-3 py-1 rounded-lg border text-sm hover:bg-gray-50">← Назад</button>
-          )}
-          <span className="px-3 py-1 text-sm text-gray-600">Стр. {page}</span>
-          {page * 20 < total && (
-            <button onClick={() => { setPage(page+1); load(search, page+1, filters); }}
-              className="px-3 py-1 rounded-lg border text-sm hover:bg-gray-50">Вперёд →</button>
-          )}
-        </div>
-      )}
+      {total > PAGE_SIZE && (() => {
+        const totalPages = Math.ceil(total / PAGE_SIZE);
+        const go = (p: number) => {
+          const np = Math.min(Math.max(1, p), totalPages);
+          if (np === page) return;
+          setPage(np);
+          load(search, np, filters);
+        };
+        const btn = 'min-w-[36px] h-9 px-2 rounded-lg border text-sm flex items-center justify-center';
+        return (
+          <nav className="flex flex-wrap justify-center items-center gap-1.5 mt-4" aria-label="Пагинация">
+            <button onClick={() => go(page - 1)} disabled={page <= 1}
+              className={`${btn} hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed`}
+              aria-label="Предыдущая страница">←</button>
+            {pageWindow(page, totalPages).map((p, i) =>
+              p === '…' ? (
+                <span key={`e${i}`} className="px-1 text-sm text-gray-400 select-none">…</span>
+              ) : (
+                <button key={p} onClick={() => go(p)}
+                  aria-current={p === page ? 'page' : undefined}
+                  className={`${btn} ${p === page
+                    ? 'bg-primary border-primary text-primary-fg font-semibold'
+                    : 'hover:bg-gray-50'}`}>{p}</button>
+              )
+            )}
+            <button onClick={() => go(page + 1)} disabled={page >= totalPages}
+              className={`${btn} hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed`}
+              aria-label="Следующая страница">→</button>
+          </nav>
+        );
+      })()}
 
       {selected && (
         <RecipeModal
