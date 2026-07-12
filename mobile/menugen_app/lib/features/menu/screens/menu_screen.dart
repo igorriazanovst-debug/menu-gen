@@ -32,6 +32,9 @@ class _MenuScreenState extends State<MenuScreen> {
   // --- выбранная дата
   DateTime? _selectedDate;
 
+  // MG-402: id активного меню (для замены блюда в приёме).
+  int? _activeMenuId;
+
   @override
   void initState() {
     super.initState();
@@ -289,6 +292,7 @@ class _MenuScreenState extends State<MenuScreen> {
           if (menu == null) {
             return _EmptyView(onGenerate: () => _showGenerateSheet(context));
           }
+          _activeMenuId = menu['id'] as int?; // MG-402: для замены блюда
 
           final start = _parseDate(menu['start_date']);
           final periodDays = (menu['period_days'] as int?) ?? 7;
@@ -495,6 +499,18 @@ class _MenuScreenState extends State<MenuScreen> {
                   onRecipeTap: (recipeId) {
                     Navigator.of(sheetCtx).pop();
                     context.push('/recipes/$recipeId');
+                  },
+                  // MG-402: замена блюда в приёме.
+                  menuId: _activeMenuId,
+                  apiClient: widget.apiClient,
+                  onSwapped: () {
+                    Navigator.of(sheetCtx).pop(); // закрыть лист приёма
+                    final id = _activeMenuId;
+                    if (id != null) {
+                      context
+                          .read<MenuBloc>()
+                          .add(MenuDetailRequested(id));
+                    }
                   },
                 ),
               ),

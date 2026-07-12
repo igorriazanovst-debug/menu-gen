@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/api/api_client.dart';
+import '../../../core/api/api_exception.dart';
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -112,12 +114,20 @@ class MenuMealCarousel extends StatelessWidget {
   final String slotLabel;
   final List<Map<String, dynamic>> items;
   final ValueChanged<int> onRecipeTap;
+  // Замена блюда (MG-402): нужны id меню, клиент и колбэк рефреша. Если не
+  // переданы — кнопка «Заменить» не показывается.
+  final int? menuId;
+  final ApiClient? apiClient;
+  final VoidCallback? onSwapped;
 
   const MenuMealCarousel({
     super.key,
     required this.slotLabel,
     required this.items,
     required this.onRecipeTap,
+    this.menuId,
+    this.apiClient,
+    this.onSwapped,
   });
 
   @override
@@ -158,10 +168,26 @@ class MenuMealCarousel extends StatelessWidget {
                   ? Map<String, dynamic>.from(item['recipe'] as Map)
                   : <String, dynamic>{};
               final recipeId = recipe['id'] as int?;
+              final itemId = item['id'] as int?;
+              final canSwap = menuId != null &&
+                  apiClient != null &&
+                  itemId != null &&
+                  recipeId != null;
               return _RecipeBigCard(
                 recipe: recipe,
                 memberName: item['member_name'] as String?,
                 onTap: recipeId == null ? null : () => onRecipeTap(recipeId),
+                onReplace: !canSwap
+                    ? null
+                    : () => showSwapPicker(
+                          context,
+                          apiClient: apiClient!,
+                          menuId: menuId!,
+                          itemId: itemId!,
+                          currentRecipeId: recipeId!,
+                          foodGroup: recipe['food_group'] as String?,
+                          onSwapped: onSwapped,
+                        ),
               );
             },
           ),
@@ -175,11 +201,13 @@ class _RecipeBigCard extends StatelessWidget {
   final Map<String, dynamic> recipe;
   final String? memberName;
   final VoidCallback? onTap;
+  final VoidCallback? onReplace;
 
   const _RecipeBigCard({
     required this.recipe,
     required this.memberName,
     required this.onTap,
+    this.onReplace,
   });
 
   String? get _imageUrl => recipe['image_url'] as String?;
@@ -262,11 +290,292 @@ class _RecipeBigCard extends StatelessWidget {
                         _MetaChip(icon: Icons.person_outline, text: memberName!),
                     ],
                   ),
+                  if (onReplace != null) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: onReplace,
+                        icon: const Icon(Icons.swap_horiz, size: 18),
+                        label: const Text('Заменить'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: cs.primary,
+                          side: BorderSide(color: cs.primary.withOpacity(0.5)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// MG-402: лист-пикер замены блюда. Тянет кандидатов из `/recipes/` (той же
+/// food_group, исключая текущий), при выборе PATCH-ит `/menu/<m>/items/<i>/`
+/// {recipe_id}. Бэкенд запрещает замену на другую food_group (400). После
+/// успеха закрывает лист и дёргает [onSwapped] для обновления меню.
+void showSwapPicker(
+  BuildContext context, {
+  required ApiClient apiClient,
+  required int menuId,
+  required int itemId,
+  required int currentRecipeId,
+  required String? foodGroup,
+  VoidCallback? onSwapped,
+}) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _SwapPicker(
+      apiClient: apiClient,
+      menuId: menuId,
+      itemId: itemId,
+      currentRecipeId: currentRecipeId,
+      foodGroup: foodGroup,
+      onSwapped: onSwapped,
+    ),
+  );
+}
+
+class _SwapPicker extends StatefulWidget {
+  final ApiClient apiClient;
+  final int menuId;
+  final int itemId;
+  final int currentRecipeId;
+  final String? foodGroup;
+  final VoidCallback? onSwapped;
+
+  const _SwapPicker({
+    required this.apiClient,
+    required this.menuId,
+    required this.itemId,
+    required this.currentRecipeId,
+    required this.foodGroup,
+    required this.onSwapped,
+  });
+
+  @override
+  State<_SwapPicker> createState() => _SwapPickerState();
+}
+
+class _SwapPickerState extends State<_SwapPicker> {
+  final _searchCtrl = TextEditingController();
+  List<Map<String, dynamic>> _items = const [];
+  bool _loading = false;
+  bool _swapping = false;
+  String? _error;
+  int _reqSeq = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final seq = ++_reqSeq;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final params = <String, dynamic>{'page_size': 25};
+      final q = _searchCtrl.text.trim();
+      if (q.isNotEmpty) params['search'] = q;
+      if (widget.foodGroup != null && widget.foodGroup!.isNotEmpty) {
+        params['food_group'] = widget.foodGroup;
+      }
+      final r = await widget.apiClient.get('/recipes/', params: params);
+      if (seq != _reqSeq || !mounted) return;
+      final results = (r is Map ? (r['results'] as List? ?? const []) : const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((m) => m['id'] != widget.currentRecipeId)
+          .toList();
+      setState(() {
+        _items = results;
+        _loading = false;
+      });
+    } catch (e) {
+      if (seq != _reqSeq || !mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e is ApiException ? e.message : 'Не удалось загрузить рецепты';
+      });
+    }
+  }
+
+  Future<void> _pick(int recipeId) async {
+    if (_swapping) return;
+    setState(() {
+      _swapping = true;
+      _error = null;
+    });
+    try {
+      await widget.apiClient.patch(
+        '/menu/${widget.menuId}/items/${widget.itemId}/',
+        data: {'recipe_id': recipeId},
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      widget.onSwapped?.call();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _swapping = false;
+        _error = e is ApiException ? e.message : 'Ошибка замены';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final h = MediaQuery.of(context).size.height * 0.75;
+    return Container(
+      height: h,
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: context.tokens.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Заменить блюдо',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: TextField(
+              controller: _searchCtrl,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _load(),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                hintText: 'Поиск рецепта…',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          _load();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+            ),
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Text(_error!,
+                  style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _items.isEmpty
+                    ? Center(
+                        child: Text('Ничего не найдено',
+                            style: TextStyle(color: context.tokens.textSecondary)),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final r = _items[i];
+                          final id = r['id'] as int?;
+                          final img = r['image_url'] as String?;
+                          return ListTile(
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: (img == null || img.isEmpty)
+                                    ? Container(
+                                        color: context.tokens.surfaceAlt,
+                                        child: Icon(Icons.restaurant,
+                                            color: context.tokens.textSecondary),
+                                      )
+                                    : CachedNetworkImage(
+                                        imageUrl: img,
+                                        cacheManager: RecipeImageCache.instance,
+                                        fit: BoxFit.cover,
+                                        errorWidget: (_, __, ___) => Container(
+                                          color: context.tokens.surfaceAlt,
+                                          child: Icon(Icons.restaurant,
+                                              color: context.tokens.textSecondary),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            title: Text(
+                              (r['title'] as String?) ?? '',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: _swapping
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.chevron_right),
+                            onTap: (id == null || _swapping) ? null : () => _pick(id),
+                          );
+                        },
+                      ),
+          ),
+        ],
       ),
     );
   }
