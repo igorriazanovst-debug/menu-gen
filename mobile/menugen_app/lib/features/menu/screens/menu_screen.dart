@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/cache/recipe_detail_prefetch.dart'; // OFFLINE: прогрев рецептов меню
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/theme/app_theme.dart';
 import '../bloc/menu_bloc.dart';
@@ -235,7 +236,25 @@ class _MenuScreenState extends State<MenuScreen> {
           ),
         ],
       ),
-      body: Stack(
+      body: BlocListener<MenuBloc, MenuState>(
+        // OFFLINE: при загрузке/генерации меню фоном прогреваем кэш полными
+        // рецептами всех блюд — чтобы они открывались без сети. Только онлайн.
+        listenWhen: (a, b) => b is MenuLoaded || b is MenuGenerated,
+        listener: (context, state) {
+          Map<String, dynamic>? menu;
+          if (state is MenuLoaded) {
+            menu = state.active;
+          } else if (state is MenuGenerated) {
+            menu = state.menu;
+          }
+          if (menu != null &&
+              context.read<ConnectivityCubit>().state ==
+                  ConnectivityStatus.online) {
+            RecipeDetailPrefetch.instance
+                .prefetchMenu(widget.apiClient, menu);
+          }
+        },
+        child: Stack(
         children: [
           Positioned.fill(
             child: BlocBuilder<MenuBloc, MenuState>(
@@ -346,6 +365,7 @@ class _MenuScreenState extends State<MenuScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
