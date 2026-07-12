@@ -26,6 +26,11 @@ class CachingApiClient implements ApiClient {
 
   bool _isOffline(Object e) => e is ApiException && e.isNetwork;
 
+  /// Когда для GET допустимо отдать кэш: офлайн ИЛИ rate-limit (429) — в обоих
+  /// случаях показать сохранённое лучше, чем ошибку.
+  bool _canServeCache(Object e) =>
+      e is ApiException && (e.isNetwork || e.isThrottled);
+
   @override
   Future<dynamic> get(String path, {Map<String, dynamic>? params}) async {
     final key = cache.keyFor(path, params);
@@ -34,7 +39,7 @@ class CachingApiClient implements ApiClient {
       await cache.save(key, data);
       return data;
     } catch (e) {
-      if (_isOffline(e)) {
+      if (_canServeCache(e)) {
         final cached = cache.read(key);
         if (cached != null) return cached.data;
       }
