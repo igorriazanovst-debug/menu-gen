@@ -2,10 +2,20 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 /// MG_T08: global count of locally-queued, not-yet-synced changes.
 ///
-/// Surfaced by [SyncIndicator]. In phase 1 only the shopping toggle queue
-/// (held in-memory inside ShoppingBloc) feeds this counter; the owning bloc
-/// resets its contribution to 0 on close.
+/// Surfaced by [SyncIndicator]. Несколько источников (shopping-очередь тоглов и
+/// общая офлайн-очередь мутаций) вносят вклад по ключу — итог суммируется,
+/// чтобы источники не перетирали общий счётчик.
 class PendingSyncCubit extends Cubit<int> {
   PendingSyncCubit() : super(0);
-  void set(int n) => emit(n < 0 ? 0 : n);
+
+  final Map<String, int> _parts = {};
+
+  /// Вклад источника [key] в общий счётчик.
+  void setPart(String key, int n) {
+    _parts[key] = n < 0 ? 0 : n;
+    emit(_parts.values.fold(0, (a, b) => a + b));
+  }
+
+  /// Совместимость: одиночный источник (shopping-очередь тоглов).
+  void set(int n) => setPart('default', n);
 }

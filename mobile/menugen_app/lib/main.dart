@@ -4,6 +4,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // MG_CACHE
 
+import 'core/api/api_client.dart'; // OFFLINE: тип интерфейса
+import 'core/api/caching_api_client.dart'; // OFFLINE: кэш-декоратор
 import 'core/api/dio_api_client.dart';
 import 'core/api/token_storage.dart';
 import 'core/connectivity/connectivity_cubit.dart';
@@ -12,6 +14,8 @@ import 'core/premium/premium_gate_cubit.dart';
 import 'core/router/app_router.dart';
 import 'core/sync/pending_sync_cubit.dart'; // MG_T08
 import 'core/sync/offline_toggle_queue.dart'; // MG_T09
+import 'core/sync/offline_mutation_queue.dart'; // OFFLINE: очередь мутаций
+import 'core/cache/http_cache_store.dart'; // OFFLINE: кэш GET-ответов
 import 'core/cache/shopping_cache.dart'; // MG_CACHE
 import 'core/sync/sync_service.dart';
 import 'core/theme/app_skin.dart'; // MG_SKIN
@@ -29,24 +33,46 @@ void main() async {
 
   final tokenStorage = TokenStorage();
   final db = AppDatabase();
-  final apiClient = DioApiClient(tokenStorage: tokenStorage);
-  final syncService = SyncService(apiClient: apiClient, db: db);
+  // Сырой сетевой клиент (без кэша) — им же проигрывается офлайн-очередь.
+  final dioClient = DioApiClient(tokenStorage: tokenStorage);
   final premiumGate = PremiumGateCubit();
   // Listen to API errors globally so cross-cutting UI (banner) reacts even if
   // an individual bloc swallows the error in its own state.
-  premiumGate.attachErrorStream(apiClient.errorStream);
+  premiumGate.attachErrorStream(dioClient.errorStream);
 
   // MG_T09: app-lifetime connectivity + pending counter + offline queue.
   final connectivity = ConnectivityCubit();
   final pendingSync = PendingSyncCubit();
+
+  final prefs = await SharedPreferences.getInstance();
+
+  // OFFLINE: кэш GET-ответов + очередь офлайн-мутаций + кэширующий клиент.
+  // Блоки работают с [apiClient] (кэширующим) и получают офлайн-поведение
+  // без изменений в самих блоках.
+  final httpCache = HttpCacheStore(prefs);
+  final mutationQueue = OfflineMutationQueue(
+    prefs: prefs,
+    connectivity: connectivity,
+    pendingSync: pendingSync,
+  );
+  mutationQueue.bindApi(dioClient); // реплей через сырой клиент (не через кэш)
+  final ApiClient apiClient = CachingApiClient(
+    inner: dioClient,
+    cache: httpCache,
+    queue: mutationQueue,
+  );
+  mutationQueue.flush(); // догнать очередь прошлой сессии, если уже онлайн
+
+  final syncService = SyncService(apiClient: apiClient, db: db);
+
+  // MG_T09: shopping-очередь тоглов — на сыром клиенте (свой реплей).
   final offlineToggleQueue = OfflineToggleQueue(
-    apiClient: apiClient,
+    apiClient: dioClient,
     connectivity: connectivity,
     pendingSync: pendingSync,
   );
 
   // MG_CACHE: lightweight offline cache for shopping lists/details.
-  final prefs = await SharedPreferences.getInstance();
   final shoppingCache = ShoppingCache(prefs);
 
   // MG_SKIN: cubit выбранного скина (персист + синк в аккаунт).
@@ -70,7 +96,7 @@ void main() async {
 class MenuGenApp extends StatelessWidget {
   final TokenStorage tokenStorage;
   final AppDatabase db;
-  final DioApiClient apiClient;
+  final ApiClient apiClient;
   final SyncService syncService;
   final PremiumGateCubit premiumGate;
   final ConnectivityCubit connectivity; // MG_T09

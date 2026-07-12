@@ -21,7 +21,7 @@ class ConnectivityBanner extends StatelessWidget {
               SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  'Офлайн режим, функционал ограничен. Вернитесь в сеть :)', // MG_T10
+                  'Офлайн: показаны сохранённые данные, они могут быть неактуальны', // MG_T10 / OFFLINE
                   style: TextStyle(color: Colors.white, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
