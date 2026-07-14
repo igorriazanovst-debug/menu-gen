@@ -82,9 +82,10 @@ class RecipesLoaded extends RecipesState {
 class RecipesPageLoaded extends RecipesState {
   final List<Map<String, dynamic>> recipes;
   final bool hasMore;
-  const RecipesPageLoaded({required this.recipes, required this.hasMore});
+  final int total; // всего рецептов (count) — для нумерованной пагинации
+  const RecipesPageLoaded({required this.recipes, required this.hasMore, this.total = 0});
   @override
-  List<Object?> get props => [recipes, hasMore];
+  List<Object?> get props => [recipes, hasMore, total];
 }
 
 class RecipesError extends RecipesState {
@@ -122,6 +123,8 @@ class RecipesBloc extends Bloc<RecipesEvent, RecipesState> {
 
   bool _hasMore(dynamic d) => d is Map ? d['next'] != null : false;
 
+  int _total(dynamic d) => d is Map && d['count'] is int ? d['count'] as int : 0;
+
   Future<void> _onLoad(RecipesLoadRequested e, Emitter<RecipesState> emit) async {
     emit(const RecipesLoading());
     try {
@@ -146,7 +149,7 @@ class RecipesBloc extends Bloc<RecipesEvent, RecipesState> {
     try {
       final r = await apiClient.get('/recipes/', params: e.params);
       final d = _data(r);
-      emit(RecipesPageLoaded(recipes: _results(d), hasMore: _hasMore(d)));
+      emit(RecipesPageLoaded(recipes: _results(d), hasMore: _hasMore(d), total: _total(d)));
     } catch (err) {
       emit(RecipesError(_msg(err)));
     }
@@ -166,7 +169,7 @@ class RecipesBloc extends Bloc<RecipesEvent, RecipesState> {
       );
       final r = await apiClient.get('/recipes/', params: params);
       final d = _data(r);
-      emit(RecipesPageLoaded(recipes: _results(d), hasMore: _hasMore(d)));
+      emit(RecipesPageLoaded(recipes: _results(d), hasMore: _hasMore(d), total: _total(d)));
     } catch (err) {
       emit(RecipesError(_msg(err)));
     }

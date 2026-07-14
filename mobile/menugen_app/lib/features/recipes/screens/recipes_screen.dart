@@ -24,11 +24,18 @@ class _RecipesScreenState extends State<RecipesScreen> {
   final _searchCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 
+  static const int _pageSize = 20;
+
   RecipeFilters _filters = const RecipeFilters();
-  int _page = 1;
+  int _page = 1; // текущая (базовая) страница пагинатора
+  int _loadedThrough = 1; // до какой страницы догружено скроллом
+  int _total = 0; // всего рецептов (count) — для нумерации
   bool _hasMore = true;
   bool _loadingMore = false;
+  bool _paging = false; // грузится новая базовая страница (reload/jump)
   final List<Map<String, dynamic>> _recipes = [];
+
+  int get _totalPages => _total <= 0 ? 1 : ((_total + _pageSize - 1) ~/ _pageSize);
 
   /// Cached fridge item names (lowercased).
   List<String> _fridgeNames = const [];
@@ -94,26 +101,44 @@ class _RecipesScreenState extends State<RecipesScreen> {
   void _reload() {
     setState(() {
       _page = 1;
+      _loadedThrough = 1;
       _hasMore = true;
+      _paging = true;
       _recipes.clear();
     });
-    _dispatch();
+    _dispatch(1);
   }
 
   void _loadNextPage() {
     setState(() {
       _loadingMore = true;
-      _page += 1;
+      _loadedThrough += 1;
     });
-    _dispatch();
+    _dispatch(_loadedThrough);
   }
 
-  void _dispatch() {
+  /// Переход на конкретную страницу (зеркало веба): сбрасывает список к странице
+  /// n, дальше скролл догружает n+1, n+2… как обычно.
+  void _jumpToPage(int n) {
+    final np = n.clamp(1, _totalPages).toInt();
+    if (np == _page && _recipes.isNotEmpty) return;
+    setState(() {
+      _page = np;
+      _loadedThrough = np;
+      _hasMore = true;
+      _paging = true;
+      _recipes.clear();
+    });
+    if (_scrollCtrl.hasClients) _scrollCtrl.jumpTo(0);
+    _dispatch(np);
+  }
+
+  void _dispatch(int page) {
     context.read<RecipesBloc>().add(
           RecipesFilterChanged(
             filters: _filters,
             search: _searchCtrl.text.trim(),
-            page: _page,
+            page: page,
             fridgeNames: _fridgeNames,
           ),
         );
@@ -206,10 +231,15 @@ class _RecipesScreenState extends State<RecipesScreen> {
             setState(() {
               _recipes.addAll(state.recipes);
               _hasMore = state.hasMore;
+              _total = state.total;
               _loadingMore = false;
+              _paging = false;
             });
           } else if (state is RecipesError) {
-            setState(() => _loadingMore = false);
+            setState(() {
+              _loadingMore = false;
+              _paging = false;
+            });
             // MG_T10: offline -> only the global banner, no error snackbar.
             if (context.read<ConnectivityCubit>().state !=
                 ConnectivityStatus.offline) {
@@ -256,10 +286,11 @@ class _RecipesScreenState extends State<RecipesScreen> {
                   children: _activeChips(),
                 ),
               ),
+            if (_totalPages > 1) _buildPaginationBar(),
             Expanded(
               child: BlocBuilder<RecipesBloc, RecipesState>(
                 builder: (context, state) {
-                  if (_recipes.isEmpty && state is RecipesLoading) {
+                  if (_recipes.isEmpty && (state is RecipesLoading || _paging)) {
                     return const Center(child: CircularProgressIndicator());
                   }
                   if (_recipes.isEmpty) {
@@ -318,6 +349,128 @@ class _RecipesScreenState extends State<RecipesScreen> {
         ),
       ),
     );
+  }
+
+  // ── Нумерованная пагинация (зеркало веба) ──────────────────────────────────
+  // Список страниц: первая/последняя всегда, окно вокруг текущей, «…» на
+  // разрывах: 1 … 4 5 [6] 7 8 … 20.
+  List<Object> _pageWindow(int current, int totalPages) {
+    if (totalPages <= 7) {
+      return [for (var i = 1; i <= totalPages; i++) i];
+    }
+    final out = <Object>[1];
+    final from = (current - 1) < 2 ? 2 : current - 1;
+    final to = (current + 1) > totalPages - 1 ? totalPages - 1 : current + 1;
+    if (from > 2) out.add('…');
+    for (var p = from; p <= to; p++) out.add(p);
+    if (to < totalPages - 1) out.add('…');
+    out.add(totalPages);
+    return out;
+  }
+
+  Widget _buildPaginationBar() {
+    final cs = context.cs;
+    final tp = _totalPages;
+    final cur = _page;
+
+    Widget numBtn(int p) {
+      final active = p == cur;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: SizedBox(
+          height: 34,
+          child: active
+              ? FilledButton(
+                  onPressed: () {},
+                  style: FilledButton.styleFrom(
+                    backgroundColor: cs.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minimumSize: const Size(40, 34),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text('$p'),
+                )
+              : OutlinedButton(
+                  onPressed: () => _jumpToPage(p),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minimumSize: const Size(40, 34),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text('$p'),
+                ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            tooltip: 'Назад',
+            onPressed: cur > 1 ? () => _jumpToPage(cur - 1) : null,
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final w in _pageWindow(cur, tp))
+                    w is int
+                        ? numBtn(w)
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text('…',
+                                style: TextStyle(color: context.tokens.textSecondary)),
+                          ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Вперёд',
+            onPressed: cur < tp ? () => _jumpToPage(cur + 1) : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.more_horiz),
+            tooltip: 'Перейти на страницу',
+            onPressed: () => _promptJump(tp),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _promptJump(int totalPages) async {
+    final ctrl = TextEditingController();
+    final n = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Перейти на страницу'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(hintText: '1–$totalPages'),
+          onSubmitted: (v) => Navigator.of(ctx).pop(int.tryParse(v.trim())),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(int.tryParse(ctrl.text.trim())),
+            child: const Text('Перейти'),
+          ),
+        ],
+      ),
+    );
+    if (n != null) _jumpToPage(n);
   }
 
   List<Widget> _activeChips() {

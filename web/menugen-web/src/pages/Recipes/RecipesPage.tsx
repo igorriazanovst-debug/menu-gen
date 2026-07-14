@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { recipesApi } from '../../api/recipes';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -45,15 +46,38 @@ function pageWindow(current: number, totalPages: number): (number | '…')[] {
 }
 
 export const RecipesPage: React.FC = () => {
+  // Состояние страницы/поиска/фильтров живёт в URL (?page=&search=&…) — при
+  // перезагрузке восстанавливается текущая страница, а не сбрасывается на 1.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+  const initFilters: Filters = {
+    meal_type:    searchParams.get('meal_type')    || '',
+    country:      searchParams.get('country')      || '',
+    calories_min: searchParams.get('calories_min') || '',
+    calories_max: searchParams.get('calories_max') || '',
+  };
+
   const [recipes,  setRecipes]  = useState<Recipe[]>([]);
   const [total,    setTotal]    = useState(0);
-  const [page,     setPage]     = useState(1);
-  const [search,   setSearch]   = useState('');
+  const [page,     setPage]     = useState(initPage);
+  const [search,   setSearch]   = useState(searchParams.get('search') || '');
   const [loading,  setLoading]  = useState(false);
   const [selected, setSelected] = useState<Recipe | null>(null);
   const [editing,  setEditing]  = useState<Recipe | null>(null);
-  const [filters,  setFilters]  = useState<Filters>(EMPTY_FILTERS);
+  const [filters,  setFilters]  = useState<Filters>(initFilters);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Записать текущее состояние навигации в URL (пустые значения не пишем).
+  const syncUrl = useCallback((p: number, q: string, f: Filters) => {
+    const next: Record<string, string> = {};
+    if (p > 1)          next.page         = String(p);
+    if (q)              next.search       = q;
+    if (f.meal_type)    next.meal_type    = f.meal_type;
+    if (f.country)      next.country      = f.country;
+    if (f.calories_min) next.calories_min = f.calories_min;
+    if (f.calories_max) next.calories_max = f.calories_max;
+    setSearchParams(next, { replace: true });
+  }, [setSearchParams]);
   // MG_COUNTRYFILTER: список стран берём из БД (значения совпадают с сохранёнными
   // в рецептах), иначе фильтр по стране ничего не находит.
   const [countries, setCountries] = useState<string[]>([]);
@@ -93,6 +117,7 @@ export const RecipesPage: React.FC = () => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
+    syncUrl(1, search, filters);
     load(search, 1, filters);
   };
 
@@ -100,13 +125,26 @@ export const RecipesPage: React.FC = () => {
     const next = { ...filters, [key]: value };
     setFilters(next);
     setPage(1);
+    syncUrl(1, search, next);
     load(search, 1, next);
   };
 
   const clearFilters = () => {
     setFilters(EMPTY_FILTERS);
     setPage(1);
-    load(search, 1, EMPTY_FILTERS);
+    setSearch('');
+    syncUrl(1, '', EMPTY_FILTERS);
+    load('', 1, EMPTY_FILTERS);
+  };
+
+  // Переход на страницу p (кламп к [1, totalPages]) + URL + загрузка.
+  const goToPage = (p: number) => {
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const np = Math.min(Math.max(1, p), totalPages);
+    if (np === page) return;
+    setPage(np);
+    syncUrl(np, search, filters);
+    load(search, np, filters);
   };
 
   const handleSaved = (updated: Recipe) => {
@@ -237,32 +275,51 @@ export const RecipesPage: React.FC = () => {
 
       {total > PAGE_SIZE && (() => {
         const totalPages = Math.ceil(total / PAGE_SIZE);
-        const go = (p: number) => {
-          const np = Math.min(Math.max(1, p), totalPages);
-          if (np === page) return;
-          setPage(np);
-          load(search, np, filters);
-        };
         const btn = 'min-w-[36px] h-9 px-2 rounded-lg border text-sm flex items-center justify-center';
         return (
           <nav className="flex flex-wrap justify-center items-center gap-1.5 mt-4" aria-label="Пагинация">
-            <button onClick={() => go(page - 1)} disabled={page <= 1}
+            <button onClick={() => goToPage(page - 1)} disabled={page <= 1}
               className={`${btn} hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed`}
               aria-label="Предыдущая страница">←</button>
             {pageWindow(page, totalPages).map((p, i) =>
               p === '…' ? (
                 <span key={`e${i}`} className="px-1 text-sm text-gray-400 select-none">…</span>
               ) : (
-                <button key={p} onClick={() => go(p)}
+                <button key={p} onClick={() => goToPage(p)}
                   aria-current={p === page ? 'page' : undefined}
                   className={`${btn} ${p === page
                     ? 'bg-primary border-primary text-primary-fg font-semibold'
                     : 'hover:bg-gray-50'}`}>{p}</button>
               )
             )}
-            <button onClick={() => go(page + 1)} disabled={page >= totalPages}
+            <button onClick={() => goToPage(page + 1)} disabled={page >= totalPages}
               className={`${btn} hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed`}
               aria-label="Следующая страница">→</button>
+
+            {/* Переход на конкретную страницу */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const el = (e.currentTarget.elements.namedItem('goto') as HTMLInputElement);
+                const n = parseInt(el.value, 10);
+                if (!Number.isNaN(n)) goToPage(n);
+                el.value = '';
+              }}
+              className="flex items-center gap-1.5 ml-2"
+            >
+              <span className="text-sm text-gray-500">Стр.</span>
+              <input
+                name="goto"
+                type="number"
+                min={1}
+                max={totalPages}
+                placeholder={String(page)}
+                aria-label="Перейти на страницу"
+                className="w-16 h-9 px-2 rounded-lg border text-sm text-center focus:outline-none focus:border-primary"
+              />
+              <span className="text-sm text-gray-500">из {totalPages}</span>
+              <button type="submit" className={`${btn} hover:bg-gray-50`} aria-label="Перейти">→</button>
+            </form>
           </nav>
         );
       })()}
