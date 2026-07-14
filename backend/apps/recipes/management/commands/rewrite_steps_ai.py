@@ -101,6 +101,9 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=0, help="Обработать не более N рецептов (0 = все).")
         parser.add_argument("--source-url", default="", help="Фильтр: source_url содержит эту подстроку.")
         parser.add_argument(
+            "--source", default="", help="Фильтр по полю source (own/import/user/parsed). own = «Собственный»."
+        )
+        parser.add_argument(
             "--force", action="store_true", help="Переписать заново даже уже переписанные (игнор метки rw)."
         )
         parser.add_argument("--full", action="store_true", help="Печатать все шаги целиком (для оценки стиля).")
@@ -114,6 +117,7 @@ class Command(BaseCommand):
         apply = opts["apply"]
         limit = opts["limit"]
         src = opts["source_url"]
+        source = opts["source"]
         force = opts["force"]
         full = opts["full"]
         timeout = opts["timeout"]
@@ -140,6 +144,8 @@ class Command(BaseCommand):
         qs = Recipe.objects.exclude(steps=[]).order_by("id")
         if src:
             qs = qs.filter(source_url__icontains=src)
+        if source:
+            qs = qs.filter(source=source)
 
         targets = []
         for r in qs.only("id", "title", "steps").iterator():
@@ -156,7 +162,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             f"Рецептов к рерайту: {len(targets)} (фильтр source_url={src or '—'}, "
-            f"в скиплисте {len(skip)} — пропускаются)."
+            f"source={source or '—'}, в скиплисте {len(skip)} — пропускаются)."
         )
 
         done = failed = 0
