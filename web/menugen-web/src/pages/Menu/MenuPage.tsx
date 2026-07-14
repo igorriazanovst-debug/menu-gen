@@ -13,6 +13,7 @@ import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
 import { DayNutritionSummary } from '../../components/menu/DayNutritionSummary';
 import { AllergenBadges } from '../../components/recipe/AllergenBadges';
+import { MadePhotoControl } from '../../components/recipes/MadePhotoControl'; // MG_MADEPHOTO
 import { useEscapeKey } from '../../hooks/useEscapeKey'; // MG_ESC
 // MG_607_V_menupage
 import { GenerateMenuForm } from '../../components/menu/GenerateMenuForm';
@@ -207,7 +208,11 @@ const RecipeDetailModal: React.FC<{ recipeId: number; onClose: () => void }> = (
             <div className="p-6">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <h2 className="text-xl font-bold text-chocolate">{recipe.title}</h2>
-                <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* MG_MADEPHOTO: «я приготовил — вот фото» */}
+                  <MadePhotoControl recipeId={recipe.id} initialPhotos={(recipe as any).made_photos} />
+                  <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-4">
                 {recipe.cook_time && <span>⏱ {recipe.cook_time}</span>}

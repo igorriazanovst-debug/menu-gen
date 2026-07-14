@@ -7,6 +7,7 @@ import { Badge } from '../../components/ui/Badge';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { RecipeEditModal } from '../../components/recipes/RecipeEditModal';
 import { AllergenBadges } from '../../components/recipe/AllergenBadges';
+import { MadePhotoControl } from '../../components/recipes/MadePhotoControl';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { Recipe } from '../../types';
@@ -435,6 +436,8 @@ const RecipeModal: React.FC<{
           <div className="flex items-start justify-between gap-4">
             <h2 className="text-xl font-bold text-chocolate">{full.title}</h2>
             <div className="flex items-center gap-2 shrink-0">
+              {/* MG_MADEPHOTO: «я приготовил — вот фото» */}
+              <MadePhotoControl recipeId={full.id} initialPhotos={(full as any).made_photos} />
               {isAdmin && !confirming && (
                 <>
                   <button onClick={onEdit}

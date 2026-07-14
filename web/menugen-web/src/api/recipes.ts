@@ -23,4 +23,18 @@ export const recipesApi = {
     });
   },
   countries: () => client.get<string[]>('/recipes/countries/'),
+
+  // MG_MADEPHOTO: фото приготовленного блюда пользователем.
+  madePhotos: (recipeId: number) =>
+    client.get<MadePhoto[]>(`/recipes/${recipeId}/made-photos/`),
+  addMadePhoto: (recipeId: number, imageB64: string) =>
+    client.post<MadePhoto>(`/recipes/${recipeId}/made-photos/`, { image_b64: imageB64 }),
+  deleteMadePhoto: (recipeId: number, photoId: number) =>
+    client.delete(`/recipes/${recipeId}/made-photos/${photoId}/`),
 };
+
+export interface MadePhoto {
+  id: number;
+  image_url: string;
+  created_at: string;
+}

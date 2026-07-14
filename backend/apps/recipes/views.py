@@ -6,13 +6,15 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from .filters import RecipeFilter
-from .models import DeletedRecipe, Recipe, RecipeAuthor, RecipeFavorite
+from .made_photos import create_made_photo_from_b64  # MG_MADEPHOTO
+from .models import DeletedRecipe, Recipe, RecipeAuthor, RecipeFavorite, RecipeMadePhoto
 from .permissions import IsAuthorOrAdmin, IsRecipeAuthorRole
 from .serializers import (
     RecipeAuthorSerializer,
     RecipeDetailSerializer,
     RecipeFavoriteWriteSerializer,
     RecipeListSerializer,
+    RecipeMadePhotoSerializer,
     RecipeWriteSerializer,
 )
 
@@ -68,7 +70,7 @@ class RecipeViewSet(ModelViewSet):
             return [permissions.IsAuthenticated(), IsRecipeAuthorRole()]
         if self.action in ("update", "partial_update", "destroy"):
             return [permissions.IsAuthenticated(), IsAuthorOrAdmin()]
-        if self.action in ("favorite",):
+        if self.action in ("favorite", "made_photos", "delete_made_photo"):
             return [permissions.IsAuthenticated()]
         return [permissions.AllowAny()]
 
@@ -232,6 +234,39 @@ class RecipeViewSet(ModelViewSet):
 
         obj, _ = RecipeFavorite.objects.update_or_create(user=user, recipe=recipe, defaults={"is_favorite": is_fav})
         return Response({"is_favorite": obj.is_favorite, "is_disliked": not obj.is_favorite})
+
+    # ─── MG_MADEPHOTO: «я приготовил — вот фото» ───────────────────────────────
+    @extend_schema(responses={200: RecipeMadePhotoSerializer(many=True)})
+    @action(detail=True, methods=["get", "post"], url_path="made-photos")
+    def made_photos(self, request, pk=None):
+        """GET — фото приготовления текущего пользователя; POST {image_b64} — добавить."""
+        recipe = self.get_object()
+        user = request.user
+
+        if request.method == "POST":
+            b64 = request.data.get("image_b64")
+            photo = create_made_photo_from_b64(user, recipe, b64)
+            if photo is None:
+                return Response({"detail": "Не удалось прочитать изображение."}, status=status.HTTP_400_BAD_REQUEST)
+            data = RecipeMadePhotoSerializer(photo, context={"request": request}).data
+            return Response(data, status=status.HTTP_201_CREATED)
+
+        qs = RecipeMadePhoto.objects.filter(user=user, recipe=recipe)
+        data = RecipeMadePhotoSerializer(qs, many=True, context={"request": request}).data
+        return Response(data)
+
+    @extend_schema(responses={204: None})
+    @action(detail=True, methods=["delete"], url_path="made-photos/(?P<photo_id>[0-9]+)")
+    def delete_made_photo(self, request, pk=None, photo_id=None):
+        """Удалить своё фото приготовления по id."""
+        recipe = self.get_object()
+        photo = RecipeMadePhoto.objects.filter(id=photo_id, user=request.user, recipe=recipe).first()
+        if photo is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if photo.image:
+            photo.image.delete(save=False)
+        photo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RecipeAuthorApplyView(generics.CreateAPIView):

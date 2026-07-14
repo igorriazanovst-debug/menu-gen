@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -6,6 +8,15 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../fridge/screens/recognize_photo_flow.dart' show pickPhoto; // MG_MADEPHOTO
+
+String _mimeFromName(String name) {
+  final n = name.toLowerCase();
+  if (n.endsWith('.png')) return 'image/png';
+  if (n.endsWith('.webp')) return 'image/webp';
+  if (n.endsWith('.gif')) return 'image/gif';
+  return 'image/jpeg';
+}
 
 /// Полноэкранный экран рецепта. Грузит /recipes/:id/ напрямую через ApiClient.
 class RecipeDetailScreen extends StatefulWidget {
@@ -123,12 +134,51 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     );
   }
 
+  // ── MG_MADEPHOTO: «я приготовил — вот фото» ────────────────────────────────
+  List<Map<String, dynamic>> get _madePhotos {
+    final v = _recipe?['made_photos'];
+    if (v is List) {
+      return v.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return const [];
+  }
+
+  Widget _madeBtn() {
+    if (_recipe == null) return const SizedBox.shrink();
+    final n = _madePhotos.length;
+    return IconButton(
+      tooltip: 'Я приготовил — прикрепить фото',
+      onPressed: _openMadeSheet,
+      icon: Badge(
+        isLabelVisible: n > 0,
+        label: Text('$n'),
+        child: const Icon(Icons.add_a_photo_outlined),
+      ),
+    );
+  }
+
+  void _openMadeSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MadePhotosSheet(
+        apiClient: widget.apiClient,
+        recipeId: widget.recipeId,
+        initial: _madePhotos,
+        onChanged: (list) {
+          if (mounted) setState(() => _recipe?['made_photos'] = list);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_recipe?['title'] as String? ?? 'Рецепт'),
-        actions: [_favIcon()],
+        actions: [_madeBtn(), _favIcon()],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -515,6 +565,212 @@ class _ErrorView extends StatelessWidget {
             TextButton(onPressed: onRetry, child: const Text('Повторить')),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// MG_MADEPHOTO: лист «Фото приготовления» — просмотр/добавление/удаление своих
+// фото готового блюда (камера/галерея). Отдельный виджет со своим состоянием.
+class _MadePhotosSheet extends StatefulWidget {
+  final ApiClient apiClient;
+  final int recipeId;
+  final List<Map<String, dynamic>> initial;
+  final ValueChanged<List<Map<String, dynamic>>> onChanged;
+
+  const _MadePhotosSheet({
+    required this.apiClient,
+    required this.recipeId,
+    required this.initial,
+    required this.onChanged,
+  });
+
+  @override
+  State<_MadePhotosSheet> createState() => _MadePhotosSheetState();
+}
+
+class _MadePhotosSheetState extends State<_MadePhotosSheet> {
+  late List<Map<String, dynamic>> _photos;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _photos = List<Map<String, dynamic>>.from(widget.initial);
+  }
+
+  void _emit() => widget.onChanged(List<Map<String, dynamic>>.from(_photos));
+
+  Future<void> _add() async {
+    if (_busy) return;
+    try {
+      final file = await pickPhoto(context);
+      if (file == null) return;
+      setState(() {
+        _busy = true;
+        _error = null;
+      });
+      final bytes = await file.readAsBytes();
+      final b64 = 'data:${_mimeFromName(file.name)};base64,${base64Encode(bytes)}';
+      final r = await widget.apiClient.post(
+        '/recipes/${widget.recipeId}/made-photos/',
+        data: {'image_b64': b64},
+      );
+      final photo = r is Map ? Map<String, dynamic>.from(r) : null;
+      if (photo != null) {
+        setState(() => _photos = [photo, ..._photos]);
+        _emit();
+      }
+    } catch (err) {
+      setState(() => _error = err is ApiException ? err.message : 'Не удалось загрузить фото.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _delete(int id) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.apiClient.delete('/recipes/${widget.recipeId}/made-photos/$id/');
+      setState(() => _photos = _photos.where((p) => p['id'] != id).toList());
+      _emit();
+    } catch (err) {
+      setState(() => _error = err is ApiException ? err.message : 'Не удалось удалить.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final h = MediaQuery.of(context).size.height * 0.7;
+    return Container(
+      height: h,
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: context.tokens.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Я приготовил — фото',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: cs.onSurface),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Прикрепите фото готового блюда — с камеры или из галереи.',
+                    style: TextStyle(fontSize: 13, color: context.tokens.textSecondary),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: _busy ? null : _add,
+                  icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                  label: const Text('Добавить'),
+                ),
+              ],
+            ),
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ),
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: LinearProgressIndicator(),
+            ),
+          Expanded(
+            child: _photos.isEmpty
+                ? Center(
+                    child: Text('Пока нет фото',
+                        style: TextStyle(color: context.tokens.textSecondary)),
+                  )
+                : GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemCount: _photos.length,
+                    itemBuilder: (context, i) {
+                      final p = _photos[i];
+                      final url = p['image_url'] as String?;
+                      final id = p['id'] as int?;
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: (url == null || url.isEmpty)
+                                ? Container(color: context.tokens.surfaceAlt)
+                                : CachedNetworkImage(
+                                    imageUrl: url,
+                                    cacheManager: RecipeImageCache.instance,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) => Container(color: context.tokens.surfaceAlt),
+                                    errorWidget: (_, __, ___) => Container(
+                                      color: context.tokens.surfaceAlt,
+                                      child: Icon(Icons.broken_image, color: context.tokens.textSecondary),
+                                    ),
+                                  ),
+                          ),
+                          if (id != null)
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: _busy ? null : () => _delete(id),
+                                child: Container(
+                                  width: 26,
+                                  height: 26,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.close, size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

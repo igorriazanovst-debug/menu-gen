@@ -181,11 +181,25 @@ class RecipeListSerializer(
         return scores.get(obj.id, 0)
 
 
+class RecipeMadePhotoSerializer(serializers.Serializer):
+    """MG_MADEPHOTO: фото приготовленного блюда (id, абсолютный URL, дата)."""
+
+    id = serializers.IntegerField(read_only=True)
+    image_url = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField(read_only=True)
+
+    def get_image_url(self, obj):
+        from .made_photos import resolve_made_photo_url
+
+        return resolve_made_photo_url(obj, self.context.get("request"))
+
+
 class RecipeDetailSerializer(
     _NutritionNormalizeMixin, _FavoriteStateMixin, _AbsoluteImageUrlMixin, serializers.ModelSerializer
 ):
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
     image_url = serializers.SerializerMethodField()  # MG_FIX_IMAGE_URL_ABSOLUTE
+    made_photos = serializers.SerializerMethodField()  # MG_MADEPHOTO
 
     class Meta:
         model = Recipe
@@ -212,11 +226,21 @@ class RecipeDetailSerializer(
                 "is_favorite",
                 "is_disliked",
                 "allergens",  # MG_ALLERGEN14
+                "made_photos",  # MG_MADEPHOTO
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS
             + NUTRITION_NUMERIC_FIELDS
         )
+
+    def get_made_photos(self, obj):
+        """Фото приготовления ТЕКУЩЕГО пользователя (если авторизован)."""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return []
+        photos = obj.made_photos.filter(user=user)
+        return RecipeMadePhotoSerializer(photos, many=True, context=self.context).data
 
 
 class RecipeWriteSerializer(serializers.ModelSerializer):

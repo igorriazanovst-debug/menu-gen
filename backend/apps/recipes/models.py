@@ -407,3 +407,27 @@ class RecipeProduct(models.Model):
 
     def __str__(self):
         return "%s -> %s" % (self.name_raw, self.product_id)
+
+
+class RecipeMadePhoto(models.Model):
+    """MG_MADEPHOTO: фото приготовленного блюда, прикреплённое пользователем.
+
+    «Я приготовил этот рецепт — вот фото». Множественные фото на пару
+    (пользователь, рецепт). Доступно из разделов «Меню» и «Рецепты».
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="recipe_made_photos")
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="made_photos")
+    image = models.ImageField(upload_to="recipe_made/")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "recipe_made_photos"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "recipe"]),
+            models.Index(fields=["recipe"]),
+        ]
+
+    def __str__(self):
+        return f"made({self.user_id}→{self.recipe_id})"
