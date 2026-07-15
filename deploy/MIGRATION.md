@@ -1,159 +1,154 @@
 # Перенос MenuGen на новый сервер (menugen.ru)
 
-Документ — единый источник правды по миграции. Держим его в репозитории, чтобы
-шаги были воспроизводимы и обратимы.
+Единый источник правды по миграции. Шаги воспроизводимы и обратимы.
 
-- **Старый сервер:** `31.192.110.121` (HTTP, backend наружу на `:8081`/`:8003`).
-- **Новый сервер:** `158.255.5.166`, Ubuntu, чистая система.
-- **Домен:** `menugen.ru` (+`www`) → после cutover A-запись на `158.255.5.166`.
-- **Целевая архитектура:** один домен, HTTPS (Let's Encrypt), nginx-прокси;
-  backend (docker) слушает только `127.0.0.1:8003`; веб-фронт и API на одном
-  origin (`/api/v1` — относительный путь).
+- **Старый сервер:** `31.192.110.121` (Ubuntu 22.04, HTTP). **Делит хост** с другим
+  проектом (kiosk/editor-web на портах 80/8080 и `catalog_db` pgvector на 5433) —
+  MenuGen там на nginx-порту **8081**. К MenuGen относятся только контейнеры
+  `menugen-*` и volume `menugen_media_files` / `menugen_postgres_data`.
+- **Новый сервер:** `158.255.5.166` (Ubuntu, чистая система, **выделен под MenuGen**) →
+  занимаем стандартные 80/443.
+- **Домен:** `menugen.ru` (+`www`).
 
-> Пароли root в переписке — временные. Сразу после переноса перейти на
-> SSH-ключи и сменить пароли. В репозитории и скриптах паролей нет.
+## Ключевые факты (из `collect_facts.sh`)
+
+| Параметр | Значение |
+|----------|----------|
+| Postgres | **15.17** (`postgres:15-alpine`) — на новом тот же образ |
+| БД / пользователь | `DB_NAME=menugen`, `DB_USER=menugen_user` |
+| Медиа | **1.5 ГБ, 1089 файлов**, volume `menugen_media_files` (`/app/media`) |
+| Backend порт | docker `0.0.0.0:8003->8000`, nginx `:8081` проксирует → `127.0.0.1:8003` |
+| DEBUG (старый) | `True` (медиа/ошибки отдаёт runserver). На новом ставим **False** |
+| AI | `AI_PROVIDER=openai`, `AI_BASE_URL=https://api.aitunnel.ru/v1`, `AI_TEXT_MODEL=gpt-4o-mini` |
+| `BACKEND_PUBLIC_URL` | `http://31.192.110.121:8003` → **на новом `https://menugen.ru`** (строит абсолютные URL картинок!) |
+| VK / YooKassa | ключи в `.env` **закомментированы** (интеграции неактивны) — перерегистрировать callback'и не нужно |
+| TLS | сертификатов нет (сейчас чистый HTTP) |
+| APK | nginx отдаёт `/apk/` из `web-dist/apk/` — воспроизводим |
+
+> Пароли root из переписки — временные, нигде не сохранены. После переноса —
+> SSH-ключи и смена паролей.
+
+## Целевая архитектура нового сервера
+
+- Один домен `menugen.ru`, HTTPS (Let's Encrypt), nginx-прокси.
+- Backend (docker) слушает только `127.0.0.1:8003` (`BACKEND_BIND=127.0.0.1`).
+- Веб-фронт и API на одном origin: фронт собран с `REACT_APP_API_BASE_URL=/api/v1`.
+- `DEBUG=False`. Раскладка статики без коллизий:
+  - `/static/js|css|media` → CRA (`web-dist`);
+  - `/static/admin/`, `/static/rest_framework/` → `collectstatic` (`backend/staticfiles`);
+  - `/media/` → проксируется в backend (Django отдаёт файлы и при `DEBUG=False` —
+    для этого в `config/urls.py` медиа-роут больше не завязан на `DEBUG`).
 
 ---
 
-## Принцип: подготовить приёмник заранее, паузу — минимальную
-
-Сначала на новом сервере поднимаем всю инфраструктуру и **структуру** БД
-(пустую), настраиваем DNS/TLS. Только в короткое maintenance-окно снимаем
-актуальные данные со старого сервера и накатываем в готовые структуры нового.
-Так простой сводится к времени `pg_dump | restore` + `rsync media` дельты.
-
----
-
-## Фазы
+## Фазы и простой
 
 | Фаза | Что | Простой |
 |------|-----|---------|
-| A | Развязка в репозитории (домен/HTTPS через env) | нет |
-| B | Bootstrap нового сервера: docker, код, пустая БД со структурой, nginx | нет |
-| C | DNS: A-запись `menugen.ru`, низкий TTL; TLS-сертификат | нет |
-| D | **Maintenance-окно:** экспорт данных со старого → импорт в новый | да, короткий |
-| E | Пересборка мобильного APK на домен + переключение | нет |
+| A | Развязка в репозитории (домен/HTTPS/DEBUG-независимая отдача медиа) | нет |
+| B | Bootstrap нового сервера: docker, код, пустая БД со структурой, nginx, web-dist | нет |
+| C | DNS: понизить TTL заранее | нет |
+| D | **Maintenance-окно:** export_old → перенос → import_new → DNS → TLS | да, короткий |
+| E | Пересборка APK на домен | нет |
 | F | Финализация: HSTS, бэкапы, автопродление cert, вывод старого | нет |
 
 ---
 
-## Фаза A — развязка в репозитории ✅ (в этом коммите)
+## Фаза A — развязка в репозитории ✅ (в коммитах ветки)
 
-Изменения обратно совместимы: на старом сервере при передеплое ничего не
-ломается (все новые настройки по умолчанию выключены).
+Всё обратно совместимо: на старом сервере при передеплое поведение не меняется.
 
-- `backend/config/settings.py`: env-driven `CSRF_TRUSTED_ORIGINS`,
-  `USE_X_FORWARDED_PROTO`→`SECURE_PROXY_SSL_HEADER`, `USE_X_FORWARDED_HOST`,
-  `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `SECURE_SSL_REDIRECT`, HSTS.
-- `docker-compose.yml`: убран устаревший `version:`; порт backend'а
-  параметризован — `${BACKEND_BIND:-0.0.0.0}:${BACKEND_HOST_PORT:-8003}:8000`.
-- `.env.example` (корень) и `web/menugen-web/.env.example`: профили СТАРЫЙ/НОВЫЙ.
-- `deploy/nginx/menugen.ru.conf`: шаблон nginx (один домен, HTTPS, SPA + прокси).
-- `.github/workflows/flutter_ci.yml`: дефолтный API-URL — `https://menugen.ru/api/v1`.
-- `deploy/migrate/collect_facts.sh`: сбор фактов о старом сервере (только чтение).
-
-**Действие пользователя (перед Фазой B):** запустить `collect_facts.sh` на старом
-сервере (см. шапку скрипта) и прислать вывод. Нужны: версия Postgres, размер БД и
-media, полный `nginx -T`, VK OAuth / платёжные callback-URL.
+- `settings.py`: env-driven `CSRF_TRUSTED_ORIGINS`, `USE_X_FORWARDED_PROTO`→
+  `SECURE_PROXY_SSL_HEADER`, `USE_X_FORWARDED_HOST`, secure-куки, `SECURE_SSL_REDIRECT`, HSTS.
+- `config/urls.py`: `/media/` отдаётся и при `DEBUG=False` (serve-роут вместо
+  `static()`-хелпера, который при False возвращает `[]`).
+- `docker-compose.yml`: убран `version:`; порт backend'а параметризован
+  `${BACKEND_BIND:-0.0.0.0}:${BACKEND_HOST_PORT:-8003}:8000`.
+- `.env.example` (корень, вкл. `BACKEND_PUBLIC_URL`) и `web/.env.example`.
+- `deploy/nginx/menugen.ru.conf`: шаблон nginx (HTTPS, статика, медиа, `/apk/`, SPA).
+- `flutter_ci.yml`: дефолтный API-URL → `https://menugen.ru/api/v1`.
+- `deploy/migrate/`: `collect_facts.sh`, `bootstrap_new.sh`, `export_old.sh`, `import_new.sh`.
 
 ---
 
 ## Фаза B — bootstrap нового сервера (без простоя)
 
-На `158.255.5.166` (root). Скрипты финализируем после `collect_facts`.
+На `158.255.5.166` (root):
 
-1. Базовая система: `apt update && apt -y upgrade`, установить `docker`,
-   `docker compose`, `nginx`, `certbot`, `python3-certbot-nginx`, `rsync`, `git`,
-   `ufw`. Открыть `ufw`: 22, 80, 443.
-2. Развернуть код: `git clone` репозитория в `/opt/menugen`, ветка `main`.
-3. Создать `/opt/menugen/.env` из `.env.example`, профиль **НОВЫЙ**:
-   - `BACKEND_BIND=127.0.0.1`
-   - `ALLOWED_HOSTS=menugen.ru,www.menugen.ru,127.0.0.1,localhost`
-   - `CSRF_TRUSTED_ORIGINS=https://menugen.ru,https://www.menugen.ru`
-   - `USE_X_FORWARDED_PROTO=True`, `USE_X_FORWARDED_HOST=True`
-   - `SESSION_COOKIE_SECURE=True`, `CSRF_COOKIE_SECURE=True`
-   - `SECRET_KEY`, `DB_*`, `REDIS_URL`, `CELERY_*`, AI-ключи — **перенести со
-     старого сервера** (взять из его `.env`; те же значения, чтобы JWT/сессии и
-     внешние интеграции продолжили работать).
-4. Поднять инфраструктуру: `docker compose up -d db redis`.
-5. Структура БД (пустая): `docker compose up -d backend` затем
-   `docker compose exec backend python manage.py migrate` и
-   `python manage.py collectstatic --noinput`.
-6. Веб-фронт: собрать CRA с `REACT_APP_API_BASE_URL=/api/v1` в `/opt/menugen/web-dist`
-   (можно `BRANCH=main ./scripts/deploy_web.sh` — заранее положив
-   `web/menugen-web/.env` c `/api/v1`).
-7. nginx: положить `deploy/nginx/menugen.ru.conf` в `sites-available`, слинковать
-   в `sites-enabled` (сначала только `:80`-блок — до выпуска cert).
+```bash
+apt-get update && apt-get install -y git
+git clone <REPO_URL> /opt/menugen && cd /opt/menugen && git checkout main
+bash deploy/migrate/bootstrap_new.sh          # поставит docker/nginx/certbot, создаст .env-заготовку
+# → заполнить /opt/menugen/.env секретами со старого сервера (профиль НОВЫЙ), затем:
+bash deploy/migrate/bootstrap_new.sh          # поднимет db/redis/backend, migrate, collectstatic, web-dist, nginx
+```
 
-На этом этапе новый сервер работает по IP на пустой БД — можно проверить
-`/admin/` и `/api/v1/` через `curl --resolve menugen.ru:443:158.255.5.166` (после cert).
+Секреты, которые переносим со старого `.env` **как есть** (иначе разлогинит всех /
+сломает AI): `SECRET_KEY`, `DB_PASSWORD`, `AI_API_KEY` (+`AI_PROVIDER`, `AI_BASE_URL`,
+`AI_TEXT_MODEL`), `EMAIL_*` при наличии.
+
+После Фазы B новый сервер работает на **пустой** БД (проверка по IP). Домен и данные — позже.
 
 ---
 
-## Фаза C — DNS + TLS (без простоя)
+## Фаза C — DNS (без простоя)
 
-1. **Заранее** снизить TTL A-записи `menugen.ru` (напр. до 300 c) у регистратора.
-2. Выпустить сертификат на новом сервере (пока A-запись ещё на старом IP —
-   использовать DNS-01 или временно webroot после переключения; проще: сначала
-   переключить A-запись в Фазе D, потом `certbot --nginx`). Рекомендация: в
-   Фазе C держать A-запись на СТАРОМ сервере, cert выпустить в начале Фазы D
-   сразу после переключения DNS.
+Заранее у регистратора `menugen.ru` понизить TTL A-записи (напр. 300 c), чтобы
+переключение в Фазе D распространилось быстро. A-запись пока указывает на старый IP.
 
 ---
 
 ## Фаза D — maintenance-окно: перенос данных (короткий простой)
 
-Порядок — чтобы не потерять данные, записанные между дампом и переключением:
+1. **Экспорт со старого** (останавливает запись):
+   ```bash
+   # на 31.192.110.121, в /opt/menugen
+   git fetch origin main
+   git show origin/main:deploy/migrate/export_old.sh > /tmp/export_old.sh && sed -i 's/\r$//' /tmp/export_old.sh
+   STOP_WRITES=1 bash /tmp/export_old.sh
+   ```
+   Создаст `backups/migrate/<TS>/{menugen.dump, media.tar.gz, meta.txt}` и напечатает
+   команду переноса.
+2. **Перенос на новый** (rsync/scp из вывода export'а), напр.:
+   ```bash
+   rsync -avz -e ssh /opt/menugen/backups/migrate/<TS>/ root@158.255.5.166:/opt/menugen/backups/migrate/<TS>/
+   ```
+3. **Импорт в новый:**
+   ```bash
+   # на 158.255.5.166, в /opt/menugen
+   bash deploy/migrate/import_new.sh /opt/menugen/backups/migrate/<TS>
+   ```
+4. **DNS:** A-запись `menugen.ru` (+`www`) → `158.255.5.166`. Дождаться распространения.
+5. **TLS:** `certbot --nginx -d menugen.ru -d www.menugen.ru` → `nginx -t && systemctl reload nginx`.
+6. **Смоук-тест:** логин, генерация меню, открытие рецепта, фото «я приготовил», `/admin/`,
+   картинки грузятся с `https://menugen.ru/media/...`. Backend снаружи закрыт
+   (`curl http://158.255.5.166:8003/` — не должно отвечать).
 
-1. **Объявить окно.** На старом сервере остановить приём записи: проще всего
-   остановить `backend`/`celery` (`docker compose stop backend celery celery-beat`)
-   — API отдаёт 502, мобилка уходит в offline-кэш (это ожидаемо и безопасно).
-2. **Экспорт со старого** (`deploy/migrate/export_old.sh` — финализируем после facts):
-   - `docker compose exec -T db pg_dump -U <user> -Fc <db> > /tmp/menugen.dump`
-   - `rsync -a /var/lib/docker/volumes/menugen_media_files/_data/ → new:/opt/menugen/media/`
-     (или через промежуточный tar; путь volume берём из `collect_facts`).
-3. **Импорт в новый** (`deploy/migrate/import_new.sh`):
-   - остановить backend на новом, `pg_restore --clean --if-exists` в готовую БД,
-   - `rsync` media на место (см. монтирование volume/alias в nginx),
-   - `docker compose up -d`, `migrate` (no-op, структура уже есть),
-     `collectstatic`.
-4. **Переключить DNS:** A-запись `menugen.ru` (+`www`) → `158.255.5.166`.
-5. **TLS:** `certbot --nginx -d menugen.ru -d www.menugen.ru`, включить `:443`-блок,
-   `nginx -t && systemctl reload nginx`.
-6. **Смоук-тест:** логин в веб, генерация меню, открытие рецепта, загрузка фото
-   «я приготовил», `/admin/`. Проверить, что backend наружу закрыт
-   (`curl http://158.255.5.166:8003/` — должно не отвечать снаружи).
-
-**Откат Фазы D:** вернуть A-запись на `31.192.110.121`, поднять backend на старом
-(`docker compose start backend celery celery-beat`). Старый сервер не трогаем до
-подтверждения, что новый стабилен ≥ несколько дней.
+**Откат Фазы D:** вернуть A-запись на `31.192.110.121` и `docker compose start
+backend celery celery-beat` на старом. Старый сервер не гасим до подтверждения.
 
 ---
 
 ## Фаза E — мобильное приложение
 
-CI уже собирает APK с `https://menugen.ru/api/v1` (Фаза A). После cutover:
-- собрать релизный APK (workflow `flutter_ci` / `workflow_dispatch`),
-- раздать пользователям. Старые APK, зашитые на IP `31.192.110.121:8081`,
-  продолжат работать, пока жив старый сервер, — поэтому старый гасим не сразу.
+CI уже собирает APK с `https://menugen.ru/api/v1`. После cutover — собрать релизный
+APK (`flutter_ci` / `workflow_dispatch`), выложить в `/apk/`. Старые APK (зашитые на
+`31.192.110.121:8081`) работают, пока жив старый сервер, — поэтому его не гасим сразу.
 
 ---
 
 ## Фаза F — финализация
 
-- Включить HSTS в `.env` нового сервера (`SECURE_HSTS_SECONDS=31536000`, …).
-- Автопродление cert: `systemctl status certbot.timer` (ставится с пакетом).
-- Регулярные бэкапы БД (cron `pg_dump | gzip` в `/opt/menugen/backups`).
-- Поднять TTL DNS обратно (напр. 3600 c).
-- Перейти на SSH-ключи, сменить root-пароли обоих серверов.
+- HSTS в `.env` нового: `SECURE_HSTS_SECONDS=31536000`, `SECURE_HSTS_INCLUDE_SUBDOMAINS=True`, `SECURE_HSTS_PRELOAD=True`.
+- Автопродление cert: `systemctl status certbot.timer`.
+- Бэкапы БД: cron `pg_dump | gzip` в `/opt/menugen/backups`.
+- Вернуть TTL DNS (напр. 3600 c).
+- SSH-ключи, смена root-паролей обоих серверов.
 - Через несколько дней стабильной работы — вывести старый сервер.
-
----
 
 ## Что понадобится от пользователя
 
-1. Вывод `deploy/migrate/collect_facts.sh` со старого сервера.
-2. Доступ к DNS-панели домена `menugen.ru` (сменить A-запись, TTL).
-3. Подтверждение начала maintenance-окна (Фаза D).
-4. Значения секретов из `.env` старого сервера для переноса в новый
-   (`SECRET_KEY`, `DB_*`, AI-ключи, VK/платёжные) — их переносим как есть.
+1. URL git-репозитория для `git clone` на новом сервере (или деплой-ключ).
+2. Доступ к DNS-панели `menugen.ru` (A-запись, TTL).
+3. Значения секретов из `.env` старого сервера (перечислены в Фазе B).
+4. Подтверждение начала maintenance-окна (Фаза D).

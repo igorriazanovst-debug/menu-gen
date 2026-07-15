@@ -1,7 +1,7 @@
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve as _serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
@@ -23,4 +23,9 @@ urlpatterns = [
     path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/social/", include("apps.social.urls")),
     path("api/v1/sync/", include("apps.sync.urls")),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # Медиа отдаём и при DEBUG=False. Стек работает на runserver (gunicorn не
+    # используется), на новом сервере за nginx /media/ проксируется в backend.
+    # django.conf.urls.static.static() возвращает [] при DEBUG=False, поэтому
+    # подключаем serve напрямую — поведение одинаково при DEBUG True/False.
+    re_path(r"^media/(?P<path>.*)$", _serve, {"document_root": settings.MEDIA_ROOT}),
+]
