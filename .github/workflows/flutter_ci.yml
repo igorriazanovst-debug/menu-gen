@@ -16,11 +16,11 @@ on:
       api_base_url:
         description: 'API base URL (override default)'
         required: false
-        default: 'http://31.192.110.121:8081/api/v1'
+        default: 'https://menugen.ru/api/v1'
 
 env:
   FLUTTER_VERSION: '3.22.0'
-  DEFAULT_API_BASE_URL: 'http://31.192.110.121:8081/api/v1'
+  DEFAULT_API_BASE_URL: 'https://menugen.ru/api/v1'
 
 jobs:
   flutter-test:

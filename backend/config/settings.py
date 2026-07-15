@@ -179,6 +179,33 @@ _cors_origins = config("CORS_ALLOWED_ORIGINS", default="")
 CORS_ALLOWED_ORIGINS = [o for o in _cors_origins.split(",") if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
 
+# ── HTTPS / reverse-proxy hardening (env-driven, no-op by default) ────────────
+# Всё ниже включается только через .env, поэтому на текущем (HTTP) сервере
+# поведение не меняется. На новом сервере (nginx + Let's Encrypt, один домен)
+# выставляем эти переменные, чтобы админка/CSRF/куки корректно работали за
+# TLS-прокси.
+#
+# CSRF_TRUSTED_ORIGINS — список origin'ов со схемой (напр. https://menugen.ru).
+# Нужен для формы логина в /admin/ и любых POST с session-аутентификацией.
+_csrf_origins = config("CSRF_TRUSTED_ORIGINS", default="")
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(",") if o.strip()]
+
+# Django должен доверять заголовку X-Forwarded-Proto от nginx, иначе request.is_secure()
+# всегда False за прокси и редиректы/куки ломаются. Включаем только когда прокси его
+# действительно проставляет.
+if config("USE_X_FORWARDED_PROTO", default=False, cast=bool):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+USE_X_FORWARDED_HOST = config("USE_X_FORWARDED_HOST", default=False, cast=bool)
+
+# Secure-куки и HSTS — включаем на HTTPS-сервере.
+SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=False, cast=bool)
+CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=False, cast=bool)
+SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=False, cast=bool)
+SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=0, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False, cast=bool)
+SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=False, cast=bool)
+
 CELERY_BROKER_URL = config("CELERY_BROKER_URL")
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND")
 CELERY_ACCEPT_CONTENT = ["json"]

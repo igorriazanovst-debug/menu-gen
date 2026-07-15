@@ -1,5 +1,3 @@
-version: "3.9"
-
 networks:
   menugen_network:
     driver: bridge
@@ -44,7 +42,10 @@ services:
       - ./backend:/app
       - media_files:/app/media
     ports:
-      - 8003:8000
+      # По умолчанию 0.0.0.0:8003 (как сейчас на старом сервере). На новом
+      # сервере в .env выставляем BACKEND_BIND=127.0.0.1 — backend виден только
+      # локально, наружу его проксирует nginx (TLS-терминация на одном домене).
+      - "${BACKEND_BIND:-0.0.0.0}:${BACKEND_HOST_PORT:-8003}:8000"
     networks:
       - menugen_network
     depends_on:
