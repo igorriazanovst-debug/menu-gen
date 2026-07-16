@@ -5,7 +5,7 @@ from django.urls import path
 from django.utils import timezone
 
 from .models import MenuGenerationCounter, PromoCode, PromoRedemption, Subscription, SubscriptionPlan
-from .promo import generate_unique_codes
+from .promo import generate_unique_codes, revoke_code, revoke_redemption
 
 
 @admin.register(SubscriptionPlan)
@@ -39,6 +39,8 @@ class PromoBatchForm(forms.Form):
     duration_days = forms.IntegerField(min_value=1, required=False, label="Срок подписки, дней (пусто — период плана)")
     valid_until = forms.DateTimeField(required=False, label="Код действует до (пусто — без ограничения)")
     campaign = forms.CharField(max_length=100, required=False, label="Метка кампании")
+    owner = forms.CharField(max_length=200, required=False, label="Владелец ключа (имя/компания)")
+    assigned_email = forms.EmailField(required=False, label="Закрепить за email (именной код — активирует только он)")
     prefix = forms.CharField(max_length=12, required=False, label="Префикс кода (напр. NY26-)")
 
 
@@ -47,6 +49,8 @@ class PromoCodeAdmin(admin.ModelAdmin):
     list_display = (
         "code",
         "plan",
+        "owner",
+        "assigned_email",
         "duration_days",
         "redeemed_count",
         "max_redemptions",
@@ -55,10 +59,12 @@ class PromoCodeAdmin(admin.ModelAdmin):
         "campaign",
         "created_at",
     )
+    list_editable = ("is_active",)  # снятие галки = отзыв дальнейших активаций в один клик
     list_filter = ("is_active", "plan", "campaign")
-    search_fields = ("code", "campaign")
+    search_fields = ("code", "campaign", "owner", "assigned_email")
     readonly_fields = ("redeemed_count", "created_by", "created_at")
     change_list_template = "admin/subscriptions/promocode/change_list.html"
+    actions = ("action_revoke_to_free", "action_revoke_and_block")
 
     def get_urls(self):
         urls = super().get_urls()
@@ -82,6 +88,8 @@ class PromoCodeAdmin(admin.ModelAdmin):
                         max_redemptions=cd["max_redemptions"],
                         valid_until=cd.get("valid_until"),
                         campaign=cd.get("campaign") or "",
+                        owner=cd.get("owner") or "",
+                        assigned_email=cd.get("assigned_email") or "",
                         is_active=True,
                         created_by=request.user if request.user.is_authenticated else None,
                     )
@@ -103,10 +111,46 @@ class PromoCodeAdmin(admin.ModelAdmin):
         }
         return render(request, "admin/subscriptions/promocode/generate.html", context)
 
+    @admin.action(description="Отозвать → перевести на бесплатный тариф")
+    def action_revoke_to_free(self, request, queryset):
+        n = 0
+        for promo in queryset:
+            revoke_code(promo, "free")
+            n += 1
+        self.message_user(request, f"Отозвано кодов: {n}. Подписки сняты (бесплатный тариф).", messages.SUCCESS)
+
+    @admin.action(description="Отозвать → заблокировать пользователя")
+    def action_revoke_and_block(self, request, queryset):
+        n = 0
+        for promo in queryset:
+            revoke_code(promo, "block")
+            n += 1
+        self.message_user(
+            request, f"Отозвано кодов: {n}. Подписки сняты, пользователи заблокированы.", messages.SUCCESS
+        )
+
 
 @admin.register(PromoRedemption)
 class PromoRedemptionAdmin(admin.ModelAdmin):
-    list_display = ("id", "promo", "family", "user", "subscription", "redeemed_at")
+    list_display = ("id", "promo", "family", "user", "subscription", "redeemed_at", "revoke_mode", "revoked_at")
+    list_filter = ("revoke_mode",)
     search_fields = ("promo__code", "family__name", "user__email")
     raw_id_fields = ("promo", "family", "user", "subscription")
-    readonly_fields = ("redeemed_at",)
+    readonly_fields = ("redeemed_at", "revoked_at", "revoke_mode")
+    actions = ("action_revoke_free", "action_revoke_block")
+
+    @admin.action(description="Отозвать активацию → бесплатный тариф")
+    def action_revoke_free(self, request, queryset):
+        n = 0
+        for r in queryset.select_related("subscription", "user"):
+            revoke_redemption(r, "free")
+            n += 1
+        self.message_user(request, f"Отозвано активаций: {n} (бесплатный тариф).", messages.SUCCESS)
+
+    @admin.action(description="Отозвать активацию → заблокировать пользователя")
+    def action_revoke_block(self, request, queryset):
+        n = 0
+        for r in queryset.select_related("subscription", "user"):
+            revoke_redemption(r, "block")
+            n += 1
+        self.message_user(request, f"Отозвано активаций: {n} (пользователи заблокированы).", messages.SUCCESS)

@@ -101,6 +101,17 @@ class PromoCode(models.Model):
         default="",
         help_text="Метка кампании/партии (для админки).",
     )
+    owner = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Владелец ключа: имя или компания (для именных ключей).",
+    )
+    assigned_email = models.EmailField(
+        blank=True,
+        default="",
+        help_text="Если задан — активировать код может только пользователь с этим email.",
+    )
     created_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -133,6 +144,15 @@ class PromoRedemption(models.Model):
     subscription = models.ForeignKey(Subscription, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     redeemed_at = models.DateTimeField(auto_now_add=True)
 
+    class RevokeMode(models.TextChoices):
+        NONE = "", "—"
+        FREE = "free", "Переведён на бесплатный тариф"
+        BLOCK = "block", "Пользователь заблокирован"
+
+    # Отзыв активации (см. promo.revoke_*). Пусто — активна.
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoke_mode = models.CharField(max_length=10, choices=RevokeMode.choices, blank=True, default="")
+
     class Meta:
         db_table = "promo_redemptions"
         constraints = [models.UniqueConstraint(fields=["promo", "family"], name="uniq_promo_family")]
@@ -140,3 +160,7 @@ class PromoRedemption(models.Model):
 
     def __str__(self):
         return f"{self.promo.code} × {self.family} @ {self.redeemed_at}"
+
+    @property
+    def is_revoked(self):
+        return self.revoked_at is not None
