@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class SubscriptionPlan(models.Model):
@@ -66,3 +67,76 @@ class MenuGenerationCounter(models.Model):
 
     def __str__(self):
         return f"{self.family} — {self.count} @ {self.period_start}"
+
+
+class PromoCode(models.Model):
+    """Промокод, активирующий премиум-подписку бесплатно.
+
+    Одноразовый (max_redemptions=1) или многоразовый (кампания, N активаций).
+    Срок выдаваемой подписки: duration_days, если задан, иначе период плана.
+    Создаётся в админке (в т.ч. пакетно), активируется пользователем на свою семью.
+    """
+
+    code = models.CharField(max_length=40, unique=True)
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.PROTECT, related_name="promo_codes")
+    duration_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Срок подписки в днях. Пусто — берётся период плана (месяц/год).",
+    )
+    max_redemptions = models.PositiveIntegerField(
+        default=1,
+        help_text="Сколько раз код можно активировать (1 — одноразовый).",
+    )
+    redeemed_count = models.PositiveIntegerField(default=0)
+    valid_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="До какого момента код можно активировать. Пусто — без ограничения по дате.",
+    )
+    is_active = models.BooleanField(default=True)
+    campaign = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Метка кампании/партии (для админки).",
+    )
+    created_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "promo_codes"
+        indexes = [models.Index(fields=["code"]), models.Index(fields=["is_active"])]
+
+    def __str__(self):
+        return f"{self.code} → {self.plan.code} ({self.redeemed_count}/{self.max_redemptions})"
+
+    @property
+    def is_redeemable(self):
+        if not self.is_active:
+            return False
+        if self.valid_until and timezone.now() > self.valid_until:
+            return False
+        if self.redeemed_count >= self.max_redemptions:
+            return False
+        return True
+
+
+class PromoRedemption(models.Model):
+    """Факт активации промокода семьёй (одна семья — один раз на код)."""
+
+    promo = models.ForeignKey(PromoCode, on_delete=models.CASCADE, related_name="redemptions")
+    family = models.ForeignKey("family.Family", on_delete=models.CASCADE, related_name="promo_redemptions")
+    user = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="promo_redemptions"
+    )
+    subscription = models.ForeignKey(Subscription, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    redeemed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "promo_redemptions"
+        constraints = [models.UniqueConstraint(fields=["promo", "family"], name="uniq_promo_family")]
+        indexes = [models.Index(fields=["family"])]
+
+    def __str__(self):
+        return f"{self.promo.code} × {self.family} @ {self.redeemed_at}"

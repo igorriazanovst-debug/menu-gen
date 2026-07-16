@@ -1,0 +1,32 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Главная</a>
+  &rsaquo; <a href="../">Промокоды</a>
+  &rsaquo; Генерация
+</div>
+{% endblock %}
+{% block content %}
+<div id="content-main">
+  {% if generated %}
+    <h2>Сгенерировано кодов: {{ generated|length }}</h2>
+    <p>Скопируйте коды (по одному на строку):</p>
+    <textarea rows="14" cols="44" readonly onclick="this.select()">{% for c in generated %}{{ c }}
+{% endfor %}</textarea>
+    <p style="margin:12px 0">
+      <a class="button" href="../">← К списку промокодов</a>
+      <a class="button" href=".">Сгенерировать ещё</a>
+    </p>
+    <hr>
+  {% endif %}
+
+  <p>Создаёт партию уникальных промокодов на выбранный тариф. Одноразовые —
+     «активаций на код» = 1; для кампании укажите N.</p>
+  <form method="post">{% csrf_token %}
+    <table>{{ form.as_table }}</table>
+    <div class="submit-row">
+      <input type="submit" value="Сгенерировать" class="default">
+    </div>
+  </form>
+</div>
+{% endblock %}

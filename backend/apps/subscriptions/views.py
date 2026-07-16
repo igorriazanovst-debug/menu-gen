@@ -6,7 +6,8 @@ from rest_framework.views import APIView
 from apps.family.models import FamilyMember
 
 from .models import Subscription, SubscriptionPlan
-from .serializers import SubscribeSerializer, SubscriptionPlanSerializer, SubscriptionSerializer
+from .promo import PromoError, redeem
+from .serializers import RedeemPromoSerializer, SubscribeSerializer, SubscriptionPlanSerializer, SubscriptionSerializer
 
 
 def _get_family(user):
@@ -80,3 +81,27 @@ class CancelSubscriptionView(APIView):
         if not updated:
             return Response({"detail": "Активная подписка не найдена."}, status=status.HTTP_404_NOT_FOUND)
         return Response({"detail": "Автопродление отключено."})
+
+
+class RedeemPromoView(APIView):
+    """Активация промокода: выдаёт/продлевает премиум-подписку семье пользователя."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(request=RedeemPromoSerializer, responses={200: SubscriptionSerializer})
+    def post(self, request):
+        serializer = RedeemPromoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        family = _get_family(request.user)
+        if not family:
+            return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            sub = redeem(serializer.validated_data["code"], family, request.user)
+        except PromoError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = SubscriptionSerializer(sub).data
+        data["detail"] = "Промокод активирован. Премиум подключён."
+        return Response(data)

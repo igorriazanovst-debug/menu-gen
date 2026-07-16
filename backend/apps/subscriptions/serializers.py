@@ -25,3 +25,7 @@ class SubscribeSerializer(serializers.Serializer):
         if not SubscriptionPlan.objects.filter(code=value, is_active=True).exists():
             raise serializers.ValidationError("Тариф не найден.")
         return value
+
+
+class RedeemPromoSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=40)
