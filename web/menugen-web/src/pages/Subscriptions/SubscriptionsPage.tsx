@@ -12,6 +12,9 @@ export const SubscriptionsPage: React.FC = () => {
   const [current, setCurrent] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState<string | null>(null);
+  const [promo, setPromo] = useState('');
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [promoMsg, setPromoMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     Promise.allSettled([
@@ -24,6 +27,23 @@ export const SubscriptionsPage: React.FC = () => {
       subscriptionsApi.current().then((r) => setCurrent(r.data)).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
+
+  const handleRedeem = async () => {
+    const code = promo.trim();
+    if (!code) return;
+    setPromoBusy(true); setPromoMsg(null);
+    try {
+      const { data } = await subscriptionsApi.redeemPromo(code);
+      setCurrent(data);
+      setPromo('');
+      const until = data.expires_at ? new Date(data.expires_at).toLocaleDateString('ru') : '';
+      setPromoMsg({ ok: true, text: `Промокод активирован. Премиум действует до ${until}.` });
+    } catch (e) {
+      setPromoMsg({ ok: false, text: getErrorMessage(e) || 'Не удалось активировать промокод.' });
+    } finally {
+      setPromoBusy(false);
+    }
+  };
 
   const handleSubscribe = async (plan: SubscriptionPlan) => {
     setSubscribing(plan.code);
@@ -55,6 +75,31 @@ export const SubscriptionsPage: React.FC = () => {
           </div>
         </Card>
       )}
+
+      <Card className="p-5">
+        <p className="text-sm font-semibold text-chocolate">У вас есть промокод?</p>
+        <p className="text-xs text-gray-500 mt-0.5 mb-3">
+          Введите промокод, чтобы подключить премиум.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            value={promo}
+            onChange={(e) => setPromo(e.target.value.toUpperCase())}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRedeem(); }}
+            placeholder="Например, ABCD-EFGH-JKLM"
+            className="flex-1 px-3 py-2 rounded-lg border border-gray-300 uppercase tracking-wide
+                       focus:outline-none focus:border-tomato"
+          />
+          <Button onClick={handleRedeem} loading={promoBusy} disabled={!promo.trim()}>
+            Активировать
+          </Button>
+        </div>
+        {promoMsg && (
+          <p className={`text-sm mt-2 ${promoMsg.ok ? 'text-avocado' : 'text-red-600'}`}>
+            {promoMsg.text}
+          </p>
+        )}
+      </Card>
 
       {plans.length === 0 ? (
         <p className="text-gray-400 text-sm">Тарифы недоступны.</p>

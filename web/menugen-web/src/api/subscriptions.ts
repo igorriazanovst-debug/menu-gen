@@ -9,4 +9,7 @@ export const subscriptionsApi = {
       '/subscriptions/subscribe/', { plan_code, return_url }
     ),
   cancel: () => client.post('/subscriptions/cancel/'),
+  // Активация промокода: выдаёт/продлевает премиум семье пользователя.
+  redeemPromo: (code: string) =>
+    client.post<Subscription & { detail?: string }>('/subscriptions/promo/redeem/', { code }),
 };
