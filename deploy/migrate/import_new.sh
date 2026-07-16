@@ -48,7 +48,8 @@ if [ -f "$SRC/media.tar.gz" ]; then
   # Распаковываем внутрь контейнера в /app (media_files смонтирован в /app/media).
   $DC up -d backend
   sleep 3
-  $DC exec -T backend sh -c 'rm -rf /app/media && mkdir -p /app/media' || true
+  # /app/media — точка монтирования volume: удаляем СОДЕРЖИМОЕ, не саму папку.
+  $DC exec -T backend sh -c 'find /app/media -mindepth 1 -delete 2>/dev/null; mkdir -p /app/media' || true
   $DC exec -T backend tar -C /app -xzf - < "$SRC/media.tar.gz"
   echo "    медиа: $($DC exec -T backend sh -c 'du -sh /app/media | cut -f1' 2>/dev/null)"
 else
