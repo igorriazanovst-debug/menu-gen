@@ -6,11 +6,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../features/auth/bloc/auth_bloc.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/api/api_exception.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/skin_selector.dart'; // MG_SKIN
 import '../../../core/widgets/macro_pill.dart';
 import '../../../core/widgets/target_field.dart';
 import '../../../core/premium/premium_badge.dart';
+import '../../../core/premium/premium_gate_cubit.dart'; // MG_PROMO
 import '../widgets/allergen_editor.dart'; // MG_ALLERGEN
 
 class ProfileScreen extends StatefulWidget {
@@ -29,11 +31,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _mealPlanType = '3';
   List<String> _allergies = const []; // MG_ALLERGEN
   bool _allergenSaving = false;
+  // MG_PROMO: активация промокода.
+  final _promoCtrl = TextEditingController();
+  bool _promoBusy = false;
+  bool _promoOk = false;
+  String? _promoMsg;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _promoCtrl.dispose();
+    super.dispose();
+  }
+
+  // MG_PROMO: активировать промокод → выдаётся/продлевается премиум семье.
+  Future<void> _redeemPromo() async {
+    final code = _promoCtrl.text.trim().toUpperCase();
+    if (code.isEmpty) return;
+    setState(() {
+      _promoBusy = true;
+      _promoMsg = null;
+    });
+    try {
+      final r = await widget.apiClient
+          .post('/subscriptions/promo/redeem/', data: {'code': code});
+      final data = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+      _promoCtrl.clear();
+      if (mounted) context.read<PremiumGateCubit>().reset();
+      await _load();
+      if (!mounted) return;
+      final until = data['expires_at'] != null
+          ? DateTime.tryParse(data['expires_at'].toString())
+          : null;
+      setState(() {
+        _promoOk = true;
+        _promoMsg = until != null
+            ? 'Промокод активирован. Премиум до ${until.day.toString().padLeft(2, '0')}.'
+                '${until.month.toString().padLeft(2, '0')}.${until.year}.'
+            : 'Промокод активирован. Премиум подключён.';
+      });
+    } catch (e) {
+      setState(() {
+        _promoOk = false;
+        _promoMsg = e is ApiException ? e.message : 'Не удалось активировать промокод.';
+      });
+    } finally {
+      if (mounted) setState(() => _promoBusy = false);
+    }
   }
 
   Future<void> _load() async {
@@ -178,6 +227,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
+
+                // ── Промокод (MG_PROMO) ─────────────────────────────
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Промокод',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Введите промокод, чтобы подключить премиум.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _promoCtrl,
+                                textCapitalization:
+                                    TextCapitalization.characters,
+                                decoration: const InputDecoration(
+                                  hintText: 'ABCD-EFGH-JKLM',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                onSubmitted:
+                                    _promoBusy ? null : (_) => _redeemPromo(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: _promoBusy ? null : _redeemPromo,
+                              child: _promoBusy
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Text('Активировать'),
+                            ),
+                          ],
+                        ),
+                        if (_promoMsg != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              _promoMsg!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _promoOk
+                                    ? Colors.green.shade700
+                                    : Colors.red,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
 
                 // ── Целевые КБЖУ ────────────────────────────────────
                 Card(
