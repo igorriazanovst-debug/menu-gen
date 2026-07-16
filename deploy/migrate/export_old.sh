@@ -67,6 +67,7 @@ fi
 
 echo
 echo "==> ГОТОВО. Перенесите каталог на новый сервер, напр.:"
-echo "     rsync -avz -e ssh $OUT/ root@158.255.5.166:/opt/menugen/backups/migrate/$TS/"
-echo "   (или scp -r $OUT root@158.255.5.166:/opt/menugen/backups/migrate/)"
+echo "     rsync -avz --mkpath -e ssh $OUT/ root@158.255.5.166:/opt/menugen/backups/migrate/$TS/"
+echo "   (--mkpath создаёт каталог назначения; при старом rsync без него —"
+echo "    сначала 'mkdir -p /opt/menugen/backups/migrate/$TS' на новом сервере)"
 echo "   Затем на новом сервере: bash import_new.sh /opt/menugen/backups/migrate/$TS"
