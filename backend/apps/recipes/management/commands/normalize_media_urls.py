@@ -25,7 +25,7 @@ from django.core.management.base import BaseCommand
 # (app_label, model_name, [fields]) — где могут быть абсолютные ссылки.
 TARGETS = [
     ("recipes", "Recipe", ["image_url", "video_url"]),
-    ("fridge", "FridgeItem", ["image_url"]),
+    ("fridge", "Product", ["image_url"]),
     ("shopping", "ShoppingListItem", ["image_url"]),
     ("users", "User", ["avatar_url"]),
 ]
@@ -69,6 +69,12 @@ class Command(BaseCommand):
             except LookupError:
                 continue
             for field in fields:
+                # Пропускаем поле, которого нет в модели (защита от опечаток в TARGETS).
+                try:
+                    model._meta.get_field(field)
+                except Exception:
+                    self.stdout.write(f"  (пропуск: {app_label}.{model_name}.{field} — нет такого поля)")
+                    continue
                 q = {f"{field}__iregex": rf"^https?://(?:{host_alt})"}
                 qs = model.objects.filter(**q)
                 changed = 0
