@@ -1,6 +1,9 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api/v1';
+// Дефолт — относительный same-origin путь: фронт и API на одном домене
+// (menugen.ru). Для локальной разработки переопределяется через .env
+// (REACT_APP_API_BASE_URL=http://localhost:8000/api/v1).
+const BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api/v1';
 
 const client: AxiosInstance = axios.create({
   baseURL: BASE_URL,
