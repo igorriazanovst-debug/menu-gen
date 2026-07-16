@@ -56,10 +56,13 @@ else
   echo "    !! media.tar.gz не найден в $SRC — пропускаю (перенесите медиа отдельно)"
 fi
 
-echo "==> 4/5. Миграции (no-op, если структура уже накатана) + collectstatic"
+echo "==> 4/5. Миграции + нормализация медиа-ссылок + collectstatic"
 $DC up -d backend
 sleep 3
 $DC exec -T backend python manage.py migrate --noinput | sed 's/^/    /'
+# Абсолютные ссылки на старый хост → относительные /media/... (иначе mixed-content
+# на HTTPS). Хосты берутся из env LEGACY_MEDIA_HOSTS (по умолчанию прежний IP).
+$DC exec -T backend python manage.py normalize_media_urls --apply | sed 's/^/    /'
 $DC exec -T backend python manage.py collectstatic --noinput | tail -3 | sed 's/^/    /'
 
 echo "==> 5/5. Запуск всех сервисов + health-check"
