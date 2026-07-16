@@ -21,6 +21,7 @@ import re
 
 from django.apps import apps
 from django.core.management.base import BaseCommand
+from django.db import connection
 
 # (app_label, model_name, [fields]) — где могут быть абсолютные ссылки.
 TARGETS = [
@@ -54,41 +55,44 @@ class Command(BaseCommand):
             self.stdout.write("Не заданы хосты для нормализации — нечего делать.")
             return
 
-        # ^https?://host(:port)?  — префикс, который срезаем.
+        # Прямой SQL (regexp_replace) — одним запросом на колонку. Не дёргаем
+        # Model.save() (у Recipe есть сигналы/переопределения, которые на bulk
+        # правках вешают процесс) и не открываем server-side курсор.
         host_alt = "|".join(re.escape(h) for h in hosts)
-        pattern = re.compile(rf"^https?://(?:{host_alt})(?::\d+)?", re.IGNORECASE)
+        strip_re = rf"^https?://(?:{host_alt})(?::[0-9]+)?"  # что срезаем
+        match_re = rf"^https?://(?:{host_alt})"  # что ищем
         apply = opts["apply"]
 
         self.stdout.write(f"Хосты: {', '.join(hosts)}")
         self.stdout.write(f"Режим: {'ЗАПИСЬ' if apply else 'сухой прогон'}\n")
 
         grand_total = 0
-        for app_label, model_name, fields in TARGETS:
-            try:
-                model = apps.get_model(app_label, model_name)
-            except LookupError:
-                continue
-            for field in fields:
-                # Пропускаем поле, которого нет в модели (защита от опечаток в TARGETS).
+        with connection.cursor() as cur:
+            for app_label, model_name, fields in TARGETS:
                 try:
-                    model._meta.get_field(field)
-                except Exception:
-                    self.stdout.write(f"  (пропуск: {app_label}.{model_name}.{field} — нет такого поля)")
+                    model = apps.get_model(app_label, model_name)
+                except LookupError:
                     continue
-                q = {f"{field}__iregex": rf"^https?://(?:{host_alt})"}
-                qs = model.objects.filter(**q)
-                changed = 0
-                for obj in qs.iterator():
-                    val = getattr(obj, field) or ""
-                    new = pattern.sub("", val)
-                    if new != val:
-                        if apply:
-                            setattr(obj, field, new)
-                            obj.save(update_fields=[field])
-                        changed += 1
-                grand_total += changed
-                if changed:
-                    self.stdout.write(f"  {app_label}.{model_name}.{field}: {changed}")
+                table = model._meta.db_table
+                for field in fields:
+                    # Пропускаем поле, которого нет в модели (защита от опечаток в TARGETS).
+                    try:
+                        col = model._meta.get_field(field).column
+                    except Exception:
+                        self.stdout.write(f"  (пропуск: {app_label}.{model_name}.{field} — нет такого поля)")
+                        continue
+                    if apply:
+                        cur.execute(
+                            f'UPDATE "{table}" SET "{col}" = regexp_replace("{col}", %s, %s) WHERE "{col}" ~ %s',
+                            [strip_re, "", match_re],
+                        )
+                        changed = cur.rowcount
+                    else:
+                        cur.execute(f'SELECT count(*) FROM "{table}" WHERE "{col}" ~ %s', [match_re])
+                        changed = cur.fetchone()[0]
+                    grand_total += changed
+                    if changed:
+                        self.stdout.write(f"  {app_label}.{model_name}.{field}: {changed}")
 
         verb = "переписано" if apply else "будет переписано"
         self.stdout.write(self.style.SUCCESS(f"\nИтого {verb}: {grand_total}"))
