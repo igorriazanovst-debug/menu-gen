@@ -92,26 +92,34 @@ WEBSRC="$REPO/web/menugen-web"
 if [ ! -f "$WEBSRC/.env" ]; then
   echo "REACT_APP_API_BASE_URL=/api/v1" > "$WEBSRC/.env"
 fi
+# Node 20 LTS (NodeSource), если npm ещё нет.
+if ! command -v npm >/dev/null 2>&1; then
+  echo "    npm не найден — ставлю Node 20 LTS (NodeSource)"
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y nodejs
+fi
 if command -v npm >/dev/null 2>&1; then
   ( cd "$WEBSRC" && npm install --legacy-peer-deps && CI=false npm run build )
   rm -rf "$REPO/web-dist" && mkdir -p "$REPO/web-dist"
   cp -a "$WEBSRC/build/." "$REPO/web-dist/"
   echo "    web-dist собран."
 else
-  echo "    !! npm не найден. Установите Node 18+ и соберите фронт (scripts/deploy_web.sh),"
-  echo "       либо перенесите готовый web-dist со старого сервера."
+  echo "    !! Node/npm не поставился. Соберите фронт вручную (scripts/deploy_web.sh)"
+  echo "       или перенесите готовый web-dist со старого сервера."
 fi
 
-echo "==> 7/7. nginx (сначала HTTP; TLS выпустим после переключения DNS)"
+echo "==> 7/7. nginx (HTTP-vhost; TLS добавит certbot после переключения DNS)"
 cp "$REPO/deploy/nginx/${DOMAIN}.conf" "/etc/nginx/sites-available/${DOMAIN}.conf"
 ln -sf "/etc/nginx/sites-available/${DOMAIN}.conf" "/etc/nginx/sites-enabled/${DOMAIN}.conf"
 rm -f /etc/nginx/sites-enabled/default || true
 mkdir -p /var/www/certbot
-# Первичная проверка: убрать :443-блок нельзя автоматически без cert — nginx -t
-# упадёт на отсутствии сертификата. Поэтому TLS-выпуск — отдельным шагом (Фаза D):
-echo "    Конфиг скопирован. TLS-сертификат — после переключения DNS:"
-echo "      certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}"
-echo "      nginx -t && systemctl reload nginx"
+if nginx -t 2>/dev/null; then
+  systemctl reload nginx
+  echo "    nginx перезагружен (HTTP). После DNS: certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}"
+else
+  echo "    !! nginx -t не прошёл — проверьте конфликты в sites-enabled:"
+  echo "       nginx -t"
+fi
 
 echo
 echo "==> BOOTSTRAP ГОТОВ. Новый сервер работает на пустой БД (проверка по IP)."
