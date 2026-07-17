@@ -9,6 +9,7 @@
 //  - Нелюбимые toggle ON/OFF (из profile)
 import React, { useEffect, useMemo, useState } from 'react';
 import { menuApi, type GenerateMenuPayload } from '../../api/menu';
+import { familyApi } from '../../api/family';
 import { recipesApi } from '../../api/recipes';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -75,8 +76,25 @@ export const GenerateMenuForm: React.FC<Props> = ({
   const [respectDisliked, setRespectDisliked] = useState(true);
   const [withSoup, setWithSoup] = useState(true); // MG_610_V_web
 
+  // MG_FAMILYGEN: члены семьи + режим (family | per_member).
+  const [members, setMembers] = useState<{ id: number; name: string }[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+  const [menuMode, setMenuMode] = useState<'family' | 'per_member'>('family');
+
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    familyApi.get()
+      .then(r => {
+        const ms = ((r.data?.members ?? []) as any[]).map(m => ({
+          id: m.id, name: (m.name as string) || 'Участник',
+        }));
+        setMembers(ms);
+        setSelectedMemberIds(ms.map(m => m.id));
+      })
+      .catch(() => setMembers([]));
+  }, []);
 
   useEffect(() => {
     recipesApi.countries()
@@ -105,6 +123,14 @@ export const GenerateMenuForm: React.FC<Props> = ({
       prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c],
     );
   };
+
+  const toggleMember = (id: number) => {
+    setSelectedMemberIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
+    );
+  };
+  const multiMember = members.length > 1;
+  const noMemberSelected = multiMember && selectedMemberIds.length === 0;
 
   // КБЖУ из profile (если есть)
   const targets = userProfile && userProfile.calorie_target ? {
@@ -136,6 +162,12 @@ export const GenerateMenuForm: React.FC<Props> = ({
       if (!respectAllergies) payload.exclude_allergens = [];
       if (!respectDisliked) payload.exclude_disliked = [];
       payload.with_soup = withSoup; // MG_610_V_web
+      // MG_FAMILYGEN: члены семьи + режим. Для одного члена не шлём — бэкенд
+      // по умолчанию генерит на всю семью (= этот единственный член).
+      if (multiMember && selectedMemberIds.length > 0) {
+        payload.member_ids = selectedMemberIds;
+        payload.mode = selectedMemberIds.length > 1 ? menuMode : 'family';
+      }
 
       const { data } = await menuApi.generate(payload);
       onCreated(data);
@@ -332,6 +364,62 @@ export const GenerateMenuForm: React.FC<Props> = ({
         />
       </div>
 
+      {/* MG_FAMILYGEN: для кого меню (только если в семье >1 члена) */}
+      {multiMember && (
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">
+            Для кого меню{' '}
+            <span className="text-tomato">({selectedMemberIds.length} из {members.length})</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {members.map(m => {
+              const active = selectedMemberIds.includes(m.id);
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => toggleMember(m.id)}
+                  className={[
+                    'px-3 py-1.5 rounded-full border text-xs transition',
+                    active
+                      ? 'border-tomato bg-tomato text-white'
+                      : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
+                  ].join(' ')}
+                >
+                  {m.name}
+                </button>
+              );
+            })}
+          </div>
+          {selectedMemberIds.length > 1 && (
+            <div className="mt-2 flex gap-1">
+              {([
+                ['family', 'Общее меню', 'Одно меню на всех выбранных'],
+                ['per_member', 'Каждому своё', 'Отдельные блюда под каждого'],
+              ] as const).map(([v, title, desc]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setMenuMode(v)}
+                  className={[
+                    'flex-1 text-left px-3 py-2 rounded-xl border text-sm transition',
+                    menuMode === v
+                      ? 'border-tomato bg-tomato/10 text-tomato'
+                      : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
+                  ].join(' ')}
+                >
+                  <span className="font-medium">{title}</span>
+                  <span className="block text-xs text-gray-400">{desc}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {noMemberSelected && (
+            <p className="text-xs text-red-600 mt-1">Выберите хотя бы одного члена семьи.</p>
+          )}
+        </div>
+      )}
+
       {/* Аллергены + Нелюбимые — ON/OFF toggles */}
       <div className="space-y-2">
         <ToggleRow
@@ -372,7 +460,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
 
       <div className="flex justify-end gap-2 pt-2 border-t border-border">
         <Button variant="ghost" onClick={onCancel} disabled={generating}>Отмена</Button>
-        <Button onClick={handleSubmit} loading={generating} disabled={quotaExhausted}>Создать меню</Button>
+        <Button onClick={handleSubmit} loading={generating} disabled={quotaExhausted || noMemberSelected}>Создать меню</Button>
       </div>
     </Card>
   );
