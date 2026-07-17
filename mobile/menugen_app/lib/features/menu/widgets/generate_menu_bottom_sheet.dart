@@ -56,6 +56,12 @@ class _State extends State<GenerateMenuBottomSheet> {
   bool _respectDisliked = true;
   bool _withSoup = true; // MG_610_V_mobile
 
+  // MG_FAMILYGEN: члены семьи + режим.
+  List<Map<String, dynamic>> _members = const [];
+  Set<int> _selectedMemberIds = <int>{};
+  String _menuMode = 'family';
+  bool get _multiMember => _members.length > 1;
+
   // loaded data
   List<String> _allCountries = <String>[];
   bool _showAllCountries = false;
@@ -126,6 +132,23 @@ class _State extends State<GenerateMenuBottomSheet> {
     } catch (_) {/* ignore */}
 
     try {
+      // MG_FAMILYGEN: члены семьи для выбора «для кого меню».
+      final fam = await widget.apiClient.get('/family/');
+      final fm = fam is Map ? Map<String, dynamic>.from(fam) : <String, dynamic>{};
+      final ms = ((fm['members'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .map((m) => {
+                'id': (m['id'] as num).toInt(),
+                'name': (m['name'] ?? 'Участник').toString(),
+              })
+          .toList();
+      _members = ms;
+      _selectedMemberIds = ms.map((m) => m['id'] as int).toSet();
+    } catch (_) {
+      _members = const [];
+    }
+
+    try {
       final r = await widget.apiClient.get('/recipes/countries/');
       List<String> list;
       if (r is List) {
@@ -153,6 +176,16 @@ class _State extends State<GenerateMenuBottomSheet> {
     });
   }
 
+  void _toggleMember(int id) {
+    setState(() {
+      if (_selectedMemberIds.contains(id)) {
+        _selectedMemberIds.remove(id);
+      } else {
+        _selectedMemberIds.add(id);
+      }
+    });
+  }
+
   void _submit() {
     final body = <String, dynamic>{
       'startDate': DateFormat('yyyy-MM-dd').format(_start),
@@ -164,6 +197,9 @@ class _State extends State<GenerateMenuBottomSheet> {
       'respectDisliked': _respectDisliked,
     };
 
+    // MG_FAMILYGEN: члены семьи + режим. Для одного члена не шлём — бэкенд
+    // по умолчанию генерит на всю семью (= этот единственный член).
+    final selectedMembers = _selectedMemberIds.toList();
     context.read<MenuBloc>().add(MenuGenerateRequested(
           startDate: body['startDate'] as String,
           periodDays: _days,
@@ -174,6 +210,8 @@ class _State extends State<GenerateMenuBottomSheet> {
           excludeDisliked: _respectDisliked ? null : const <String>[],
           withSoup: _withSoup, // MG_610_V_mobile
           strategy: _strategy, // MG_STRAT_MOBILE
+          memberIds: (_multiMember && selectedMembers.isNotEmpty) ? selectedMembers : null,
+          mode: (_multiMember && selectedMembers.length > 1) ? _menuMode : null,
         ));
     Navigator.pop(context);
   }
@@ -283,6 +321,44 @@ class _State extends State<GenerateMenuBottomSheet> {
                   }).toList()),
                   const SizedBox(height: 16),
 
+                  // MG_FAMILYGEN: для кого меню (только при >1 члена)
+                  if (_multiMember) ...[
+                    Text(
+                      'Для кого меню (${_selectedMemberIds.length} из ${_members.length})',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: _members.map((m) {
+                        final id = m['id'] as int;
+                        return FilterChip(
+                          label: Text(m['name'] as String),
+                          selected: _selectedMemberIds.contains(id),
+                          onSelected: (_) => _toggleMember(id),
+                        );
+                      }).toList(),
+                    ),
+                    if (_selectedMemberIds.length > 1) ...[
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: _modeButton('family', 'Общее меню')),
+                        const SizedBox(width: 8),
+                        Expanded(child: _modeButton('per_member', 'Каждому своё')),
+                      ]),
+                    ],
+                    if (_selectedMemberIds.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Выберите хотя бы одного члена семьи.',
+                          style: TextStyle(fontSize: 12, color: Colors.red),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // Toggle: аллергены
                   _ToggleTile(
                     value: _respectAllergies,
@@ -326,7 +402,10 @@ class _State extends State<GenerateMenuBottomSheet> {
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
-                      onPressed: _quotaExhausted ? null : _submit,
+                      onPressed: (_quotaExhausted ||
+                              (_multiMember && _selectedMemberIds.isEmpty))
+                          ? null
+                          : _submit,
                     ),
                   ),
                 ],
@@ -444,6 +523,33 @@ class _State extends State<GenerateMenuBottomSheet> {
         alignment: Alignment.center,
         child: Text(
           v,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: active ? context.cs.primary : context.cs.onSurface,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // MG_FAMILYGEN: кнопка режима family / per_member.
+  Widget _modeButton(String v, String label) {
+    final active = _menuMode == v;
+    return InkWell(
+      onTap: () => setState(() => _menuMode = v),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: active ? context.cs.primary.withOpacity(0.1) : context.cs.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? context.cs.primary : context.tokens.border,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
           style: TextStyle(
             fontWeight: FontWeight.w600,
             color: active ? context.cs.primary : context.cs.onSurface,

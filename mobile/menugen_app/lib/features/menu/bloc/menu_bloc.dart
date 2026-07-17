@@ -141,6 +141,11 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
       if (e.excludeAllergens != null) body['exclude_allergens'] = e.excludeAllergens;
       if (e.excludeDisliked != null) body['exclude_disliked'] = e.excludeDisliked;
       body['with_soup'] = e.withSoup; // MG_610_V_mobile
+      // MG_FAMILYGEN: выбранные члены семьи + режим (family | per_member).
+      if (e.memberIds != null && e.memberIds!.isNotEmpty) {
+        body['member_ids'] = e.memberIds;
+        if (e.mode != null) body['mode'] = e.mode;
+      }
       final r = await apiClient.post('/menu/generate/', data: body);
       final m = _asMap(r);
       final id = m['id'];

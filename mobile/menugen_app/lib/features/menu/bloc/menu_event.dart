@@ -30,6 +30,8 @@ class MenuGenerateRequested extends MenuEvent {
   final List<String>? excludeDisliked;   // null = из profile; [] = выкл
   final bool withSoup; // MG_610_V_mobile
   final String strategy; // MG_STRAT_MOBILE: '1'|'2'|'3'
+  final List<int>? memberIds; // MG_FAMILYGEN: null = вся семья
+  final String? mode; // MG_FAMILYGEN: 'family' | 'per_member'
   const MenuGenerateRequested({
     required this.startDate,
     this.periodDays = 7,
@@ -41,11 +43,13 @@ class MenuGenerateRequested extends MenuEvent {
     this.excludeDisliked,
     this.withSoup = true, // MG_610_V_mobile
     this.strategy = '1', // MG_STRAT_MOBILE
+    this.memberIds, // MG_FAMILYGEN
+    this.mode, // MG_FAMILYGEN
   });
   @override
   List<Object?> get props => [
         startDate, periodDays, country, countries,
         maxCookTime, mealPlanType, excludeAllergens, excludeDisliked,
-        withSoup, strategy,
+        withSoup, strategy, memberIds, mode,
       ];
 }
