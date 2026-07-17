@@ -35,6 +35,11 @@ class _MenuScreenState extends State<MenuScreen> {
   // MG-402: id активного меню (для замены блюда в приёме).
   int? _activeMenuId;
 
+  // MG_FAMILYGEN: выбранный член семьи для просмотра (per_member) + меню, к
+  // которому относится выбор (сброс при смене меню).
+  int? _viewMemberId;
+  int? _memberMenuId;
+
   @override
   void initState() {
     super.initState();
@@ -319,11 +324,41 @@ class _MenuScreenState extends State<MenuScreen> {
             );
           }
 
-          final items = (menu['items'] as List?)
+          final allItems = (menu['items'] as List?)
                   ?.whereType<Map>()
                   .map((m) => Map<String, dynamic>.from(m))
                   .toList() ??
               const <Map<String, dynamic>>[];
+
+          // MG_FAMILYGEN: режим «каждому своё» → фильтр приёмов по члену семьи.
+          final filters = (menu['filters_used'] as Map?) ?? const {};
+          final isPerMember = filters['mode'] == 'per_member';
+          final myMemberId = menu['my_member_id'] as int?;
+          final isHead = menu['is_head'] == true;
+          final memberOptions = <int, String>{};
+          if (isPerMember) {
+            for (final i in allItems) {
+              final mid = i['member'];
+              if (mid is int) {
+                memberOptions[mid] = (i['member_name'] ?? 'Участник').toString();
+              }
+            }
+          }
+          // Сброс выбора при смене меню.
+          if (_memberMenuId != menu['id']) {
+            _memberMenuId = menu['id'] as int?;
+            _viewMemberId = null;
+          }
+          final effectiveMemberId = isPerMember
+              ? (_viewMemberId ??
+                  myMemberId ??
+                  (memberOptions.isNotEmpty ? memberOptions.keys.first : null))
+              : null;
+          final items = (isPerMember && effectiveMemberId != null)
+              ? allItems
+                  .where((i) => i['member'] == null || i['member'] == effectiveMemberId)
+                  .toList()
+              : allItems;
 
           final selectedOffset =
               _selectedDate!.difference(start).inDays.clamp(0, periodDays - 1);
@@ -332,6 +367,46 @@ class _MenuScreenState extends State<MenuScreen> {
 
           return Column(
             children: [
+              // MG_FAMILYGEN: выбор члена семьи (глава — любые; обычный — только свои).
+              if (isPerMember && memberOptions.length > 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: Row(
+                    children: [
+                      Text(
+                        isHead ? 'Приёмы: ' : 'Ваши приёмы: ',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                      Expanded(
+                        child: isHead
+                            ? SizedBox(
+                                height: 36,
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  children: memberOptions.entries.map((e) {
+                                    final label =
+                                        e.value + (e.key == myMemberId ? ' (вы)' : '');
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 6),
+                                      child: ChoiceChip(
+                                        label: Text(label),
+                                        selected: effectiveMemberId == e.key,
+                                        onSelected: (_) =>
+                                            setState(() => _viewMemberId = e.key),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              )
+                            : Text(
+                                memberOptions[myMemberId] ?? 'Вы',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
               // MG_SKIN: карточка-итог за ВЫБРАННЫЙ день (донат КБЖУ).
               MenuSummaryCard(
                 totals: MealNutritionTotals.fromItems(dayItems),
