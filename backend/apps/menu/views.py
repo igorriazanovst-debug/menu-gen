@@ -286,7 +286,9 @@ class MenuGenerateView(APIView):
                     _mg505_mark_cheat_meal_used(m, start_date + _mg505_td(days=last_day))
 
         menu_full = Menu.objects.prefetch_related("items__recipe", "items__member__user").get(id=menu.id)
-        return Response(MenuDetailSerializer(menu_full).data, status=status.HTTP_201_CREATED)
+        return Response(
+            MenuDetailSerializer(menu_full, context={"request": request}).data, status=status.HTTP_201_CREATED
+        )
 
 
 class MenuListView(generics.ListAPIView):
@@ -423,7 +425,9 @@ class MenuRestoreView(APIView):
             deleted.delete()
 
         menu_full = Menu.objects.prefetch_related("items__recipe", "items__member__user").get(id=menu.id)
-        return Response(MenuDetailSerializer(menu_full).data, status=status.HTTP_201_CREATED)
+        return Response(
+            MenuDetailSerializer(menu_full, context={"request": request}).data, status=status.HTTP_201_CREATED
+        )
 
 
 class MenuPurgeView(APIView):

@@ -3,6 +3,7 @@ from datetime import date
 
 from rest_framework import serializers
 
+from apps.family.models import FamilyMember
 from apps.recipes.serializers import RecipeListSerializer
 
 from .models import Menu, MenuItem, ShoppingItem, ShoppingList
@@ -42,6 +43,7 @@ class GenerateMenuSerializer(serializers.Serializer):
 class MenuItemSerializer(serializers.ModelSerializer):
     recipe = RecipeListSerializer(read_only=True)
     member_name = serializers.CharField(source="member.user.name", read_only=True, default=None)
+    member = serializers.IntegerField(source="member_id", read_only=True, default=None)  # MG_FAMILYGEN
 
     class Meta:
         model = MenuItem
@@ -52,6 +54,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
             "meal_slot",
             "component_role",
             "recipe",
+            "member",
             "member_name",
             "quantity",
             "is_cheat_meal",
@@ -84,6 +87,24 @@ class MenuListSerializer(serializers.ModelSerializer):
 
 class MenuDetailSerializer(serializers.ModelSerializer):
     items = MenuItemSerializer(many=True, read_only=True)
+    # MG_FAMILYGEN: кто смотрит (для фильтра «свои приёмы» и окна главы семьи).
+    my_member_id = serializers.SerializerMethodField()
+    is_head = serializers.SerializerMethodField()
+
+    def _my_member(self, obj):
+        req = self.context.get("request")
+        user = getattr(req, "user", None) if req else None
+        if not user or not getattr(user, "is_authenticated", False):
+            return None
+        return FamilyMember.objects.filter(family=obj.family, user=user).only("id", "role").first()
+
+    def get_my_member_id(self, obj):
+        m = self._my_member(obj)
+        return m.id if m else None
+
+    def get_is_head(self, obj):
+        m = self._my_member(obj)
+        return bool(m and m.role == FamilyMember.Role.HEAD)
 
     class Meta:
         model = Menu
@@ -98,6 +119,8 @@ class MenuDetailSerializer(serializers.ModelSerializer):
             "updated_at",
             "items",
             "warnings",  # MG_304_V_serializers
+            "my_member_id",
+            "is_head",
         )
 
 
