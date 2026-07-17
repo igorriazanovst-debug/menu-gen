@@ -769,6 +769,30 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
 
   const daysArr = Array.from({ length: menu.period_days }, (_, i) => i);
 
+  // MG_FAMILYGEN: режим «каждому своё» → фильтр приёмов по члену семьи.
+  const isPerMember = ((menu.filters_used as Record<string, unknown>)?.mode) === 'per_member';
+  const myMemberId = menu.my_member_id ?? null;
+  const isHead = !!menu.is_head;
+  const memberOptions = useMemo(() => {
+    if (!isPerMember) return [] as { id: number; name: string }[];
+    const map = new Map<number, string>();
+    (menu.items ?? []).forEach(i => {
+      if (i.member != null) map.set(i.member, i.member_name || 'Участник');
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [isPerMember, menu.items]);
+  const [viewMemberId, setViewMemberId] = useState<number | null>(myMemberId);
+  useEffect(() => {
+    // По умолчанию — свои приёмы; если своих нет (глава без блюд) — первый член.
+    setViewMemberId(myMemberId ?? (memberOptions[0]?.id ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menu.id]);
+  const visibleItems = useMemo(() => {
+    const all = menu.items ?? [];
+    if (!isPerMember || viewMemberId == null) return all;
+    return all.filter(i => i.member == null || i.member === viewMemberId);
+  }, [menu.items, isPerMember, viewMemberId]);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -780,11 +804,41 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
         </Button>
       </div>
 
+      {/* MG_FAMILYGEN: выбор члена семьи (глава — любые; обычный член — только свои) */}
+      {isPerMember && memberOptions.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-500">
+            {isHead ? 'Приёмы члена семьи:' : 'Ваши приёмы:'}
+          </span>
+          {isHead ? (
+            memberOptions.map(m => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setViewMemberId(m.id)}
+                className={[
+                  'px-3 py-1 rounded-full border text-xs transition',
+                  viewMemberId === m.id
+                    ? 'border-tomato bg-tomato text-white'
+                    : 'border-border bg-surface text-gray-600 hover:border-tomato/50',
+                ].join(' ')}
+              >
+                {m.name}{m.id === myMemberId ? ' (вы)' : ''}
+              </button>
+            ))
+          ) : (
+            <span className="px-3 py-1 rounded-full bg-tomato/10 text-tomato text-xs">
+              {memberOptions.find(m => m.id === myMemberId)?.name ?? 'Вы'}
+            </span>
+          )}
+        </div>
+      )}
+
       {daysArr.map(day => {
         const date = new Date(menu.start_date);
         date.setDate(date.getDate() + day);
         const dayLabel = date.toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' });
-        const dayItems = (menu.items ?? []).filter(i => i.day_offset === day);
+        const dayItems = visibleItems.filter(i => i.day_offset === day);
 
         return (
           <Card key={day} className="p-4">

@@ -121,7 +121,7 @@ export interface MenuItem {
   id: number; day_offset: number; meal_type: MealType;
   meal_slot?: MealSlot | string;
   component_role?: ComponentRole;
-  recipe: Recipe; member_name?: string; quantity: number;
+  recipe: Recipe; member?: number | null; member_name?: string; quantity: number; // MG_FAMILYGEN: member
   is_cheat_meal?: boolean; // MG_505_V_types
 }
 export interface Menu {
@@ -129,6 +129,7 @@ export interface Menu {
   id: number; start_date: string; end_date: string; period_days: number;
   status: string; filters_used: Record<string, unknown>;
   generated_at: string; updated_at: string; items: MenuItem[];
+  my_member_id?: number | null; is_head?: boolean; // MG_FAMILYGEN
 }
 export interface ShoppingItem {
   id: number; name: string; quantity?: number; unit?: string;
