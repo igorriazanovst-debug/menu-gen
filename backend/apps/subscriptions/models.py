@@ -147,7 +147,7 @@ class PromoRedemption(models.Model):
     class RevokeMode(models.TextChoices):
         NONE = "", "—"
         FREE = "free", "Переведён на бесплатный тариф"
-        BLOCK = "block", "Пользователь заблокирован"
+        BLOCK = "block", "Семья заблокирована"
 
     # Отзыв активации (см. promo.revoke_*). Пусто — активна.
     revoked_at = models.DateTimeField(null=True, blank=True)

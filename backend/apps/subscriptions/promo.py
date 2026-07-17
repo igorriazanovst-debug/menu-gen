@@ -107,9 +107,12 @@ def revoke_redemption(redemption, mode: str):
 
     mode="free"  — снять премиум: выданную подписку переводим в EXPIRED (семья
                    откатывается на бесплатный тариф).
-    mode="block" — то же + блокировка пользователя-активатора (is_active=False)
-                   «до последующих решений» (суперпользователей/staff не трогаем).
+    mode="block" — то же + блокировка ВСЕЙ семьи (is_active=False у всех
+                   участников) «до последующих решений» (staff/суперпользователей
+                   не трогаем).
     """
+    from apps.family.models import FamilyMember
+
     now = timezone.now()
     sub = redemption.subscription
     if sub is not None and sub.status != Subscription.Status.EXPIRED:
@@ -119,10 +122,12 @@ def revoke_redemption(redemption, mode: str):
         sub.save(update_fields=["status", "expires_at", "auto_renew"])
 
     if mode == "block":
-        u = redemption.user
-        if u is not None and not u.is_superuser and not u.is_staff and u.is_active:
-            u.is_active = False
-            u.save(update_fields=["is_active"])
+        members = FamilyMember.objects.filter(family=redemption.family).select_related("user")
+        for m in members:
+            u = m.user
+            if u is not None and not u.is_superuser and not u.is_staff and u.is_active:
+                u.is_active = False
+                u.save(update_fields=["is_active"])
 
     redemption.revoked_at = now
     redemption.revoke_mode = mode

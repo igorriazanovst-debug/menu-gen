@@ -119,15 +119,13 @@ class PromoCodeAdmin(admin.ModelAdmin):
             n += 1
         self.message_user(request, f"Отозвано кодов: {n}. Подписки сняты (бесплатный тариф).", messages.SUCCESS)
 
-    @admin.action(description="Отозвать → заблокировать пользователя")
+    @admin.action(description="Отозвать → заблокировать всю семью")
     def action_revoke_and_block(self, request, queryset):
         n = 0
         for promo in queryset:
             revoke_code(promo, "block")
             n += 1
-        self.message_user(
-            request, f"Отозвано кодов: {n}. Подписки сняты, пользователи заблокированы.", messages.SUCCESS
-        )
+        self.message_user(request, f"Отозвано кодов: {n}. Подписки сняты, семьи заблокированы.", messages.SUCCESS)
 
 
 @admin.register(PromoRedemption)
@@ -147,10 +145,10 @@ class PromoRedemptionAdmin(admin.ModelAdmin):
             n += 1
         self.message_user(request, f"Отозвано активаций: {n} (бесплатный тариф).", messages.SUCCESS)
 
-    @admin.action(description="Отозвать активацию → заблокировать пользователя")
+    @admin.action(description="Отозвать активацию → заблокировать всю семью")
     def action_revoke_block(self, request, queryset):
         n = 0
-        for r in queryset.select_related("subscription", "user"):
+        for r in queryset.select_related("subscription", "user", "family"):
             revoke_redemption(r, "block")
             n += 1
-        self.message_user(request, f"Отозвано активаций: {n} (пользователи заблокированы).", messages.SUCCESS)
+        self.message_user(request, f"Отозвано активаций: {n} (семьи заблокированы).", messages.SUCCESS)
