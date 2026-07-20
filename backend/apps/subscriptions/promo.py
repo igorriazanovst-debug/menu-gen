@@ -76,16 +76,26 @@ def redeem(code_str: str, family, user):
         now = timezone.now()
         delta = _duration_delta(promo)
 
-        # Есть активная неистёкшая подписка — продлеваем (стекуем срок), иначе создаём новую.
-        active = (
-            Subscription.objects.filter(family=family, status=Subscription.Status.ACTIVE)
+        # Если у семьи уже есть активная подписка на ТОТ ЖЕ план промокода
+        # (напр. премиум) — продлеваем её (стекуем срок). Иначе создаём НОВУЮ
+        # подписку с планом промокода поверх базовой (free-подписку не трогаем).
+        # Важно: нельзя продлевать чужой план (free), иначе premium-гейт
+        # (plan.code='premium') не включится и тариф визуально не изменится.
+        same = (
+            Subscription.objects.filter(
+                family=family,
+                plan=promo.plan,
+                status=Subscription.Status.ACTIVE,
+                expires_at__gt=now,
+            )
             .order_by("-expires_at")
             .first()
         )
-        if active and active.expires_at and active.expires_at > now:
-            active.expires_at = active.expires_at + delta
-            active.save(update_fields=["expires_at"])
-            sub = active
+        if same:
+            same.expires_at = same.expires_at + delta
+            same.auto_renew = False
+            same.save(update_fields=["expires_at", "auto_renew"])
+            sub = same
         else:
             sub = Subscription.objects.create(
                 family=family,
