@@ -14,6 +14,14 @@ class AuthLoginRequested extends AuthEvent {
   const AuthLoginRequested({required this.email, required this.password});
   @override List<Object?> get props => [email, password];
 }
+// MG_REG: регистрация (email). Бэкенд создаёт пользователя + семью + free-подписку.
+class AuthRegisterRequested extends AuthEvent {
+  final String name; final String email; final String password; final String password2;
+  const AuthRegisterRequested({
+    required this.name, required this.email, required this.password, required this.password2,
+  });
+  @override List<Object?> get props => [name, email, password, password2];
+}
 class AuthLogoutRequested extends AuthEvent { const AuthLogoutRequested(); }
 
 abstract class AuthState extends Equatable {
@@ -47,6 +55,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       : super(const AuthUnauthenticated()) {
     on<AuthCheckRequested>(_onCheck);
     on<AuthLoginRequested>(_onLogin);
+    on<AuthRegisterRequested>(_onRegister);
     on<AuthLogoutRequested>(_onLogout);
   }
 
@@ -80,6 +89,27 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       premiumGate?.bootstrap(meMap);
       emit(AuthAuthenticated(meMap));
     } catch (e) { emit(AuthError(e.toString())); }
+  }
+
+  Future<void> _onRegister(AuthRegisterRequested e, Emitter<AuthState> emit) async {
+    emit(const AuthLoading());
+    try {
+      final resp = await apiClient.post('/auth/email/register/', data: {
+        'name': e.name,
+        'email': e.email,
+        'password': e.password,
+        'password2': e.password2,
+      });
+      final data = Map<String, dynamic>.from(_data(resp) as Map);
+      await tokenStorage.saveTokens(
+          access: data['access'] as String, refresh: data['refresh'] as String);
+      final me = await apiClient.get('/users/me/');
+      final meMap = Map<String, dynamic>.from(_data(me) as Map);
+      premiumGate?.bootstrap(meMap);
+      emit(AuthAuthenticated(meMap));
+    } catch (e) {
+      emit(AuthError(e.toString()));
+    }
   }
 
   Future<void> _onLogout(AuthLogoutRequested e, Emitter<AuthState> emit) async {

@@ -457,6 +457,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 24),
                 const Divider(),
                 ListTile(
+                  leading: Icon(Icons.workspace_premium_outlined,
+                      color: context.cs.secondary),
+                  title: const Text('Подписка'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/subscription'), // MG_PAY
+                ),
+                ListTile(
                   leading: Icon(Icons.people_outline,
                       color: context.cs.secondary),
                   title: const Text('Семья'),

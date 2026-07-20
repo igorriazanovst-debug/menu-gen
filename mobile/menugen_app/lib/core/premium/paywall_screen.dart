@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import 'premium_gate_cubit.dart';
 
@@ -44,12 +45,7 @@ class PaywallScreen extends StatelessWidget {
             ),
             const Spacer(),
             FilledButton(
-              onPressed: () {
-                // TODO(MG-payments): launch real subscription flow.
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Оплата подключения — скоро')),
-                );
-              },
+              onPressed: () => context.push('/subscription'), // MG_PAY
               child: Text(isWrite ? 'Продлить подписку' : 'Подключить Premium'),
             ),
             const SizedBox(height: 8),

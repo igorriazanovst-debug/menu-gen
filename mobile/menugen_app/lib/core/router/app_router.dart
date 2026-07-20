@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/auth/screens/login_screen.dart';
+import '../../features/auth/screens/register_screen.dart'; // MG_REG
 import '../../features/diary/screens/diary_screen.dart';
 import '../../features/family/bloc/family_bloc.dart';
 import '../../features/family/screens/family_screen.dart';
@@ -15,6 +16,7 @@ import '../../features/profile/screens/kbju_calculator_screen.dart'; // MG_207_V
 import '../../features/recipes/screens/recipe_detail_screen.dart';
 import '../../features/recipes/screens/recipes_screen.dart';
 import '../../features/shopping/screens/shopping_list_screen.dart';
+import '../../features/subscription/screens/subscription_screen.dart'; // MG_PAY
 import '../api/api_client.dart';
 import '../premium/paywall_screen.dart';
 import '../premium/premium_gate_cubit.dart';
@@ -29,9 +31,10 @@ class AppRouter {
       initialLocation: '/menu',
       redirect: (context, state) {
         final isLoggedIn = authState is AuthAuthenticated;
-        final isLoggingIn = state.matchedLocation == '/login';
-        if (!isLoggedIn && !isLoggingIn) return '/login';
-        if (isLoggedIn && isLoggingIn) return '/menu';
+        final loc = state.matchedLocation;
+        final isAuthRoute = loc == '/login' || loc == '/register'; // MG_REG
+        if (!isLoggedIn && !isAuthRoute) return '/login';
+        if (isLoggedIn && isAuthRoute) return '/menu';
         if (premiumGate.state.status == PremiumStatus.lockedForRead &&
             _premiumOnlyPaths.any((p) => state.matchedLocation.startsWith(p))) {
           return '/paywall';
@@ -40,7 +43,12 @@ class AppRouter {
       },
       routes: [
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+        GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()), // MG_REG
         GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),
+        GoRoute(
+          path: '/subscription', // MG_PAY
+          builder: (_, __) => SubscriptionScreen(apiClient: apiClient),
+        ),
         GoRoute(
           path: '/fridge/:id/details',
           builder: (_, state) => FridgeItemDetailScreen(

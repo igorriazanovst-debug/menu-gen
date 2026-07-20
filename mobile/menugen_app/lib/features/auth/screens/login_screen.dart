@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart'; // MG_SKIN
 import '../bloc/auth_bloc.dart';
 
@@ -63,6 +64,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 );
               }),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => context.push('/register'),
+                child: const Text('Нет аккаунта? Зарегистрироваться'),
+              ),
             ]),
           ),
         ),
