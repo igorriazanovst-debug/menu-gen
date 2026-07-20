@@ -9,6 +9,7 @@ import { isSkin } from './theme/skins'; // MG_SKIN
 import { useIsPremium } from './hooks/usePremium'; // freemium-гейт
 import { AppLayout }         from './components/layout/AppLayout';
 import { LoginPage }         from './pages/Auth/LoginPage';
+import { RegisterPage }      from './pages/Auth/RegisterPage';
 import { DashboardPage }     from './pages/Dashboard/DashboardPage';
 import { RecipesPage }       from './pages/Recipes/RecipesPage';
 import { MenuPage }          from './pages/Menu/MenuPage';
@@ -58,6 +59,7 @@ const AppRoutes: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
         <Route index element={<HomeRedirect />} />
         <Route path="dashboard"     element={<PremiumRoute><DashboardPage /></PremiumRoute>} />

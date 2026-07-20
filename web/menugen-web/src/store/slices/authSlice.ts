@@ -40,6 +40,29 @@ export const login = createAsyncThunk(
   },
 );
 
+// MG_REG: регистрация — создаёт пользователя (+семья+free), возвращает JWT, логинит.
+export const register = createAsyncThunk(
+  'auth/register',
+  async (
+    { name, email, password, password2 }: { name: string; email: string; password: string; password2: string },
+    { rejectWithValue },
+  ) => {
+    try {
+      const { data: tokens } = await authApi.register(name, email, password, password2);
+      localStorage.setItem('access_token', tokens.access);
+      localStorage.setItem('refresh_token', tokens.refresh);
+      const { data: user } = await authApi.me();
+      return user;
+    } catch (e: any) {
+      const d = e.response?.data;
+      const msg = d?.detail
+        || (d && typeof d === 'object' ? Object.values(d).flat().join(' ') : '')
+        || 'Не удалось зарегистрироваться';
+      return rejectWithValue(msg);
+    }
+  },
+);
+
 export const logout = createAsyncThunk('auth/logout', async () => {
   const refresh = localStorage.getItem('refresh_token') || '';
   try { await authApi.logout(refresh); } catch {}
@@ -63,6 +86,13 @@ const authSlice = createSlice({
         state.loading = false; state.user = action.payload;
       })
       .addCase(login.rejected, (state, action) => {
+        state.loading = false; state.error = action.payload as string;
+      })
+      .addCase(register.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(register.fulfilled, (state, action) => {
+        state.loading = false; state.user = action.payload;
+      })
+      .addCase(register.rejected, (state, action) => {
         state.loading = false; state.error = action.payload as string;
       })
       .addCase(logout.fulfilled, (state) => { state.user = null; });
