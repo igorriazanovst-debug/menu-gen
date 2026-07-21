@@ -191,10 +191,16 @@ class RecipeFilter(filters.FilterSet):
         allergens = [_normalize(str(a)) for a in allergens if a]
         if not allergens:
             return queryset
+        # Ищем аллерген (в т.ч. пользовательский, напр. «говядина») как подстроку
+        # в НАЗВАНИИ + КАТЕГОРИЯХ + именах ингредиентов. Раньше матчили только
+        # ингредиенты — блюда с аллергеном в названии («Говядина с овощами»)
+        # проскакивали.
         good_ids = []
-        for pk, ingredients in queryset.values_list("id", "ingredients"):
-            names = _names_from_raw(ingredients)
-            if not any(any(a in name for name in names) for a in allergens):
+        for pk, title, categories, ingredients in queryset.values_list("id", "title", "categories", "ingredients"):
+            hay = " ".join(
+                [_normalize(str(title or "")), _normalize(str(categories or ""))] + _names_from_raw(ingredients)
+            )
+            if not any(a in hay for a in allergens):
                 good_ids.append(pk)
         return queryset.filter(pk__in=good_ids)
 
