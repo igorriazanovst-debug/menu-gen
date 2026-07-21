@@ -28,9 +28,13 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         },
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          child: LayoutBuilder(
+            builder: (ctx, constraints) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               // MG_SKIN: слот логотипа (заменить на AppLogo, когда придёт ассет:
               // logo_mark ~72px высотой, цветной на светлом фоне).
               Icon(Icons.restaurant_menu, size: 72, color: context.cs.primary),
@@ -69,7 +73,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: () => context.push('/register'),
                 child: const Text('Нет аккаунта? Зарегистрироваться'),
               ),
-            ]),
+                  ]),
+                ),
+              ),
+            ),
           ),
         ),
       ),
