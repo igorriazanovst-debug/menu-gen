@@ -8,35 +8,31 @@ import '../premium/premium_gate_cubit.dart';
 import 'connectivity_banner.dart';
 import 'sync_indicator.dart'; // MG_T08
 
-typedef _Tab = ({IconData icon, String label, String path});
+typedef _Tab = ({IconData icon, String label, int branch});
 
 class MainShell extends StatelessWidget {
-  final Widget child;
-  const MainShell({super.key, required this.child});
+  // MG_TABSTATE: navigationShell = IndexedStack всех вкладок (состояние сохраняется).
+  final StatefulNavigationShell navigationShell;
+  const MainShell({super.key, required this.navigationShell});
 
+  // branch = индекс ветки в StatefulShellRoute (см. app_router).
   static const _allTabs = <_Tab>[
-    (icon: Icons.restaurant_menu, label: 'Меню',        path: '/menu'),
-    (icon: Icons.menu_book,       label: 'Рецепты',     path: '/recipes'),
-    (icon: Icons.kitchen,         label: 'Холодильник', path: '/fridge'),
-    (icon: Icons.shopping_cart,   label: 'Покупки',     path: '/shopping'),
-    (icon: Icons.book,            label: 'Дневник',     path: '/diary'),
-    (icon: Icons.person,          label: 'Профиль',     path: '/profile'),
+    (icon: Icons.restaurant_menu, label: 'Меню',        branch: 0),
+    (icon: Icons.menu_book,       label: 'Рецепты',     branch: 1),
+    (icon: Icons.kitchen,         label: 'Холодильник', branch: 2),
+    (icon: Icons.shopping_cart,   label: 'Покупки',     branch: 3),
+    (icon: Icons.book,            label: 'Дневник',     branch: 4),
+    (icon: Icons.person,          label: 'Профиль',     branch: 5),
   ];
 
   // freemium: дневник открыт free-юзерам (как в вебе). Холодильник остаётся premium.
-  static const _premiumOnlyPaths = {'/fridge'};
+  static const _premiumOnlyBranches = {2}; // fridge
 
   List<_Tab> _visibleTabs(PremiumStatus status) {
     if (status == PremiumStatus.lockedForRead) {
-      return _allTabs.where((t) => !_premiumOnlyPaths.contains(t.path)).toList();
+      return _allTabs.where((t) => !_premiumOnlyBranches.contains(t.branch)).toList();
     }
     return _allTabs;
-  }
-
-  int _currentIndex(List<_Tab> tabs, BuildContext context) {
-    final location = GoRouterState.of(context).matchedLocation;
-    final idx = tabs.indexWhere((t) => location.startsWith(t.path));
-    return idx >= 0 ? idx : 0;
   }
 
   @override
@@ -44,6 +40,8 @@ class MainShell extends StatelessWidget {
     return BlocBuilder<PremiumGateCubit, PremiumGateState>(
       builder: (context, premiumState) {
         final tabs = _visibleTabs(premiumState.status);
+        int currentIdx = tabs.indexWhere((t) => t.branch == navigationShell.currentIndex);
+        if (currentIdx < 0) currentIdx = 0;
         return Scaffold(
           body: SafeArea( // MG_T09: keep indicator/banners below the status bar
             bottom: false,
@@ -52,7 +50,7 @@ class MainShell extends StatelessWidget {
               const SyncIndicator(), // MG_T08
               const ConnectivityBanner(),
               const PaywallBanner(),
-              Expanded(child: child),
+              Expanded(child: navigationShell),
             ],
           )), // MG_T09: close SafeArea
           // MG_SKIN: скруглённая «плавающая» нижняя навигация в стиле Main-референса.
@@ -71,8 +69,11 @@ class MainShell extends StatelessWidget {
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               child: BottomNavigationBar(
-                currentIndex: _currentIndex(tabs, context),
-                onTap: (i) => context.go(tabs[i].path),
+                currentIndex: currentIdx,
+                onTap: (i) => navigationShell.goBranch(
+                  tabs[i].branch,
+                  initialLocation: tabs[i].branch == navigationShell.currentIndex,
+                ),
                 elevation: 0,
                 backgroundColor: Colors.transparent,
                 items: tabs.map((t) => BottomNavigationBarItem(

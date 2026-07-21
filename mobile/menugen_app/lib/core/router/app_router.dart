@@ -73,15 +73,30 @@ class AppRouter {
                 : null,
           ),
         ),
-        ShellRoute(
-          builder: (context, state, child) => MainShell(child: child),
-          routes: [
-            GoRoute(path: '/menu',    builder: (_, __) => MenuScreen(apiClient: apiClient)),
-            GoRoute(path: '/recipes', builder: (_, __) => RecipesScreen(apiClient: apiClient)),
-            GoRoute(path: '/fridge',  builder: (_, __) => FridgeScreen(apiClient: apiClient)),
-            GoRoute(path: '/diary',   builder: (_, __) => const DiaryScreen()),
-            GoRoute(path: '/shopping', builder: (_, __) => ShoppingListScreen(apiClient: apiClient)),
-            GoRoute(path: '/profile', builder: (_, state) => ProfileScreen(apiClient: apiClient)),
+        // MG_TABSTATE: StatefulShellRoute.indexedStack — держит состояние всех
+        // вкладок живым (IndexedStack), чтобы фильтры/скролл не сбрасывались при
+        // переключении. Порядок branch'ей = порядок табов в MainShell (0..5).
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, navigationShell) => MainShell(navigationShell: navigationShell),
+          branches: [
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/menu', builder: (_, __) => MenuScreen(apiClient: apiClient)),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/recipes', builder: (_, __) => RecipesScreen(apiClient: apiClient)),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/fridge', builder: (_, __) => FridgeScreen(apiClient: apiClient)),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/shopping', builder: (_, __) => ShoppingListScreen(apiClient: apiClient)),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/diary', builder: (_, __) => const DiaryScreen()),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/profile', builder: (_, __) => ProfileScreen(apiClient: apiClient)),
+            ]),
           ],
         ),
         GoRoute(

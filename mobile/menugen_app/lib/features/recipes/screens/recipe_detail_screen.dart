@@ -10,6 +10,32 @@ import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../fridge/screens/recognize_photo_flow.dart' show pickPhoto; // MG_MADEPHOTO
 
+// MG_CATRU: русские подписи для англ. токенов категорий (DishType/FoodGroup и пр.).
+const Map<String, String> _kCategoryRu = {
+  'soup': 'Первое (суп)',
+  'main': 'Второе/горячее',
+  'salad': 'Салат',
+  'side': 'Гарнир',
+  'dessert': 'Десерт',
+  'drink': 'Напиток',
+  'bakery': 'Выпечка',
+  'sauce': 'Соус',
+  'snack': 'Перекус',
+  'breakfast_dish': 'Завтрак',
+  'breakfast': 'Завтрак',
+  'lunch': 'Обед',
+  'dinner': 'Ужин',
+  'grain': 'Зерновые',
+  'protein': 'Белки',
+  'vegetable': 'Овощи',
+  'fruit': 'Фрукты',
+  'dairy': 'Молочные',
+  'oil': 'Масла/жиры',
+  'other': 'Прочее',
+};
+
+String _categoryLabel(String c) => _kCategoryRu[c.trim().toLowerCase()] ?? c;
+
 String _mimeFromName(String name) {
   final n = name.toLowerCase();
   if (n.endsWith('.png')) return 'image/png';
@@ -295,7 +321,7 @@ class _DetailBody extends StatelessWidget {
                   runSpacing: 6,
                   children: _categories
                       .map((c) => Chip(
-                            label: Text(c, style: const TextStyle(fontSize: 12)),
+                            label: Text(_categoryLabel(c), style: const TextStyle(fontSize: 12)),
                             visualDensity: VisualDensity.compact,
                           ))
                       .toList(),
@@ -489,20 +515,26 @@ class _NutritionGrid extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(e.$2!,
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onSurface)),
-                    const SizedBox(height: 2),
-                    Text(e.$1,
-                        style: TextStyle(
-                            fontSize: 11, color: tokens.textSecondary)),
-                  ],
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(e.$2!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onSurface)),
+                      const SizedBox(height: 2),
+                      Text(e.$1,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11, color: tokens.textSecondary)),
+                    ],
+                  ),
                 ),
               ],
             ),
