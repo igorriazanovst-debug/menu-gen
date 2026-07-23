@@ -177,6 +177,8 @@ class UserMeSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(read_only=True)
     # MG-profile-premium: derived subscription summary for proactive UI.
     subscription_status = serializers.SerializerMethodField()
+    # MG_CONSTRUCTOR: флаги доступа к инструментам специалиста (конструктор меню).
+    is_specialist = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -194,8 +196,13 @@ class UserMeSerializer(serializers.ModelSerializer):
             "created_at",
             "profile",
             "subscription_status",
+            "is_staff",
+            "is_specialist",
         )
-        read_only_fields = ("id", "vk_id", "user_type", "created_at")
+        read_only_fields = ("id", "vk_id", "user_type", "created_at", "is_staff")
+
+    def get_is_specialist(self, obj) -> bool:
+        return hasattr(obj, "specialist_profile")
 
     @extend_schema_field(
         {

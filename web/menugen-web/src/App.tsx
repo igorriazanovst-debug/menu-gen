@@ -20,6 +20,7 @@ import { ShoppingPage }      from './pages/Shopping/ShoppingPage';
 import { SubscriptionsPage } from './pages/Subscriptions/SubscriptionsPage';
 import { ProfilePage }       from './pages/Profile/ProfilePage';
 import { KBJUCalculatorPage } from './pages/Profile/KBJUCalculatorPage'; // MG_206_V_app_route
+import { ConstructorPage }    from './pages/Constructor/ConstructorPage'; // MG_CONSTRUCTOR
 import { SpecialistDashboardPage } from './pages/specialist/SpecialistDashboardPage';
 import { SpecialistRegisterPage }  from './pages/specialist/SpecialistRegisterPage';
 import { ClientDetailPage }        from './pages/specialist/ClientDetailPage';
@@ -48,6 +49,13 @@ const PremiumRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return isPremium ? <>{children}</> : <Navigate to="/subscriptions" replace />;
 };
 
+// MG_CONSTRUCTOR: конструктор доступен специалистам и стаффу.
+const SpecialistRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const user = useAppSelector((s) => s.auth.user);
+  const allowed = !!(user && (user.is_staff || user.is_specialist));
+  return allowed ? <>{children}</> : <Navigate to="/menu" replace />;
+};
+
 const AppRoutes: React.FC = () => {
   const dispatch = useAppDispatch();
   const userSkin = useAppSelector((s) => s.auth.user?.ui_skin); // MG_SKIN
@@ -72,6 +80,7 @@ const AppRoutes: React.FC = () => {
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="profile"       element={<ProfilePage />} />
         <Route path="profile/kbju-calculator" element={<KBJUCalculatorPage />} />
+        <Route path="constructor"   element={<SpecialistRoute><ConstructorPage /></SpecialistRoute>} />{/* MG_CONSTRUCTOR */}
         <Route path="specialist"                                          element={<SpecialistDashboardPage />} />
         <Route path="specialist/register"                                 element={<SpecialistRegisterPage />} />
         <Route path="specialist/clients/:familyId"                        element={<ClientDetailPage />} />

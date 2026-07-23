@@ -45,8 +45,57 @@ export interface User {
   allergies: string[]; disliked_products: string[]; profile?: UserProfile;
   ui_skin?: 'main' | 'second'; // MG_SKIN
   subscription_status?: SubscriptionStatus | null; // Freemium
+  is_staff?: boolean;        // MG_CONSTRUCTOR: доступ к инструментам админа
+  is_specialist?: boolean;   // MG_CONSTRUCTOR: доступ к инструментам специалиста
   created_at: string;
 }
+
+// ── MG_CONSTRUCTOR: ручной конструктор меню ──────────────────────────────────
+export interface ConstructorRecipeMini {
+  id: number; title: string; image_url?: string | null;
+}
+export interface ConstructedMealItem {
+  id?: number;
+  recipe?: ConstructorRecipeMini;   // на чтение
+  recipe_id?: number;               // на запись
+  quantity: number;
+}
+export interface ConstructedMeal {
+  id?: number;
+  day_index: number;
+  order: number;
+  name: string;
+  target_calories?: number | null;
+  target_protein?: string | number | null;
+  target_fat?: string | number | null;
+  target_carbs?: string | number | null;
+  items: ConstructedMealItem[];
+}
+export type ConstructedMenuStatus = 'draft' | 'published';
+export interface ConstructedMenu {
+  id: number;
+  name: string;
+  author_name?: string | null;
+  client_family?: number | null;
+  days: number;
+  status: ConstructedMenuStatus;
+  meals: ConstructedMeal[];
+  created_at: string;
+  updated_at: string;
+}
+export interface ConstructedMenuListItem {
+  id: number;
+  name: string;
+  author_name?: string | null;
+  client_family?: number | null;
+  client_family_name?: string | null;
+  days: number;
+  status: ConstructedMenuStatus;
+  meals_count: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface ConstructorClient { id: number; name: string; }
 export interface Ingredient { name: string; quantity?: string; unit?: string; }
 export interface RecipeStep { text: string; photo?: string; }
 export interface NutritionValue { value: string; unit: string; }

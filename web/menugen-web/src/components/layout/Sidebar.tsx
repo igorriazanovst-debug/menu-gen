@@ -22,6 +22,8 @@ export const Sidebar: React.FC = () => {
   const isPremium = useIsPremium();
   // Free-юзеру premium-пункты не показываем вовсе (страницы не грузятся).
   const items = NAV.filter((n) => !n.premium || isPremium);
+  // MG_CONSTRUCTOR: конструктор — только специалистам/стаффу.
+  const isSpecialist = !!(user && (user.is_staff || user.is_specialist));
 
   return (
     <aside className="w-56 min-h-screen bg-sidebar text-sidebar-fg flex flex-col">
@@ -56,6 +58,23 @@ export const Sidebar: React.FC = () => {
             {label}
           </NavLink>
         ))}
+        {/* MG_CONSTRUCTOR: пункт только для специалистов/стаффа */}
+        {isSpecialist && (
+          <NavLink
+            to="/constructor"
+            className={({ isActive }) =>
+              [
+                'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors',
+                isActive
+                  ? 'bg-primary/20 text-primary font-semibold'
+                  : 'text-sidebar-muted hover:bg-white/5 hover:text-sidebar-fg',
+              ].join(' ')
+            }
+          >
+            <span className="text-base">🛠️</span>
+            Конструктор
+          </NavLink>
+        )}
       </nav>
 
       {/* Logout */}
