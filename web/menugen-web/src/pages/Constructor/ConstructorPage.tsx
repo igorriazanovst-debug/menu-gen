@@ -59,6 +59,10 @@ const numOrNull = (s: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+// DRF-пагинация может завернуть список в {results:[…]} — приводим к массиву.
+const asArray = <T,>(d: unknown): T[] =>
+  Array.isArray(d) ? (d as T[]) : ((d as { results?: T[] } | null)?.results ?? []);
+
 const blankDraft = (): DraftMenu => ({
   id: null,
   name: '',
@@ -442,8 +446,10 @@ export const ConstructorPage: React.FC = () => {
     setLoading(true);
     Promise.all([constructorApi.list(), constructorApi.clients()])
       .then(([l, c]) => {
-        setList(l.data);
-        setClients(c.data);
+        // Список может прийти как массивом, так и в пагинированной обёртке
+        // ({results:[…]}) — DRF-пагинация включена глобально.
+        setList(asArray<ConstructedMenuListItem>(l.data));
+        setClients(asArray<ConstructorClient>(c.data));
       })
       .catch(() => {})
       .finally(() => setLoading(false));

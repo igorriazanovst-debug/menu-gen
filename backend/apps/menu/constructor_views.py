@@ -54,6 +54,7 @@ class ConstructorClientsView(APIView):
 
 class ConstructedMenuListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsSpecialistOrStaff]
+    pagination_class = None  # отдаём плоский список (фронт ждёт массив)
 
     def get_queryset(self):
         return ConstructedMenu.objects.filter(author=self.request.user).prefetch_related("meals")
