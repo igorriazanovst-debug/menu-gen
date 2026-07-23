@@ -35,7 +35,11 @@ class ConstructorClientsView(APIView):
 
     def get(self, request):
         user = request.user
-        if _is_specialist(user):
+        # Стафф (админ) видит все семьи — проверяем ПЕРВЫМ, т.к. админ может
+        # иметь и профиль специалиста, но при этом не иметь личных назначений.
+        if user.is_staff:
+            families = Family.objects.all()
+        elif _is_specialist(user):
             fam_ids = (
                 SpecialistAssignment.objects.filter(
                     specialist__user=user,
@@ -46,8 +50,7 @@ class ConstructorClientsView(APIView):
             )
             families = Family.objects.filter(id__in=list(fam_ids))
         else:
-            # стафф (админ) — все семьи
-            families = Family.objects.all()
+            families = Family.objects.none()
         data = [{"id": f.id, "name": f.name} for f in families.order_by("name")[:500]]
         return Response(data)
 
