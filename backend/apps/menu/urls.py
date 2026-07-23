@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .constructor_views import ConstructedMenuDetailView, ConstructedMenuListCreateView, ConstructorClientsView
 from .views import (
     DeletedMenuListView,
     MenuArchiveView,
@@ -18,6 +19,10 @@ from .views import (
 urlpatterns = [
     path("", MenuListView.as_view(), name="menu-list"),
     path("generate/", MenuGenerateView.as_view(), name="menu-generate"),
+    # MG_CONSTRUCTOR: ручной конструктор меню (специалисты/стафф)
+    path("constructor/", ConstructedMenuListCreateView.as_view(), name="constructor-list"),
+    path("constructor/clients/", ConstructorClientsView.as_view(), name="constructor-clients"),
+    path("constructor/<int:pk>/", ConstructedMenuDetailView.as_view(), name="constructor-detail"),
     path("quarantine/", DeletedMenuListView.as_view(), name="menu-quarantine"),
     path("quarantine/purge-all/", MenuPurgeAllView.as_view(), name="menu-purge-all"),
     path("quarantine/<int:deleted_id>/restore/", MenuRestoreView.as_view(), name="menu-restore"),

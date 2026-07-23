@@ -130,3 +130,73 @@ class DeletedMenu(models.Model):
 
     def __str__(self):
         return f"DeletedMenu(menu_id={self.menu_id}, family={self.family_id})"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MG_CONSTRUCTOR: ручной конструктор меню (для специалистов).
+# Гибкая структура: произвольное число дней, приёмов на день, названия приёмов,
+# цели (КБЖУ) на приём, блюда на приём. Строится специалистом ДЛЯ клиента (семьи).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ConstructedMenu(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Черновик"
+        PUBLISHED = "published", "Готово"
+
+    name = models.CharField(max_length=200)
+    author = models.ForeignKey("users.User", on_delete=models.CASCADE, related_name="constructed_menus")
+    # Получатель — семья клиента (специалист строит меню для клиента). Необязателен
+    # на этапе черновика; при публикации обычно задан.
+    client_family = models.ForeignKey(
+        "family.Family", on_delete=models.SET_NULL, null=True, blank=True, related_name="constructed_menus"
+    )
+    days = models.PositiveSmallIntegerField(default=1)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "constructed_menus"
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["author_id"]),
+            models.Index(fields=["client_family_id"]),
+        ]
+
+    def __str__(self):
+        return f"ConstructedMenu({self.name} by {self.author_id})"
+
+
+class ConstructedMeal(models.Model):
+    menu = models.ForeignKey(ConstructedMenu, on_delete=models.CASCADE, related_name="meals")
+    day_index = models.PositiveSmallIntegerField(default=0)  # 0..days-1
+    order = models.PositiveSmallIntegerField(default=0)  # порядок приёма в дне
+    name = models.CharField(max_length=100)  # произвольное название приёма
+    # Цели на приём (опционально).
+    target_calories = models.PositiveIntegerField(null=True, blank=True)
+    target_protein = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+    target_fat = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+    target_carbs = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+
+    class Meta:
+        db_table = "constructed_meals"
+        ordering = ["day_index", "order", "id"]
+        indexes = [models.Index(fields=["menu_id", "day_index"])]
+
+    def __str__(self):
+        return f"{self.name} (day {self.day_index})"
+
+
+class ConstructedMealItem(models.Model):
+    meal = models.ForeignKey(ConstructedMeal, on_delete=models.CASCADE, related_name="items")
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
+    quantity = models.DecimalField(max_digits=6, decimal_places=2, default=1)
+
+    class Meta:
+        db_table = "constructed_meal_items"
+        ordering = ["id"]
+        indexes = [models.Index(fields=["meal_id"])]
+
+    def __str__(self):
+        return f"{self.recipe_id} x{self.quantity}"
