@@ -4,19 +4,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { constructorApi, type ConstructedMenuPayload } from '../../api/constructor';
 import { recipesApi } from '../../api/recipes';
+import { fridgeApi } from '../../api/fridge';
 import type {
   ConstructedMeal,
   ConstructedMealItem,
   ConstructedMenuListItem,
   ConstructorClient,
+  Product,
   Recipe,
 } from '../../types';
 
 // ── редакторная модель (локальная, до сохранения) ────────────────────────────
+// Позиция приёма — либо рецепт, либо продукт (с порцией в граммах). MG_PRODDISH.
 interface DraftItem {
-  recipe_id: number;
+  kind: 'recipe' | 'product';
+  ref_id: number;            // recipe_id либо product_id
   title: string;
   image_url?: string | null;
+  grams: number;             // только для продукта
   quantity: number;
 }
 interface DraftMeal {
@@ -85,12 +90,25 @@ const fromServerMeals = (meals: ConstructedMeal[]): DraftMeal[] =>
       target_protein: m.target_protein != null ? String(m.target_protein) : '',
       target_fat: m.target_fat != null ? String(m.target_fat) : '',
       target_carbs: m.target_carbs != null ? String(m.target_carbs) : '',
-      items: (m.items || []).map((it: ConstructedMealItem) => ({
-        recipe_id: it.recipe_id ?? it.recipe?.id ?? 0,
-        title: it.recipe?.title ?? '—',
-        image_url: it.recipe?.image_url,
-        quantity: Number(it.quantity) || 1,
-      })),
+      items: (m.items || []).map((it: ConstructedMealItem): DraftItem =>
+        it.product || it.product_id
+          ? {
+              kind: 'product',
+              ref_id: it.product?.id ?? it.product_id ?? 0,
+              title: it.product?.name ?? '—',
+              image_url: it.product?.image_url,
+              grams: Number(it.grams) || 100,
+              quantity: Number(it.quantity) || 1,
+            }
+          : {
+              kind: 'recipe',
+              ref_id: it.recipe?.id ?? it.recipe_id ?? 0,
+              title: it.recipe?.title ?? '—',
+              image_url: it.recipe?.image_url,
+              grams: 0,
+              quantity: Number(it.quantity) || 1,
+            },
+      ),
     }));
 
 // редакторная модель → payload
@@ -114,64 +132,181 @@ const toPayload = (d: DraftMenu): ConstructedMenuPayload => {
           target_fat: numOrNull(m.target_fat),
           target_carbs: numOrNull(m.target_carbs),
           items: m.items
-            .filter((it) => it.recipe_id)
-            .map((it) => ({ recipe_id: it.recipe_id, quantity: it.quantity || 1 })),
+            .filter((it) => it.ref_id)
+            .map((it) =>
+              it.kind === 'product'
+                ? { product_id: it.ref_id, grams: it.grams || 100, quantity: it.quantity || 1 }
+                : { recipe_id: it.ref_id, quantity: it.quantity || 1 },
+            ),
         };
       }),
   };
 };
 
-// ── поиск блюда (инлайн-виджет) ──────────────────────────────────────────────
-const DishSearch: React.FC<{ onPick: (r: Recipe) => void }> = ({ onPick }) => {
+// ── поиск блюда: рецепт ИЛИ продукт (порция в граммах) ────────────────────────
+const DishSearch: React.FC<{ onAdd: (it: DraftItem) => void }> = ({ onAdd }) => {
+  const [mode, setMode] = useState<'recipe' | 'product'>('recipe');
   const [q, setQ] = useState('');
-  const [opts, setOpts] = useState<Recipe[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newKcal, setNewKcal] = useState('');
 
   useEffect(() => {
-    if (q.trim().length < 2) {
-      setOpts([]);
-      return;
-    }
+    setRecipes([]);
+    setProducts([]);
+    if (q.trim().length < 2) return;
     setLoading(true);
+    const term = q.trim();
     const t = setTimeout(() => {
-      recipesApi
-        .list({ search: q.trim(), page_size: 10 })
-        .then((r) => setOpts(r.data.results ?? []))
-        .catch(() => setOpts([]))
-        .finally(() => setLoading(false));
+      if (mode === 'recipe') {
+        recipesApi
+          .list({ search: term, page_size: 10 })
+          .then((r) => setRecipes(r.data.results ?? []))
+          .catch(() => setRecipes([]))
+          .finally(() => setLoading(false));
+      } else {
+        fridgeApi
+          .searchProducts(term)
+          .then((list) => setProducts(list))
+          .catch(() => setProducts([]))
+          .finally(() => setLoading(false));
+      }
     }, 350);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, mode]);
+
+  const reset = () => {
+    setQ('');
+    setRecipes([]);
+    setProducts([]);
+    setCreating(false);
+    setNewKcal('');
+  };
+
+  const addRecipe = (r: Recipe) => {
+    onAdd({ kind: 'recipe', ref_id: r.id, title: r.title, image_url: r.image_url, grams: 0, quantity: 1 });
+    reset();
+  };
+  const addProduct = (p: Product) => {
+    onAdd({ kind: 'product', ref_id: p.id, title: p.name, image_url: p.image_url, grams: 100, quantity: 1 });
+    reset();
+  };
+
+  const createProduct = async () => {
+    const name = q.trim();
+    if (!name) return;
+    const kcal = newKcal.trim() ? Number(newKcal.replace(',', '.')) : null;
+    try {
+      const { data } = await fridgeApi.createProduct({
+        name,
+        calories_per_100g: kcal,
+        nutrition: kcal != null ? { calories: kcal } : undefined,
+      });
+      addProduct(data);
+    } catch {
+      /* тихо: пусть пользователь повторит */
+    }
+  };
+
+  const tabCls = (active: boolean) =>
+    [
+      'px-3 py-1 text-xs rounded-lg border',
+      active ? 'bg-avocado text-white border-avocado' : 'text-gray-500 border-border hover:bg-rice',
+    ].join(' ');
 
   return (
     <div>
+      <div className="flex items-center gap-2 mb-1">
+        <button type="button" onClick={() => setMode('recipe')} className={tabCls(mode === 'recipe')}>
+          Рецепт
+        </button>
+        <button type="button" onClick={() => setMode('product')} className={tabCls(mode === 'product')}>
+          Продукт
+        </button>
+      </div>
       <input
         type="text"
-        placeholder="Поиск блюда…"
+        placeholder={mode === 'recipe' ? 'Поиск рецепта…' : 'Поиск продукта (напр. огурец)…'}
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setCreating(false);
+        }}
         className="w-full border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-avocado"
       />
       {loading && <p className="text-xs text-gray-400 mt-1">Поиск…</p>}
-      {opts.length > 0 && (
+
+      {mode === 'recipe' && recipes.length > 0 && (
         <ul className="mt-1 border border-border rounded-lg divide-y max-h-48 overflow-y-auto bg-surface">
-          {opts.map((r) => (
+          {recipes.map((r) => (
             <li
               key={r.id}
               className="px-3 py-2 text-sm cursor-pointer hover:bg-rice flex items-center gap-2"
-              onClick={() => {
-                onPick(r);
-                setQ('');
-                setOpts([]);
-              }}
+              onClick={() => addRecipe(r)}
             >
-              {r.image_url && (
-                <img src={r.image_url} alt="" className="w-8 h-8 rounded object-cover" />
-              )}
+              {r.image_url && <img src={r.image_url} alt="" className="w-8 h-8 rounded object-cover" />}
               <span className="text-chocolate">{r.title}</span>
             </li>
           ))}
         </ul>
+      )}
+
+      {mode === 'product' && (
+        <>
+          {products.length > 0 && (
+            <ul className="mt-1 border border-border rounded-lg divide-y max-h-48 overflow-y-auto bg-surface">
+              {products.map((p) => (
+                <li
+                  key={p.id}
+                  className="px-3 py-2 text-sm cursor-pointer hover:bg-rice flex items-center gap-2"
+                  onClick={() => addProduct(p)}
+                >
+                  {p.image_url && <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" />}
+                  <span className="text-chocolate flex-1">{p.name}</span>
+                  {p.is_own && <span className="text-[10px] text-avocado">мой</span>}
+                  {p.calories_per_100g != null && (
+                    <span className="text-[10px] text-gray-400">{p.calories_per_100g} ккал/100г</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* если не нашли — предложить создать пользовательский продукт */}
+          {!loading && q.trim().length >= 2 && products.length === 0 && (
+            <div className="mt-1 text-xs">
+              {!creating ? (
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  className="text-avocado hover:underline"
+                >
+                  + Создать продукт «{q.trim()}»
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 border border-border rounded-lg p-2">
+                  <span className="text-chocolate">{q.trim()}</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="ккал/100г"
+                    value={newKcal}
+                    onChange={(e) => setNewKcal(e.target.value)}
+                    className="w-24 border border-border rounded px-2 py-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={createProduct}
+                    className="px-2 py-1 rounded bg-tomato text-white"
+                  >
+                    Добавить
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -230,13 +365,33 @@ const MealCard: React.FC<{
         <ul className="space-y-1 mb-2">
           {meal.items.map((it, idx) => (
             <li
-              key={`${it.recipe_id}_${idx}`}
+              key={`${it.kind}_${it.ref_id}_${idx}`}
               className="flex items-center gap-2 border border-border rounded-lg px-2 py-1"
             >
               {it.image_url && (
                 <img src={it.image_url} alt="" className="w-8 h-8 rounded object-cover" />
               )}
-              <span className="flex-1 text-sm text-chocolate">{it.title}</span>
+              <span className="flex-1 text-sm text-chocolate">
+                {it.title}
+                {it.kind === 'product' && <span className="ml-1 text-[10px] text-gray-400">продукт</span>}
+              </span>
+              {it.kind === 'product' && (
+                <label className="flex items-center gap-1 text-[11px] text-gray-400">
+                  <input
+                    type="number"
+                    min={1}
+                    value={it.grams}
+                    onChange={(e) => {
+                      const items = meal.items.slice();
+                      items[idx] = { ...it, grams: Math.max(1, Number(e.target.value) || 1) };
+                      set({ items });
+                    }}
+                    className="w-16 border border-border rounded px-1 py-0.5 text-sm text-center"
+                    title="Порция, г"
+                  />
+                  г
+                </label>
+              )}
               <input
                 type="number"
                 min={1}
@@ -261,16 +416,7 @@ const MealCard: React.FC<{
         </ul>
       )}
 
-      <DishSearch
-        onPick={(r) =>
-          set({
-            items: [
-              ...meal.items,
-              { recipe_id: r.id, title: r.title, image_url: r.image_url, quantity: 1 },
-            ],
-          })
-        }
-      />
+      <DishSearch onAdd={(it) => set({ items: [...meal.items, it] })} />
     </div>
   );
 };

@@ -59,7 +59,12 @@ class MenuItem(models.Model):
         OTHER = "other", "Прочее"
 
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name="items")
-    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
+    # MG_PRODDISH: позиция приёма — рецепт ИЛИ продукт (с порцией в граммах).
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, null=True, blank=True)
+    product = models.ForeignKey(
+        "fridge.Product", on_delete=models.CASCADE, null=True, blank=True, related_name="menu_items"
+    )
+    grams = models.PositiveIntegerField(null=True, blank=True, help_text="Порция продукта-блюда, г (MG_PRODDISH).")
     member = models.ForeignKey(FamilyMember, on_delete=models.CASCADE, null=True, blank=True)
     meal_type = models.CharField(max_length=20, choices=MealType.choices)
     # meal_slot хранит точный слот: breakfast/lunch/dinner/snack1/snack2
@@ -190,7 +195,12 @@ class ConstructedMeal(models.Model):
 
 class ConstructedMealItem(models.Model):
     meal = models.ForeignKey(ConstructedMeal, on_delete=models.CASCADE, related_name="items")
-    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
+    # MG_PRODDISH: позиция — рецепт ИЛИ продукт (с порцией в граммах).
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, null=True, blank=True)
+    product = models.ForeignKey(
+        "fridge.Product", on_delete=models.CASCADE, null=True, blank=True, related_name="constructed_meal_items"
+    )
+    grams = models.PositiveIntegerField(null=True, blank=True, help_text="Порция продукта-блюда, г (MG_PRODDISH).")
     quantity = models.DecimalField(max_digits=6, decimal_places=2, default=1)
 
     class Meta:
@@ -199,4 +209,4 @@ class ConstructedMealItem(models.Model):
         indexes = [models.Index(fields=["meal_id"])]
 
     def __str__(self):
-        return f"{self.recipe_id} x{self.quantity}"
+        return f"{self.recipe_id or ('product:%s' % self.product_id)} x{self.quantity}"

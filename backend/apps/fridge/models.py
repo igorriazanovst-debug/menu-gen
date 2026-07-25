@@ -47,6 +47,17 @@ class Product(models.Model):
     barcode = models.CharField(max_length=64, null=True, blank=True, unique=True)
     image_url = models.URLField(max_length=1024, null=True, blank=True)
     is_seed = models.BooleanField(default=False, help_text="True for built-in basic products")
+    # MG_PRODOWN: владелец продукта. NULL → «системный» продукт (каталог,
+    # управляется админами, виден всем). Задан → «пользовательский» продукт,
+    # виден только создателю. См. фильтрацию в views (product list/search).
+    owner = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="products",
+        help_text="NULL = системный продукт (админский каталог); иначе — пользовательский.",
+    )
     # MG_T04C: provenance — manual catalog vs auto-created from recipe ingredients.
     source = models.CharField(max_length=16, default="manual", help_text="manual|auto|import")
     # MG_RUBRIC001: rubricator metadata.
@@ -63,10 +74,42 @@ class Product(models.Model):
             models.Index(fields=["barcode"]),
             models.Index(fields=["category_fk"]),
             models.Index(fields=["is_seed"]),
+            models.Index(fields=["owner"]),  # MG_PRODOWN
         ]
 
     def __str__(self):
         return self.name
+
+    # MG_PRODDISH: КБЖУ порции продукта (в граммах) из значений на 100 г.
+    def nutrition_for_grams(self, grams):
+        factor = (float(grams) if grams else 0) / 100.0
+        n = self.nutrition if isinstance(self.nutrition, dict) else {}
+
+        def _scaled(*keys):
+            for k in keys:
+                v = n.get(k)
+                if v is not None:
+                    try:
+                        return round(float(v) * factor, 1)
+                    except (TypeError, ValueError):
+                        pass
+            return None
+
+        kcal = None
+        if self.calories_per_100g is not None:
+            try:
+                kcal = round(float(self.calories_per_100g) * factor)
+            except (TypeError, ValueError):
+                kcal = None
+        if kcal is None:
+            c = _scaled("calories", "kcal")
+            kcal = round(c) if c is not None else None
+        return {
+            "calories": kcal,
+            "proteins": _scaled("proteins", "protein"),
+            "fats": _scaled("fats", "fat"),
+            "carbs": _scaled("carbs", "carb"),
+        }
 
 
 class FridgeItem(models.Model):

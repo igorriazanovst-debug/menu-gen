@@ -73,12 +73,22 @@ export const fridgeApi = {
     return Array.isArray(data) ? data : (data.results ?? []);
   },
 
-  products: (params?: { category?: string | number; seed?: boolean }) => {
+  products: (params?: { category?: string | number; seed?: boolean; own?: boolean }) => {
     const query: Record<string, string> = {};
     if (params?.category != null) query.category = String(params.category);
     if (params?.seed) query.seed = '1';
+    if (params?.own) query.own = '1';
     return client.get<Product[]>('/fridge/products/', { params: query });
   },
+
+  // MG_PRODOWN: создать пользовательский продукт (owner=текущий, виден только ему).
+  createProduct: (data: {
+    name: string;
+    calories_per_100g?: number | null;
+    nutrition?: Record<string, number>;
+    category_id?: number | null;
+    default_unit?: string;
+  }) => client.post<Product>('/fridge/products/', data),
 
   history: (limit = 40) =>
     client.get<FridgeHistoryItem[]>('/fridge/products/history/', {

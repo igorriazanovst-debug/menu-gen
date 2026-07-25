@@ -598,7 +598,15 @@ def _build_shopping_list(shopping_list: ShoppingList, menu: Menu, family: Family
 
     fridge = {i.name.lower() for i in FridgeItem.objects.filter(family=family, is_deleted=False)}
     aggregated = defaultdict(lambda: {"quantity": 0, "unit": ""})
-    for menu_item in MenuItem.objects.filter(menu=menu).select_related("recipe"):
+    for menu_item in MenuItem.objects.filter(menu=menu).select_related("recipe", "product"):
+        # MG_PRODDISH: позиция-продукт (без рецепта) → продукт как отдельная строка.
+        if menu_item.recipe_id is None:
+            if menu_item.product_id and menu_item.product.name.lower() not in fridge:
+                key = menu_item.product.name.lower()
+                aggregated[key]["quantity"] += float(menu_item.grams or 0)
+                aggregated[key]["unit"] = "г"
+                aggregated[key]["name"] = menu_item.product.name
+            continue
         for ing in menu_item.recipe.ingredients:
             name = ing.get("name", "").strip()
             if not name or name.lower() in fridge:

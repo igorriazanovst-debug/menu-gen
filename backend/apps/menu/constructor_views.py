@@ -71,7 +71,9 @@ class ConstructedMenuDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ConstructedMenuSerializer
 
     def get_queryset(self):
-        return ConstructedMenu.objects.filter(author=self.request.user).prefetch_related("meals__items__recipe")
+        return ConstructedMenu.objects.filter(author=self.request.user).prefetch_related(
+            "meals__items__recipe", "meals__items__product__category_fk"
+        )
 
     def destroy(self, request, *args, **kwargs):
         super().destroy(request, *args, **kwargs)

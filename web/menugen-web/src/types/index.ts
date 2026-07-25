@@ -54,10 +54,20 @@ export interface User {
 export interface ConstructorRecipeMini {
   id: number; title: string; image_url?: string | null;
 }
+export interface ConstructorProductMini {
+  id: number; name: string; image_url?: string | null; category_name?: string | null;
+}
+export interface ConstructorItemNutrition {
+  calories?: number | null; proteins?: number | null; fats?: number | null; carbs?: number | null;
+}
 export interface ConstructedMealItem {
   id?: number;
-  recipe?: ConstructorRecipeMini;   // на чтение
+  recipe?: ConstructorRecipeMini;   // на чтение (позиция-рецепт)
   recipe_id?: number;               // на запись
+  product?: ConstructorProductMini; // на чтение (позиция-продукт)
+  product_id?: number;              // на запись
+  grams?: number | null;            // порция продукта, г
+  nutrition?: ConstructorItemNutrition | null; // КБЖУ продукта на порцию
   quantity: number;
 }
 export interface ConstructedMeal {
@@ -258,6 +268,7 @@ export interface Product {
   barcode?: string | null;
   image_url?: string | null;
   is_seed?: boolean;
+  is_own?: boolean;   // MG_PRODOWN: продукт создан текущим пользователем
 }
 export interface FridgeItem {
   id: number;

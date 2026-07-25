@@ -9,6 +9,7 @@ from .views import (
     FridgeItemDetailView,
     FridgeListCreateView,
     ProductCategoryListView,
+    ProductDetailView,
     ProductListView,
     ProductSearchView,
     RecognizePhotoView,
@@ -23,6 +24,7 @@ urlpatterns = [
     path("products/search/", ProductSearchView.as_view(), name="product-search"),
     path("products/history/", FridgeHistoryView.as_view(), name="fridge-history"),
     path("products/history/<str:name>/", FridgeHistoryEntryView.as_view(), name="fridge-history-entry"),
+    path("products/<int:pk>/", ProductDetailView.as_view(), name="product-detail"),  # MG_PRODOWN
     path("expired/delete/", FridgeExpiredBulkDeleteView.as_view(), name="fridge-expired-bulk-delete"),
     path("categories/", ProductCategoryListView.as_view(), name="product-categories"),
     path("recognize-photo/", RecognizePhotoView.as_view(), name="fridge-recognize-photo"),

@@ -5,9 +5,10 @@ from .models import FridgeItem, Product
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "category", "default_unit", "calories_per_100g", "barcode")
-    search_fields = ("name", "barcode")
-    list_filter = ("category",)
+    list_display = ("id", "name", "category", "default_unit", "calories_per_100g", "barcode", "is_seed", "owner")
+    search_fields = ("name", "barcode", "owner__email", "owner__name")
+    list_filter = ("is_seed", "category")
+    raw_id_fields = ("owner", "category_fk")
 
 
 @admin.register(FridgeItem)

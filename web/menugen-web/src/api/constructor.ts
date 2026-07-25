@@ -20,7 +20,12 @@ export interface ConstructedMenuPayload {
     target_protein?: string | number | null;
     target_fat?: string | number | null;
     target_carbs?: string | number | null;
-    items: { recipe_id: number; quantity: number }[];
+    items: {
+      recipe_id?: number;
+      product_id?: number;
+      grams?: number | null;
+      quantity: number;
+    }[];
   }[];
 }
 

@@ -7,6 +7,7 @@
 
 from rest_framework import serializers
 
+from apps.fridge.models import Product
 from apps.recipes.models import Recipe
 
 from .models import ConstructedMeal, ConstructedMealItem, ConstructedMenu
@@ -18,14 +19,45 @@ class _RecipeMiniSerializer(serializers.ModelSerializer):
         fields = ("id", "title", "image_url")
 
 
+class _ProductMiniSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category_fk.name_ru", read_only=True, default=None)
+
+    class Meta:
+        model = Product
+        fields = ("id", "name", "image_url", "category_name")
+
+
 class ConstructedMealItemSerializer(serializers.ModelSerializer):
-    # на запись — id рецепта, на чтение — краткая карточка
+    # Позиция приёма: рецепт ИЛИ продукт (с порцией в граммах). MG_PRODDISH.
     recipe = _RecipeMiniSerializer(read_only=True)
-    recipe_id = serializers.PrimaryKeyRelatedField(queryset=Recipe.objects.all(), source="recipe", write_only=True)
+    recipe_id = serializers.PrimaryKeyRelatedField(
+        queryset=Recipe.objects.all(), source="recipe", write_only=True, required=False, allow_null=True
+    )
+    product = _ProductMiniSerializer(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), source="product", write_only=True, required=False, allow_null=True
+    )
+    # КБЖУ продукта-блюда на заданную порцию (для рецепта — null, берётся из рецепта).
+    nutrition = serializers.SerializerMethodField()
 
     class Meta:
         model = ConstructedMealItem
-        fields = ("id", "recipe", "recipe_id", "quantity")
+        fields = ("id", "recipe", "recipe_id", "product", "product_id", "grams", "quantity", "nutrition")
+
+    def get_nutrition(self, obj):
+        if obj.product_id and obj.grams:
+            return obj.product.nutrition_for_grams(obj.grams)
+        return None
+
+    def validate(self, attrs):
+        # Ровно один источник: рецепт ИЛИ продукт.
+        recipe = attrs.get("recipe")
+        product = attrs.get("product")
+        if bool(recipe) == bool(product):
+            raise serializers.ValidationError("Укажите либо рецепт, либо продукт (ровно одно).")
+        if product and not attrs.get("grams"):
+            raise serializers.ValidationError("Для продукта-блюда укажите порцию в граммах.")
+        return attrs
 
 
 class ConstructedMealSerializer(serializers.ModelSerializer):
@@ -70,7 +102,16 @@ class ConstructedMenuSerializer(serializers.ModelSerializer):
             items = m.pop("items", [])
             meal = ConstructedMeal.objects.create(menu=menu, **m)
             ConstructedMealItem.objects.bulk_create(
-                [ConstructedMealItem(meal=meal, recipe=it["recipe"], quantity=it.get("quantity", 1)) for it in items]
+                [
+                    ConstructedMealItem(
+                        meal=meal,
+                        recipe=it.get("recipe"),
+                        product=it.get("product"),
+                        grams=it.get("grams"),
+                        quantity=it.get("quantity", 1),
+                    )
+                    for it in items
+                ]
             )
 
     def create(self, validated_data):

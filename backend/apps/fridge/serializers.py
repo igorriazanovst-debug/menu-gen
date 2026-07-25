@@ -21,6 +21,8 @@ class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category_fk.name_ru", read_only=True, default=None)
     category_icon = serializers.CharField(source="category_fk.icon", read_only=True, default=None)
     category_color = serializers.CharField(source="category_fk.color", read_only=True, default=None)
+    # MG_PRODOWN: продукт пользователя (owner==текущий) vs системный (owner is null).
+    is_own = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -39,6 +41,38 @@ class ProductSerializer(serializers.ModelSerializer):
             "barcode",
             "image_url",
             "is_seed",
+            "is_own",
+        )
+
+    def get_is_own(self, obj) -> bool:
+        req = self.context.get("request")
+        return bool(req and obj.owner_id and req.user.is_authenticated and obj.owner_id == req.user.id)
+
+
+class UserProductWriteSerializer(serializers.ModelSerializer):
+    """MG_PRODOWN: создание/редактирование пользовательского продукта.
+
+    owner проставляется во view (текущий пользователь). Системные продукты
+    (owner is null) через этот сериализатор не редактируются — вью это гейтит.
+    """
+
+    category_id = serializers.PrimaryKeyRelatedField(
+        source="category_fk",
+        queryset=ProductCategory.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+
+    class Meta:
+        model = Product
+        fields = (
+            "id",
+            "name",
+            "category_id",
+            "default_unit",
+            "calories_per_100g",
+            "nutrition",
+            "image_url",
         )
 
 
