@@ -29,6 +29,10 @@ REPO=/opt/menugen
 BRANCH=${BRANCH:-claude/nifty-rubin-h90pfg}
 WT=/tmp/mg-backend-build           # изолированная копия ветки (worktree)
 TS=$(date +%Y%m%d_%H%M%S)
+# URL для health-check после рестарта. dev/старый: nginx на :8081. Прод
+# (menugen.ru): nginx на 80/443, backend напрямую на 127.0.0.1:8003 —
+# переопредели:  HEALTH_URL=http://127.0.0.1:8003/api/v1/ BRANCH=main ...
+HEALTH_URL=${HEALTH_URL:-http://127.0.0.1:8081/api/v1/}
 
 cd "$REPO"
 
@@ -119,7 +123,7 @@ echo "==> 7. Health-check API"
 code="000"
 for _ in $(seq 1 20); do
   sleep 2
-  code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081/api/v1/" || echo "000")
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo "000")
   # Любой ответ кроме 000/5xx означает, что Django поднялся (401/404/200 — ок).
   if [ "$code" != "000" ] && [ "${code:0:1}" != "5" ]; then
     break

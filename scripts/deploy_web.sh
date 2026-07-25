@@ -10,6 +10,9 @@ BRANCH=${BRANCH:-claude/nifty-rubin-h90pfg}   # ветку фронта можн
 WT=/tmp/mg-web-build                          # изолированная копия ветки (worktree)
 WT_SRC=$WT/web/menugen-web
 TS=$(date +%Y%m%d_%H%M%S)
+# URL для финальной проверки, что nginx отдаёт свежий бандл. dev/старый: :8081.
+# Прод (menugen.ru): nginx на 80 — переопредели WEB_URL=http://127.0.0.1 ...
+WEB_URL=${WEB_URL:-http://127.0.0.1:8081}
 
 cd "$REPO"
 MAINBR=$(git rev-parse --abbrev-ref HEAD)
@@ -83,5 +86,5 @@ nginx -t && nginx -s reload
 
 echo "==> ГОТОВО. В браузере: Ctrl+Shift+R"
 echo "    nginx отдаёт:"
-curl -sH 'Cache-Control: no-cache' "http://127.0.0.1:8081/?nocache=$(date +%s)" \
+curl -sH 'Cache-Control: no-cache' "$WEB_URL/?nocache=$(date +%s)" \
   | grep -oE 'src="[^"]*\.js[^"]*"' || true
