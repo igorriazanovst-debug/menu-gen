@@ -64,6 +64,51 @@ def _normalize_off_product(raw: dict) -> Optional[dict]:
     }
 
 
+def fetch_off_image_url(barcode: Optional[str] = None, name: Optional[str] = None) -> Optional[str]:
+    """MG_OFFIMG: URL изображения продукта из OpenFoodFacts (свободно к использованию).
+
+    Сначала пробуем по штрих-коду (точный товар), затем — поиском по названию
+    (для продуктов без штрих-кода, напр. овощи/фрукты). Возвращает URL или None.
+    """
+    base = getattr(settings, "OPENFOODFACTS_BASE_URL", "https://world.openfoodfacts.org")
+    timeout = getattr(settings, "OPENFOODFACTS_TIMEOUT", 4.0)
+    ua = getattr(settings, "OPENFOODFACTS_USER_AGENT", "MenuGen/1.0")
+    headers = {"User-Agent": ua}
+
+    def _pick(prod: dict) -> Optional[str]:
+        img = prod.get("image_front_url") or prod.get("image_url") or prod.get("image_small_url")
+        return img[:1024] if img else None
+
+    if barcode:
+        try:
+            r = requests.get(f"{base}/api/v2/product/{barcode}.json", headers=headers, timeout=timeout)
+            if r.status_code == 200:
+                img = _pick((r.json() or {}).get("product") or {})
+                if img:
+                    return img
+        except (requests.RequestException, ValueError) as e:
+            logger.warning("OFF image by barcode=%s failed: %s", barcode, e)
+
+    if name:
+        try:
+            params = {
+                "search_terms": name,
+                "json": 1,
+                "page_size": 5,
+                "fields": "image_front_url,image_url,image_small_url,product_name",
+            }
+            r = requests.get(f"{base}/cgi/search.pl", params=params, headers=headers, timeout=timeout)
+            if r.status_code == 200:
+                for prod in (r.json() or {}).get("products", []) or []:
+                    img = _pick(prod)
+                    if img:
+                        return img
+        except (requests.RequestException, ValueError) as e:
+            logger.warning("OFF image search name=%s failed: %s", name, e)
+
+    return None
+
+
 def fetch_product_from_off(barcode: str) -> Optional[Product]:
     # MENUGEN_BARCODE_FETCH: OFF lookup + category_fk mapping + GPT fallbacks.
     base = getattr(settings, "OPENFOODFACTS_BASE_URL", "https://world.openfoodfacts.org")

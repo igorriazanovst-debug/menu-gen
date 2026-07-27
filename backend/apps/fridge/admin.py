@@ -61,6 +61,35 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "category")
     raw_id_fields = ("owner", "category_fk")
     readonly_fields = ("image_preview",)
+    actions = ("fetch_off_images_fill", "fetch_off_images_overwrite")
+
+    def _fetch_off_images(self, request, queryset, overwrite):
+        from .services import fetch_off_image_url
+
+        updated = missed = skipped = 0
+        for p in queryset:
+            if p.image_url and not overwrite:
+                skipped += 1
+                continue
+            img = fetch_off_image_url(barcode=p.barcode or None, name=p.name)
+            if img:
+                p.image_url = img
+                p.save(update_fields=["image_url"])
+                updated += 1
+            else:
+                missed += 1
+        self.message_user(
+            request,
+            f"OpenFoodFacts: обновлено {updated}, без результата {missed}, пропущено (уже с фото) {skipped}.",
+        )
+
+    @admin.action(description="Загрузить фото из OpenFoodFacts (только без фото)")
+    def fetch_off_images_fill(self, request, queryset):
+        self._fetch_off_images(request, queryset, overwrite=False)
+
+    @admin.action(description="Загрузить фото из OpenFoodFacts (перезаписать)")
+    def fetch_off_images_overwrite(self, request, queryset):
+        self._fetch_off_images(request, queryset, overwrite=True)
 
     @admin.display(description="Тип")
     def kind(self, obj):
