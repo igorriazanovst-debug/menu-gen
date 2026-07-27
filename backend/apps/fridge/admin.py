@@ -1,3 +1,6 @@
+import os
+
+from django.conf import settings
 from django.contrib import admin
 from django.db.models import Q
 from django.utils.html import format_html
@@ -61,7 +64,30 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "category")
     raw_id_fields = ("owner", "category_fk")
     readonly_fields = ("image_preview",)
-    actions = ("fetch_images_fill", "fetch_images_overwrite")
+    actions = ("fetch_images_fill", "fetch_images_overwrite", "clear_images")
+
+    def _maybe_delete_local_file(self, image_url):
+        """Удалить локальный файл, если URL указывает на наш media/product_images."""
+        if not image_url or "/media/product_images/" not in image_url:
+            return
+        try:
+            rel = image_url.split("/media/", 1)[1]  # product_images/xxx.jpg
+            path = os.path.join(settings.MEDIA_ROOT, rel)
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError:
+            pass
+
+    @admin.action(description="Удалить фото у выбранных продуктов")
+    def clear_images(self, request, queryset):
+        cleared = 0
+        for p in queryset:
+            if p.image_url:
+                self._maybe_delete_local_file(p.image_url)
+                p.image_url = None
+                p.save(update_fields=["image_url"])
+                cleared += 1
+        self.message_user(request, f"Фото удалено у {cleared} продуктов.")
 
     def _fetch_images(self, request, queryset, overwrite):
         from .services import fetch_product_image_url
