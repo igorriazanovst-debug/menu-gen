@@ -6,6 +6,7 @@ import datetime
 import logging
 import os
 import uuid
+from functools import lru_cache
 from typing import Optional
 
 import requests
@@ -148,16 +149,96 @@ def fetch_pixabay_image_url(query: str) -> Optional[str]:
     return None
 
 
+@lru_cache(maxsize=4096)
+def translate_product_name_to_en(name: str) -> str:
+    """MG_OFFIMG: RU→EN название продукта (для релевантного поиска фото).
+
+    Использует AI-клиент проекта. Кэшируется в процессе. При ошибке/недоступности
+    возвращает исходное имя (тогда поиск идёт по нему).
+    """
+    q = (name or "").strip()
+    if not q:
+        return q
+    try:
+        from apps.common.ai_provider import get_ai_client
+
+        system = (
+            "Translate the food product name to English. "
+            "Answer with ONLY a short lowercase noun phrase, no quotes, no explanation."
+        )
+        raw = get_ai_client().complete(prompt=q, system=system, max_tokens=12, temperature=0.0)
+        en = (raw or "").strip().splitlines()[0].strip().strip("\"'. ")
+        if en and all(ord(c) < 128 for c in en) and len(en) <= 40:
+            return en.lower()
+    except Exception as e:  # перевод не критичен — тихо откатываемся на исходное имя
+        logger.warning("translate '%s' failed: %s", q, e)
+    return q
+
+
+def fetch_wikimedia_image_url(query: str) -> Optional[str]:
+    """MG_OFFIMG: фото продукта из Wikimedia Commons (CC) + self-host.
+
+    Ищем файлы (namespace 6) по запросу, берём первый растровый (jpeg/png/webp),
+    скачиваем масштабированный thumb к себе.
+    """
+    if not query:
+        return None
+    ua = getattr(settings, "OPENFOODFACTS_USER_AGENT", "MenuGen/1.0")
+    timeout = getattr(settings, "OPENVERSE_TIMEOUT", 15.0)
+    params = {
+        "action": "query",
+        "format": "json",
+        "generator": "search",
+        "gsrsearch": query,
+        "gsrnamespace": 6,
+        "gsrlimit": 10,
+        "prop": "imageinfo",
+        "iiprop": "url|mime",
+        "iiurlwidth": 800,
+    }
+    try:
+        r = requests.get(
+            "https://commons.wikimedia.org/w/api.php", params=params, headers={"User-Agent": ua}, timeout=timeout
+        )
+    except (requests.RequestException, ValueError) as e:
+        logger.warning("Wikimedia search q=%s failed: %s", query, e)
+        return None
+    if r.status_code != 200:
+        logger.warning("Wikimedia status=%s for q=%s", r.status_code, query)
+        return None
+    pages = ((r.json() or {}).get("query") or {}).get("pages") or {}
+    for p in sorted(pages.values(), key=lambda x: x.get("index", 1_000_000)):
+        info = (p.get("imageinfo") or [{}])[0]
+        if info.get("mime") not in ("image/jpeg", "image/png", "image/webp"):
+            continue
+        src = info.get("thumburl") or info.get("url")
+        local = download_image_to_media(src) if src else None
+        if local:
+            return local
+    return None
+
+
 def fetch_product_image_url(name: str) -> Optional[str]:
     """MG_OFFIMG: единая точка получения фото продукта.
 
-    Pixabay (если задан ключ) — приоритетно (качество), иначе Openverse.
+    По умолчанию (PRODUCT_IMAGE_SOURCE=wikimedia): Wikimedia Commons по
+    английскому названию (перевод RU→EN), фолбэк — Openverse. Pixabay блокируется
+    сетью части серверов, поэтому в цепочку по умолчанию не входит (можно включить
+    PRODUCT_IMAGE_SOURCE=pixabay).
     """
-    if getattr(settings, "PIXABAY_API_KEY", ""):
+    source = getattr(settings, "PRODUCT_IMAGE_SOURCE", "wikimedia")
+    if source == "pixabay":
         url = fetch_pixabay_image_url(name)
         if url:
             return url
-    return fetch_openverse_image_url(name)
+
+    en = translate_product_name_to_en(name)
+    queries = [en] + ([name] if name and name != en else [])
+    for q in queries:
+        url = fetch_wikimedia_image_url(q)
+        if url:
+            return url
+    return fetch_openverse_image_url(en or name)
 
 
 def fetch_openverse_image_url(query: str) -> Optional[str]:

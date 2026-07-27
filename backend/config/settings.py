@@ -131,8 +131,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = config("MEDIA_URL", default="/media/")
 MEDIA_ROOT = BASE_DIR / "media"
 
-# MG_OFFIMG: источник фото продуктов. Pixabay (нужен бесплатный ключ) даёт
-# качественные фуд-фото (фильтр category=food); без ключа — фолбэк на Openverse.
+# MG_OFFIMG: источник фото продуктов.
+#   wikimedia (по умолчанию) — Wikimedia Commons по англ. названию (перевод
+#     RU→EN через AI), фолбэк Openverse. Достижим с серверов, где Pixabay блокируется.
+#   pixabay — качественный сток (category=food), но требует ключ И сетевой доступ
+#     к pixabay.com (на части серверов заблокирован).
+PRODUCT_IMAGE_SOURCE = config("PRODUCT_IMAGE_SOURCE", default="wikimedia")
 PIXABAY_API_KEY = config("PIXABAY_API_KEY", default="")
 PIXABAY_LANG = config("PIXABAY_LANG", default="ru")
 
