@@ -106,6 +106,24 @@ export interface ConstructedMenuListItem {
   updated_at: string;
 }
 export interface ConstructorClient { id: number; name: string; }
+
+// ── MG_LEGAL: реквизиты + оферта + логотип ───────────────────────────────────
+export interface LegalInfo {
+  company_name: string;
+  inn: string;
+  ogrnip: string;
+  legal_address: string;
+  email: string;
+  phone: string;
+  bank_name: string;
+  bank_bik: string;
+  bank_account: string;
+  corr_account: string;
+  requisites_extra: string;
+  offer_text: string;
+  logo_url: string | null;
+  updated_at: string;
+}
 export interface Ingredient { name: string; quantity?: string; unit?: string; }
 export interface RecipeStep { text: string; photo?: string; }
 export interface NutritionValue { value: string; unit: string; }

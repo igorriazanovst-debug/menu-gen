@@ -77,7 +77,7 @@ export const Sidebar: React.FC = () => {
         )}
       </nav>
 
-      {/* Logout */}
+      {/* Logout + юридические ссылки */}
       <div className="px-3 py-4 border-t border-white/10">
         <button
           onClick={() => dispatch(logout())}
@@ -85,6 +85,11 @@ export const Sidebar: React.FC = () => {
         >
           <span>🚪</span> Выйти
         </button>
+        {/* MG_LEGAL */}
+        <div className="mt-2 px-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-sidebar-muted">
+          <NavLink to="/requisites" className="hover:text-sidebar-fg">Реквизиты</NavLink>
+          <NavLink to="/offer" className="hover:text-sidebar-fg">Оферта</NavLink>
+        </div>
       </div>
     </aside>
   );

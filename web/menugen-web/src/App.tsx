@@ -21,6 +21,8 @@ import { SubscriptionsPage } from './pages/Subscriptions/SubscriptionsPage';
 import { ProfilePage }       from './pages/Profile/ProfilePage';
 import { KBJUCalculatorPage } from './pages/Profile/KBJUCalculatorPage'; // MG_206_V_app_route
 import { ConstructorPage }    from './pages/Constructor/ConstructorPage'; // MG_CONSTRUCTOR
+import { RequisitesPage }     from './pages/Legal/RequisitesPage'; // MG_LEGAL
+import { OfferPage }          from './pages/Legal/OfferPage'; // MG_LEGAL
 import { SpecialistDashboardPage } from './pages/specialist/SpecialistDashboardPage';
 import { SpecialistRegisterPage }  from './pages/specialist/SpecialistRegisterPage';
 import { ClientDetailPage }        from './pages/specialist/ClientDetailPage';
@@ -68,6 +70,9 @@ const AppRoutes: React.FC = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      {/* MG_LEGAL: публичные юридические страницы (без авторизации) */}
+      <Route path="/requisites" element={<RequisitesPage />} />
+      <Route path="/offer" element={<OfferPage />} />
       <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
         <Route index element={<HomeRedirect />} />
         <Route path="dashboard"     element={<PremiumRoute><DashboardPage /></PremiumRoute>} />
