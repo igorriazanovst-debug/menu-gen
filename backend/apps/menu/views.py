@@ -131,7 +131,7 @@ def _recipe_calories(recipe):
 def _menu_snapshot(menu):
     # MG_602_V_views: добавлены meal_slot, component_role, is_cheat_meal для корректного restore
     items = []
-    for item in MenuItem.objects.filter(menu=menu).select_related("recipe", "member__user"):
+    for item in MenuItem.objects.filter(menu=menu).select_related("recipe", "product", "member__user"):
         items.append(
             {
                 "id": item.id,
@@ -141,7 +141,10 @@ def _menu_snapshot(menu):
                 "component_role": item.component_role,
                 "is_cheat_meal": item.is_cheat_meal,
                 "recipe_id": item.recipe_id,
-                "recipe_title": item.recipe.title,
+                "recipe_title": item.recipe.title if item.recipe_id else (item.product.name if item.product_id else ""),
+                # MG_PRODDISH: позиция-продукт
+                "product_id": item.product_id,
+                "grams": item.grams,
                 "member_id": item.member_id,
                 "quantity": str(item.quantity),
             }
@@ -285,7 +288,9 @@ class MenuGenerateView(APIView):
 
                     _mg505_mark_cheat_meal_used(m, start_date + _mg505_td(days=last_day))
 
-        menu_full = Menu.objects.prefetch_related("items__recipe", "items__member__user").get(id=menu.id)
+        menu_full = Menu.objects.prefetch_related(
+            "items__recipe", "items__product__category_fk", "items__member__user"
+        ).get(id=menu.id)
         return Response(
             MenuDetailSerializer(menu_full, context={"request": request}).data, status=status.HTTP_201_CREATED
         )
@@ -319,7 +324,9 @@ class MenuDetailView(generics.RetrieveAPIView):
         family = _get_family(self.request.user)
         if not family:
             return Menu.objects.none()
-        return Menu.objects.filter(family=family).prefetch_related("items__recipe", "items__member__user")
+        return Menu.objects.filter(family=family).prefetch_related(
+            "items__recipe", "items__product__category_fk", "items__member__user"
+        )
 
 
 class MenuDeleteView(APIView):
@@ -408,11 +415,22 @@ class MenuRestoreView(APIView):
             )
             for item in snap.get("items", []):
                 try:
-                    recipe = Recipe.objects.get(id=item["recipe_id"])
                     member = FamilyMember.objects.filter(id=item.get("member_id")).first()
+                    # MG_PRODDISH: позиция-продукт восстанавливается как продукт.
+                    if item.get("product_id"):
+                        from apps.fridge.models import Product
+
+                        product = Product.objects.filter(id=item["product_id"]).first()
+                        if not product:
+                            continue
+                        recipe, prod, grams = None, product, item.get("grams")
+                    else:
+                        recipe, prod, grams = Recipe.objects.get(id=item["recipe_id"]), None, None
                     MenuItem.objects.create(
                         menu=menu,
                         recipe=recipe,
+                        product=prod,
+                        grams=grams,
                         member=member,
                         meal_type=item["meal_type"],
                         meal_slot=item.get("meal_slot", item["meal_type"]),
@@ -424,7 +442,9 @@ class MenuRestoreView(APIView):
                     pass
             deleted.delete()
 
-        menu_full = Menu.objects.prefetch_related("items__recipe", "items__member__user").get(id=menu.id)
+        menu_full = Menu.objects.prefetch_related(
+            "items__recipe", "items__product__category_fk", "items__member__user"
+        ).get(id=menu.id)
         return Response(
             MenuDetailSerializer(menu_full, context={"request": request}).data, status=status.HTTP_201_CREATED
         )
@@ -487,19 +507,57 @@ class MenuItemSwapView(APIView):
 
         try:
             menu = Menu.objects.get(id=menu_id, family=family)
-            item = MenuItem.objects.select_related("recipe").get(id=item_id, menu=menu)
+            item = MenuItem.objects.select_related("recipe", "product").get(id=item_id, menu=menu)
         except (Menu.DoesNotExist, MenuItem.DoesNotExist):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
         serializer = MenuItemSwapSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # MG_PRODDISH: замена на ПРОДУКТ (с порцией в граммах).
+        if data.get("product_id"):
+            from django.db.models import Q
+
+            from apps.fridge.models import Product
+
+            try:
+                product = Product.objects.filter(Q(owner__isnull=True) | Q(owner=request.user)).get(
+                    id=data["product_id"]
+                )
+            except Product.DoesNotExist:
+                return Response({"detail": "Продукт не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+            item.recipe = None
+            item.product = product
+            item.grams = data["grams"]
+            item.save(update_fields=["recipe", "product", "grams"])
+            menu.modified_by = Menu.ModifiedBy.USER
+            menu.save(update_fields=["modified_by", "updated_at"])
+
+            cal = product.nutrition_for_grams(item.grams).get("calories") or 0
+            calorie_warning = False
+            filters = menu.filters_used or {}
+            if filters.get("calorie_min") and cal > 0 and cal < float(filters["calorie_min"]) / 4:
+                calorie_warning = True
+            if filters.get("calorie_max") and cal > 0 and cal > float(filters["calorie_max"]) / 4:
+                calorie_warning = True
+            return Response(
+                {
+                    "allergen_warning": False,
+                    "allergens_found": [],
+                    "calorie_warning": calorie_warning,
+                    "recipe_calories": cal,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         try:
-            recipe = Recipe.objects.get(id=serializer.validated_data["recipe_id"], is_published=True)
+            recipe = Recipe.objects.get(id=data["recipe_id"], is_published=True)
         except Recipe.DoesNotExist:
             return Response({"detail": "Рецепт не найден."}, status=status.HTTP_404_NOT_FOUND)
 
-        # MG-402: запрещаем swap на рецепт другой food_group
+        # MG-402: запрещаем swap на рецепт другой food_group (только рецепт→рецепт)
         original_fg = getattr(item.recipe, "food_group", None)
         new_fg = getattr(recipe, "food_group", None)
         if original_fg and new_fg and original_fg != new_fg:
@@ -509,7 +567,9 @@ class MenuItemSwapView(APIView):
             )
 
         item.recipe = recipe
-        item.save(update_fields=["recipe"])
+        item.product = None
+        item.grams = None
+        item.save(update_fields=["recipe", "product", "grams"])
         menu.modified_by = Menu.ModifiedBy.USER
         menu.save(update_fields=["modified_by", "updated_at"])
 

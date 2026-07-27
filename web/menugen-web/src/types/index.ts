@@ -182,6 +182,9 @@ export interface MenuItem {
   component_role?: ComponentRole;
   recipe: Recipe; member?: number | null; member_name?: string; quantity: number; // MG_FAMILYGEN: member
   is_cheat_meal?: boolean; // MG_505_V_types
+  // MG_PRODDISH: позиция-продукт (recipe тогда синтетический, с флагом is_product)
+  product?: { id: number; name: string; image_url?: string | null; category_name?: string | null } | null;
+  grams?: number | null;
 }
 export interface Menu {
   creator_name?: string; // MG_B09

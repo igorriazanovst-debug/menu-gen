@@ -40,8 +40,21 @@ class GenerateMenuSerializer(serializers.Serializer):
     )
 
 
+class _ProductDishMiniSerializer(serializers.Serializer):
+    """MG_PRODDISH: краткая карточка продукта-блюда (для веба)."""
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    image_url = serializers.CharField(allow_null=True, required=False)
+    category_name = serializers.CharField(source="category_fk.name_ru", allow_null=True, required=False, default=None)
+
+
 class MenuItemSerializer(serializers.ModelSerializer):
-    recipe = RecipeListSerializer(read_only=True)
+    # MG_PRODDISH: позиция — рецепт ИЛИ продукт. Для обратной совместимости
+    # клиентов (в т.ч. мобильного) продукт отдаётся ещё и как «синтетический»
+    # recipe-объект (title/nutrition/image), а сырые product/grams — доп. полями.
+    recipe = serializers.SerializerMethodField()
+    product = serializers.SerializerMethodField()
     member_name = serializers.CharField(source="member.user.name", read_only=True, default=None)
     member = serializers.IntegerField(source="member_id", read_only=True, default=None)  # MG_FAMILYGEN
 
@@ -54,15 +67,67 @@ class MenuItemSerializer(serializers.ModelSerializer):
             "meal_slot",
             "component_role",
             "recipe",
+            "product",
+            "grams",
             "member",
             "member_name",
             "quantity",
             "is_cheat_meal",
         )
 
+    def get_recipe(self, obj):
+        if obj.recipe_id:
+            return RecipeListSerializer(obj.recipe, context=self.context).data
+        if obj.product_id:
+            return self._synthetic_recipe(obj)
+        return None
+
+    def get_product(self, obj):
+        if not obj.product_id:
+            return None
+        return _ProductDishMiniSerializer(obj.product).data
+
+    def _synthetic_recipe(self, obj):
+        """Продукт-блюдо в форме recipe-объекта — чтобы старые клиенты его рисовали."""
+        p = obj.product
+        n = p.nutrition_for_grams(obj.grams)
+
+        def _nv(v, unit):
+            return {"value": str(v), "unit": unit} if v is not None else None
+
+        nutrition = {
+            k: v
+            for k, v in {
+                "calories": _nv(n["calories"], "ккал"),
+                "proteins": _nv(n["proteins"], "г"),
+                "fats": _nv(n["fats"], "г"),
+                "carbs": _nv(n["carbs"], "г"),
+            }.items()
+            if v is not None
+        }
+        return {
+            "id": None,
+            "title": p.name,
+            "image_url": p.image_url or None,
+            "nutrition": nutrition,
+            "categories": [p.category_fk.name_ru] if p.category_fk_id else [],
+            "is_custom": True,
+            "is_product": True,  # маркер, что это продукт-блюдо
+        }
+
 
 class MenuItemSwapSerializer(serializers.Serializer):
-    recipe_id = serializers.IntegerField()
+    # Замена позиции: рецепт ИЛИ продукт (с порцией в граммах). MG_PRODDISH.
+    recipe_id = serializers.IntegerField(required=False)
+    product_id = serializers.IntegerField(required=False)
+    grams = serializers.IntegerField(required=False, min_value=1)
+
+    def validate(self, attrs):
+        if bool(attrs.get("recipe_id")) == bool(attrs.get("product_id")):
+            raise serializers.ValidationError("Укажите либо recipe_id, либо product_id (ровно одно).")
+        if attrs.get("product_id") and not attrs.get("grams"):
+            raise serializers.ValidationError("Для продукта укажите порцию в граммах (grams).")
+        return attrs
 
 
 class MenuListSerializer(serializers.ModelSerializer):

@@ -71,3 +71,13 @@ export async function swapMenuItem(menuId: number, itemId: number, recipeId: num
   );
   return data;
 }
+
+// MG_PRODDISH: заменить позицию меню на ПРОДУКТ (с порцией в граммах).
+export async function swapMenuItemProduct(
+  menuId: number, itemId: number, productId: number, grams: number,
+) {
+  const { data } = await client.patch<SwapResult>(
+    `/menu/${menuId}/items/${itemId}/`, { product_id: productId, grams },
+  );
+  return data;
+}

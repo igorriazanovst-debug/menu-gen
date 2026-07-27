@@ -338,8 +338,8 @@ class DiaryImportFromMenuView(APIView):
 
         # MenuItem'ы: только те, что для target (или общие — member IS NULL).
         items_qs = MenuItem.objects.filter(menu=menu).filter(member__in=[target]).select_related(
-            "recipe"
-        ) | MenuItem.objects.filter(menu=menu, member__isnull=True).select_related("recipe")
+            "recipe", "product"
+        ) | MenuItem.objects.filter(menu=menu, member__isnull=True).select_related("recipe", "product")
         items_qs = items_qs.distinct()
         # FILL_FROM_MENU_V4: if a subset was requested, keep only those MenuItems.
         if sel_item_ids:
@@ -354,6 +354,13 @@ class DiaryImportFromMenuView(APIView):
                 # Идемпотентность через UNIQUE на planned_menu_item.
                 # DIARY_MULTIDAY: день меню → реальная дата = старт + day_offset.
                 entry_date = plan_date + timedelta(days=mi.day_offset or 0)
+                # MG_PRODDISH: позиция-продукт → имя и КБЖУ берём из продукта.
+                if mi.product_id and not mi.recipe_id:
+                    custom_name = mi.product.name
+                    nutrition = mi.product.nutrition_for_grams(mi.grams)
+                else:
+                    custom_name = ""
+                    nutrition = getattr(mi.recipe, "nutrition", {}) or {}
                 entry, was_created = DiaryEntry.objects.get_or_create(
                     planned_menu_item=mi,
                     defaults={
@@ -361,8 +368,8 @@ class DiaryImportFromMenuView(APIView):
                         "date": entry_date,
                         "meal_type": mi.meal_type,
                         "recipe": mi.recipe,
-                        "custom_name": "",
-                        "nutrition": getattr(mi.recipe, "nutrition", {}) or {},
+                        "custom_name": custom_name,
+                        "nutrition": nutrition,
                         "quantity": mi.quantity,
                         "is_eaten": False,
                         "is_planned": True,  # DIARY_COPY_V3

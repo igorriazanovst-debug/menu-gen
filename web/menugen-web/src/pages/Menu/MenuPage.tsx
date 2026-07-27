@@ -2,7 +2,9 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { menuApi } from '../../api/menu';
 import type { DeletedMenu, SwapResult } from '../../api/menu';
 import { recipesApi } from '../../api/recipes';
-import { swapMenuItem } from '../../api/menu'; // MG-402
+import { fridgeApi } from '../../api/fridge'; // MG_PRODDISH: поиск продуктов
+import { swapMenuItem, swapMenuItemProduct } from '../../api/menu'; // MG-402 / MG_PRODDISH
+import type { Product } from '../../types';
 import { useAppSelector, useAppDispatch } from '../../hooks/useAppDispatch';
 import { initAuth } from '../../store/slices/authSlice'; // Freemium: refresh quota after generate
 import { Card } from '../../components/ui/Card';
@@ -80,28 +82,40 @@ interface SwapInlineProps {
 
 const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, currentRecipeId, onSwapped }) => {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'recipe' | 'product'>('recipe'); // MG_PRODDISH
   const [search, setSearch] = useState('');
   const [items, setItems] = useState<{ id: number; title: string }[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [pickedProduct, setPickedProduct] = useState<Product | null>(null);
+  const [grams, setGrams] = useState('100');
 
   useEffect(() => {
     if (!open) return;
     let cancel = false;
     setLoading(true); setErr(null);
-    const params: any = { page_size: 25 };
-    if (search) params.search = search;
-    if (foodGroup) params.food_group = foodGroup;
-    recipesApi.list(params)
-      .then(res => {
-        if (cancel) return;
-        const list = (res.data.results || []).filter((r: any) => r.id !== currentRecipeId);
-        setItems(list);
-      })
-      .catch(() => { if (!cancel) setErr('Не удалось загрузить рецепты'); })
-      .finally(() => { if (!cancel) setLoading(false); });
+    if (mode === 'recipe') {
+      const params: any = { page_size: 25 };
+      if (search) params.search = search;
+      if (foodGroup) params.food_group = foodGroup;
+      recipesApi.list(params)
+        .then(res => {
+          if (cancel) return;
+          const list = (res.data.results || []).filter((r: any) => r.id !== currentRecipeId);
+          setItems(list);
+        })
+        .catch(() => { if (!cancel) setErr('Не удалось загрузить рецепты'); })
+        .finally(() => { if (!cancel) setLoading(false); });
+    } else {
+      if (search.trim().length < 2) { setProducts([]); setLoading(false); return; }
+      fridgeApi.searchProducts(search.trim())
+        .then(list => { if (!cancel) setProducts(list); })
+        .catch(() => { if (!cancel) setErr('Не удалось загрузить продукты'); })
+        .finally(() => { if (!cancel) setLoading(false); });
+    }
     return () => { cancel = true; };
-  }, [open, search, foodGroup, currentRecipeId]);
+  }, [open, search, foodGroup, currentRecipeId, mode]);
 
   const handlePick = async (recipeId: number) => {
     setErr(null);
@@ -113,6 +127,22 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
       setErr(e?.response?.data?.detail || 'Ошибка замены');
     }
   };
+
+  const handlePickProduct = async () => {
+    if (!pickedProduct) return;
+    setErr(null);
+    try {
+      await swapMenuItemProduct(menuId, itemId, pickedProduct.id, Math.max(1, Number(grams) || 100));
+      setOpen(false);
+      setPickedProduct(null);
+      onSwapped();
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Ошибка замены');
+    }
+  };
+
+  const tabCls = (active: boolean) =>
+    ['px-2 py-0.5 text-xs rounded border', active ? 'bg-tomato text-white border-tomato' : 'text-gray-500 border-border'].join(' ');
 
   return (
     <div className="mt-2">
@@ -126,30 +156,60 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
       </button>
       {open && (
         <div className="mt-2 border border-border rounded-lg p-2 bg-gray-50">
+          <div className="flex items-center gap-2 mb-2">
+            <button type="button" onClick={() => { setMode('recipe'); setPickedProduct(null); }} className={tabCls(mode === 'recipe')}>Рецепт</button>
+            <button type="button" onClick={() => { setMode('product'); }} className={tabCls(mode === 'product')}>Продукт</button>
+          </div>
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Поиск рецепта..."
+            placeholder={mode === 'recipe' ? 'Поиск рецепта...' : 'Поиск продукта (напр. огурец)...'}
             className="w-full px-2 py-1 text-sm rounded-md border border-border focus:outline-none focus:border-tomato"
           />
           {loading && <p className="text-xs text-gray-400 mt-2">Загрузка...</p>}
           {err && <p className="text-xs text-red-600 mt-2">{err}</p>}
-          {!loading && !err && items.length === 0 && (
+
+          {mode === 'recipe' && !loading && !err && items.length === 0 && (
             <p className="text-xs text-gray-400 mt-2">Ничего не найдено</p>
           )}
-          {items.length > 0 && (
+          {mode === 'recipe' && items.length > 0 && (
             <ul className="mt-2 max-h-48 overflow-y-auto divide-y divide-gray-200 bg-surface rounded-md">
               {items.map(r => (
-                <li
-                  key={r.id}
-                  onClick={() => handlePick(r.id)}
-                  className="px-2 py-1.5 text-xs cursor-pointer hover:bg-rice"
-                >
+                <li key={r.id} onClick={() => handlePick(r.id)}
+                    className="px-2 py-1.5 text-xs cursor-pointer hover:bg-rice">
                   {r.title}
                 </li>
               ))}
             </ul>
+          )}
+
+          {mode === 'product' && (
+            pickedProduct ? (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-chocolate flex-1">{pickedProduct.name}</span>
+                <input type="number" min={1} value={grams} onChange={e => setGrams(e.target.value)}
+                       className="w-20 px-2 py-1 text-sm rounded-md border border-border text-center" title="Порция, г" />
+                <span className="text-xs text-gray-400">г</span>
+                <button type="button" onClick={handlePickProduct}
+                        className="px-2 py-1 text-xs rounded bg-tomato text-white">ОК</button>
+                <button type="button" onClick={() => setPickedProduct(null)}
+                        className="text-xs text-gray-400">✕</button>
+              </div>
+            ) : products.length > 0 ? (
+              <ul className="mt-2 max-h-48 overflow-y-auto divide-y divide-gray-200 bg-surface rounded-md">
+                {products.map(p => (
+                  <li key={p.id} onClick={() => { setPickedProduct(p); setGrams('100'); }}
+                      className="px-2 py-1.5 text-xs cursor-pointer hover:bg-rice flex items-center gap-2">
+                    <span className="flex-1">{p.name}</span>
+                    {p.is_own && <span className="text-[10px] text-avocado">мой</span>}
+                    {p.calories_per_100g != null && <span className="text-[10px] text-gray-400">{p.calories_per_100g} ккал/100г</span>}
+                  </li>
+                ))}
+              </ul>
+            ) : (!loading && search.trim().length >= 2 && (
+              <p className="text-xs text-gray-400 mt-2">Продукт не найден</p>
+            ))
           )}
         </div>
       )}
