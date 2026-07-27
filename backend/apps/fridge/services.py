@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
+import uuid
 from typing import Optional
 
 import requests
@@ -64,12 +66,57 @@ def _normalize_off_product(raw: dict) -> Optional[dict]:
     }
 
 
-def fetch_openverse_image_url(query: str) -> Optional[str]:
-    """MG_OFFIMG: URL изображения продукта из Openverse (CC, без API-ключа).
+_IMAGE_EXT_BY_CTYPE = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
 
-    Openverse агрегирует изображения под свободными лицензиями. Ищем по названию
-    продукта (как есть). По умолчанию берём только пригодные для коммерческого
-    использования лицензии (настраивается OPENVERSE_LICENSE_TYPE).
+
+def download_image_to_media(src_url: str, subdir: str = "product_images") -> Optional[str]:
+    """MG_OFFIMG: скачать изображение и положить в MEDIA (self-host).
+
+    Возвращает абсолютный URL (BACKEND_PUBLIC_URL + /media/...), либо относительный
+    /media/..., если публичный URL бэкенда не задан. Так картинка не зависит от
+    доступности провайдера/прокси (никаких 424 и блокировок хотлинка на показе).
+    """
+    if not src_url:
+        return None
+    ua = getattr(settings, "OPENFOODFACTS_USER_AGENT", "MenuGen/1.0")
+    timeout = getattr(settings, "OPENVERSE_TIMEOUT", 15.0)
+    try:
+        r = requests.get(src_url, headers={"User-Agent": ua}, timeout=timeout)
+    except requests.RequestException as e:
+        logger.warning("image download failed for %s: %s", src_url, e)
+        return None
+    if r.status_code != 200:
+        logger.warning("image download status=%s for %s", r.status_code, src_url)
+        return None
+    ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+    if not ctype.startswith("image/"):
+        return None
+    data = r.content
+    if not data or len(data) > 12_000_000:  # защита от пустых/огромных файлов
+        return None
+    ext = _IMAGE_EXT_BY_CTYPE.get(ctype, "jpg")
+    dest_dir = os.path.join(settings.MEDIA_ROOT, subdir)
+    os.makedirs(dest_dir, exist_ok=True)
+    fname = f"{uuid.uuid4().hex}.{ext}"
+    with open(os.path.join(dest_dir, fname), "wb") as f:
+        f.write(data)
+    rel = f"{str(settings.MEDIA_URL).rstrip('/')}/{subdir}/{fname}"
+    public = (os.environ.get("BACKEND_PUBLIC_URL") or "").rstrip("/")
+    return (public + rel) if public else rel
+
+
+def fetch_openverse_image_url(query: str) -> Optional[str]:
+    """MG_OFFIMG: найти фото продукта в Openverse (CC, без ключа) и self-host'ить.
+
+    Ищем по названию (как есть), скачиваем найденную картинку к себе в media и
+    возвращаем НАШ URL. По умолчанию берём лицензии, пригодные для коммерческого
+    использования (OPENVERSE_LICENSE_TYPE).
     """
     if not query:
         return None
@@ -82,17 +129,18 @@ def fetch_openverse_image_url(query: str) -> Optional[str]:
         params["license_type"] = license_type
     try:
         r = requests.get(f"{base}/v1/images/", params=params, headers={"User-Agent": ua}, timeout=timeout)
-        if r.status_code == 200:
-            for item in (r.json() or {}).get("results", []) or []:
-                # thumbnail хостится самим Openverse (надёжнее: исходные url часто
-                # блокируют хотлинк или отдают 404). url — как запасной вариант.
-                url = item.get("thumbnail") or item.get("url")
-                if url:
-                    return url[:1024]
-        else:
-            logger.warning("Openverse status=%s for q=%s", r.status_code, query)
     except (requests.RequestException, ValueError) as e:
         logger.warning("Openverse search q=%s failed: %s", query, e)
+        return None
+    if r.status_code != 200:
+        logger.warning("Openverse status=%s for q=%s", r.status_code, query)
+        return None
+    for item in (r.json() or {}).get("results", []) or []:
+        # Сначала прямая ссылка на изображение, затем thumbnail-прокси Openverse.
+        for src in (item.get("url"), item.get("thumbnail")):
+            local = download_image_to_media(src) if src else None
+            if local:
+                return local
     return None
 
 
