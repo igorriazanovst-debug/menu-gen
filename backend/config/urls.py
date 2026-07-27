@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/social/", include("apps.social.urls")),
     path("api/v1/sync/", include("apps.sync.urls")),
+    path("api/v1/legal/", include("apps.legal.urls")),
     # Медиа отдаём и при DEBUG=False. Стек работает на runserver (gunicorn не
     # используется), на новом сервере за nginx /media/ проксируется в backend.
     # django.conf.urls.static.static() возвращает [] при DEBUG=False, поэтому
