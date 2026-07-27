@@ -72,6 +72,9 @@ def fetch_off_image_url(barcode: Optional[str] = None, name: Optional[str] = Non
     """
     base = getattr(settings, "OPENFOODFACTS_BASE_URL", "https://world.openfoodfacts.org")
     timeout = getattr(settings, "OPENFOODFACTS_TIMEOUT", 4.0)
+    # Поиск по названию (search.pl) заметно медленнее запроса по штрих-коду —
+    # даём ему отдельный, увеличенный таймаут, иначе часты Read timed out.
+    search_timeout = getattr(settings, "OPENFOODFACTS_SEARCH_TIMEOUT", 20.0)
     ua = getattr(settings, "OPENFOODFACTS_USER_AGENT", "MenuGen/1.0")
     headers = {"User-Agent": ua}
 
@@ -97,7 +100,7 @@ def fetch_off_image_url(barcode: Optional[str] = None, name: Optional[str] = Non
                 "page_size": 5,
                 "fields": "image_front_url,image_url,image_small_url,product_name",
             }
-            r = requests.get(f"{base}/cgi/search.pl", params=params, headers=headers, timeout=timeout)
+            r = requests.get(f"{base}/cgi/search.pl", params=params, headers=headers, timeout=search_timeout)
             if r.status_code == 200:
                 for prod in (r.json() or {}).get("products", []) or []:
                     img = _pick(prod)
