@@ -64,6 +64,38 @@ def _normalize_off_product(raw: dict) -> Optional[dict]:
     }
 
 
+def fetch_openverse_image_url(query: str) -> Optional[str]:
+    """MG_OFFIMG: URL изображения продукта из Openverse (CC, без API-ключа).
+
+    Openverse агрегирует изображения под свободными лицензиями. Ищем по названию
+    продукта (как есть). По умолчанию берём только пригодные для коммерческого
+    использования лицензии (настраивается OPENVERSE_LICENSE_TYPE).
+    """
+    if not query:
+        return None
+    base = getattr(settings, "OPENVERSE_BASE_URL", "https://api.openverse.org")
+    timeout = getattr(settings, "OPENVERSE_TIMEOUT", 15.0)
+    license_type = getattr(settings, "OPENVERSE_LICENSE_TYPE", "commercial")
+    ua = getattr(settings, "OPENFOODFACTS_USER_AGENT", "MenuGen/1.0")
+    params = {"q": query, "page_size": 5, "mature": "false"}
+    if license_type:
+        params["license_type"] = license_type
+    try:
+        r = requests.get(f"{base}/v1/images/", params=params, headers={"User-Agent": ua}, timeout=timeout)
+        if r.status_code == 200:
+            for item in (r.json() or {}).get("results", []) or []:
+                # thumbnail хостится самим Openverse (надёжнее: исходные url часто
+                # блокируют хотлинк или отдают 404). url — как запасной вариант.
+                url = item.get("thumbnail") or item.get("url")
+                if url:
+                    return url[:1024]
+        else:
+            logger.warning("Openverse status=%s for q=%s", r.status_code, query)
+    except (requests.RequestException, ValueError) as e:
+        logger.warning("Openverse search q=%s failed: %s", query, e)
+    return None
+
+
 def fetch_off_image_url(barcode: Optional[str] = None, name: Optional[str] = None) -> Optional[str]:
     """MG_OFFIMG: URL изображения продукта из OpenFoodFacts (свободно к использованию).
 

@@ -1,12 +1,12 @@
-"""MG_OFFIMG: массовая загрузка фото продуктов из OpenFoodFacts.
+"""MG_OFFIMG: массовая загрузка фото продуктов из Openverse (CC, без ключа).
 
-Изображения OFF свободны к использованию (Open Database License / CC-BY-SA).
-По штрих-коду — точный товар; для продуктов без штрих-кода — поиск по названию.
+Ищем по названию продукта (как есть). Изображения под свободными лицензиями.
 
 Примеры:
-    python manage.py fetch_off_images --system-only          # только каталог, без фото
-    python manage.py fetch_off_images --limit 200 --sleep 0.3
-    python manage.py fetch_off_images --overwrite            # перезаписать существующие
+    python manage.py fetch_product_images --system-only            # каталог без фото
+    python manage.py fetch_product_images --limit 200 --sleep 0.5
+    python manage.py fetch_product_images --dry-run                # только показать
+    python manage.py fetch_product_images --overwrite              # перезаписать
 """
 
 import time
@@ -14,17 +14,17 @@ import time
 from django.core.management.base import BaseCommand
 
 from apps.fridge.models import Product
-from apps.fridge.services import fetch_off_image_url
+from apps.fridge.services import fetch_openverse_image_url
 
 
 class Command(BaseCommand):
-    help = "Заполнить Product.image_url картинками из OpenFoodFacts."
+    help = "Заполнить Product.image_url картинками из Openverse (поиск по названию)."
 
     def add_arguments(self, parser):
         parser.add_argument("--system-only", action="store_true", help="Только системные продукты (owner is null).")
         parser.add_argument("--overwrite", action="store_true", help="Перезаписывать уже заданные image_url.")
         parser.add_argument("--limit", type=int, default=0, help="Максимум продуктов за прогон (0 — без лимита).")
-        parser.add_argument("--sleep", type=float, default=0.25, help="Пауза между запросами к OFF, сек.")
+        parser.add_argument("--sleep", type=float, default=0.5, help="Пауза между запросами, сек.")
         parser.add_argument("--dry-run", action="store_true", help="Только показать, ничего не сохранять.")
 
     def handle(self, *args, **opts):
@@ -32,8 +32,7 @@ class Command(BaseCommand):
         if opts["system_only"]:
             qs = qs.filter(owner__isnull=True)
         if not opts["overwrite"]:
-            qs = qs.filter(image_url__isnull=True) | qs.filter(image_url="")
-            qs = qs.distinct()
+            qs = (qs.filter(image_url__isnull=True) | qs.filter(image_url="")).distinct()
         if opts["limit"]:
             qs = qs[: opts["limit"]]
 
@@ -41,7 +40,7 @@ class Command(BaseCommand):
         self.stdout.write(f"К обработке продуктов: {total}")
         updated = missed = 0
         for i, p in enumerate(qs, 1):
-            img = fetch_off_image_url(barcode=p.barcode or None, name=p.name)
+            img = fetch_openverse_image_url(p.name)
             if img:
                 updated += 1
                 if opts["dry_run"]:
