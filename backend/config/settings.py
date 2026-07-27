@@ -131,6 +131,11 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = config("MEDIA_URL", default="/media/")
 MEDIA_ROOT = BASE_DIR / "media"
 
+# MG_OFFIMG: источник фото продуктов. Pixabay (нужен бесплатный ключ) даёт
+# качественные фуд-фото (фильтр category=food); без ключа — фолбэк на Openverse.
+PIXABAY_API_KEY = config("PIXABAY_API_KEY", default="")
+PIXABAY_LANG = config("PIXABAY_LANG", default="ru")
+
 # MG_SHOPIMG: изображения товаров приходят как base64 в JSON-теле — поднимаем
 # лимит тела запроса (дефолт Django 2.5 МБ мал для фото). Фронт дополнительно
 # сжимает картинку до ~сотен КБ, но держим запас.

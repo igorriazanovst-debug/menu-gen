@@ -14,11 +14,11 @@ import time
 from django.core.management.base import BaseCommand
 
 from apps.fridge.models import Product
-from apps.fridge.services import fetch_openverse_image_url
+from apps.fridge.services import fetch_product_image_url
 
 
 class Command(BaseCommand):
-    help = "Заполнить Product.image_url картинками из Openverse (поиск по названию)."
+    help = "Заполнить Product.image_url фото (Pixabay при наличии ключа, иначе Openverse)."
 
     def add_arguments(self, parser):
         parser.add_argument("--system-only", action="store_true", help="Только системные продукты (owner is null).")
@@ -40,7 +40,7 @@ class Command(BaseCommand):
         self.stdout.write(f"К обработке продуктов: {total}")
         updated = missed = 0
         for i, p in enumerate(qs, 1):
-            img = fetch_openverse_image_url(p.name)
+            img = fetch_product_image_url(p.name)
             if img:
                 updated += 1
                 if opts["dry_run"]:

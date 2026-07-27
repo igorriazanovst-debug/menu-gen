@@ -64,14 +64,14 @@ class ProductAdmin(admin.ModelAdmin):
     actions = ("fetch_images_fill", "fetch_images_overwrite")
 
     def _fetch_images(self, request, queryset, overwrite):
-        from .services import fetch_openverse_image_url
+        from .services import fetch_product_image_url
 
         updated = missed = skipped = 0
         for p in queryset:
             if p.image_url and not overwrite:
                 skipped += 1
                 continue
-            img = fetch_openverse_image_url(p.name)
+            img = fetch_product_image_url(p.name)
             if img:
                 p.image_url = img
                 p.save(update_fields=["image_url"])

@@ -111,6 +111,55 @@ def download_image_to_media(src_url: str, subdir: str = "product_images") -> Opt
     return (public + rel) if public else rel
 
 
+def fetch_pixabay_image_url(query: str) -> Optional[str]:
+    """MG_OFFIMG: фуд-фото продукта из Pixabay (нужен бесплатный ключ) + self-host.
+
+    Курируемый сток с фильтром category=food — намного релевантнее свалки CC.
+    Ключ — settings.PIXABAY_API_KEY (env PIXABAY_API_KEY). Без ключа возвращает None.
+    """
+    key = getattr(settings, "PIXABAY_API_KEY", "") or ""
+    if not query or not key:
+        return None
+    timeout = getattr(settings, "OPENVERSE_TIMEOUT", 15.0)
+    lang = getattr(settings, "PIXABAY_LANG", "ru") or "ru"
+    ua = getattr(settings, "OPENFOODFACTS_USER_AGENT", "MenuGen/1.0")
+    params = {
+        "key": key,
+        "q": query,
+        "image_type": "photo",
+        "category": "food",  # ключевой фильтр релевантности
+        "safesearch": "true",
+        "per_page": 5,
+        "lang": lang,
+    }
+    try:
+        r = requests.get("https://pixabay.com/api/", params=params, headers={"User-Agent": ua}, timeout=timeout)
+    except (requests.RequestException, ValueError) as e:
+        logger.warning("Pixabay search q=%s failed: %s", query, e)
+        return None
+    if r.status_code != 200:
+        logger.warning("Pixabay status=%s for q=%s", r.status_code, query)
+        return None
+    for hit in (r.json() or {}).get("hits", []) or []:
+        src = hit.get("webformatURL") or hit.get("largeImageURL")
+        local = download_image_to_media(src) if src else None
+        if local:
+            return local
+    return None
+
+
+def fetch_product_image_url(name: str) -> Optional[str]:
+    """MG_OFFIMG: единая точка получения фото продукта.
+
+    Pixabay (если задан ключ) — приоритетно (качество), иначе Openverse.
+    """
+    if getattr(settings, "PIXABAY_API_KEY", ""):
+        url = fetch_pixabay_image_url(name)
+        if url:
+            return url
+    return fetch_openverse_image_url(name)
+
+
 def fetch_openverse_image_url(query: str) -> Optional[str]:
     """MG_OFFIMG: найти фото продукта в Openverse (CC, без ключа) и self-host'ить.
 
