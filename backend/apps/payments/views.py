@@ -2,9 +2,13 @@ import hashlib
 import hmac
 import json
 import logging
+from urllib.parse import urlencode
 
 from decouple import config
+from django.conf import settings as django_settings
+from django.http import HttpResponse, HttpResponseNotFound, HttpResponseRedirect
 from django.utils import timezone
+from django.utils.html import escape
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
@@ -121,6 +125,80 @@ def _handle_payment_succeeded(obj: dict):
         paid_at=now,
     )
     log.info("Subscription created: family=%s plan=%s", family_id, plan_code)
+
+
+# ── MG_PAYSTUB: тестовая заглушка оплаты (имитация ЮMoney) ────────────────────
+
+
+def _append_query(url: str, key: str, value: str) -> str:
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}{key}={value}"
+
+
+def stub_checkout(request):
+    """Тестовая страница «оплаты» — имитирует redirect-страницу ЮKassa."""
+    if not getattr(django_settings, "PAYMENTS_STUB", False):
+        return HttpResponseNotFound("Payments stub is disabled")
+    p = request.GET
+    keep = {k: p.get(k, "") for k in ("payment_id", "family_id", "plan_code", "amount", "return_url")}
+    q = urlencode(keep)
+    confirm_url = f"/api/v1/payments/stub/confirm/?{q}"
+    cancel_url = f"/api/v1/payments/stub/cancel/?{q}"
+    amount = escape(keep["amount"] or "—")
+    plan = escape(keep["plan_code"] or "—")
+    html = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тестовая оплата</title>
+<style>
+ body{{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f7f5f2;margin:0;
+   min-height:100vh;display:flex;align-items:center;justify-content:center;color:#3a2e26}}
+ .card{{background:#fff;border-radius:20px;box-shadow:0 10px 40px rgba(0,0,0,.08);
+   padding:32px;max-width:380px;width:90%;text-align:center}}
+ .logo{{font-size:44px}} h1{{font-size:20px;margin:12px 0 4px}}
+ .muted{{color:#9b8f86;font-size:14px}} .amount{{font-size:30px;font-weight:700;margin:16px 0}}
+ .badge{{display:inline-block;background:#fdecec;color:#c0392b;border-radius:8px;
+   padding:2px 8px;font-size:12px;margin-bottom:8px}}
+ a.btn{{display:block;text-decoration:none;border-radius:12px;padding:12px;margin-top:10px;font-weight:600}}
+ .pay{{background:#e5533c;color:#fff}} .cancel{{background:#efe9e4;color:#6b5d53}}
+</style></head><body><div class="card">
+ <div class="badge">ТЕСТОВЫЙ РЕЖИМ (заглушка)</div>
+ <div class="logo">🍅</div>
+ <h1>Оплата подписки</h1>
+ <div class="muted">Тариф: {plan}</div>
+ <div class="amount">{amount} ₽</div>
+ <a class="btn pay" href="{confirm_url}">Оплатить</a>
+ <a class="btn cancel" href="{cancel_url}">Отменить</a>
+ <p class="muted" style="margin-top:16px">Это имитация страницы ЮKassa. Реальные деньги не списываются.</p>
+</div></body></html>"""
+    return HttpResponse(html)
+
+
+def stub_confirm(request):
+    """Имитация успешного платежа: прогоняем тот же обработчик, что и вебхук."""
+    if not getattr(django_settings, "PAYMENTS_STUB", False):
+        return HttpResponseNotFound("Payments stub is disabled")
+    p = request.GET
+    payment_id = p.get("payment_id", "")
+    return_url = p.get("return_url", "/")
+    # Идемпотентность: повторный переход не создаёт вторую подписку.
+    already = payment_id and Payment.objects.filter(payment_id=payment_id, status=Payment.Status.SUCCEEDED).exists()
+    if not already:
+        obj = {
+            "id": payment_id,
+            "status": "succeeded",
+            "paid": True,
+            "amount": {"value": p.get("amount", "0"), "currency": "RUB"},
+            "metadata": {"family_id": p.get("family_id"), "plan_code": p.get("plan_code")},
+        }
+        _handle_payment_succeeded(obj)
+    return HttpResponseRedirect(_append_query(return_url, "payment", "success"))
+
+
+def stub_cancel(request):
+    if not getattr(django_settings, "PAYMENTS_STUB", False):
+        return HttpResponseNotFound("Payments stub is disabled")
+    return_url = request.GET.get("return_url", "/")
+    return HttpResponseRedirect(_append_query(return_url, "payment", "cancel"))
 
 
 def _handle_payment_canceled(obj: dict):

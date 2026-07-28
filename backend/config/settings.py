@@ -138,6 +138,11 @@ MEDIA_ROOT = BASE_DIR / "media"
 #   pixabay — качественный сток (category=food), но требует ключ И сетевой доступ
 #     к pixabay.com (на части серверов заблокирован).
 PRODUCT_IMAGE_SOURCE = config("PRODUCT_IMAGE_SOURCE", default="wikimedia")
+
+# MG_PAYSTUB: тестовый режим оплаты. True — вместо реальной ЮKassa используется
+# заглушка с полной имитацией флоу (создание платежа → страница оплаты → вебхук
+# payment.succeeded → назначение тарифа). В проде: False + реальные YOOKASSA_*.
+PAYMENTS_STUB = config("PAYMENTS_STUB", default=True, cast=bool)
 PIXABAY_API_KEY = config("PIXABAY_API_KEY", default="")
 PIXABAY_LANG = config("PIXABAY_LANG", default="ru")
 

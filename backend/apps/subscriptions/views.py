@@ -58,14 +58,10 @@ class SubscribeView(APIView):
         plan = SubscriptionPlan.objects.get(code=serializer.validated_data["plan_code"])
         return_url = serializer.validated_data["return_url"]
 
-        from apps.payments.yookassa_client import create_payment
+        # MG_PAYSTUB: реальная ЮKassa или тестовая заглушка (по settings.PAYMENTS_STUB).
+        from apps.payments.service import initiate_payment
 
-        payment_url, payment_id = create_payment(
-            amount=float(plan.price),
-            description=f"Подписка {plan.name}",
-            return_url=return_url,
-            metadata={"family_id": family.id, "plan_code": plan.code},
-        )
+        payment_url, payment_id = initiate_payment(family, plan, return_url)
         return Response({"payment_url": payment_url, "payment_id": payment_id})
 
 

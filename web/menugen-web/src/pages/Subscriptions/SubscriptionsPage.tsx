@@ -15,6 +15,16 @@ export const SubscriptionsPage: React.FC = () => {
   const [promo, setPromo] = useState('');
   const [promoBusy, setPromoBusy] = useState(false);
   const [promoMsg, setPromoMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // MG_PAYSTUB: баннер результата оплаты после возврата с платёжной страницы.
+  const [payMsg, setPayMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pay = params.get('payment');
+    if (pay === 'success') setPayMsg({ ok: true, text: 'Оплата прошла успешно — тариф активирован.' });
+    else if (pay === 'cancel') setPayMsg({ ok: false, text: 'Оплата отменена.' });
+    if (pay) window.history.replaceState({}, '', '/subscriptions');
+  }, []);
 
   useEffect(() => {
     Promise.allSettled([
@@ -60,6 +70,12 @@ export const SubscriptionsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-chocolate">Подписка</h1>
+
+      {payMsg && (
+        <div className={`rounded-xl px-4 py-3 text-sm ${payMsg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          {payMsg.text}
+        </div>
+      )}
 
       {current && (
         <Card className="p-5 border-2 border-avocado/30 bg-green-50/50">
