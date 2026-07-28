@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { authApi } from '../../api/auth';
-import type { User } from '../../types';
+import type { User, RegisterResult } from '../../types';
 
 interface AuthState {
   user: User | null;
@@ -35,12 +35,18 @@ export const login = createAsyncThunk(
       const { data: user } = await authApi.me();
       return user;
     } catch (e: any) {
-      return rejectWithValue(e.response?.data?.detail || 'Неверные учётные данные');
+      const d = e.response?.data;
+      // MG_EMAILVERIFY: e-mail не подтверждён — отдаём код и email для UI ресенда.
+      if (d?.code === 'email_not_verified') {
+        return rejectWithValue({ code: 'email_not_verified', email: d.email, message: d.detail || 'Подтвердите e-mail' });
+      }
+      return rejectWithValue({ message: d?.detail || 'Неверные учётные данные' });
     }
   },
 );
 
-// MG_REG: регистрация — создаёт пользователя (+семья+free), возвращает JWT, логинит.
+// MG_EMAILVERIFY: регистрация — создаёт пользователя (+семья+free), НЕ логинит;
+// требуется подтверждение e-mail по ссылке. Возвращает результат для UI.
 export const register = createAsyncThunk(
   'auth/register',
   async (
@@ -48,17 +54,30 @@ export const register = createAsyncThunk(
     { rejectWithValue },
   ) => {
     try {
-      const { data: tokens } = await authApi.register(name, email, password, password2);
-      localStorage.setItem('access_token', tokens.access);
-      localStorage.setItem('refresh_token', tokens.refresh);
-      const { data: user } = await authApi.me();
-      return user;
+      const { data } = await authApi.register(name, email, password, password2);
+      return data as RegisterResult;
     } catch (e: any) {
       const d = e.response?.data;
       const msg = d?.detail
         || (d && typeof d === 'object' ? Object.values(d).flat().join(' ') : '')
         || 'Не удалось зарегистрироваться';
       return rejectWithValue(msg);
+    }
+  },
+);
+
+// MG_EMAILVERIFY: подтверждение e-mail по токену из ссылки → вход (сохраняет токены).
+export const verifyEmail = createAsyncThunk(
+  'auth/verifyEmail',
+  async (token: string, { rejectWithValue }) => {
+    try {
+      const { data: tokens } = await authApi.verifyEmail(token);
+      localStorage.setItem('access_token', tokens.access);
+      localStorage.setItem('refresh_token', tokens.refresh);
+      const { data: user } = await authApi.me();
+      return user;
+    } catch (e: any) {
+      return rejectWithValue(e.response?.data?.detail || 'Ссылка недействительна или устарела');
     }
   },
 );
@@ -86,13 +105,21 @@ const authSlice = createSlice({
         state.loading = false; state.user = action.payload;
       })
       .addCase(login.rejected, (state, action) => {
+        state.loading = false;
+        const p = action.payload as { message?: string } | string | undefined;
+        state.error = (typeof p === 'object' ? p?.message : p) || 'Ошибка входа';
+      })
+      // MG_EMAILVERIFY: регистрация НЕ логинит (нужно подтверждение e-mail).
+      .addCase(register.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(register.fulfilled, (state) => { state.loading = false; })
+      .addCase(register.rejected, (state, action) => {
         state.loading = false; state.error = action.payload as string;
       })
-      .addCase(register.pending, (state) => { state.loading = true; state.error = null; })
-      .addCase(register.fulfilled, (state, action) => {
+      .addCase(verifyEmail.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(verifyEmail.fulfilled, (state, action) => {
         state.loading = false; state.user = action.payload;
       })
-      .addCase(register.rejected, (state, action) => {
+      .addCase(verifyEmail.rejected, (state, action) => {
         state.loading = false; state.error = action.payload as string;
       })
       .addCase(logout.fulfilled, (state) => { state.user = null; });

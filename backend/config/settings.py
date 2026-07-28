@@ -143,6 +143,11 @@ PRODUCT_IMAGE_SOURCE = config("PRODUCT_IMAGE_SOURCE", default="wikimedia")
 # заглушка с полной имитацией флоу (создание платежа → страница оплаты → вебхук
 # payment.succeeded → назначение тарифа). В проде: False + реальные YOOKASSA_*.
 PAYMENTS_STUB = config("PAYMENTS_STUB", default=True, cast=bool)
+
+# MG_EMAILVERIFY: базовый URL веб-приложения для ссылок из писем (подтверждение
+# e-mail и т.п.). Прод: https://menugen.ru; dev: http://<host>:8081. Если пусто —
+# фолбэк на BACKEND_PUBLIC_URL, затем на https://menugen.ru.
+FRONTEND_URL = config("FRONTEND_URL", default="")
 PIXABAY_API_KEY = config("PIXABAY_API_KEY", default="")
 PIXABAY_LANG = config("PIXABAY_LANG", default="ru")
 

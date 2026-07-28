@@ -40,6 +40,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     user_type = models.CharField(max_length=20, choices=UserType.choices, default=UserType.USER)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    # MG_EMAILVERIFY: подтверждение e-mail. NULL — не подтверждён. Обычная
+    # e-mail-регистрация требует подтверждения по ссылке из письма. VK/managed/
+    # существующие аккаунты считаются подтверждёнными (см. helpers/миграцию).
+    email_verified_at = models.DateTimeField(null=True, blank=True)
     # MG_MANAGEDMEMBER: a "managed" account is a family member without their own
     # login (e.g. a child, or someone whose nutrition a specialist manages). It
     # has no usable password; the family head can later add e-mail/phone to turn
@@ -56,6 +60,10 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["name"]
+
+    @property
+    def is_email_verified(self) -> bool:  # MG_EMAILVERIFY
+        return self.email_verified_at is not None
 
     class Meta:
         db_table = "users"

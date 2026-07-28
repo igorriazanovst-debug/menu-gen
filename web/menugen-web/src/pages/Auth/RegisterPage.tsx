@@ -1,12 +1,13 @@
-// MG_REG: страница регистрации. Создаёт пользователя (по умолчанию бесплатный
-// тариф — семью и Free-подписку заводит бэкенд), сразу логинит.
-import React, { useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+// MG_REG/MG_EMAILVERIFY: регистрация. Создаёт пользователя (Free-тариф заводит
+// бэкенд), затем требует подтверждения e-mail по ссылке из письма.
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { register as registerThunk, clearError } from '../../store/slices/authSlice';
+import { authApi } from '../../api/auth';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
@@ -23,17 +24,33 @@ type FormData = z.infer<typeof schema>;
 
 export const RegisterPage: React.FC = () => {
   const dispatch = useAppDispatch();
-  const navigate = useNavigate();
-  const { loading, error, user } = useAppSelector((s) => s.auth);
+  const { loading, error } = useAppSelector((s) => s.auth);
+  const [sentEmail, setSentEmail] = useState<string | null>(null);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
-  useEffect(() => { if (user) navigate('/dashboard'); }, [user, navigate]);
   useEffect(() => { return () => { dispatch(clearError()); }; }, [dispatch]);
 
-  const onSubmit = (data: FormData) => dispatch(registerThunk(data));
+  const onSubmit = async (data: FormData) => {
+    try {
+      await dispatch(registerThunk(data)).unwrap();
+      setSentEmail(data.email);
+    } catch { /* ошибка уже в state.error */ }
+  };
+
+  const resend = async () => {
+    if (!sentEmail) return;
+    setResendMsg(null);
+    try {
+      await authApi.resendVerification(sentEmail);
+      setResendMsg('Письмо отправлено повторно.');
+    } catch {
+      setResendMsg('Не удалось отправить письмо. Попробуйте позже.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
@@ -44,25 +61,46 @@ export const RegisterPage: React.FC = () => {
           <p className="text-muted mt-1 text-sm">Бесконечный вкусный мир</p>
         </div>
         <div className="bg-surface rounded-2xl shadow-sm border border-border p-8">
-          <h2 className="text-xl font-semibold text-text mb-6">Регистрация</h2>
-          {error && (
-            <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-              {error}
+          {sentEmail ? (
+            // MG_EMAILVERIFY: экран «подтвердите e-mail»
+            <div className="text-center">
+              <div className="text-5xl mb-3">📩</div>
+              <h2 className="text-xl font-semibold text-text mb-2">Подтвердите e-mail</h2>
+              <p className="text-sm text-muted">
+                Мы отправили письмо на <span className="font-medium text-text">{sentEmail}</span>.
+                Перейдите по ссылке из письма, чтобы завершить регистрацию и войти.
+              </p>
+              {resendMsg && <p className="text-sm text-tomato mt-3">{resendMsg}</p>}
+              <button onClick={resend} className="mt-4 text-sm text-tomato font-medium hover:underline">
+                Отправить письмо ещё раз
+              </button>
+              <p className="text-sm text-muted mt-6">
+                <Link to="/login" className="text-tomato font-medium hover:underline">Перейти ко входу</Link>
+              </p>
             </div>
+          ) : (
+            <>
+              <h2 className="text-xl font-semibold text-text mb-6">Регистрация</h2>
+              {error && (
+                <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+                  {error}
+                </div>
+              )}
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <Input label="Имя" type="text" {...register('name')} error={errors.name?.message} />
+                <Input label="Email" type="email" {...register('email')} error={errors.email?.message} />
+                <Input label="Пароль" type="password" {...register('password')} error={errors.password?.message} />
+                <Input label="Повторите пароль" type="password" {...register('password2')} error={errors.password2?.message} />
+                <Button type="submit" loading={loading} className="w-full mt-2">
+                  Зарегистрироваться
+                </Button>
+              </form>
+              <p className="text-sm text-muted text-center mt-5">
+                Уже есть аккаунт?{' '}
+                <Link to="/login" className="text-tomato font-medium hover:underline">Войти</Link>
+              </p>
+            </>
           )}
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <Input label="Имя" type="text" {...register('name')} error={errors.name?.message} />
-            <Input label="Email" type="email" {...register('email')} error={errors.email?.message} />
-            <Input label="Пароль" type="password" {...register('password')} error={errors.password?.message} />
-            <Input label="Повторите пароль" type="password" {...register('password2')} error={errors.password2?.message} />
-            <Button type="submit" loading={loading} className="w-full mt-2">
-              Зарегистрироваться
-            </Button>
-          </form>
-          <p className="text-sm text-muted text-center mt-5">
-            Уже есть аккаунт?{' '}
-            <Link to="/login" className="text-tomato font-medium hover:underline">Войти</Link>
-          </p>
         </div>
       </div>
     </div>

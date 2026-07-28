@@ -30,15 +30,37 @@ class AllergenListView(APIView):
 class RegisterView(APIView):
     permission_classes = (permissions.AllowAny,)
 
-    @extend_schema(request=RegisterSerializer, responses={201: TokenPairSerializer})
+    @extend_schema(request=RegisterSerializer, responses={201: None})
     def post(self, request):
+        from django.conf import settings as dj_settings
+
+        from .email_verify import send_verification_email
+
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
             user = serializer.save()
             _bootstrap_user(user)
-        tokens = TokenPairSerializer.get_tokens(user)
-        return Response(tokens, status=status.HTTP_201_CREATED)
+
+        # MG_EMAILVERIFY: e-mail-регистрация требует подтверждения по ссылке.
+        # Токены НЕ выдаём — вход только после подтверждения (строгий гейт).
+        # Пользователи без e-mail (напр. только телефон) — подтверждать нечего.
+        payload = {
+            "detail": "Регистрация почти завершена. Подтвердите e-mail по ссылке из письма.",
+            "email": user.email,
+            "requires_email_verification": bool(user.email),
+        }
+        if user.email:
+            link = send_verification_email(user)
+            if dj_settings.DEBUG:  # для тестов на dev, когда почта не настроена
+                payload["verify_link"] = link
+        else:
+            # Нет e-mail (телефонная регистрация) — сразу выдаём токены.
+            from .email_verify import mark_verified
+
+            mark_verified(user)
+            payload = TokenPairSerializer.get_tokens(user)
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class LoginView(APIView):
@@ -49,8 +71,69 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
+        # MG_EMAILVERIFY: строгий гейт — не пускаем до подтверждения e-mail.
+        # Ресенд НЕ автоматический (только по явному запросу /email/resend/).
+        if user.email and not user.is_email_verified:
+            return Response(
+                {
+                    "detail": "Подтвердите e-mail по ссылке из письма.",
+                    "code": "email_not_verified",
+                    "email": user.email,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         tokens = TokenPairSerializer.get_tokens(user)
         return Response(tokens)
+
+
+class VerifyEmailView(APIView):
+    """POST /auth/email/verify/ {token} — подтверждение e-mail, выдаёт токены (вход)."""
+
+    permission_classes = (permissions.AllowAny,)
+
+    @extend_schema(request=None, responses={200: TokenPairSerializer})
+    def post(self, request):
+        from apps.users.models import User
+
+        from .email_verify import mark_verified, read_token
+
+        token = request.data.get("token") or request.query_params.get("token")
+        user_id = read_token(token or "")
+        if not user_id:
+            return Response(
+                {"detail": "Ссылка недействительна или устарела.", "code": "invalid_token"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"detail": "Пользователь не найден."}, status=status.HTTP_400_BAD_REQUEST)
+        mark_verified(user)
+        return Response(TokenPairSerializer.get_tokens(user))
+
+
+class ResendVerificationView(APIView):
+    """POST /auth/email/resend/ {email} — повторная отправка письма (по запросу)."""
+
+    permission_classes = (permissions.AllowAny,)
+
+    @extend_schema(request=None, responses={200: None})
+    def post(self, request):
+        from django.conf import settings as dj_settings
+
+        from apps.users.models import User
+
+        from .email_verify import send_verification_email
+
+        email = (request.data.get("email") or "").strip().lower()
+        payload = {"detail": "Если аккаунт существует и не подтверждён, письмо отправлено повторно."}
+        if email:
+            user = User.objects.filter(email__iexact=email).first()
+            if user and not user.is_email_verified:
+                link = send_verification_email(user)
+                if dj_settings.DEBUG:
+                    payload["verify_link"] = link
+        return Response(payload)
 
 
 class LogoutView(APIView):

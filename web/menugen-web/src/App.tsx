@@ -10,6 +10,7 @@ import { useIsPremium } from './hooks/usePremium'; // freemium-гейт
 import { AppLayout }         from './components/layout/AppLayout';
 import { LoginPage }         from './pages/Auth/LoginPage';
 import { RegisterPage }      from './pages/Auth/RegisterPage';
+import { VerifyEmailPage }   from './pages/Auth/VerifyEmailPage'; // MG_EMAILVERIFY
 import { DashboardPage }     from './pages/Dashboard/DashboardPage';
 import { RecipesPage }       from './pages/Recipes/RecipesPage';
 import { MenuPage }          from './pages/Menu/MenuPage';
@@ -70,6 +71,7 @@ const AppRoutes: React.FC = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />{/* MG_EMAILVERIFY */}
       {/* MG_LEGAL: публичные юридические страницы (без авторизации) */}
       <Route path="/requisites" element={<RequisitesPage />} />
       <Route path="/offer" element={<OfferPage />} />

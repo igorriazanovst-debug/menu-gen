@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { login, clearError } from '../../store/slices/authSlice';
+import { authApi } from '../../api/auth';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
@@ -23,10 +24,32 @@ export const LoginPage: React.FC = () => {
     resolver: zodResolver(schema),
   });
 
+  // MG_EMAILVERIFY: если e-mail не подтверждён — предлагаем отправить письмо снова.
+  const [needVerify, setNeedVerify] = useState<string | null>(null);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
+
   useEffect(() => { if (user) navigate('/dashboard'); }, [user, navigate]);
   useEffect(() => { return () => { dispatch(clearError()); }; }, [dispatch]);
 
-  const onSubmit = (data: FormData) => dispatch(login(data));
+  const onSubmit = async (data: FormData) => {
+    setNeedVerify(null); setResendMsg(null);
+    try {
+      await dispatch(login(data)).unwrap();
+    } catch (payload: any) {
+      if (payload?.code === 'email_not_verified') setNeedVerify(payload.email || data.email);
+    }
+  };
+
+  const resend = async () => {
+    if (!needVerify) return;
+    setResendMsg(null);
+    try {
+      await authApi.resendVerification(needVerify);
+      setResendMsg('Письмо отправлено. Проверьте почту.');
+    } catch {
+      setResendMsg('Не удалось отправить письмо. Попробуйте позже.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
@@ -39,9 +62,18 @@ export const LoginPage: React.FC = () => {
         </div>
         <div className="bg-surface rounded-2xl shadow-sm border border-border p-8">
           <h2 className="text-xl font-semibold text-text mb-6">Вход в аккаунт</h2>
-          {error && (
+          {error && !needVerify && (
             <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
               {error}
+            </div>
+          )}
+          {needVerify && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              E-mail <span className="font-medium">{needVerify}</span> не подтверждён.
+              <button type="button" onClick={resend} className="ml-1 font-medium text-tomato hover:underline">
+                Отправить письмо снова
+              </button>
+              {resendMsg && <div className="mt-1 text-tomato">{resendMsg}</div>}
             </div>
           )}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

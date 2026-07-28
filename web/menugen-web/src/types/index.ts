@@ -244,6 +244,16 @@ export interface PaginatedResponse<T> {
 }
 export interface AuthTokens { access: string; refresh: string; }
 
+// MG_EMAILVERIFY: результат регистрации (подтверждение e-mail по ссылке из письма)
+export interface RegisterResult {
+  detail: string;
+  email?: string;
+  requires_email_verification?: boolean;
+  verify_link?: string;    // только на dev (DEBUG), когда почта не настроена
+  access?: string;         // телефонная регистрация — сразу токены
+  refresh?: string;
+}
+
 // MG_205UI_V_types = 1
 export type TargetSource = 'auto' | 'user' | 'specialist';
 
