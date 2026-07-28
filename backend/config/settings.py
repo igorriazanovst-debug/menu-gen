@@ -156,6 +156,10 @@ FRONTEND_URL = config("FRONTEND_URL", default="")
 TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_BOT_USERNAME = config("TELEGRAM_BOT_USERNAME", default="")
 TELEGRAM_WEBHOOK_SECRET = config("TELEGRAM_WEBHOOK_SECRET", default="")
+# Прокси для запросов к api.telegram.org (в РФ часто заблокирован). Напр.
+# socks5h://xray:1080 — локальный SOCKS5 от Xray-клиента (VLESS/Reality).
+# Пусто — ходим напрямую. Для socks5 нужен пакет PySocks (в requirements).
+TELEGRAM_PROXY = config("TELEGRAM_PROXY", default="")
 # Max (max.ru) — подключается вторым этапом, после сверки их Bot API.
 MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
 MAX_BOT_USERNAME = config("MAX_BOT_USERNAME", default="")

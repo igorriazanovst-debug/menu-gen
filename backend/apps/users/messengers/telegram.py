@@ -20,6 +20,20 @@ API_BASE = "https://api.telegram.org"
 _TIMEOUT = 10
 
 
+def telegram_proxies():
+    """proxies-словарь для requests, если задан TELEGRAM_PROXY (иначе None).
+
+    В РФ api.telegram.org часто заблокирован — трафик к нему пускаем через
+    внешний прокси (напр. локальный SOCKS5 от Xray-клиента с VLESS/Reality).
+    Пример значения: ``socks5h://xray:1080`` (h — DNS резолвится на стороне
+    прокси, важно при блокировке/подмене DNS). Требует PySocks для socks5.
+    """
+    proxy = getattr(settings, "TELEGRAM_PROXY", "") or ""
+    if not proxy:
+        return None
+    return {"http": proxy, "https": proxy}
+
+
 class TelegramProvider(MessengerProvider):
     name = "telegram"
 
@@ -68,7 +82,7 @@ class TelegramProvider(MessengerProvider):
             return
         url = f"{API_BASE}/bot{token}/{method}"
         try:
-            requests.post(url, json=payload, timeout=_TIMEOUT)
+            requests.post(url, json=payload, timeout=_TIMEOUT, proxies=telegram_proxies())
         except requests.RequestException as e:  # не роняем обработку апдейта
             log.error("Telegram %s failed: %s", method, e)
 

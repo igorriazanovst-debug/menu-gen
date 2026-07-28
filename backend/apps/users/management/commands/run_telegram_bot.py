@@ -15,7 +15,7 @@ from django.core.management.base import BaseCommand
 
 from apps.users.messengers import get_provider
 from apps.users.messengers.handler import handle_update
-from apps.users.messengers.telegram import API_BASE
+from apps.users.messengers.telegram import API_BASE, telegram_proxies
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +36,9 @@ class Command(BaseCommand):
         base = f"{API_BASE}/bot{token}"
         long_poll = int(opts["timeout"])
         offset = None
+        proxies = telegram_proxies()
+        if proxies:
+            self.stdout.write(f"Через прокси: {proxies['https']}")
         self.stdout.write(self.style.SUCCESS("Telegram polling запущен. Ctrl+C для остановки."))
 
         while True:
@@ -43,7 +46,9 @@ class Command(BaseCommand):
                 params = {"timeout": long_poll}
                 if offset is not None:
                     params["offset"] = offset
-                resp = requests.get(f"{base}/getUpdates", params=params, timeout=long_poll + 10)
+                resp = requests.get(
+                    f"{base}/getUpdates", params=params, timeout=long_poll + 10, proxies=proxies
+                )
                 data = resp.json()
                 if not data.get("ok"):
                     log.error("getUpdates не ok: %s", data)
