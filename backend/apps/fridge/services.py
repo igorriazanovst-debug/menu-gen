@@ -107,9 +107,33 @@ def download_image_to_media(src_url: str, subdir: str = "product_images") -> Opt
     fname = f"{uuid.uuid4().hex}.{ext}"
     with open(os.path.join(dest_dir, fname), "wb") as f:
         f.write(data)
+    return _media_public_url(subdir, fname)
+
+
+def _media_public_url(subdir: str, fname: str) -> str:
     rel = f"{str(settings.MEDIA_URL).rstrip('/')}/{subdir}/{fname}"
     public = (os.environ.get("BACKEND_PUBLIC_URL") or "").rstrip("/")
     return (public + rel) if public else rel
+
+
+def save_uploaded_image_to_media(file_obj, subdir: str = "product_images") -> Optional[str]:
+    """MG_OFFIMG: сохранить загруженный файл-изображение в media и вернуть URL.
+
+    Используется формой продукта в админке (кнопка «Загрузить изображение»).
+    """
+    if not file_obj:
+        return None
+    name = getattr(file_obj, "name", "") or ""
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "jpg"
+    if ext not in ("jpg", "jpeg", "png", "webp", "gif"):
+        ext = "jpg"
+    dest_dir = os.path.join(settings.MEDIA_ROOT, subdir)
+    os.makedirs(dest_dir, exist_ok=True)
+    fname = f"{uuid.uuid4().hex}.{ext}"
+    with open(os.path.join(dest_dir, fname), "wb") as f:
+        for chunk in file_obj.chunks():
+            f.write(chunk)
+    return _media_public_url(subdir, fname)
 
 
 def fetch_pixabay_image_url(query: str) -> Optional[str]:

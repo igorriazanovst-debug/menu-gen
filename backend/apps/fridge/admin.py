@@ -1,11 +1,22 @@
 import os
 
+from django import forms
 from django.conf import settings
 from django.contrib import admin
 from django.db.models import Q
 from django.utils.html import format_html
 
 from .models import FridgeItem, Product
+
+
+class ProductAdminForm(forms.ModelForm):
+    # MG_OFFIMG: загрузка изображения файлом (как у рецептов) — при сохранении
+    # кладётся в media и подставляется в image_url.
+    upload_image = forms.ImageField(required=False, label="Загрузить изображение (файл)")
+
+    class Meta:
+        model = Product
+        fields = "__all__"
 
 
 class HasImageFilter(admin.SimpleListFilter):
@@ -44,9 +55,10 @@ class ProductKindFilter(admin.SimpleListFilter):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
+    form = ProductAdminForm
     # Продукты-кандидаты на замену блюда = все продукты в поиске (системные +
-    # пользовательские). Для добавления фото удобны: превью, фильтр «без фото»
-    # и inline-правка image_url прямо в списке.
+    # пользовательские). Для добавления фото удобны: превью, фильтр «без фото»,
+    # inline-правка image_url в списке и загрузка файла на странице продукта.
     list_display = (
         "id",
         "name",
@@ -77,6 +89,17 @@ class ProductAdmin(admin.ModelAdmin):
                 os.remove(path)
         except OSError:
             pass
+
+    def save_model(self, request, obj, form, change):
+        # MG_OFFIMG: если загрузили файл — сохраняем его в media и ставим в image_url.
+        upload = form.cleaned_data.get("upload_image")
+        if upload:
+            from .services import save_uploaded_image_to_media
+
+            url = save_uploaded_image_to_media(upload)
+            if url:
+                obj.image_url = url
+        super().save_model(request, obj, form, change)
 
     @admin.action(description="Удалить фото у выбранных продуктов")
     def clear_images(self, request, queryset):
