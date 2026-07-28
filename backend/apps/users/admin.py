@@ -183,3 +183,16 @@ class UserAdmin(BaseUserAdmin):
             request,
             f"Создана семья «{name}»" + (f" и подписка «{plan.code}»." if plan else " (без подписки)."),
         )
+
+
+# MG_PHONEVERIFY: наблюдаемость заявок на подтверждение телефона
+from .models import PhoneVerification  # noqa: E402
+
+
+@admin.register(PhoneVerification)
+class PhoneVerificationAdmin(admin.ModelAdmin):
+    list_display = ("phone", "provider", "status", "messenger_phone", "attempts", "created_at", "verified_at")
+    list_filter = ("provider", "status")
+    search_fields = ("phone", "messenger_phone", "token", "chat_id")
+    readonly_fields = ("created_at", "verified_at")
+    ordering = ("-created_at",)

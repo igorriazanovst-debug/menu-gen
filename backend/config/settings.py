@@ -148,6 +148,18 @@ PAYMENTS_STUB = config("PAYMENTS_STUB", default=True, cast=bool)
 # e-mail и т.п.). Прод: https://menugen.ru; dev: http://<host>:8081. Если пусто —
 # фолбэк на BACKEND_PUBLIC_URL, затем на https://menugen.ru.
 FRONTEND_URL = config("FRONTEND_URL", default="")
+
+# MG_PHONEVERIFY: подтверждение телефона через бот мессенджера.
+# Telegram: токен и username бота от @BotFather. Webhook-секрет сверяется с
+# заголовком X-Telegram-Bot-Api-Secret-Token (прод). В dev используется
+# long-polling (management-команда run_telegram_bot), webhook не нужен.
+TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
+TELEGRAM_BOT_USERNAME = config("TELEGRAM_BOT_USERNAME", default="")
+TELEGRAM_WEBHOOK_SECRET = config("TELEGRAM_WEBHOOK_SECRET", default="")
+# Max (max.ru) — подключается вторым этапом, после сверки их Bot API.
+MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
+MAX_BOT_USERNAME = config("MAX_BOT_USERNAME", default="")
+
 PIXABAY_API_KEY = config("PIXABAY_API_KEY", default="")
 PIXABAY_LANG = config("PIXABAY_LANG", default="ru")
 

@@ -227,3 +227,68 @@ class ProfileTargetAudit(models.Model):
 
     def __str__(self):
         return f"PTA(pid={self.profile_id}, {self.field}={self.new_value}, src={self.source})"
+
+
+# ============================================================
+# MG_PHONEVERIFY: подтверждение владения телефоном через мессенджер
+# (Telegram / Max). Пользователь делится контактом в боте; бот сверяет,
+# что это его собственный номер и что он совпадает с введённым на сайте.
+# Веб опрашивает статус по token, затем завершает регистрацию (имя+пароль).
+# ============================================================
+MG_PHONEVERIFY_V = 1
+
+
+class PhoneVerification(models.Model):
+    """Заявка на одноразовое подтверждение телефона через бот мессенджера.
+
+    Флоу: сайт создаёт заявку (pending) и отдаёт deep-link на бота
+    ``https://t.me/<bot>?start=<token>``. Пользователь открывает бота,
+    делится контактом; бот сверяет номер и переводит заявку в verified
+    (или mismatch, если номер в мессенджере другой). Сайт опрашивает
+    статус по token и, получив verified, завершает регистрацию.
+    """
+
+    class Provider(models.TextChoices):
+        TELEGRAM = "telegram", "Telegram"
+        MAX = "max", "Max"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает подтверждения"
+        VERIFIED = "verified", "Подтверждён"
+        MISMATCH = "mismatch", "Номер не совпал"
+        CONSUMED = "consumed", "Использован (регистрация завершена)"
+        EXPIRED = "expired", "Истёк"
+
+    # Номер, который пользователь ввёл на сайте (нормализованный, E.164-подобно).
+    phone = models.CharField(max_length=20)
+    provider = models.CharField(max_length=16, choices=Provider.choices, default=Provider.TELEGRAM)
+    # Случайный непредсказуемый токен для deep-link и опроса статуса.
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    # Чат мессенджера, привязанный на /start (контакт-сообщение payload не несёт).
+    chat_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    # Заполняется, когда бот получает контакт.
+    messenger_user_id = models.CharField(max_length=64, null=True, blank=True)
+    # Номер, который вернул мессенджер (для диагностики mismatch).
+    messenger_phone = models.CharField(max_length=20, null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "phone_verifications"
+        indexes = [
+            models.Index(fields=["token"]),
+            models.Index(fields=["phone", "status"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PhoneVerification({self.provider}, {self.phone}, {self.status})"
+
+    @property
+    def is_expired(self) -> bool:
+        from django.utils import timezone
+
+        return timezone.now() >= self.expires_at

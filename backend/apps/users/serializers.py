@@ -23,6 +23,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if not attrs.get("email") and not attrs.get("phone"):
             raise serializers.ValidationError("Укажите email или телефон.")
+        # MG_PHONEVERIFY: регистрация только по телефону (без e-mail) идёт через
+        # подтверждение в мессенджере (/auth/phone/*), иначе номер не доказан.
+        # Здесь пускаем только e-mail (телефон может идти доп. полем к e-mail).
+        if attrs.get("phone") and not attrs.get("email"):
+            raise serializers.ValidationError("Регистрация по телефону выполняется с подтверждением в мессенджере.")
         if attrs["password"] != attrs.pop("password2"):
             raise serializers.ValidationError("Пароли не совпадают.")
         return attrs
@@ -54,19 +59,26 @@ class LoginSerializer(serializers.Serializer):
         if email:
             user = authenticate(request=self.context.get("request"), username=email, password=password)
         else:
+            # MG_PHONEVERIFY: вход по телефону. Дефолтный ModelBackend
+            # аутентифицирует по USERNAME_FIELD=email, поэтому телефон-only
+            # аккаунты (без e-mail) через authenticate() не войдут — проверяем
+            # пароль напрямую. Аккаунты с e-mail по-прежнему идут через backend.
+            from .phone_verify import normalize_phone
+
             try:
-                u = User.objects.get(phone=phone)
+                u = User.objects.get(phone=normalize_phone(phone))
             except User.DoesNotExist:
                 u = None
-            user = (
-                authenticate(
+            if u and u.email:
+                user = authenticate(
                     request=self.context.get("request"),
-                    username=u.email if u else None,
+                    username=u.email,
                     password=password,
                 )
-                if u
-                else None
-            )
+            elif u and u.check_password(password):
+                user = u
+            else:
+                user = None
 
         if not user or not user.is_active:
             raise serializers.ValidationError("Неверные учётные данные.")
@@ -406,3 +418,37 @@ class CalculatorResultSerializer(serializers.Serializer):
     fat_target_g = serializers.DecimalField(max_digits=6, decimal_places=1)
     carb_target_g = serializers.DecimalField(max_digits=6, decimal_places=1)
     fiber_target_g = serializers.DecimalField(max_digits=6, decimal_places=1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MG_PHONEVERIFY: подтверждение телефона через мессенджер (Telegram/Max)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PhoneStartSerializer(serializers.Serializer):
+    """Старт подтверждения: номер + выбранный мессенджер."""
+
+    phone = serializers.CharField(max_length=20)
+    provider = serializers.ChoiceField(choices=("telegram", "max"), default="telegram")
+
+    def validate_phone(self, value):
+        from .phone_verify import normalize_phone
+
+        norm = normalize_phone(value)
+        if len(norm) < 11:  # '+' + минимум 10 цифр
+            raise serializers.ValidationError("Некорректный номер телефона.")
+        return norm
+
+
+class PhoneRegisterSerializer(serializers.Serializer):
+    """Завершение регистрации после подтверждения номера: имя + пароль."""
+
+    token = serializers.CharField()
+    name = serializers.CharField(max_length=255)
+    password = serializers.CharField(write_only=True, min_length=5)
+    password2 = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs.pop("password2"):
+            raise serializers.ValidationError("Пароли не совпадают.")
+        return attrs
