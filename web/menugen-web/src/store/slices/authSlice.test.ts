@@ -60,7 +60,8 @@ describe('login', () => {
     const dispatch = jest.fn();
     await login({ email: 'x', password: 'y' })(dispatch, () => ({}), undefined);
     const r = dispatch.mock.calls.find((c: any[]) => c[0].type === 'auth/login/rejected');
-    expect(r![0].payload).toBe('bad creds');
+    // MG_EMAILVERIFY: login теперь отклоняется объектом { message, code?, email? }
+    expect(r![0].payload).toEqual({ message: 'bad creds' });
   });
 });
 
