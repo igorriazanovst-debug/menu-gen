@@ -221,6 +221,17 @@ class _DetailBody extends StatelessWidget {
 
   String get _title => (recipe['title'] as String?) ?? '';
   String? get _imageUrl => recipe['image_url'] as String?;
+
+  // MG_PHOTOZOOM: полноэкранный просмотр фото рецепта.
+  void _openFullImage(BuildContext context, String url) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (_, __, ___) => _FullImageViewer(url: url),
+      ),
+    );
+  }
   String? get _videoUrl => recipe['video_url'] as String?;
   String? get _cookTime => recipe['cook_time'] as String?;
   int? get _servings => recipe['servings'] as int?;
@@ -268,15 +279,19 @@ class _DetailBody extends StatelessWidget {
             child: AspectRatio(
               aspectRatio: 16 / 10,
               child: (_imageUrl != null && _imageUrl!.isNotEmpty)
-                  ? CachedNetworkImage(
-                      imageUrl: _imageUrl!,
-                      cacheManager: RecipeImageCache.instance,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(color: tokens.surfaceAlt),
-                      errorWidget: (_, __, ___) => Container(
-                        color: tokens.surfaceAlt,
-                        child: Icon(Icons.restaurant,
-                            size: 64, color: tokens.textSecondary),
+                  // MG_PHOTOZOOM: тап по фото → полноэкранный просмотр (zoom).
+                  ? GestureDetector(
+                      onTap: () => _openFullImage(context, _imageUrl!),
+                      child: CachedNetworkImage(
+                        imageUrl: _imageUrl!,
+                        cacheManager: RecipeImageCache.instance,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(color: tokens.surfaceAlt),
+                        errorWidget: (_, __, ___) => Container(
+                          color: tokens.surfaceAlt,
+                          child: Icon(Icons.restaurant,
+                              size: 64, color: tokens.textSecondary),
+                        ),
                       ),
                     )
                   : Container(
@@ -803,6 +818,53 @@ class _MadePhotosSheetState extends State<_MadePhotosSheet> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// MG_PHOTOZOOM: полноэкранный просмотр изображения с масштабированием (pinch/zoom).
+class _FullImageViewer extends StatelessWidget {
+  final String url;
+  const _FullImageViewer({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: () => Navigator.of(context).maybePop(),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Center(
+                  child: CachedNetworkImage(
+                    imageUrl: url,
+                    cacheManager: RecipeImageCache.instance,
+                    fit: BoxFit.contain,
+                    placeholder: (_, __) => const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                    errorWidget: (_, __, ___) => const Center(
+                      child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

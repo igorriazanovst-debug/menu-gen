@@ -10,6 +10,7 @@ import { initAuth } from '../../store/slices/authSlice'; // Freemium: refresh qu
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { ImageLightbox } from '../../components/ui/ImageLightbox'; // MG_PHOTOZOOM
 import type { Menu, MenuItem, MealType, ComponentRole, Recipe } from '../../types';
 import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../types';
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
@@ -228,7 +229,8 @@ const RecipeDetailModal: React.FC<{ recipeId: number; onClose: () => void }> = (
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  useEscapeKey(onClose); // MG_ESC: закрытие карточки рецепта по Escape
+  const [zoom, setZoom] = useState(false); // MG_PHOTOZOOM
+  useEscapeKey(() => { if (zoom) setZoom(false); else onClose(); }); // MG_ESC/PHOTOZOOM
 
   useEffect(() => {
     let cancel = false;
@@ -262,8 +264,12 @@ const RecipeDetailModal: React.FC<{ recipeId: number; onClose: () => void }> = (
           <>
             {recipe.image_url && (
               <img src={recipe.image_url} alt=""
-                   className="w-full h-52 object-cover rounded-t-2xl"
+                   onClick={() => setZoom(true)}
+                   className="w-full h-52 object-cover rounded-t-2xl cursor-zoom-in"
                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            )}
+            {zoom && recipe.image_url && (
+              <ImageLightbox src={recipe.image_url} alt={recipe.title} onClose={() => setZoom(false)} />
             )}
             <div className="p-6">
               <div className="flex items-start justify-between gap-3 mb-2">
@@ -342,8 +348,16 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
     win.document.write('<p style="font-family:sans-serif;margin:24px">Загрузка рецептов…</p>');
     setPrinting(true);
     try {
+      // MG_PRODDISH: продукты-блюда не печатаем (у них нет рецепта) — пропускаем.
+      const printable = sorted.filter((it) => it.recipe && it.recipe.id && !it.product);
+      if (printable.length === 0) {
+        win.document.open();
+        win.document.write('<p style="font-family:sans-serif;margin:24px">В этом приёме только продукты — печатать нечего.</p>');
+        win.document.close();
+        return;
+      }
       const full = await Promise.all(
-        sorted.map(async (item) => ({ item, recipe: (await recipesApi.get(item.recipe.id)).data })),
+        printable.map(async (item) => ({ item, recipe: (await recipesApi.get(item.recipe.id)).data })),
       );
       const html = full.map(({ item, recipe: r }) => {
         const ings = (r.ingredients || []).map((i) =>

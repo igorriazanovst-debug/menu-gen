@@ -8,6 +8,7 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { RecipeEditModal } from '../../components/recipes/RecipeEditModal';
 import { AllergenBadges } from '../../components/recipe/AllergenBadges';
 import { MadePhotoControl } from '../../components/recipes/MadePhotoControl';
+import { ImageLightbox } from '../../components/ui/ImageLightbox';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { Recipe } from '../../types';
@@ -402,6 +403,7 @@ const RecipeModal: React.FC<{
 }> = ({ recipe, isAdmin, onClose, onEdit, onDeleted }) => {
   const [confirming, setConfirming] = useState(false);
   const [deleting,   setDeleting]   = useState(false);
+  const [zoom, setZoom] = useState(false); // MG_PHOTOZOOM
   // MG_RECIPETEXT: карточка приходит из списка (RecipeListSerializer) без
   // ingredients/steps — догружаем полный рецепт по id, иначе в окне нет текста.
   const [full, setFull] = useState<Recipe>(recipe);
@@ -430,7 +432,11 @@ const RecipeModal: React.FC<{
       <div className="bg-surface rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {full.image_url && (
           <img src={full.image_url} alt={full.title}
-            className="w-full object-contain rounded-t-2xl bg-gray-50" />
+            onClick={() => setZoom(true)}
+            className="w-full object-contain rounded-t-2xl bg-gray-50 cursor-zoom-in" />
+        )}
+        {zoom && full.image_url && (
+          <ImageLightbox src={full.image_url} alt={full.title} onClose={() => setZoom(false)} />
         )}
         <div className="p-6">
           <div className="flex items-start justify-between gap-4">
