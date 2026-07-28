@@ -46,8 +46,14 @@ class Command(BaseCommand):
                 params = {"timeout": long_poll}
                 if offset is not None:
                     params["offset"] = offset
+                # (connect, read): read с запасом над long-poll. Через прокси
+                # холостой long-poll иногда закрывается по таймауту — это норма,
+                # не ошибка (см. обработку Timeout ниже).
                 resp = requests.get(
-                    f"{base}/getUpdates", params=params, timeout=long_poll + 10, proxies=proxies
+                    f"{base}/getUpdates",
+                    params=params,
+                    timeout=(10, long_poll + 15),
+                    proxies=proxies,
                 )
                 data = resp.json()
                 if not data.get("ok"):
@@ -60,6 +66,10 @@ class Command(BaseCommand):
             except KeyboardInterrupt:  # pragma: no cover
                 self.stdout.write("Остановлено.")
                 break
+            except requests.exceptions.Timeout:
+                # Холостой long-poll без новых сообщений — ожидаемо, просто
+                # переспрашиваем. Не логируем как ошибку.
+                continue
             except requests.RequestException as e:
                 log.error("polling error: %s", e)
                 time.sleep(3)
