@@ -47,6 +47,13 @@ export const authApi = {
   resendVerification: (email: string) =>
     client.post<{ detail: string; verify_link?: string }>('/auth/email/resend/', { email }),
 
+  // MG_EMAILVERIFY: добавить/сменить e-mail в профиле (требует подтверждения по ссылке)
+  setEmail: (email: string) =>
+    client.post<{ detail: string; email?: string; requires_email_verification?: boolean; verify_link?: string }>(
+      '/users/me/email/',
+      { email },
+    ),
+
   logout: (refresh: string) =>
     client.post('/auth/logout/', { refresh }),
 

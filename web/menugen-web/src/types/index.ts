@@ -40,7 +40,7 @@ export interface SubscriptionStatus {
   menu_quota: MenuQuota;
 }
 export interface User {
-  id: number; name: string; email?: string; phone?: string;
+  id: number; name: string; email?: string; email_verified?: boolean; phone?: string;
   vk_id?: string; avatar_url?: string; user_type: string;
   allergies: string[]; disliked_products: string[]; profile?: UserProfile;
   ui_skin?: 'main' | 'second'; // MG_SKIN

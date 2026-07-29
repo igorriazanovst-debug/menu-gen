@@ -846,7 +846,9 @@ const CreateModal: React.FC<{
 // ── Модалка доступа ──────────────────────────────────────────────────────────
 const AccessModal: React.FC<{ listId: number; onClose: () => void }> = ({ listId, onClose }) => {
   const [accesses, setAccesses] = useState<ShoppingV2Access[]>([]);
-  const [email, setEmail] = useState('');
+  // MG_SHAREPHONE: делиться можно по e-mail или по телефону (для клиентов без почты).
+  const [shareBy, setShareBy] = useState<'email' | 'phone'>('email');
+  const [contact, setContact] = useState('');
   const [canToggle, setCanToggle] = useState(false);
   const [canExport, setCanExport] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -863,19 +865,24 @@ const AccessModal: React.FC<{ listId: number; onClose: () => void }> = ({ listId
 
   const grant = async () => {
     setErr('');
-    if (!email.trim()) {
-      setErr('Введите email.');
+    if (!contact.trim()) {
+      setErr(shareBy === 'email' ? 'Введите email.' : 'Введите телефон.');
       return;
     }
     setBusy(true);
     try {
-      await shoppingApi.grantAccess(listId, { email: email.trim(), can_toggle: canToggle, can_export: canExport });
-      setEmail('');
+      const payload =
+        shareBy === 'email'
+          ? { email: contact.trim(), can_toggle: canToggle, can_export: canExport }
+          : { phone: contact.trim(), can_toggle: canToggle, can_export: canExport };
+      await shoppingApi.grantAccess(listId, payload);
+      setContact('');
       setCanToggle(false);
       setCanExport(false);
       load();
     } catch (e: any) {
-      setErr(e?.response?.data?.email?.[0] || e?.response?.data?.detail || 'Ошибка.');
+      const d = e?.response?.data;
+      setErr(d?.email?.[0] || d?.phone?.[0] || d?.detail || 'Ошибка.');
     } finally {
       setBusy(false);
     }
@@ -903,7 +910,35 @@ const AccessModal: React.FC<{ listId: number; onClose: () => void }> = ({ listId
         </ul>
 
         <div className="pt-2 border-t border-border space-y-2">
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email пользователя" />
+          {/* MG_SHAREPHONE: выбор способа — e-mail или телефон */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => { setShareBy('email'); setErr(''); }}
+              className={[
+                'rounded-lg border px-3 py-1.5 text-sm font-medium transition',
+                shareBy === 'email' ? 'border-tomato bg-tomato/10 text-tomato' : 'border-gray-300 text-gray-500',
+              ].join(' ')}
+            >
+              По e-mail
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShareBy('phone'); setErr(''); }}
+              className={[
+                'rounded-lg border px-3 py-1.5 text-sm font-medium transition',
+                shareBy === 'phone' ? 'border-tomato bg-tomato/10 text-tomato' : 'border-gray-300 text-gray-500',
+              ].join(' ')}
+            >
+              По телефону
+            </button>
+          </div>
+          <Input
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+            placeholder={shareBy === 'email' ? 'email пользователя' : '+7 900 000-00-00'}
+            type={shareBy === 'email' ? 'email' : 'tel'}
+          />
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={canToggle} onChange={(e) => setCanToggle(e.target.checked)} />
             Может отмечать покупки

@@ -178,7 +178,7 @@ export const ProfilePage: React.FC = () => {
 
         <form onSubmit={handleSave} className="space-y-4">
           <Input label="Имя" value={name} onChange={(e) => setName(e.target.value)} error={error} />
-          <Input label="Email" value={user?.email ?? ''} disabled />
+          <EmailSection />
 
           <div>
             <label className="block text-sm font-medium text-chocolate mb-2">
@@ -307,6 +307,105 @@ export const ProfilePage: React.FC = () => {
           <p className="text-sm text-gray-500">Не удалось рассчитать цели — проверьте параметры профиля.</p>
         )}
       </Card>
+    </div>
+  );
+};
+
+// MG_EMAILVERIFY: добавление/смена e-mail в профиле с подтверждением по ссылке.
+const EmailSection: React.FC = () => {
+  const user = useAppSelector((s) => s.auth.user);
+  const dispatch = useAppDispatch();
+  const [editing, setEditing] = useState(false);
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const hasEmail = !!user?.email;
+  const verified = !!user?.email_verified;
+
+  const submit = async () => {
+    setErr(null);
+    setMsg(null);
+    const value = email.trim();
+    if (!value) {
+      setErr('Введите e-mail.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data } = await authApi.setEmail(value);
+      const { data: me } = await authApi.me();
+      dispatch(setUser(me));
+      setEditing(false);
+      setEmail('');
+      setMsg(data.detail || 'Письмо со ссылкой отправлено — подтвердите e-mail.');
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || e?.response?.data?.email?.[0] || 'Не удалось сохранить e-mail.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resend = async () => {
+    if (!user?.email) return;
+    setErr(null);
+    setMsg(null);
+    try {
+      await authApi.resendVerification(user.email);
+      setMsg('Письмо отправлено повторно.');
+    } catch {
+      setErr('Не удалось отправить письмо.');
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-chocolate mb-1">E-mail</label>
+      {hasEmail && !editing ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-gray-700 flex-1 min-w-[10rem]">{user!.email}</span>
+          {verified ? (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
+              ✓ подтверждён
+            </span>
+          ) : (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+              не подтверждён
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => { setEditing(true); setEmail(user!.email || ''); setMsg(null); setErr(null); }}
+            className="text-xs text-tomato hover:underline"
+          >
+            изменить
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2 items-start">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="flex-1"
+          />
+          <Button type="button" onClick={submit} loading={busy}>Сохранить</Button>
+          {hasEmail && (
+            <Button type="button" variant="ghost" onClick={() => { setEditing(false); setErr(null); }}>
+              Отмена
+            </Button>
+          )}
+        </div>
+      )}
+      {hasEmail && !verified && !editing && (
+        <button type="button" onClick={resend} className="mt-1 text-xs text-tomato hover:underline">
+          Отправить письмо подтверждения снова
+        </button>
+      )}
+      {msg && <p className="mt-1 text-xs text-green-600">{msg}</p>}
+      {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
     </div>
   );
 };

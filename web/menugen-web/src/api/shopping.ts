@@ -38,6 +38,7 @@ export interface AddItemPayload {
 export interface GrantAccessPayload {
   user_id?: number;
   email?: string;
+  phone?: string; // MG_SHAREPHONE: делиться с пользователем без e-mail
   can_toggle?: boolean;
   can_export?: boolean;
 }
