@@ -21,10 +21,12 @@ class Command(BaseCommand):
         if not host:
             raise CommandError("EMAIL_HOST не задан — SMTP не настроен (см. .env).")
 
+        proxy = getattr(settings, "EMAIL_PROXY", "") or ""
         self.stdout.write(
             f"SMTP {host}:{settings.EMAIL_PORT} "
             f"(TLS={settings.EMAIL_USE_TLS}, SSL={settings.EMAIL_USE_SSL}); от {sender} → {to}"
         )
+        self.stdout.write(f"Прокси: {proxy or 'нет (напрямую)'}; backend={settings.EMAIL_BACKEND}")
         try:
             sent = send_mail(
                 "MenuGen: проверка SMTP",

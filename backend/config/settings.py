@@ -249,7 +249,12 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Europe/Moscow"
 
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# MG_MAILPROXY: на российском хостинге исходящие SMTP-порты часто закрыты
+# ([Errno 101] Network is unreachable). Бэкенд ProxyEmailBackend умеет ходить
+# через SOCKS5 (тот же Xray, что и Telegram-бот) — см. EMAIL_PROXY ниже.
+# Пустой EMAIL_PROXY = прямое соединение (штатное поведение Django).
+EMAIL_BACKEND = config("EMAIL_BACKEND", default="apps.common.email_backend.ProxyEmailBackend")
+EMAIL_PROXY = config("EMAIL_PROXY", default="")
 EMAIL_HOST = config("EMAIL_HOST", default="")
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 # STARTTLS (порт 587) vs SSL (порт 465) — взаимоисключающие. По умолчанию STARTTLS.
@@ -259,6 +264,8 @@ EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="")
+# Без таймаута заблокированный SMTP-порт вешает запрос/команду до бесконечности.
+EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=20, cast=int)
 
 LOGGING = {
     "version": 1,
