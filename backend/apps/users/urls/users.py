@@ -4,6 +4,7 @@ from apps.users.views import (
     AllergenListView,
     CalculatorApplyView,
     CalculatorPreviewView,
+    SetEmailView,
     TargetHistoryView,
     TargetResetView,
     UserMeView,
@@ -18,5 +19,7 @@ urlpatterns = [
     # MG_206_V_urls = 1
     path("me/calculator/preview/", CalculatorPreviewView.as_view(), name="users-me-calc-preview"),
     path("me/calculator/apply/", CalculatorApplyView.as_view(), name="users-me-calc-apply"),
+    # MG_EMAILVERIFY: добавить/сменить e-mail в профиле (с подтверждением)
+    path("me/email/", SetEmailView.as_view(), name="users-me-set-email"),
     path("me/", UserMeView.as_view(), name="users-me"),
 ]

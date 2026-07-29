@@ -176,6 +176,55 @@ class UserMeView(generics.RetrieveUpdateAPIView):
         return super().put(request, *args, **kwargs)
 
 
+class SetEmailView(APIView):
+    """POST /users/me/email/ {email} — добавить/сменить e-mail в профиле.
+
+    MG_EMAILVERIFY: e-mail сохраняется как НЕподтверждённый (email_verified_at=
+    NULL) и отправляется письмо со ссылкой. Подтверждение — тем же механизмом,
+    что и при регистрации (POST /auth/email/verify/ по токену из ссылки).
+    """
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(request=None, responses={200: None})
+    def post(self, request):
+        from django.conf import settings as dj_settings
+
+        from apps.users.models import User
+
+        from .email_verify import send_verification_email
+        from .serializers import SetEmailSerializer
+
+        ser = SetEmailSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        email = ser.validated_data["email"].strip().lower()
+        user = request.user
+
+        if user.email and user.email.lower() == email and user.is_email_verified:
+            return Response({"detail": "Этот e-mail уже подтверждён.", "email": email, "email_verified": True})
+
+        # Занят другим аккаунтом (регистронезависимо)?
+        if User.objects.filter(email__iexact=email).exclude(pk=user.pk).exists():
+            return Response(
+                {"detail": "Этот e-mail уже используется другим аккаунтом.", "code": "email_taken"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        user.email = email
+        user.email_verified_at = None
+        user.save(update_fields=["email", "email_verified_at"])
+
+        link = send_verification_email(user)
+        payload = {
+            "detail": "Письмо со ссылкой отправлено. Подтвердите e-mail по ссылке.",
+            "email": email,
+            "requires_email_verification": True,
+        }
+        if dj_settings.DEBUG:  # dev без SMTP — отдаём ссылку в ответе
+            payload["verify_link"] = link
+        return Response(payload)
+
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 

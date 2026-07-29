@@ -182,16 +182,21 @@ class ShoppingListAccessSerializer(serializers.ModelSerializer):
 
 
 class GrantAccessSerializer(serializers.Serializer):
-    """Grant by user_id (family member) OR email (any app user)."""
+    """Grant by user_id (family member), email, OR phone (any app user).
+
+    MG_SHAREPHONE: телефон нужен, чтобы делиться списком с клиентами без e-mail
+    (например, зарегистрированными по номеру через мессенджер).
+    """
 
     user_id = serializers.IntegerField(required=False)
     email = serializers.EmailField(required=False)
+    phone = serializers.CharField(required=False, allow_blank=True)
     can_toggle = serializers.BooleanField(default=False)
     can_export = serializers.BooleanField(default=False)
 
     def validate(self, attrs):
-        if not attrs.get("user_id") and not attrs.get("email"):
-            raise serializers.ValidationError("user_id или email обязателен.")
+        if not attrs.get("user_id") and not attrs.get("email") and not (attrs.get("phone") or "").strip():
+            raise serializers.ValidationError("Укажите user_id, email или телефон.")
         return attrs
 
     def resolve_user(self):
@@ -201,6 +206,15 @@ class GrantAccessSerializer(serializers.Serializer):
                 return User.objects.get(id=data["user_id"])
             except User.DoesNotExist:
                 raise serializers.ValidationError({"user_id": "Пользователь не найден."})
+        # MG_SHAREPHONE: резолв по номеру телефона (нормализуем как при регистрации).
+        if (data.get("phone") or "").strip():
+            from apps.users.phone_verify import normalize_phone
+
+            phone = normalize_phone(data["phone"])
+            user = User.objects.filter(phone=phone).order_by("id").first()
+            if user is None:
+                raise serializers.ValidationError({"phone": "Пользователь с таким телефоном не найден."})
+            return user
         # MG_EMAILCI: e-mail регистронезависимо — пользователь может ввести адрес
         # в любом регистре (I.User@… == i.user@…).
         email = (data.get("email") or "").strip()

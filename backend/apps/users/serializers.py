@@ -191,6 +191,8 @@ class UserMeSerializer(serializers.ModelSerializer):
     subscription_status = serializers.SerializerMethodField()
     # MG_CONSTRUCTOR: флаги доступа к инструментам специалиста (конструктор меню).
     is_specialist = serializers.SerializerMethodField()
+    # MG_EMAILVERIFY: статус подтверждения e-mail — для UI профиля.
+    email_verified = serializers.BooleanField(source="is_email_verified", read_only=True)
 
     class Meta:
         model = User
@@ -198,6 +200,7 @@ class UserMeSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "email",
+            "email_verified",
             "phone",
             "vk_id",
             "avatar_url",
@@ -452,3 +455,8 @@ class PhoneRegisterSerializer(serializers.Serializer):
         if attrs["password"] != attrs.pop("password2"):
             raise serializers.ValidationError("Пароли не совпадают.")
         return attrs
+
+
+# MG_EMAILVERIFY: добавление/смена e-mail в профиле (с подтверждением по ссылке)
+class SetEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField()
