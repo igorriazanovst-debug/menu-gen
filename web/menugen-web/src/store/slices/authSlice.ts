@@ -66,6 +66,45 @@ export const register = createAsyncThunk(
   },
 );
 
+// MG_PHONEVERIFY: вход по телефону + паролю (телефон-only аккаунты).
+export const loginPhone = createAsyncThunk(
+  'auth/loginPhone',
+  async ({ phone, password }: { phone: string; password: string }, { rejectWithValue }) => {
+    try {
+      const { data: tokens } = await authApi.loginPhone(phone, password);
+      localStorage.setItem('access_token', tokens.access);
+      localStorage.setItem('refresh_token', tokens.refresh);
+      const { data: user } = await authApi.me();
+      return user;
+    } catch (e: any) {
+      return rejectWithValue({ message: e.response?.data?.detail || 'Неверные учётные данные' });
+    }
+  },
+);
+
+// MG_PHONEVERIFY: завершение регистрации по телефону → вход (сохраняет токены).
+export const phoneRegister = createAsyncThunk(
+  'auth/phoneRegister',
+  async (
+    { token, name, password, password2 }: { token: string; name: string; password: string; password2: string },
+    { rejectWithValue },
+  ) => {
+    try {
+      const { data: tokens } = await authApi.phoneRegister(token, name, password, password2);
+      localStorage.setItem('access_token', tokens.access);
+      localStorage.setItem('refresh_token', tokens.refresh);
+      const { data: user } = await authApi.me();
+      return user;
+    } catch (e: any) {
+      const d = e.response?.data;
+      const msg = d?.detail
+        || (d && typeof d === 'object' ? Object.values(d).flat().join(' ') : '')
+        || 'Не удалось завершить регистрацию';
+      return rejectWithValue(msg);
+    }
+  },
+);
+
 // MG_EMAILVERIFY: подтверждение e-mail по токену из ссылки → вход (сохраняет токены).
 export const verifyEmail = createAsyncThunk(
   'auth/verifyEmail',
@@ -120,6 +159,24 @@ const authSlice = createSlice({
         state.loading = false; state.user = action.payload;
       })
       .addCase(verifyEmail.rejected, (state, action) => {
+        state.loading = false; state.error = action.payload as string;
+      })
+      // MG_PHONEVERIFY: вход по телефону логинит (как обычный login).
+      .addCase(loginPhone.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(loginPhone.fulfilled, (state, action) => {
+        state.loading = false; state.user = action.payload;
+      })
+      .addCase(loginPhone.rejected, (state, action) => {
+        state.loading = false;
+        const p = action.payload as { message?: string } | string | undefined;
+        state.error = (typeof p === 'object' ? p?.message : p) || 'Ошибка входа';
+      })
+      // MG_PHONEVERIFY: завершение телефон-регистрации логинит (выдаёт токены).
+      .addCase(phoneRegister.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(phoneRegister.fulfilled, (state, action) => {
+        state.loading = false; state.user = action.payload;
+      })
+      .addCase(phoneRegister.rejected, (state, action) => {
         state.loading = false; state.error = action.payload as string;
       })
       .addCase(logout.fulfilled, (state) => { state.user = null; });

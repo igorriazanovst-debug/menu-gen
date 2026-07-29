@@ -99,6 +99,12 @@ export const RegisterPage: React.FC = () => {
                 Уже есть аккаунт?{' '}
                 <Link to="/login" className="text-tomato font-medium hover:underline">Войти</Link>
               </p>
+              <p className="text-sm text-muted text-center mt-2">
+                {/* MG_PHONEVERIFY */}
+                <Link to="/register/phone" className="text-tomato font-medium hover:underline">
+                  Регистрация по телефону
+                </Link>
+              </p>
             </>
           )}
         </div>

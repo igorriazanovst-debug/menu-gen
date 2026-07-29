@@ -2,7 +2,9 @@ import '@testing-library/jest-dom';
 
 jest.mock('../../api/auth');
 
-import authReducer, { clearError, setUser, login, logout, initAuth } from './authSlice';
+import authReducer, {
+  clearError, setUser, login, logout, initAuth, loginPhone, phoneRegister,
+} from './authSlice';
 import { authApi } from '../../api/auth';
 import type { User } from '../../types';
 
@@ -62,6 +64,44 @@ describe('login', () => {
     const r = dispatch.mock.calls.find((c: any[]) => c[0].type === 'auth/login/rejected');
     // MG_EMAILVERIFY: login теперь отклоняется объектом { message, code?, email? }
     expect(r![0].payload).toEqual({ message: 'bad creds' });
+  });
+});
+
+// MG_PHONEVERIFY
+describe('loginPhone', () => {
+  beforeEach(() => { localStorage.clear(); jest.clearAllMocks(); });
+  it('fulfilled: saves tokens + loads user', async () => {
+    mockAuthApi.loginPhone.mockResolvedValueOnce({ data: { access: 'acc', refresh: 'ref' } } as any);
+    mockAuthApi.me.mockResolvedValueOnce({ data: mockUser } as any);
+    const dispatch = jest.fn();
+    await loginPhone({ phone: '+79123456789', password: 'p' })(dispatch, () => ({}), undefined);
+    expect(localStorage.getItem('access_token')).toBe('acc');
+    const f = dispatch.mock.calls.find((c: any[]) => c[0].type === 'auth/loginPhone/fulfilled');
+    expect(f![0].payload).toEqual(mockUser);
+  });
+  it('rejected: object with message', async () => {
+    mockAuthApi.loginPhone.mockRejectedValueOnce({ response: { data: { detail: 'bad' } } });
+    const dispatch = jest.fn();
+    await loginPhone({ phone: 'x', password: 'y' })(dispatch, () => ({}), undefined);
+    const r = dispatch.mock.calls.find((c: any[]) => c[0].type === 'auth/loginPhone/rejected');
+    expect(r![0].payload).toEqual({ message: 'bad' });
+  });
+  it('fulfilled state sets user', () => {
+    expect(authReducer({ ...initialState, loading: true }, { type: 'auth/loginPhone/fulfilled', payload: mockUser }).user).toEqual(mockUser);
+  });
+});
+
+describe('phoneRegister', () => {
+  beforeEach(() => { localStorage.clear(); jest.clearAllMocks(); });
+  it('fulfilled: saves tokens + loads user', async () => {
+    mockAuthApi.phoneRegister.mockResolvedValueOnce({ data: { access: 'acc2', refresh: 'ref2' } } as any);
+    mockAuthApi.me.mockResolvedValueOnce({ data: mockUser } as any);
+    const dispatch = jest.fn();
+    await phoneRegister({ token: 't', name: 'Ivan', password: 'pass12345', password2: 'pass12345' })(dispatch, () => ({}), undefined);
+    expect(localStorage.getItem('access_token')).toBe('acc2');
+  });
+  it('rejected state sets error', () => {
+    expect(authReducer({ ...initialState, loading: true }, { type: 'auth/phoneRegister/rejected', payload: 'нет' }).error).toBe('нет');
   });
 });
 
