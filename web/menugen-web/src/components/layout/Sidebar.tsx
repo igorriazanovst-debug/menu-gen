@@ -70,6 +70,8 @@ export const Sidebar: React.FC = () => {
         <div className="mt-2 px-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-sidebar-muted">
           <NavLink to="/requisites" className="hover:text-sidebar-fg">Реквизиты</NavLink>
           <NavLink to="/offer" className="hover:text-sidebar-fg">Оферта</NavLink>
+          {/* MG_PRIVACY */}
+          <NavLink to="/privacy" className="hover:text-sidebar-fg">Политика ПД</NavLink>
         </div>
       </div>
     </aside>

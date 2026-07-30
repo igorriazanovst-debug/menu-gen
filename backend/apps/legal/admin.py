@@ -12,6 +12,17 @@ class LegalInfoAdmin(admin.ModelAdmin):
         ("Банковские реквизиты", {"fields": ("bank_name", "bank_bik", "bank_account", "corr_account")}),
         ("Дополнительно", {"fields": ("requisites_extra",)}),
         ("Оферта", {"fields": ("offer_text",)}),
+        (
+            "Политика обработки персональных данных",  # MG_PRIVACY
+            {
+                "fields": ("privacy_text",),
+                "description": (
+                    "Оставьте пустым — на сайте покажется типовой текст (152-ФЗ) "
+                    "с подстановкой реквизитов выше. Рекомендуется согласовать "
+                    "формулировки с юристом перед публикацией."
+                ),
+            },
+        ),
         ("Логотип", {"fields": ("logo", "logo_preview")}),
         (None, {"fields": ("updated_at",)}),
     )

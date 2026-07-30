@@ -61,6 +61,7 @@ export interface LegalInfo {
   corr_account: string;
   requisites_extra: string;
   offer_text: string;
+  privacy_text: string; // MG_PRIVACY: политика обработки ПД
   logo_url: string | null;
   updated_at: string;
 }
