@@ -40,6 +40,8 @@ export const LegalShell: React.FC<{
       <div className="mt-10 pt-6 border-t border-border text-center text-sm text-gray-400 flex flex-wrap gap-4 justify-center">
         <Link to="/requisites" className="hover:text-tomato">Реквизиты</Link>
         <Link to="/offer" className="hover:text-tomato">Оферта</Link>
+        {/* MG_PRIVACY */}
+        <Link to="/privacy" className="hover:text-tomato">Политика обработки ПД</Link>
         <Link to="/" className="hover:text-tomato">На главную</Link>
       </div>
     </div>

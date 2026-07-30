@@ -29,6 +29,15 @@ class LegalInfo(models.Model):
     # Оферта
     offer_text = models.TextField(blank=True, verbose_name="Текст оферты")
 
+    # MG_PRIVACY: Политика обработки персональных данных (152-ФЗ). Если поле
+    # пустое — отдаётся типовой текст с подстановкой реквизитов (см.
+    # privacy_default.py), чтобы страница не была пустой.
+    privacy_text = models.TextField(
+        blank=True,
+        verbose_name="Текст политики обработки ПД",
+        help_text="Если оставить пустым — на сайте показывается типовой текст с вашими реквизитами.",
+    )
+
     # Логотип (пока заглушка-помидор на вебе, если не задан)
     logo = models.ImageField(upload_to="legal/", null=True, blank=True, verbose_name="Логотип")
 
@@ -55,3 +64,14 @@ class LegalInfo(models.Model):
     def load(cls) -> "LegalInfo":
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+    # MG_PRIVACY ─────────────────────────────────────────────────────────────
+    @property
+    def privacy_effective(self) -> str:
+        """Текст политики: свой из админки, иначе типовой с реквизитами."""
+        own = (self.privacy_text or "").strip()
+        if own:
+            return own
+        from .privacy_default import default_privacy_text
+
+        return default_privacy_text(self)

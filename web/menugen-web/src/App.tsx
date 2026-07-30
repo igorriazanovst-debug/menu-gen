@@ -24,6 +24,7 @@ import { KBJUCalculatorPage } from './pages/Profile/KBJUCalculatorPage'; // MG_2
 import { ConstructorPage }    from './pages/Constructor/ConstructorPage'; // MG_CONSTRUCTOR
 import { RequisitesPage }     from './pages/Legal/RequisitesPage'; // MG_LEGAL
 import { OfferPage }          from './pages/Legal/OfferPage'; // MG_LEGAL
+import { PrivacyPage }        from './pages/Legal/PrivacyPage'; // MG_PRIVACY
 import { SpecialistDashboardPage } from './pages/specialist/SpecialistDashboardPage';
 import { SpecialistRegisterPage }  from './pages/specialist/SpecialistRegisterPage';
 import { ClientDetailPage }        from './pages/specialist/ClientDetailPage';
@@ -75,6 +76,7 @@ const AppRoutes: React.FC = () => {
       {/* MG_LEGAL: публичные юридические страницы (без авторизации) */}
       <Route path="/requisites" element={<RequisitesPage />} />
       <Route path="/offer" element={<OfferPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />{/* MG_PRIVACY */}
       <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
         <Route index element={<HomeRedirect />} />
         <Route path="dashboard"     element={<PremiumRoute><DashboardPage /></PremiumRoute>} />

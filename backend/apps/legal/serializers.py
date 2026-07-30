@@ -7,6 +7,8 @@ from .models import LegalInfo
 
 class LegalInfoSerializer(serializers.ModelSerializer):
     logo_url = serializers.SerializerMethodField()
+    # MG_PRIVACY: отдаём действующий текст политики (свой либо типовой).
+    privacy_text = serializers.CharField(source="privacy_effective", read_only=True)
 
     class Meta:
         model = LegalInfo
@@ -23,6 +25,7 @@ class LegalInfoSerializer(serializers.ModelSerializer):
             "corr_account",
             "requisites_extra",
             "offer_text",
+            "privacy_text",  # MG_PRIVACY
             "logo_url",
             "updated_at",
         )
