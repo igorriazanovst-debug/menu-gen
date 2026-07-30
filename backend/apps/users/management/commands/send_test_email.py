@@ -15,21 +15,28 @@ class Command(BaseCommand):
         parser.add_argument("to", help="Адрес получателя тестового письма")
 
     def handle(self, *args, **opts):
+        from apps.common.mail import email_enabled
+
         to = opts["to"]
         host = getattr(settings, "EMAIL_HOST", "") or ""
         sender = getattr(settings, "DEFAULT_FROM_EMAIL", "") or getattr(settings, "EMAIL_HOST_USER", "")
-        if not host:
-            raise CommandError("EMAIL_HOST не задан — SMTP не настроен (см. .env).")
+        # MG_MAILAPI: при HTTP API (Anymail) EMAIL_HOST пуст и не требуется —
+        # проверяем настроенность по бэкенду, а не по наличию SMTP-хоста.
+        if not email_enabled():
+            raise CommandError("Отправка почты не настроена: для SMTP задайте EMAIL_HOST (см. .env).")
 
-        proxy = getattr(settings, "EMAIL_PROXY", "") or ""
-        self.stdout.write(
-            f"SMTP {host}:{settings.EMAIL_PORT} "
-            f"(TLS={settings.EMAIL_USE_TLS}, SSL={settings.EMAIL_USE_SSL}); от {sender} → {to}"
-        )
-        self.stdout.write(f"Прокси: {proxy or 'нет (напрямую)'}; backend={settings.EMAIL_BACKEND}")
+        self.stdout.write(f"Backend: {settings.EMAIL_BACKEND}")
+        if host:
+            proxy = getattr(settings, "EMAIL_PROXY", "") or ""
+            self.stdout.write(
+                f"SMTP {host}:{settings.EMAIL_PORT} "
+                f"(TLS={settings.EMAIL_USE_TLS}, SSL={settings.EMAIL_USE_SSL}); прокси: "
+                f"{proxy or 'нет (напрямую)'}"
+            )
+        self.stdout.write(f"От {sender} → {to}")
         try:
             sent = send_mail(
-                "MenuGen: проверка SMTP",
+                "MenuGen: проверка отправки почты",
                 "Если вы видите это письмо — отправка почты настроена корректно.",
                 sender,
                 [to],

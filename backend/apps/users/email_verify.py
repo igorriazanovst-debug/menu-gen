@@ -54,9 +54,12 @@ def send_verification_email(user) -> str:
         f"Подтвердите ваш e-mail, перейдя по ссылке:\n{link}\n\n"
         f"Ссылка действует 3 дня. Если вы не регистрировались — просто игнорируйте это письмо."
     )
-    host = getattr(settings, "EMAIL_HOST", "")
+    # MG_MAILAPI: раньше здесь проверялся EMAIL_HOST, но при отправке через
+    # HTTP API провайдера (Anymail) SMTP-хост пуст — нужна проверка по бэкенду.
+    from apps.common.mail import email_enabled
+
     sender = getattr(settings, "DEFAULT_FROM_EMAIL", "") or "no-reply@menugen.ru"
-    if host and user.email:
+    if email_enabled() and user.email:
         try:
             send_mail(subject, body, sender, [user.email], fail_silently=False)
         except Exception as e:  # не роняем регистрацию из-за почты

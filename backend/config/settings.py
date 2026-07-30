@@ -267,6 +267,24 @@ DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="")
 # Без таймаута заблокированный SMTP-порт вешает запрос/команду до бесконечности.
 EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=20, cast=int)
 
+# MG_MAILAPI: отправка писем через HTTP API провайдера (порт 443) — единственный
+# рабочий вариант, когда хостинг и VPS режут исходящие SMTP-порты. Используется
+# django-anymail: выбор ESP делается через EMAIL_BACKEND в .env, например
+#   EMAIL_BACKEND=anymail.backends.unisender_go.EmailBackend
+# (аналогично доступны mailgun, resend, brevo, sendgrid и др. — см. Anymail).
+# Ключи ниже пустые, пока провайдер не подключён; Anymail читает их из ANYMAIL.
+ANYMAIL = {
+    # Unisender Go: URL зависит от дата-центра аккаунта (go1/go2 — см. кабинет).
+    "UNISENDER_GO_API_KEY": config("UNISENDER_GO_API_KEY", default=""),
+    "UNISENDER_GO_API_URL": config(
+        "UNISENDER_GO_API_URL",
+        default="https://go1.unisender.ru/ru/transactional/api/v1",
+    ),
+    # На случай смены провайдера — ключи подхватятся без правок кода.
+    "MAILGUN_API_KEY": config("MAILGUN_API_KEY", default=""),
+    "RESEND_API_KEY": config("RESEND_API_KEY", default=""),
+}
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
