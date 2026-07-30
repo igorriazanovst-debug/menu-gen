@@ -11,6 +11,7 @@ import { MadePhotoControl } from '../../components/recipes/MadePhotoControl';
 import { ImageLightbox } from '../../components/ui/ImageLightbox';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { categoryLabel } from '../../constants/categories'; // MG_CATRU
 import type { Recipe } from '../../types';
 
 const MEAL_TYPES = [
@@ -376,8 +377,9 @@ const RecipeCard: React.FC<{
             </span>
           )}
         </div>
+        {/* MG_CATRU: чипы категорий по-русски (незнакомые токены — как есть) */}
         {(recipe.categories ?? []).slice(0, 2).map((c) => (
-          <Badge key={c} color="gray">{c}</Badge>
+          <Badge key={c} color="gray">{categoryLabel(c)}</Badge>
         ))}
       </div>
     </div>
