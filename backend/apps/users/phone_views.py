@@ -151,3 +151,29 @@ class TelegramWebhookView(APIView):
 
         handle_update(get_provider("telegram"), request.data or {})
         return Response({"ok": True})
+
+
+class MaxWebhookView(APIView):
+    """POST /auth/max/webhook/[<secret>/] — приём апдейтов Max (прод).
+
+    У Max нет заголовка с секретом (как X-Telegram-Bot-Api-Secret-Token),
+    поэтому секрет передаётся сегментом URL: подписываем webhook на адрес
+    .../auth/max/webhook/<MAX_WEBHOOK_SECRET>/ и сверяем сегмент.
+    """
+
+    permission_classes = (permissions.AllowAny,)
+    authentication_classes = ()
+
+    @extend_schema(request=None, responses={200: None})
+    def post(self, request, secret: str = ""):
+        from django.conf import settings
+
+        from .messengers import get_provider
+        from .messengers.handler import handle_update
+
+        expected = getattr(settings, "MAX_WEBHOOK_SECRET", "") or ""
+        if expected and secret != expected:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        handle_update(get_provider("max"), request.data or {})
+        return Response({"ok": True})

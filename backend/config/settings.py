@@ -160,9 +160,14 @@ TELEGRAM_WEBHOOK_SECRET = config("TELEGRAM_WEBHOOK_SECRET", default="")
 # socks5h://xray:1080 — локальный SOCKS5 от Xray-клиента (VLESS/Reality).
 # Пусто — ходим напрямую. Для socks5 нужен пакет PySocks (в requirements).
 TELEGRAM_PROXY = config("TELEGRAM_PROXY", default="")
-# Max (max.ru) — подключается вторым этапом, после сверки их Bot API.
+# Max (max.ru): токен и username бота из кабинета разработчика (dev.max.ru).
 MAX_BOT_TOKEN = config("MAX_BOT_TOKEN", default="")
 MAX_BOT_USERNAME = config("MAX_BOT_USERNAME", default="")
+# База Bot API Max (на случай смены домена платформой).
+MAX_API_BASE = config("MAX_API_BASE", default="https://platform-api2.max.ru")
+# У Max нет заголовка с секретом — секрет передаётся сегментом URL webhook:
+# .../api/v1/auth/max/webhook/<MAX_WEBHOOK_SECRET>/
+MAX_WEBHOOK_SECRET = config("MAX_WEBHOOK_SECRET", default="")
 
 PIXABAY_API_KEY = config("PIXABAY_API_KEY", default="")
 PIXABAY_LANG = config("PIXABAY_LANG", default="ru")

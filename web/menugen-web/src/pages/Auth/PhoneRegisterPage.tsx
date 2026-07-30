@@ -158,11 +158,15 @@ export const PhoneRegisterPage: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      disabled
-                      title="Скоро"
-                      className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-400 cursor-not-allowed"
+                      onClick={() => setProvider('max')}
+                      className={[
+                        'rounded-xl border px-3 py-2 text-sm font-medium transition',
+                        provider === 'max'
+                          ? 'border-tomato bg-tomato/10 text-tomato'
+                          : 'border-gray-300 text-muted hover:border-tomato/50',
+                      ].join(' ')}
                     >
-                      Max · скоро
+                      💬 Max
                     </button>
                   </div>
                 </div>
@@ -193,7 +197,9 @@ export const PhoneRegisterPage: React.FC = () => {
               </p>
 
               <a href={session.deep_link} target="_blank" rel="noopener noreferrer">
-                <Button className="w-full mb-4">Открыть бота в Telegram</Button>
+                <Button className="w-full mb-4">
+                  Открыть бота в {session.provider === 'max' ? 'Max' : 'Telegram'}
+                </Button>
               </a>
 
               {status === 'pending' && (

@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.users.phone_views import (  # MG_PHONEVERIFY
+    MaxWebhookView,
     PhoneRegisterView,
     PhoneStartView,
     PhoneStatusView,
@@ -22,4 +23,7 @@ urlpatterns = [
     path("phone/register/", PhoneRegisterView.as_view(), name="auth-phone-register"),
     path("telegram/webhook/", TelegramWebhookView.as_view(), name="auth-telegram-webhook"),
     path("telegram/webhook/<str:secret>/", TelegramWebhookView.as_view(), name="auth-telegram-webhook-secret"),
+    # MG_PHONEVERIFY/max: у Max секрет передаётся сегментом URL (заголовка нет)
+    path("max/webhook/", MaxWebhookView.as_view(), name="auth-max-webhook"),
+    path("max/webhook/<str:secret>/", MaxWebhookView.as_view(), name="auth-max-webhook-secret"),
 ]
