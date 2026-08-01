@@ -92,7 +92,11 @@ web/menugen-web/dist/
 
 # === lock-файлы (опционально, по желанию команды) ===
 package-lock.json
-pubspec.lock
+# pubspec.lock — НЕ игнорируем: сборка APK идёт только в GitHub Actions, где
+# без лока pub каждый раз подбирает свежие версии пакетов. Именно так сборка
+# и сломалась: новым версиям потребовался Flutter новее закреплённого в CI, и
+# `flutter pub get` падал до компиляции. Лок фиксирует набор версий; обновлять
+# осознанно через `flutter pub upgrade` (см. .github/workflows/flutter_ci.yml).
 
 # === временные патч-скрипты в корне ===
 /apply_*.py
