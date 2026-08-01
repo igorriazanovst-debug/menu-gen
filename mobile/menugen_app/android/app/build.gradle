@@ -24,10 +24,16 @@ if (flutterVersionName == null) {
 }
 
 android {
-    ndkVersion "25.1.8937393"
-    buildToolsVersion "33.0.1"
     namespace = "com.example.menugen_app"
-    compileSdk = 34
+    // MG_APPICON/SDK35: плагины Flutter требуют компиляции против SDK 35.
+    // Это влияет только на то, какие API доступны при сборке; targetSdk (то
+    // есть поведение в рантайме) сознательно оставлен на 34 — переход на 35
+    // включает принудительный edge-to-edge на Android 15 и требует отдельной
+    // проверки вёрстки. Для публикации в Google Play targetSdk придётся
+    // поднять до 35, это отдельная задача.
+    compileSdk = 35
+    // Версия NDK берётся из Flutter SDK; buildToolsVersion не фиксируем —
+    // AGP подберёт совместимую сам (пин 33.0.1 конфликтовал с compileSdk 35).
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
