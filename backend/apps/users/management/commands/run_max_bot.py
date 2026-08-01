@@ -68,6 +68,14 @@ class Command(BaseCommand):
             except requests.exceptions.Timeout:
                 # Холостой long-poll без событий — норма, просто переспрашиваем.
                 continue
+            except requests.exceptions.SSLError as e:
+                # MG_RUCERT: без корневого сертификата Минцифры TLS не проходит.
+                self.stderr.write(
+                    "Ошибка TLS при обращении к Max. Нужны сертификаты НУЦ Минцифры: "
+                    "пересоберите образ — docker compose build backend"
+                )
+                log.error("Max TLS error: %s", e)
+                return
             except requests.RequestException as e:
                 log.error("Max polling error: %s", e)
                 time.sleep(3)

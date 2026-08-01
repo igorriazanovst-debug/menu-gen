@@ -132,6 +132,14 @@ class MaxProvider(MessengerProvider):
                 headers={"Authorization": token},
                 timeout=_TIMEOUT,
             )
+        except requests.exceptions.SSLError as e:
+            # MG_RUCERT: TLS Max выпущен НУЦ Минцифры — нужен его корневой
+            # сертификат в образе (см. Dockerfile), иначе проверка не проходит.
+            log.error(
+                "Max: ошибка TLS (%s). Нужны сертификаты Минцифры — пересоберите "
+                "образ бэкенда (docker compose build backend).",
+                e,
+            )
         except requests.RequestException as e:  # не роняем обработку апдейта
             log.error("Max sendMessage failed: %s", e)
 
