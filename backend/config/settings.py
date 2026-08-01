@@ -149,6 +149,12 @@ PAYMENTS_STUB = config("PAYMENTS_STUB", default=True, cast=bool)
 # фолбэк на BACKEND_PUBLIC_URL, затем на https://menugen.ru.
 FRONTEND_URL = config("FRONTEND_URL", default="")
 
+# MG_EMAILVERIFY: требовать подтверждение e-mail для входа. Пока отправка писем
+# не настроена, флаг нужно выключать (False) — иначе новый пользователь не
+# получит ссылку и не сможет войти. Существующих аккаунтов не касается:
+# миграция 0009 пометила их подтверждёнными.
+EMAIL_VERIFICATION_REQUIRED = config("EMAIL_VERIFICATION_REQUIRED", default=True, cast=bool)
+
 # MG_PHONEVERIFY: подтверждение телефона через бот мессенджера.
 # Telegram: токен и username бота от @BotFather. Webhook-секрет сверяется с
 # заголовком X-Telegram-Bot-Api-Secret-Token (прод). В dev используется

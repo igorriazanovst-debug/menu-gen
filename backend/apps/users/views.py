@@ -45,12 +45,15 @@ class RegisterView(APIView):
         # MG_EMAILVERIFY: e-mail-регистрация требует подтверждения по ссылке.
         # Токены НЕ выдаём — вход только после подтверждения (строгий гейт).
         # Пользователи без e-mail (напр. только телефон) — подтверждать нечего.
+        # Если проверка e-mail отключена флагом (почта ещё не настроена) —
+        # ведём себя как раньше: подтверждаем сразу и пускаем в аккаунт.
+        require_verify = getattr(dj_settings, "EMAIL_VERIFICATION_REQUIRED", True)
         payload = {
             "detail": "Регистрация почти завершена. Подтвердите e-mail по ссылке из письма.",
             "email": user.email,
-            "requires_email_verification": bool(user.email),
+            "requires_email_verification": bool(user.email) and require_verify,
         }
-        if user.email:
+        if user.email and require_verify:
             link = send_verification_email(user)
             if dj_settings.DEBUG:  # для тестов на dev, когда почта не настроена
                 payload["verify_link"] = link
@@ -73,7 +76,11 @@ class LoginView(APIView):
         user = serializer.validated_data["user"]
         # MG_EMAILVERIFY: строгий гейт — не пускаем до подтверждения e-mail.
         # Ресенд НЕ автоматический (только по явному запросу /email/resend/).
-        if user.email and not user.is_email_verified:
+        # Гейт отключаем флагом, пока отправка писем не настроена: иначе новый
+        # пользователь не получит ссылку и не сможет войти вообще.
+        from django.conf import settings as dj_settings
+
+        if getattr(dj_settings, "EMAIL_VERIFICATION_REQUIRED", True) and user.email and not user.is_email_verified:
             return Response(
                 {
                     "detail": "Подтвердите e-mail по ссылке из письма.",

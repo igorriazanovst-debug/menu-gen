@@ -165,3 +165,39 @@ class TestUserMe:
         )
         assert resp.status_code == 200
         assert resp.data["name"] == "Новое Имя"
+
+
+# MG_EMAILVERIFY: гейт отключается флагом, пока почта не настроена
+@pytest.mark.django_db
+class TestEmailVerificationFlag:
+    def test_register_logs_in_when_gate_disabled(self, client, user_data, settings):
+        settings.EMAIL_VERIFICATION_REQUIRED = False
+        r = client.post(reverse("auth-register"), user_data, format="json")
+        assert r.status_code == 201
+        # Токены выдаются сразу, экран «подтвердите e-mail» не показывается.
+        assert "access" in r.data
+        assert r.data.get("requires_email_verification") in (None, False)
+        assert User.objects.get(email=user_data["email"]).is_email_verified
+
+    def test_login_allowed_when_gate_disabled(self, client, user_data, settings):
+        settings.EMAIL_VERIFICATION_REQUIRED = True
+        client.post(reverse("auth-register"), user_data, format="json")
+        u = User.objects.get(email=user_data["email"])
+        u.email_verified_at = None  # неподтверждённый аккаунт
+        u.save(update_fields=["email_verified_at"])
+
+        blocked = client.post(
+            reverse("auth-login"),
+            {"email": user_data["email"], "password": user_data["password"]},
+            format="json",
+        )
+        assert blocked.status_code == 403
+
+        settings.EMAIL_VERIFICATION_REQUIRED = False
+        ok = client.post(
+            reverse("auth-login"),
+            {"email": user_data["email"], "password": user_data["password"]},
+            format="json",
+        )
+        assert ok.status_code == 200
+        assert "access" in ok.data
