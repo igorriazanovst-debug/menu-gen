@@ -16,6 +16,11 @@ export interface SwapResult {
   allergens_found: string[];
   calorie_warning: boolean;
   recipe_calories: number;
+  // MG_SWAPFREE: замена на блюдо другой пищевой группы разрешена, но меняет
+  // баланс меню — бэкенд об этом предупреждает, а не запрещает.
+  food_group_warning?: boolean;
+  food_group_expected?: string;
+  food_group_new?: string;
 }
 
 // MG_607_V_api: расширенный generate
@@ -66,7 +71,7 @@ export const menuApi = {
 
 // MG-402
 export async function swapMenuItem(menuId: number, itemId: number, recipeId: number) {
-  const { data } = await client.patch(
+  const { data } = await client.patch<SwapResult>(
     `/menu/${menuId}/items/${itemId}/`, { recipe_id: recipeId }
   );
   return data;

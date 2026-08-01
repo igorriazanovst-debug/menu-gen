@@ -133,6 +133,81 @@ class TestMenuItemSwap:
         assert resp.status_code == 200
         assert MenuItem.objects.get(id=item_id).recipe_id == new_recipe.id
 
+    # MG_SWAPFREE: раньше замена на другую пищевую группу отклонялась с 400 —
+    # рецепт было видно в разделе «Рецепты», но подставить его в меню не давало.
+    def test_swap_на_другую_группу_разрешён_с_предупреждением(self, client, setup):
+        user, _, _ = setup
+        client.force_authenticate(user)
+        gen = client.post(reverse("menu-generate"), {"period_days": 1}, format="json")
+        menu_id = gen.data["id"]
+        item_id = gen.data["items"][0]["id"]
+
+        item = MenuItem.objects.get(id=item_id)
+        item.recipe.food_group = "grain"  # «мини-панкейки»
+        item.recipe.save(update_fields=["food_group"])
+        other_group = Recipe.objects.create(
+            title="Сырники солёные с сыром",
+            food_group="protein",
+            ingredients=[],
+            steps=[],
+            is_published=True,
+        )
+
+        resp = client.patch(
+            reverse("menu-item-swap", args=[menu_id, item_id]),
+            {"recipe_id": other_group.id},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert MenuItem.objects.get(id=item_id).recipe_id == other_group.id
+        assert resp.data["food_group_warning"] is True
+        assert resp.data["food_group_expected"] == "grain"
+        assert resp.data["food_group_new"] == "protein"
+
+    def test_swap_внутри_группы_без_предупреждения(self, client, setup):
+        user, _, _ = setup
+        client.force_authenticate(user)
+        gen = client.post(reverse("menu-generate"), {"period_days": 1}, format="json")
+        menu_id = gen.data["id"]
+        item_id = gen.data["items"][0]["id"]
+
+        item = MenuItem.objects.get(id=item_id)
+        item.recipe.food_group = "grain"
+        item.recipe.save(update_fields=["food_group"])
+        same_group = Recipe.objects.create(
+            title="Овсянка", food_group="grain", ingredients=[], steps=[], is_published=True
+        )
+
+        resp = client.patch(
+            reverse("menu-item-swap", args=[menu_id, item_id]),
+            {"recipe_id": same_group.id},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert resp.data["food_group_warning"] is False
+
+    def test_swap_без_группы_не_предупреждает(self, client, setup):
+        """У рецепта может не быть food_group — это не повод пугать пользователя."""
+        user, _, _ = setup
+        client.force_authenticate(user)
+        gen = client.post(reverse("menu-generate"), {"period_days": 1}, format="json")
+        menu_id = gen.data["id"]
+        item_id = gen.data["items"][0]["id"]
+        no_group = Recipe.objects.create(
+            title="Без группы", food_group=None, ingredients=[], steps=[], is_published=True
+        )
+
+        resp = client.patch(
+            reverse("menu-item-swap", args=[menu_id, item_id]),
+            {"recipe_id": no_group.id},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert resp.data["food_group_warning"] is False
+
     def test_swap_nonexistent_recipe(self, client, setup):
         user, _, _ = setup
         client.force_authenticate(user)

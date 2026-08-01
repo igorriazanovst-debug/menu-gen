@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/cache/recipe_image_cache.dart';
+import '../../../core/constants/food_groups.dart'; // MG_SWAPFREE
 import '../../../core/theme/app_theme.dart';
 
 /// Список крупных карточек блюд для выбранного приёма пищи.
@@ -319,10 +320,13 @@ class _RecipeBigCard extends StatelessWidget {
   }
 }
 
-/// MG-402: лист-пикер замены блюда. Тянет кандидатов из `/recipes/` (той же
-/// food_group, исключая текущий), при выборе PATCH-ит `/menu/<m>/items/<i>/`
-/// {recipe_id}. Бэкенд запрещает замену на другую food_group (400). После
-/// успеха закрывает лист и дёргает [onSwapped] для обновления меню.
+/// MG-402 / MG_SWAPFREE: лист-пикер замены блюда. Тянет кандидатов из
+/// `/recipes/` (по умолчанию — той же food_group, исключая текущий), при выборе
+/// PATCH-ит `/menu/<m>/items/<i>/` {recipe_id}. Фильтр по группе снимается
+/// галочкой: раньше он был жёстким и рецепт, найденный в разделе «Рецепты»,
+/// в замене «пропадал». Бэкенд теперь такую замену разрешает и лишь
+/// предупреждает (food_group_warning) — его и показываем. После успеха
+/// закрывает лист и дёргает [onSwapped] для обновления меню.
 void showSwapPicker(
   BuildContext context, {
   required ApiClient apiClient,
@@ -375,6 +379,9 @@ class _SwapPickerState extends State<_SwapPicker> {
   bool _swapping = false;
   String? _error;
   int _reqSeq = 0;
+  /// MG_SWAPFREE: показывать только блюда той же пищевой группы. Включено по
+  /// умолчанию — так меню остаётся сбалансированным, но фильтр можно снять.
+  bool _sameGroupOnly = true;
 
   @override
   void initState() {
@@ -398,7 +405,7 @@ class _SwapPickerState extends State<_SwapPicker> {
       final params = <String, dynamic>{'page_size': 25};
       final q = _searchCtrl.text.trim();
       if (q.isNotEmpty) params['search'] = q;
-      if (widget.foodGroup != null && widget.foodGroup!.isNotEmpty) {
+      if (_sameGroupOnly && widget.foodGroup != null && widget.foodGroup!.isNotEmpty) {
         params['food_group'] = widget.foodGroup;
       }
       final r = await widget.apiClient.get('/recipes/', params: params);
@@ -428,12 +435,21 @@ class _SwapPickerState extends State<_SwapPicker> {
       _error = null;
     });
     try {
-      await widget.apiClient.patch(
+      final resp = await widget.apiClient.patch(
         '/menu/${widget.menuId}/items/${widget.itemId}/',
         data: {'recipe_id': recipeId},
       );
       if (!mounted) return;
       Navigator.of(context).pop();
+      // MG_SWAPFREE: замена состоялась, но баланс меню сместился — сообщаем.
+      final data = resp is Map ? Map<String, dynamic>.from(resp) : const {};
+      if (data['food_group_warning'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Блюдо заменено на другую пищевую группу — баланс меню изменится.'),
+          ),
+        );
+      }
       widget.onSwapped?.call();
     } catch (e) {
       if (!mounted) return;
@@ -512,6 +528,24 @@ class _SwapPickerState extends State<_SwapPicker> {
               ),
             ),
           ),
+          if (widget.foodGroup != null && widget.foodGroup!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: CheckboxListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _sameGroupOnly,
+                onChanged: (v) {
+                  setState(() => _sameGroupOnly = v ?? true);
+                  _load();
+                },
+                title: Text(
+                  'Только группа «${foodGroupLabel(widget.foodGroup)}»',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -523,8 +557,16 @@ class _SwapPickerState extends State<_SwapPicker> {
                 ? const Center(child: CircularProgressIndicator())
                 : _items.isEmpty
                     ? Center(
-                        child: Text('Ничего не найдено',
-                            style: TextStyle(color: context.tokens.textSecondary)),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            _sameGroupOnly && (widget.foodGroup ?? '').isNotEmpty
+                                ? 'Ничего не найдено. Снимите галочку выше, чтобы искать среди всех рецептов.'
+                                : 'Ничего не найдено',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: context.tokens.textSecondary),
+                          ),
+                        ),
                       )
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),

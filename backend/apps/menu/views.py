@@ -557,14 +557,15 @@ class MenuItemSwapView(APIView):
         except Recipe.DoesNotExist:
             return Response({"detail": "Рецепт не найден."}, status=status.HTTP_404_NOT_FOUND)
 
-        # MG-402: запрещаем swap на рецепт другой food_group (только рецепт→рецепт)
+        # MG-402 / MG_SWAPFREE: замена на рецепт другой пищевой группы раньше
+        # отклонялась (400). Пользователи упирались в это как в баг: рецепт виден
+        # в разделе «Рецепты», но при замене «не находится». Теперь это
+        # предупреждение, а не запрет — как с аллергенами и калорийностью ниже.
+        # Плюс так пропадает несогласованность: замена блюда на ПРОДУКТ группу
+        # не проверяла никогда.
         original_fg = getattr(item.recipe, "food_group", None)
         new_fg = getattr(recipe, "food_group", None)
-        if original_fg and new_fg and original_fg != new_fg:
-            return Response(
-                {"detail": f"Рецепт другой группы ({new_fg}), ожидается {original_fg}."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        food_group_warning = bool(original_fg and new_fg and original_fg != new_fg)
 
         item.recipe = recipe
         item.product = None
@@ -592,6 +593,10 @@ class MenuItemSwapView(APIView):
                 "allergens_found": found_allergens,
                 "calorie_warning": calorie_warning,
                 "recipe_calories": cal,
+                # MG_SWAPFREE: замена состоялась, но баланс меню сместился.
+                "food_group_warning": food_group_warning,
+                "food_group_expected": original_fg or "",
+                "food_group_new": new_fg or "",
             },
             status=status.HTTP_200_OK,
         )

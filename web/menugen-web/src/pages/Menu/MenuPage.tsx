@@ -13,6 +13,7 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { ImageLightbox } from '../../components/ui/ImageLightbox'; // MG_PHOTOZOOM
 import type { Menu, MenuItem, MealType, ComponentRole, Recipe } from '../../types';
 import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../types';
+import { categoryLabel } from '../../constants/categories'; // MG_SWAPFREE: подпись пищевой группы
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
 import { DayNutritionSummary } from '../../components/menu/DayNutritionSummary';
 import { AllergenBadges } from '../../components/recipe/AllergenBadges';
@@ -78,7 +79,9 @@ interface SwapInlineProps {
   menuId: number;
   foodGroup?: string | null;
   currentRecipeId: number;
-  onSwapped: () => void;
+  // MG_SWAPFREE: результат замены пробрасываем наверх — в нём предупреждения
+  // (аллергены, калорийность, смена пищевой группы).
+  onSwapped: (result?: SwapResult) => void;
 }
 
 const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, currentRecipeId, onSwapped }) => {
@@ -91,6 +94,10 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
   const [err, setErr] = useState<string | null>(null);
   const [pickedProduct, setPickedProduct] = useState<Product | null>(null);
   const [grams, setGrams] = useState('100');
+  // MG_SWAPFREE: по умолчанию показываем блюда той же пищевой группы — так меню
+  // остаётся сбалансированным. Но список можно расширить: раньше рецепты другой
+  // группы просто не находились, и это выглядело как пропажа рецепта.
+  const [sameGroupOnly, setSameGroupOnly] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -99,7 +106,7 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
     if (mode === 'recipe') {
       const params: any = { page_size: 25 };
       if (search) params.search = search;
-      if (foodGroup) params.food_group = foodGroup;
+      if (foodGroup && sameGroupOnly) params.food_group = foodGroup;
       recipesApi.list(params)
         .then(res => {
           if (cancel) return;
@@ -116,14 +123,14 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
         .finally(() => { if (!cancel) setLoading(false); });
     }
     return () => { cancel = true; };
-  }, [open, search, foodGroup, currentRecipeId, mode]);
+  }, [open, search, foodGroup, currentRecipeId, mode, sameGroupOnly]);
 
   const handlePick = async (recipeId: number) => {
     setErr(null);
     try {
-      await swapMenuItem(menuId, itemId, recipeId);
+      const data = await swapMenuItem(menuId, itemId, recipeId);
       setOpen(false);
-      onSwapped();
+      onSwapped(data);
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Ошибка замены');
     }
@@ -133,10 +140,10 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
     if (!pickedProduct) return;
     setErr(null);
     try {
-      await swapMenuItemProduct(menuId, itemId, pickedProduct.id, Math.max(1, Number(grams) || 100));
+      const data = await swapMenuItemProduct(menuId, itemId, pickedProduct.id, Math.max(1, Number(grams) || 100));
       setOpen(false);
       setPickedProduct(null);
-      onSwapped();
+      onSwapped(data);
     } catch (e: any) {
       setErr(e?.response?.data?.detail || 'Ошибка замены');
     }
@@ -168,11 +175,27 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
             placeholder={mode === 'recipe' ? 'Поиск рецепта...' : 'Поиск продукта (напр. огурец)...'}
             className="w-full px-2 py-1 text-sm rounded-md border border-border focus:outline-none focus:border-tomato"
           />
+          {/* MG_SWAPFREE: фильтр по группе виден и снимается — иначе непонятно,
+              почему найденный в «Рецептах» рецепт тут не показывается. */}
+          {mode === 'recipe' && foodGroup && (
+            <label className="flex items-center gap-1.5 mt-2 text-xs text-gray-500 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sameGroupOnly}
+                onChange={e => setSameGroupOnly(e.target.checked)}
+                className="accent-tomato"
+              />
+              только группа «{categoryLabel(foodGroup)}»
+            </label>
+          )}
           {loading && <p className="text-xs text-gray-400 mt-2">Загрузка...</p>}
           {err && <p className="text-xs text-red-600 mt-2">{err}</p>}
 
           {mode === 'recipe' && !loading && !err && items.length === 0 && (
-            <p className="text-xs text-gray-400 mt-2">Ничего не найдено</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Ничего не найдено
+              {foodGroup && sameGroupOnly && ' — снимите галочку, чтобы искать среди всех рецептов'}
+            </p>
           )}
           {mode === 'recipe' && items.length > 0 && (
             <ul className="mt-2 max-h-48 overflow-y-auto divide-y divide-gray-200 bg-surface rounded-md">
@@ -329,7 +352,7 @@ interface MealDetailModalProps {
   dayLabel: string;
   onClose: () => void;
   menuId: number; // MG-402
-  onSwapped: () => void; // MG-402
+  onSwapped: (result?: SwapResult, itemId?: number) => void; // MG-402 / MG_SWAPFREE
 }
 
 const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, dayLabel, onClose, menuId, onSwapped }) => {
@@ -456,7 +479,7 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
                         menuId={menuId}
                         foodGroup={(item.recipe as any).food_group ?? null}
                         currentRecipeId={item.recipe.id}
-                        onSwapped={onSwapped}
+                        onSwapped={(result) => onSwapped(result, item.id)}
                       />
                     </div>
                   </div>
@@ -487,7 +510,8 @@ const MealCard: React.FC<MealCardProps> = ({ slot, items, warnings, onOpenModal 
   const sorted = useMemo(() => sortByRole(items), [items]);
   const dbType = slotToMealType(slot);
   const label  = MEAL_SLOT_LABEL[slot] || MEAL_LABELS[dbType] || slot;
-  const hasWarn = sorted.some(i => warnings[i.id]?.allergen_warning || warnings[i.id]?.calorie_warning);
+  const hasWarn = sorted.some(i => warnings[i.id]?.allergen_warning || warnings[i.id]?.calorie_warning
+    || warnings[i.id]?.food_group_warning);
 
   if (sorted.length === 0) {
     return (
@@ -827,7 +851,7 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
         }
       : (userProfile?.targets_calculated ?? null)
   );
-  const [warnings] = useState<Record<number, SwapResult>>({});
+  const [warnings, setWarnings] = useState<Record<number, SwapResult>>({});
   const [mealModal, setMealModal] = useState<{ items: MenuItem[]; label: string; dayLabel: string } | null>(null);
 
   // Определяем 3 vs 5 приёмов по meal_plan_type из filters_used.
@@ -952,7 +976,13 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
           dayLabel={mealModal.dayLabel}
           onClose={() => setMealModal(null)}
           menuId={menu.id}
-          onSwapped={() => { setMealModal(null); onRefresh(); }}
+          onSwapped={(result, itemId) => {
+            // MG_SWAPFREE: показываем итог замены на карточке приёма
+            // (аллергены, калорийность, смена пищевой группы).
+            if (result && itemId) setWarnings(prev => ({ ...prev, [itemId]: result }));
+            setMealModal(null);
+            onRefresh();
+          }}
         />
       )}
     </div>
