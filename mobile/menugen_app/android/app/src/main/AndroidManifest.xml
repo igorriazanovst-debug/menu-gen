@@ -3,10 +3,10 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- MG_APPICON: android:label — короткая подпись под иконкой, лаунчер
+         обрезает примерно после 12 символов. Полное название «MenuGen Platform»
+         показывается внутри приложения (экран входа). -->
     <application
-        <!-- MG_APPICON: короткая подпись под иконкой — лаунчер обрезает
-             примерно после 12 символов. Полное название «MenuGen Platform»
-             показывается внутри приложения (экран входа). -->
         android:label="MenuGen"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
