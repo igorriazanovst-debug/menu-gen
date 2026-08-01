@@ -19,7 +19,13 @@ on:
         default: 'https://menugen.ru/api/v1'
 
 env:
-  FLUTTER_VERSION: '3.22.0'
+  # pubspec.lock не хранится в репозитории (см. .gitignore), поэтому pub на
+  # каждой сборке резолвит свежие версии пакетов. Свежие требуют SDK новее:
+  # на 3.22 сборка падает ещё на `flutter pub get` («Try using the Flutter SDK
+  # version: 3.44.x»). 3.27.4 — версия, на которой зависимости резолвятся и
+  # тесты проходят. Ограничение сверху: flutter_localizations в 3.29+ тянет
+  # intl 0.20, а pubspec закреплён на intl ^0.19.
+  FLUTTER_VERSION: '3.27.4'
   DEFAULT_API_BASE_URL: 'https://menugen.ru/api/v1'
 
 jobs:
