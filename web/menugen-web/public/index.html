@@ -3,8 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- MG_FAVICON: только .ico — намеренно. В нём лежат разные отрисовки знака:
+         16/32 (вкладка) — упрощённые, крупные листья; 48+ — знак целиком с
+         кольцами. Если объявить здесь ещё и favicon.svg, браузер предпочтёт его
+         и нарисует полный знак даже в 16 px, где он превращается в пятно.
+         Сам favicon.svg лежит рядом как исходник: scripts/make_icons.py -->
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" sizes="any" />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
     <meta name="theme-color" content="#7CB342" />
     <meta
       name="description"
