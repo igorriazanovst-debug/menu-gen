@@ -9,10 +9,12 @@ abstract class AuthEvent extends Equatable {
   @override List<Object?> get props => [];
 }
 class AuthCheckRequested extends AuthEvent { const AuthCheckRequested(); }
+/// Вход по e-mail либо по телефону (MG_PHONEVERIFY): бэкенд принимает любой из
+/// двух идентификаторов, поэтому событие одно, а заполняется что-то одно.
 class AuthLoginRequested extends AuthEvent {
-  final String email; final String password;
-  const AuthLoginRequested({required this.email, required this.password});
-  @override List<Object?> get props => [email, password];
+  final String email; final String password; final String phone;
+  const AuthLoginRequested({this.email = '', this.phone = '', required this.password});
+  @override List<Object?> get props => [email, phone, password];
 }
 // MG_REG: регистрация (email). Бэкенд создаёт пользователя + семью + free-подписку.
 class AuthRegisterRequested extends AuthEvent {
@@ -21,6 +23,15 @@ class AuthRegisterRequested extends AuthEvent {
     required this.name, required this.email, required this.password, required this.password2,
   });
   @override List<Object?> get props => [name, email, password, password2];
+}
+// MG_PHONEVERIFY: завершение регистрации по телефону. Номер уже подтверждён в
+// мессенджере, заявка опознаётся по token — остаётся задать имя и пароль.
+class AuthPhoneRegisterRequested extends AuthEvent {
+  final String token; final String name; final String password; final String password2;
+  const AuthPhoneRegisterRequested({
+    required this.token, required this.name, required this.password, required this.password2,
+  });
+  @override List<Object?> get props => [token, name, password, password2];
 }
 class AuthLogoutRequested extends AuthEvent { const AuthLogoutRequested(); }
 
@@ -56,6 +67,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthCheckRequested>(_onCheck);
     on<AuthLoginRequested>(_onLogin);
     on<AuthRegisterRequested>(_onRegister);
+    on<AuthPhoneRegisterRequested>(_onPhoneRegister); // MG_PHONEVERIFY
     on<AuthLogoutRequested>(_onLogout);
   }
 
@@ -79,8 +91,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   Future<void> _onLogin(AuthLoginRequested e, Emitter<AuthState> emit) async {
     emit(const AuthLoading());
     try {
+      // Отправляем ровно один идентификатор: пустой email бэкенд отклонит как
+      // некорректный, а не проигнорирует.
       final resp = await apiClient.post('/auth/login/',
-          data: {'email': e.email, 'password': e.password});
+          data: e.phone.isNotEmpty
+              ? {'phone': e.phone, 'password': e.password}
+              : {'email': e.email, 'password': e.password});
       final data = Map<String, dynamic>.from(_data(resp) as Map);
       await tokenStorage.saveTokens(
           access: data['access'] as String, refresh: data['refresh'] as String);
@@ -97,6 +113,28 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final resp = await apiClient.post('/auth/email/register/', data: {
         'name': e.name,
         'email': e.email,
+        'password': e.password,
+        'password2': e.password2,
+      });
+      final data = Map<String, dynamic>.from(_data(resp) as Map);
+      await tokenStorage.saveTokens(
+          access: data['access'] as String, refresh: data['refresh'] as String);
+      final me = await apiClient.get('/users/me/');
+      final meMap = Map<String, dynamic>.from(_data(me) as Map);
+      premiumGate?.bootstrap(meMap);
+      emit(AuthAuthenticated(meMap));
+    } catch (e) {
+      emit(AuthError(e.toString()));
+    }
+  }
+
+  // MG_PHONEVERIFY: номер уже подтверждён ботом, здесь создаётся аккаунт.
+  Future<void> _onPhoneRegister(AuthPhoneRegisterRequested e, Emitter<AuthState> emit) async {
+    emit(const AuthLoading());
+    try {
+      final resp = await apiClient.post('/auth/phone/register/', data: {
+        'token': e.token,
+        'name': e.name,
         'password': e.password,
         'password2': e.password2,
       });

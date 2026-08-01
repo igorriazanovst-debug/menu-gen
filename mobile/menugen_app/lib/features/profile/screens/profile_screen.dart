@@ -476,6 +476,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {},
                 ),
+                // MG_LEGAL: оферта, политика обработки ПД, реквизиты.
+                ListTile(
+                  leading: const Icon(Icons.gavel_outlined),
+                  title: const Text('Документы'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/legal'),
+                ),
                 const Divider(),
                 ListTile(
                   leading: const Icon(Icons.logout, color: Colors.red),

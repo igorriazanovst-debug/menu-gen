@@ -12,11 +12,20 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
+  final _phone = TextEditingController();
   final _pass = TextEditingController();
   bool _obscure = true;
+  // MG_PHONEVERIFY: вход по e-mail или по телефону — как на вебе.
+  bool _byPhone = false;
 
   @override
-  void dispose() { _email.dispose(); _pass.dispose(); super.dispose(); }
+  void dispose() { _email.dispose(); _phone.dispose(); _pass.dispose(); super.dispose(); }
+
+  void _submit(BuildContext ctx) {
+    ctx.read<AuthBloc>().add(_byPhone
+        ? AuthLoginRequested(phone: _phone.text.trim(), password: _pass.text)
+        : AuthLoginRequested(email: _email.text.trim(), password: _pass.text));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,9 +50,26 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 8),
               Text('MenuGen', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: context.cs.primary)),
               const SizedBox(height: 48),
-              TextField(controller: _email,
-                decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
-                keyboardType: TextInputType.emailAddress),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('E-mail')),
+                  ButtonSegment(value: true, label: Text('Телефон')),
+                ],
+                selected: {_byPhone},
+                onSelectionChanged: (s) => setState(() => _byPhone = s.first),
+              ),
+              const SizedBox(height: 24),
+              if (_byPhone)
+                TextField(controller: _phone,
+                  decoration: const InputDecoration(
+                      labelText: 'Телефон',
+                      hintText: '+7 900 000-00-00',
+                      prefixIcon: Icon(Icons.phone_outlined)),
+                  keyboardType: TextInputType.phone)
+              else
+                TextField(controller: _email,
+                  decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                  keyboardType: TextInputType.emailAddress),
               const SizedBox(height: 16),
               TextField(controller: _pass, obscureText: _obscure,
                 decoration: InputDecoration(
@@ -59,8 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 final loading = state is AuthLoading;
                 return SizedBox(width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: loading ? null : () => ctx.read<AuthBloc>().add(
-                      AuthLoginRequested(email: _email.text.trim(), password: _pass.text)),
+                    onPressed: loading ? null : () => _submit(ctx),
                     child: loading
                         ? const SizedBox(height: 20, width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -72,6 +97,19 @@ class _LoginScreenState extends State<LoginScreen> {
               TextButton(
                 onPressed: () => context.push('/register'),
                 child: const Text('Нет аккаунта? Зарегистрироваться'),
+              ),
+              // MG_PHONEVERIFY: регистрация без e-mail — номер подтверждается
+              // в Telegram или Max.
+              TextButton(
+                onPressed: () => context.push('/register/phone'),
+                child: const Text('Регистрация по телефону'),
+              ),
+              // MG_LEGAL: документы доступны до входа — их читают перед
+              // регистрацией, и они нужны модерации сторов.
+              TextButton(
+                onPressed: () => context.push('/legal'),
+                child: const Text('Оферта, политика и реквизиты',
+                    style: TextStyle(fontSize: 12)),
               ),
                   ]),
                 ),
