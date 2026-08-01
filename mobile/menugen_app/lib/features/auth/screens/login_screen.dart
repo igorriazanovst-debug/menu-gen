@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_svg/flutter_svg.dart'; // MG_APPICON
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart'; // MG_SKIN
 import '../bloc/auth_bloc.dart';
@@ -44,11 +45,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              // MG_SKIN: слот логотипа (заменить на AppLogo, когда придёт ассет:
-              // logo_mark ~72px высотой, цветной на светлом фоне).
-              Icon(Icons.restaurant_menu, size: 72, color: context.cs.primary),
-              const SizedBox(height: 8),
-              Text('MenuGen', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: context.cs.primary)),
+              // MG_APPICON: фирменный знак — тот же SVG, из которого собраны
+              // иконки приложения и фавикон сайта.
+              SvgPicture.asset('assets/images/logo.svg', height: 96),
+              const SizedBox(height: 12),
+              Text('MenuGen Platform',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: context.cs.primary)),
               const SizedBox(height: 48),
               SegmentedButton<bool>(
                 segments: const [

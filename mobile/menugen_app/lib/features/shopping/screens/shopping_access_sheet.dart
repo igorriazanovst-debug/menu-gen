@@ -14,6 +14,10 @@ class ShoppingAccessSheet extends StatefulWidget {
 
 class _ShoppingAccessSheetState extends State<ShoppingAccessSheet> {
   final _email = TextEditingController();
+  final _phone = TextEditingController();
+  // MG_PHONESHARE: доступ выдаётся по e-mail или по телефону — у части
+  // пользователей аккаунт заведён через мессенджер и почты у них нет.
+  bool _byPhone = false;
   bool _canToggle = false;
   bool _canExport = false;
   List<ShoppingAccess> _accesses = const [];
@@ -29,6 +33,7 @@ class _ShoppingAccessSheetState extends State<ShoppingAccessSheet> {
   @override
   void dispose() {
     _email.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
@@ -51,24 +56,37 @@ class _ShoppingAccessSheetState extends State<ShoppingAccessSheet> {
 
   Future<void> _grant() async {
     setState(() => _err = null);
-    if (_email.text.trim().isEmpty) {
-      setState(() => _err = 'Введите email.');
+    final value = (_byPhone ? _phone : _email).text.trim();
+    if (value.isEmpty) {
+      setState(() => _err = _byPhone ? 'Введите телефон.' : 'Введите email.');
       return;
     }
     try {
       await widget.apiClient.post('/shopping/lists/${widget.listId}/access/',
           data: {
-            'email': _email.text.trim(),
+            if (_byPhone) 'phone': value else 'email': value,
             'can_toggle': _canToggle,
             'can_export': _canExport,
           });
       _email.clear();
+      _phone.clear();
       _canToggle = false;
       _canExport = false;
       await _load();
     } catch (e) {
-      setState(() => _err = 'Не удалось выдать доступ (проверьте email).');
+      // Бэкенд отвечает «Пользователь с таким телефоном не найден» — доступ
+      // выдаётся только тем, кто уже зарегистрирован в приложении.
+      setState(() => _err = _byPhone
+          ? 'Не удалось выдать доступ. Проверьте номер — пользователь должен быть зарегистрирован.'
+          : 'Не удалось выдать доступ (проверьте email).');
     }
+  }
+
+  String _accessTitle(ShoppingAccess a) {
+    final name = (a.userName ?? '').trim();
+    if (name.isNotEmpty) return name;
+    if (a.userEmail.trim().isNotEmpty) return a.userEmail;
+    return 'Пользователь #${a.id}';
   }
 
   Future<void> _revoke(int accessId) async {
@@ -100,7 +118,9 @@ class _ShoppingAccessSheetState extends State<ShoppingAccessSheet> {
             else
               ..._accesses.map((a) => ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(a.userName ?? a.userEmail),
+                    // У аккаунтов из мессенджера e-mail пустой, поэтому нужен
+                    // запасной вариант — иначе строка была бы без подписи.
+                    title: Text(_accessTitle(a)),
                     subtitle: Text([
                       if (a.canToggle) 'отметка',
                       if (a.canExport) 'печать',
@@ -110,10 +130,33 @@ class _ShoppingAccessSheetState extends State<ShoppingAccessSheet> {
                         onPressed: () => _revoke(a.id)),
                   )),
             const Divider(),
-            TextField(
-              controller: _email,
-              decoration: const InputDecoration(labelText: 'email пользователя'),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('E-mail')),
+                ButtonSegment(value: true, label: Text('Телефон')),
+              ],
+              selected: {_byPhone},
+              onSelectionChanged: (s) => setState(() {
+                _byPhone = s.first;
+                _err = null;
+              }),
             ),
+            const SizedBox(height: 12),
+            if (_byPhone)
+              TextField(
+                controller: _phone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'телефон пользователя',
+                  hintText: '+7 900 000-00-00',
+                ),
+              )
+            else
+              TextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'email пользователя'),
+              ),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: _canToggle,
