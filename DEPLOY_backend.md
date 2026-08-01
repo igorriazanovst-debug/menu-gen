@@ -64,3 +64,46 @@ docker compose restart backend celery celery-beat
 > Примечание: миграции этой сессии безопасно «забыть» и без полного отката БД —
 > столбцы можно оставить (они не мешают коду `main`). Полный откат БД нужен лишь
 > если применялись неожиданные неаддитивные миграции из дивергенции.
+
+## Перенос рецептов между серверами (MG_RECIPESYNC)
+
+`dumpdata`/`loaddata` для этого не годятся: они переносят записи вместе с `id`, а
+на целевом сервере эти id уже заняты своими рецептами и продуктами. Вместо них —
+пара команд с натуральными ключами (рецепт ищется по `legacy_id` → `source_url` →
+нормализованному названию, связи с продуктами пересобираются по именам продуктов).
+
+**1. На источнике (dev):**
+
+```bash
+docker compose exec backend python manage.py export_recipes --output /tmp/recipes.json
+docker compose cp backend:/tmp/recipes.json ./recipes.json
+```
+
+По умолчанию выгружаются только каталожные рецепты: `is_custom=False`,
+без автора, `is_published=True` (флаги `--include-custom`, `--include-unpublished`).
+
+**2. Копируем файл и картинки на целевой сервер:**
+
+```bash
+scp recipes.json root@<PROD>:/opt/menugen/
+# картинки рецептов (image_url вида /media/...) файлами не переносятся:
+rsync -av /opt/menugen/media/ root@<PROD>:/opt/menugen/media/
+```
+
+**3. На приёмнике (prod) — сначала дамп БД, потом сухой прогон:**
+
+```bash
+docker compose exec -T db pg_dump -U "$DB_USER" -Fc "$DB_NAME" > backups/db_before_recipes_$(date +%Y%m%d_%H%M%S).dump
+docker compose cp ./recipes.json backend:/tmp/recipes.json
+docker compose exec backend python manage.py import_recipes_json /tmp/recipes.json --dry-run
+docker compose exec backend python manage.py import_recipes_json /tmp/recipes.json --create-products
+```
+
+Импорт идемпотентен: уже существующие рецепты пропускаются, повторный запуск
+ничего не дублирует. `--create-products` создаёт недостающие продукты
+рубрикатора (без него связь останется без `product`, но текст ингредиента
+сохранится). `--update` перезаписывает поля существующих рецептов — применять
+осознанно, он затрёт правки, сделанные на приёмнике.
+
+Пересборку связей по `post_save` (`MG_RECIPELINK`, ходит в ИИ) импорт гасит:
+переносятся ровно те связи, что были в исходной базе.
