@@ -53,23 +53,31 @@ class Command(BaseCommand):
         )
         parser.add_argument("--list-ok", action="store_true", default=False, help="Показывать и целые картинки")
         parser.add_argument("--limit", type=int, default=None, help="Проверить только первые N рецептов")
+        parser.add_argument(
+            "--export-empty",
+            metavar="ПУТЬ",
+            default=None,
+            help="Выгрузить CSV со списком рецептов без фото (для ручной загрузки картинок)",
+        )
 
     def handle(self, *args, **opts):
         from apps.recipes.models import Recipe
 
-        qs = Recipe.objects.order_by("id").values_list("id", "title", "image_url")
+        qs = Recipe.objects.order_by("title").values_list(
+            "id", "title", "image_url", "dish_type", "country", "source", "source_url"
+        )
         if opts["limit"]:
             qs = qs[: opts["limit"]]
 
         missing: list[tuple[int, str, str]] = []
         external: list[tuple[int, str, str]] = []
-        empty: list[tuple[int, str]] = []
+        empty: list[tuple] = []
         ok = 0
 
-        for pk, title, image_url in qs:
+        for pk, title, image_url, dish_type, country, source, source_url in qs:
             url = (image_url or "").strip()
             if not url:
-                empty.append((pk, title))
+                empty.append((pk, title, dish_type, country, source, source_url))
                 continue
 
             path = local_path(url)
@@ -110,8 +118,33 @@ class Command(BaseCommand):
             else:
                 self.stdout.write("  (добавьте --check-remote, чтобы проверить доступность)")
 
+        if opts["export_empty"]:
+            self._export_empty(empty, Path(opts["export_empty"]))
+
         if not missing and not external:
             self.stdout.write(self.style.SUCCESS("\nБитых картинок не найдено."))
+
+    def _export_empty(self, empty, path: Path) -> None:
+        """CSV со списком рецептов без фото — рабочий лист для ручной загрузки."""
+        import csv
+
+        # utf-8-sig: без BOM Excel открывает кириллицу кракозябрами.
+        with path.open("w", encoding="utf-8-sig", newline="") as fh:
+            writer = csv.writer(fh, delimiter=";")
+            writer.writerow(["id", "название", "тип блюда", "кухня", "источник", "ссылка на источник", "админка"])
+            for pk, title, dish_type, country, source, source_url in empty:
+                writer.writerow(
+                    [
+                        pk,
+                        title,
+                        dish_type or "",
+                        country or "",
+                        source or "",
+                        source_url or "",
+                        f"/admin/recipes/recipe/{pk}/change/",
+                    ]
+                )
+        self.stdout.write(self.style.SUCCESS(f"\nСписок без фото выгружен: {path} ({len(empty)} строк)"))
 
     def _probe(self, external) -> dict[int, str]:
         """Опрос внешних ссылок. Ошибка сети — не повод падать, пишем её как статус."""

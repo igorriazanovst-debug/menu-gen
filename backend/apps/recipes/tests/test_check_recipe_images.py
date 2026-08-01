@@ -111,3 +111,18 @@ class TestCommand:
         call_command("check_recipe_images", "--check-remote", stdout=out)
 
         assert "ConnectionError" in out.getvalue()
+
+    def test_экспорт_списка_без_фото(self, media, tmp_path):
+        make_recipe(title="Омлет-рулет", image_url=None, dish_type="breakfast_dish", country="Россия")
+        make_recipe(title="С фото", image_url="/media/recipes/images/есть.png")
+
+        csv_path = tmp_path / "no_photo.csv"
+        call_command("check_recipe_images", "--export-empty", str(csv_path), stdout=StringIO())
+        content = csv_path.read_text(encoding="utf-8-sig")
+
+        assert "Омлет-рулет" in content
+        assert "С фото" not in content
+        assert "breakfast_dish" in content
+        # ссылка на карточку в админке — чтобы сразу открыть и загрузить фото
+        assert "/admin/recipes/recipe/" in content
+        assert content.splitlines()[0].startswith("id;")
