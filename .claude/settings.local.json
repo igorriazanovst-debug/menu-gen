@@ -11,7 +11,8 @@
       "Bash(echo \"PID=$!\")",
       "Bash(cp /root/.claude/uploads/f8e29f48-8b36-5e8c-9ec5-4a800a94f77e/7f3337c8-BACKLOG.md /home/user/menu-gen/BACKLOG.md)",
       "Bash(mkdir -p /home/user/menu-gen/backend/apps/recipes/data)",
-      "Bash(cp \"/root/.claude/uploads/2f2d41cf-2216-51fc-8166-3861848b3350/499e439c-recipes.json\" /home/user/menu-gen/backend/apps/recipes/data/russianfood_ingredients.json)"
+      "Bash(cp \"/root/.claude/uploads/2f2d41cf-2216-51fc-8166-3861848b3350/499e439c-recipes.json\" /home/user/menu-gen/backend/apps/recipes/data/russianfood_ingredients.json)",
+      "Bash(sed -i 's|gradle-8.4-all.zip|gradle-8.9-all.zip|' gradle/wrapper/gradle-wrapper.properties && grep distributionUrl gradle/wrapper/gradle-wrapper.properties)"
     ]
   }
 }
