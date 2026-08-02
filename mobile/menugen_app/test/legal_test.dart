@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:menugen_app/core/api/api_client.dart';
+import 'package:menugen_app/core/router/app_router.dart';
 import 'package:menugen_app/features/legal/legal_repository.dart';
 import 'package:menugen_app/features/legal/models/legal_info.dart';
 import 'package:menugen_app/features/legal/screens/legal_document_screen.dart';
@@ -147,6 +148,36 @@ void main() {
 
       expect(find.text('Не удалось загрузить документ.'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Повторить'), findsOneWidget);
+    });
+  });
+
+  // MG_LEGAL: раздел закрытый — только после входа в аккаунт.
+  group('доступ к документам', () {
+    test('гостя с документов уводит на вход', () {
+      expect(authRedirect(isLoggedIn: false, location: '/legal'), '/login');
+      expect(authRedirect(isLoggedIn: false, location: '/legal/privacy'), '/login');
+    });
+
+    test('вошедшему документы открыты', () {
+      expect(authRedirect(isLoggedIn: true, location: '/legal'), isNull);
+      expect(authRedirect(isLoggedIn: true, location: '/legal/offer'), isNull);
+    });
+
+    test('вход и регистрация остаются доступны гостю', () {
+      for (final path in ['/login', '/register', '/register/phone']) {
+        expect(authRedirect(isLoggedIn: false, location: path), isNull, reason: path);
+      }
+    });
+
+    test('вошедшего с экранов входа уводит в меню', () {
+      expect(authRedirect(isLoggedIn: true, location: '/login'), '/menu');
+      expect(authRedirect(isLoggedIn: true, location: '/register/phone'), '/menu');
+    });
+
+    test('премиум-ограничение осталось на месте', () {
+      expect(authRedirect(isLoggedIn: true, location: '/fridge', premiumLocked: true), '/paywall');
+      expect(authRedirect(isLoggedIn: true, location: '/legal', premiumLocked: true), isNull,
+          reason: 'документы не должны требовать подписки');
     });
   });
 }

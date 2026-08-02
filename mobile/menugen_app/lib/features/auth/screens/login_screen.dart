@@ -106,13 +106,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: () => context.push('/register/phone'),
                 child: const Text('Регистрация по телефону'),
               ),
-              // MG_LEGAL: документы доступны до входа — их читают перед
-              // регистрацией, и они нужны модерации сторов.
-              TextButton(
-                onPressed: () => context.push('/legal'),
-                child: const Text('Оферта, политика и реквизиты',
-                    style: TextStyle(fontSize: 12)),
-              ),
                   ]),
                 ),
               ),

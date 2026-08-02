@@ -30,27 +30,33 @@ import '../widgets/main_shell.dart';
 // freemium: дневник открыт free-юзерам (как в вебе). Холодильник остаётся premium.
 const _premiumOnlyPaths = {'/fridge'};
 
+/// Экраны, доступные без входа: только сам вход и регистрация.
+///
+/// MG_LEGAL: юридические документы сюда намеренно НЕ входят — они живут в
+/// закрытой части, в разделе профиля.
+const _guestPaths = {'/login', '/register', '/register/phone'};
+
+/// Куда перенаправить пользователя, или null — если можно остаться.
+///
+/// Вынесено из замыкания роутера, чтобы правило доступа можно было проверить
+/// тестом, не поднимая всё дерево экранов.
+String? authRedirect({required bool isLoggedIn, required String location, bool premiumLocked = false}) {
+  final isGuestPath = _guestPaths.contains(location);
+  if (!isLoggedIn && !isGuestPath) return '/login';
+  if (isLoggedIn && isGuestPath) return '/menu';
+  if (premiumLocked && _premiumOnlyPaths.any(location.startsWith)) return '/paywall';
+  return null;
+}
+
 class AppRouter {
   static GoRouter create({required AuthState authState, required ApiClient apiClient, required PremiumGateCubit premiumGate}) {
     return GoRouter(
       initialLocation: '/menu',
-      redirect: (context, state) {
-        final isLoggedIn = authState is AuthAuthenticated;
-        final loc = state.matchedLocation;
-        final isAuthRoute = loc == '/login' ||
-            loc == '/register' || // MG_REG
-            loc == '/register/phone'; // MG_PHONEVERIFY
-        // MG_LEGAL: документы открыты без входа — их смотрят до регистрации, и
-        // они должны быть доступны модератору стора, у которого нет аккаунта.
-        final isPublicRoute = loc.startsWith('/legal');
-        if (!isLoggedIn && !isAuthRoute && !isPublicRoute) return '/login';
-        if (isLoggedIn && isAuthRoute) return '/menu';
-        if (premiumGate.state.status == PremiumStatus.lockedForRead &&
-            _premiumOnlyPaths.any((p) => state.matchedLocation.startsWith(p))) {
-          return '/paywall';
-        }
-        return null;
-      },
+      redirect: (context, state) => authRedirect(
+        isLoggedIn: authState is AuthAuthenticated,
+        location: state.matchedLocation,
+        premiumLocked: premiumGate.state.status == PremiumStatus.lockedForRead,
+      ),
       routes: [
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
         GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()), // MG_REG
