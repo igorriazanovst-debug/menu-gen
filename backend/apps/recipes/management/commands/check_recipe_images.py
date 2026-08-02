@@ -41,6 +41,25 @@ def local_path(image_url: str) -> Path | None:
     return Path(settings.MEDIA_ROOT) / path.lstrip("/")
 
 
+def join_steps(steps) -> str:
+    """Шаги приготовления → одна ячейка: «1) … 2) …».
+
+    В БД шаг бывает и строкой, и объектом {"text": …, "photo": …} — формат
+    зависит от того, каким импортом рецепт приехал. Переводы строк убираем:
+    внутри ячейки они ломают чтение CSV частью программ.
+    """
+    out = []
+    for item in steps or []:
+        if isinstance(item, dict):
+            text = item.get("text") or ""
+        else:
+            text = str(item or "")
+        text = " ".join(text.split())
+        if text:
+            out.append(f"{len(out) + 1}) {text}")
+    return " ".join(out)
+
+
 class Command(BaseCommand):
     help = "MG_IMGAUDIT: показывает рецепты, у которых картинка не отображается."
 
@@ -64,7 +83,7 @@ class Command(BaseCommand):
         from apps.recipes.models import Recipe
 
         qs = Recipe.objects.order_by("title").values_list(
-            "id", "title", "image_url", "dish_type", "country", "source", "source_url"
+            "id", "title", "image_url", "dish_type", "country", "source", "source_url", "steps"
         )
         if opts["limit"]:
             qs = qs[: opts["limit"]]
@@ -74,10 +93,10 @@ class Command(BaseCommand):
         empty: list[tuple] = []
         ok = 0
 
-        for pk, title, image_url, dish_type, country, source, source_url in qs:
+        for pk, title, image_url, dish_type, country, source, source_url, steps in qs:
             url = (image_url or "").strip()
             if not url:
-                empty.append((pk, title, dish_type, country, source, source_url))
+                empty.append((pk, title, dish_type, country, source, source_url, steps))
                 continue
 
             path = local_path(url)
@@ -131,8 +150,10 @@ class Command(BaseCommand):
         # utf-8-sig: без BOM Excel открывает кириллицу кракозябрами.
         with path.open("w", encoding="utf-8-sig", newline="") as fh:
             writer = csv.writer(fh, delimiter=";")
-            writer.writerow(["id", "название", "тип блюда", "кухня", "источник", "ссылка на источник", "админка"])
-            for pk, title, dish_type, country, source, source_url in empty:
+            writer.writerow(
+                ["id", "название", "тип блюда", "кухня", "источник", "ссылка на источник", "админка", "рецепт"]
+            )
+            for pk, title, dish_type, country, source, source_url, steps in empty:
                 writer.writerow(
                     [
                         pk,
@@ -142,6 +163,7 @@ class Command(BaseCommand):
                         source or "",
                         source_url or "",
                         f"/admin/recipes/recipe/{pk}/change/",
+                        join_steps(steps),
                     ]
                 )
         self.stdout.write(self.style.SUCCESS(f"\nСписок без фото выгружен: {path} ({len(empty)} строк)"))

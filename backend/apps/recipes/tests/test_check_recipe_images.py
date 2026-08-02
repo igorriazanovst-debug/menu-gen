@@ -4,7 +4,7 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 
-from apps.recipes.management.commands.check_recipe_images import local_path
+from apps.recipes.management.commands.check_recipe_images import join_steps, local_path
 from apps.recipes.models import Recipe
 
 
@@ -113,7 +113,13 @@ class TestCommand:
         assert "ConnectionError" in out.getvalue()
 
     def test_экспорт_списка_без_фото(self, media, tmp_path):
-        make_recipe(title="Омлет-рулет", image_url=None, dish_type="breakfast_dish", country="Россия")
+        make_recipe(
+            title="Омлет-рулет",
+            image_url=None,
+            dish_type="breakfast_dish",
+            country="Россия",
+            steps=[{"text": "Взбить яйца"}, "Свернуть рулетом"],
+        )
         make_recipe(title="С фото", image_url="/media/recipes/images/есть.png")
 
         csv_path = tmp_path / "no_photo.csv"
@@ -126,3 +132,23 @@ class TestCommand:
         # ссылка на карточку в админке — чтобы сразу открыть и загрузить фото
         assert "/admin/recipes/recipe/" in content
         assert content.splitlines()[0].startswith("id;")
+        assert content.rstrip().endswith("1) Взбить яйца 2) Свернуть рулетом")
+
+
+class TestJoinSteps:
+    def test_нумерует_шаги(self):
+        assert join_steps(["Нарезать", "Посолить"]) == "1) Нарезать 2) Посолить"
+
+    def test_понимает_объекты_с_текстом(self):
+        # формат шага зависит от того, каким импортом приехал рецепт
+        assert join_steps([{"text": "Взбить", "photo": "x.png"}]) == "1) Взбить"
+
+    def test_схлопывает_переводы_строк(self):
+        assert join_steps(["Первая\nвторая  строка"]) == "1) Первая вторая строка"
+
+    def test_пропускает_пустые(self):
+        assert join_steps(["", None, {"text": "  "}, "Готово"]) == "1) Готово"
+
+    def test_нет_шагов(self):
+        assert join_steps(None) == ""
+        assert join_steps([]) == ""
