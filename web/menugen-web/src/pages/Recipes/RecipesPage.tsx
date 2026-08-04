@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { recipesApi } from '../../api/recipes';
 import { Card } from '../../components/ui/Card';
@@ -9,6 +9,8 @@ import { RecipeEditModal } from '../../components/recipes/RecipeEditModal';
 import { AllergenBadges } from '../../components/recipe/AllergenBadges';
 import { MadePhotoControl } from '../../components/recipes/MadePhotoControl';
 import { ImageLightbox } from '../../components/ui/ImageLightbox';
+import { RecipeGallery } from '../../components/recipe/RecipeGallery'; // MG_GALLERY
+import { collectRecipeImages } from '../../utils/recipeImages'; // MG_GALLERY
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { categoryLabel } from '../../constants/categories'; // MG_CATRU
@@ -405,10 +407,15 @@ const RecipeModal: React.FC<{
 }> = ({ recipe, isAdmin, onClose, onEdit, onDeleted }) => {
   const [confirming, setConfirming] = useState(false);
   const [deleting,   setDeleting]   = useState(false);
-  const [zoom, setZoom] = useState(false); // MG_PHOTOZOOM
+  // MG_PHOTOZOOM/MG_GALLERY: во весь экран открывается то фото, что сейчас
+  // показано в галерее, поэтому храним его адрес, а не флаг.
+  const [zoom, setZoom] = useState<string | null>(null);
   // MG_RECIPETEXT: карточка приходит из списка (RecipeListSerializer) без
   // ingredients/steps — догружаем полный рецепт по id, иначе в окне нет текста.
   const [full, setFull] = useState<Recipe>(recipe);
+  // MG_GALLERY: список пересобираем только при смене рецепта — иначе галерея
+  // сбрасывалась бы на первый слайд при каждой перерисовке окна.
+  const galleryImages = useMemo(() => collectRecipeImages(full), [full]);
   useEscapeKey(onClose); // MG_ESC: закрытие по Escape
   useEffect(() => {
     let cancel = false;
@@ -432,13 +439,15 @@ const RecipeModal: React.FC<{
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-surface rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        {full.image_url && (
-          <img src={full.image_url} alt={full.title}
-            onClick={() => setZoom(true)}
-            className="w-full object-contain rounded-t-2xl bg-gray-50 cursor-zoom-in" />
-        )}
-        {zoom && full.image_url && (
-          <ImageLightbox src={full.image_url} alt={full.title} onClose={() => setZoom(false)} />
+        {/* MG_GALLERY: обложка + дополнительные фото; листание кликом по краям. */}
+        <RecipeGallery
+          images={galleryImages}
+          alt={full.title}
+          onZoom={(img) => setZoom(img.url)}
+          className="rounded-t-2xl overflow-hidden"
+        />
+        {zoom && (
+          <ImageLightbox src={zoom} alt={full.title} onClose={() => setZoom(null)} />
         )}
         <div className="p-6">
           <div className="flex items-start justify-between gap-4">

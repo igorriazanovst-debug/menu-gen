@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
 from .forms import RecipeAdminForm, RecipeChangelistForm
-from .models import Cuisine, Recipe, RecipeAuthor, RecipeFavorite
+from .models import Cuisine, Recipe, RecipeAuthor, RecipeFavorite, RecipeImage
 
 # Human help texts (meaning in DB + allowed values), translatable.
 HELP = {
@@ -109,9 +109,33 @@ class CuisineAdmin(admin.ModelAdmin):
     ordering = ("sort_order", "name")
 
 
+class RecipeImageInline(admin.TabularInline):
+    """MG_GALLERY: дополнительные фото блюда прямо в карточке рецепта.
+
+    Обложка (Recipe.image_url) остаётся отдельным полем и идёт первым слайдом —
+    сюда добавляются только остальные ракурсы.
+    """
+
+    model = RecipeImage
+    extra = 1
+    fields = ("preview", "image", "caption", "sort_order")
+    readonly_fields = ("preview",)
+    verbose_name = _("Photo")
+    verbose_name_plural = _("Gallery photos (besides the cover)")
+
+    @admin.display(description=_("Preview"))
+    def preview(self, obj):
+        from django.utils.html import format_html
+
+        if not obj or not obj.pk or not obj.image:
+            return "—"
+        return format_html('<img src="{}" style="height:60px;border-radius:6px" />', obj.image.url)
+
+
 @admin.register(Recipe)
 class RecipeAdmin(admin.ModelAdmin):
     form = RecipeAdminForm
+    inlines = (RecipeImageInline,)  # MG_GALLERY
 
     list_display = (
         "id",

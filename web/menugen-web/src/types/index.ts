@@ -127,6 +127,8 @@ export interface LegalInfo {
 }
 export interface Ingredient { name: string; quantity?: string; unit?: string; }
 export interface RecipeStep { text: string; photo?: string; }
+// MG_GALLERY: дополнительное фото блюда (загружается админом в карточке рецепта)
+export interface RecipeGalleryPhoto { id: number; url: string; caption?: string; }
 export interface NutritionValue { value: string; unit: string; }
 export interface Nutrition {
   calories?: NutritionValue; proteins?: NutritionValue;
@@ -142,6 +144,7 @@ export interface Recipe {
   id: number; title: string; cook_time?: string; servings?: number;
   ingredients: Ingredient[]; steps: RecipeStep[]; nutrition: Nutrition;
   categories: string[]; image_url?: string; video_url?: string;
+  gallery?: RecipeGalleryPhoto[];              // MG_GALLERY: доп. фото блюда
   country?: string; is_custom: boolean; author_name?: string; created_at: string;
   food_group?: FoodGroup | null;
   allergens?: string[];                        // MG_ALLERGEN14: ключи аллергенов

@@ -409,6 +409,36 @@ class RecipeProduct(models.Model):
         return "%s -> %s" % (self.name_raw, self.product_id)
 
 
+class RecipeImage(models.Model):
+    """MG_GALLERY: дополнительные фото блюда для галереи в карточке рецепта.
+
+    Основное фото остаётся в Recipe.image_url — это обложка и первый слайд.
+    Здесь лежат остальные ракурсы: их загружает администратор в карточке
+    рецепта (inline), порядок задаётся полем sort_order.
+
+    Отличие от RecipeMadePhoto: те фото личные (у каждого пользователя свои,
+    «вот как получилось у меня»), а эти — часть самого рецепта и видны всем.
+    """
+
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="gallery_images")
+    image = models.ImageField(upload_to="recipes/gallery/", verbose_name="Фото")
+    caption = models.CharField(max_length=255, blank=True, verbose_name="Подпись")
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "recipe_images"
+        # Порядок в галерее задаётся вручную; при равных значениях — по времени
+        # загрузки, чтобы выдача не «прыгала» между запросами.
+        ordering = ["sort_order", "id"]
+        indexes = [models.Index(fields=["recipe", "sort_order"])]
+        verbose_name = "Фото рецепта"
+        verbose_name_plural = "Фото рецепта"
+
+    def __str__(self):
+        return f"{self.recipe_id}: {self.caption or self.image.name}"
+
+
 class RecipeMadePhoto(models.Model):
     """MG_MADEPHOTO: фото приготовленного блюда, прикреплённое пользователем.
 

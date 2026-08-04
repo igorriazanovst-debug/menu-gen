@@ -9,6 +9,7 @@ import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../fridge/screens/recognize_photo_flow.dart' show pickPhoto; // MG_MADEPHOTO
+import '../widgets/recipe_gallery.dart'; // MG_GALLERY
 
 // MG_CATRU: русские подписи для англ. токенов категорий (DishType/FoodGroup и пр.).
 const Map<String, String> _kCategoryRu = {
@@ -278,27 +279,12 @@ class _DetailBody extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
             child: AspectRatio(
               aspectRatio: 16 / 10,
-              child: (_imageUrl != null && _imageUrl!.isNotEmpty)
-                  // MG_PHOTOZOOM: тап по фото → полноэкранный просмотр (zoom).
-                  ? GestureDetector(
-                      onTap: () => _openFullImage(context, _imageUrl!),
-                      child: CachedNetworkImage(
-                        imageUrl: _imageUrl!,
-                        cacheManager: RecipeImageCache.instance,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(color: tokens.surfaceAlt),
-                        errorWidget: (_, __, ___) => Container(
-                          color: tokens.surfaceAlt,
-                          child: Icon(Icons.restaurant,
-                              size: 64, color: tokens.textSecondary),
-                        ),
-                      ),
-                    )
-                  : Container(
-                      color: tokens.surfaceAlt,
-                      child: Icon(Icons.restaurant,
-                          size: 64, color: tokens.textSecondary),
-                    ),
+              // MG_GALLERY: обложка + дополнительные фото. Тап по краям листает,
+              // по середине — полноэкранный просмотр (MG_PHOTOZOOM).
+              child: RecipeGallery(
+                photos: collectRecipePhotos(recipe),
+                onZoom: (photo) => _openFullImage(context, photo.url),
+              ),
             ),
           ),
         ),

@@ -181,6 +181,21 @@ class RecipeListSerializer(
         return scores.get(obj.id, 0)
 
 
+class RecipeGalleryImageSerializer(serializers.Serializer):
+    """MG_GALLERY: дополнительное фото блюда (абсолютный URL + подпись)."""
+
+    id = serializers.IntegerField(read_only=True)
+    url = serializers.SerializerMethodField()
+    caption = serializers.CharField(read_only=True)
+
+    def get_url(self, obj):
+        # Тот же способ, что и для фото «я приготовил»: BACKEND_PUBLIC_URL, иначе
+        # абсолютный адрес из запроса.
+        from .made_photos import resolve_made_photo_url
+
+        return resolve_made_photo_url(obj, self.context.get("request"))
+
+
 class RecipeMadePhotoSerializer(serializers.Serializer):
     """MG_MADEPHOTO: фото приготовленного блюда (id, абсолютный URL, дата)."""
 
@@ -200,6 +215,7 @@ class RecipeDetailSerializer(
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
     image_url = serializers.SerializerMethodField()  # MG_FIX_IMAGE_URL_ABSOLUTE
     made_photos = serializers.SerializerMethodField()  # MG_MADEPHOTO
+    gallery = serializers.SerializerMethodField()  # MG_GALLERY
 
     class Meta:
         model = Recipe
@@ -227,11 +243,18 @@ class RecipeDetailSerializer(
                 "is_disliked",
                 "allergens",  # MG_ALLERGEN14
                 "made_photos",  # MG_MADEPHOTO
+                "gallery",  # MG_GALLERY
             )
             + CLASSIFICATION_FIELDS
             + MG501_FIELDS
             + NUTRITION_NUMERIC_FIELDS
         )
+
+    def get_gallery(self, obj):
+        """Дополнительные фото блюда — видны всем, в заданном порядке."""
+        return RecipeGalleryImageSerializer(
+            obj.gallery_images.all(), many=True, context=self.context
+        ).data
 
     def get_made_photos(self, obj):
         """Фото приготовления ТЕКУЩЕГО пользователя (если авторизован)."""
