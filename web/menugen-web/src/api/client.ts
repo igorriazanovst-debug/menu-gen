@@ -53,6 +53,14 @@ client.interceptors.response.use(
       try {
         const { data } = await axios.post(`${BASE_URL}/auth/refresh/`, { refresh });
         localStorage.setItem('access_token', data.access);
+        // MG_TOKENFIX: бэкенд ротирует refresh-токены (ROTATE_REFRESH_TOKENS +
+        // BLACKLIST_AFTER_ROTATION): при обновлении выдаётся новый refresh, а
+        // старый заносится в чёрный список. Если новый не сохранить, второе
+        // обновление уйдёт со старым токеном, получит 401 — и пользователя
+        // выкидывало на вход примерно через полчаса (два цикла по 15 минут).
+        if (data.refresh) {
+          localStorage.setItem('refresh_token', data.refresh);
+        }
         processQueue(null, data.access);
         original.headers.Authorization = `Bearer ${data.access}`;
         return client(original);
