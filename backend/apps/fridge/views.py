@@ -8,6 +8,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.search import yo_search_q  # MG_YOSEARCH
 from apps.family.models import FamilyMember
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
@@ -225,8 +226,9 @@ class ProductSearchView(generics.ListAPIView):
         # Матчим и по имени, и по синонимам (ProductAlias): «огурец» -> «Огурцы».
         from .aliases import normalize_alias
 
-        cond = Q(name__icontains=q)
-        qn = normalize_alias(q)
+        # MG_YOSEARCH: «мед» находит «мёд», и наоборот.
+        cond = yo_search_q(Product, ["name"], q)
+        qn = normalize_alias(q)  # синонимы уже хранятся с «ё»→«е»
         if qn:
             cond |= Q(aliases__alias_norm__icontains=qn)
         # MG_PRODOWN: только системные + свои продукты.

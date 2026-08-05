@@ -5,6 +5,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from apps.common.drf_search import YoSearchFilter  # MG_YOSEARCH
+
 from .filters import RecipeFilter
 from .made_photos import create_made_photo_from_b64  # MG_MADEPHOTO
 from .models import DeletedRecipe, Recipe, RecipeAuthor, RecipeFavorite, RecipeMadePhoto
@@ -48,7 +50,7 @@ class RecipeViewSet(ModelViewSet):
     search_fields = ["title", "categories", "country"]
     filter_backends = [
         __import__("django_filters").rest_framework.DjangoFilterBackend,
-        __import__("rest_framework").filters.SearchFilter,
+        YoSearchFilter,  # MG_YOSEARCH: «мед» находит «мёд», и наоборот
     ]
 
     def get_queryset(self):

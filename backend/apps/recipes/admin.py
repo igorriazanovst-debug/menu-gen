@@ -2,6 +2,8 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
+from apps.common.search import YoAdminSearchMixin  # MG_YOSEARCH
+
 from .forms import RecipeAdminForm, RecipeChangelistForm
 from .models import Cuisine, Recipe, RecipeAuthor, RecipeFavorite, RecipeImage
 
@@ -102,7 +104,7 @@ LABELS = {
 
 
 @admin.register(Cuisine)
-class CuisineAdmin(admin.ModelAdmin):
+class CuisineAdmin(YoAdminSearchMixin, admin.ModelAdmin):
     list_display = ("id", "name", "sort_order", "is_active")
     list_editable = ("name", "sort_order", "is_active")
     search_fields = ("name",)
@@ -133,7 +135,7 @@ class RecipeImageInline(admin.TabularInline):
 
 
 @admin.register(Recipe)
-class RecipeAdmin(admin.ModelAdmin):
+class RecipeAdmin(YoAdminSearchMixin, admin.ModelAdmin):
     form = RecipeAdminForm
     inlines = (RecipeImageInline,)  # MG_GALLERY
 
