@@ -1,3 +1,27 @@
+/// MG_LOGINFIX: достаёт человеческий текст ошибки из тела ответа DRF.
+///
+/// DRF отвечает по-разному: `{"detail": "..."}` — из APIView и permissions,
+/// а вот ValidationError из сериализатора приходит как
+/// `{"non_field_errors": ["Неверные учётные данные."]}` или
+/// `{"email": ["Введите корректный адрес."]}`. Раньше второй случай не
+/// разбирался и пользователь видел «Ошибка сервера» вместо причины — по такому
+/// сообщению нельзя понять, что не так с входом.
+String? messageFromBody(dynamic body) {
+  if (body is! Map) return null;
+  for (final key in const ['detail', 'message', 'error']) {
+    final v = body[key];
+    if (v != null) return v.toString();
+  }
+  // Первое непустое поле с текстом: значение — строка или список строк.
+  for (final entry in body.entries) {
+    if (entry.key == 'code' || entry.key == 'error_code') continue;
+    final v = entry.value;
+    if (v is String && v.isNotEmpty) return v;
+    if (v is List && v.isNotEmpty) return v.first.toString();
+  }
+  return null;
+}
+
 /// Typed exception thrown by [DioApiClient] on non-2xx responses.
 ///
 /// Wraps DRF error shape `{"detail": "..."}` and exposes [isPremiumLocked]

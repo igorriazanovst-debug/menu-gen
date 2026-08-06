@@ -22,10 +22,10 @@ const interceptors = {
   response: { use: (_ok: any, fail: ErrorHandler) => { onError = fail; } },
 };
 
-function makeError(status: number) {
+function makeError(status: number, url = '/menu/') {
   return {
     response: { status },
-    config: { headers: {} as Record<string, string>, url: '/menu/' },
+    config: { headers: {} as Record<string, string>, url },
   };
 }
 
@@ -101,5 +101,36 @@ describe('client: обновление токенов', () => {
 
     expect(axiosMock.post).not.toHaveBeenCalled();
     expect(localStorage.getItem('refresh_token')).toBe('R0');
+  });
+
+  // MG_LOGINFIX: вход не должен зависеть от того, что осталось в localStorage.
+  // DRF проверяет токен раньше permission_classes, поэтому протухший Bearer
+  // ломал бы вход с верным паролем.
+  describe('вход и другие публичные эндпоинты', () => {
+    it('на вход старый токен не подставляется', () => {
+      const config = requestHandler({ headers: {} as Record<string, string>, url: '/auth/login/' });
+
+      expect(config.headers.Authorization).toBeUndefined();
+    });
+
+    it('регистрация и подтверждение — тоже без токена', () => {
+      for (const url of ['/auth/email/register/', '/auth/email/verify/', '/auth/phone/start/']) {
+        const config = requestHandler({ headers: {} as Record<string, string>, url });
+        expect(config.headers.Authorization).toBeUndefined();
+      }
+    });
+
+    it('выходу токен по-прежнему нужен', () => {
+      const config = requestHandler({ headers: {} as Record<string, string>, url: '/auth/logout/' });
+
+      expect(config.headers.Authorization).toBe('Bearer A0');
+    });
+
+    it('401 на входе не запускает обновление и не чистит хранилище', async () => {
+      await expect(onError(makeError(401, '/auth/login/'))).rejects.toBeTruthy();
+
+      expect(axiosMock.post).not.toHaveBeenCalled();
+      expect(localStorage.getItem('refresh_token')).toBe('R0');
+    });
   });
 });

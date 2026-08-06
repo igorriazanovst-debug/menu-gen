@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/token_storage.dart';
 import '../../../core/premium/premium_gate_cubit.dart';
+import '../auth_error_text.dart'; // MG_LOGINFIX
 
 abstract class AuthEvent extends Equatable {
   const AuthEvent();
@@ -104,7 +105,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final meMap = Map<String, dynamic>.from(_data(me) as Map);
       premiumGate?.bootstrap(meMap);
       emit(AuthAuthenticated(meMap));
-    } catch (e) { emit(AuthError(e.toString())); }
+    } catch (e) { emit(AuthError(authErrorText(e))); }
   }
 
   Future<void> _onRegister(AuthRegisterRequested e, Emitter<AuthState> emit) async {
@@ -124,7 +125,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       premiumGate?.bootstrap(meMap);
       emit(AuthAuthenticated(meMap));
     } catch (e) {
-      emit(AuthError(e.toString()));
+      emit(AuthError(authErrorText(e)));
     }
   }
 
@@ -146,7 +147,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       premiumGate?.bootstrap(meMap);
       emit(AuthAuthenticated(meMap));
     } catch (e) {
-      emit(AuthError(e.toString()));
+      emit(AuthError(authErrorText(e)));
     }
   }
 

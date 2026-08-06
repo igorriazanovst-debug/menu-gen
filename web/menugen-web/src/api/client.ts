@@ -11,8 +11,32 @@ const client: AxiosInstance = axios.create({
   timeout: 15000,
 });
 
+// MG_LOGINFIX: публичные эндпоинты авторизации — им нельзя слать Authorization.
+//
+// DRF проверяет токен раньше permission_classes: протухший Bearer из
+// localStorage даёт 401 ещё до того, как вью посмотрит на логин и пароль. Выход
+// (/auth/logout/) в список не входит — ему токен как раз нужен.
+const PUBLIC_AUTH_PATHS = [
+  '/auth/login/',
+  '/auth/refresh/',
+  '/auth/register/',
+  '/auth/email/register/',
+  '/auth/email/verify/',
+  '/auth/email/resend/',
+];
+
+export const isPublicAuthPath = (url?: string): boolean => {
+  if (!url) return false;
+  const path = url.startsWith(BASE_URL) ? url.slice(BASE_URL.length) : url;
+  return PUBLIC_AUTH_PATHS.includes(path) || path.startsWith('/auth/phone/');
+};
+
 // ── Request interceptor: attach JWT ─────────────────────────────────────────
 client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (isPublicAuthPath(config.url)) {
+    if (config.headers) delete config.headers.Authorization;
+    return config;
+  }
   const token = localStorage.getItem('access_token');
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -33,7 +57,9 @@ client.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-    if (error.response?.status === 401 && !original._retry) {
+    // MG_LOGINFIX: 401 от самого входа — это ответ по существу, обновлять
+    // нечего; иначе неудачная попытка входа вычищала бы localStorage.
+    if (error.response?.status === 401 && !original._retry && !isPublicAuthPath(original?.url)) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           queue.push({ resolve, reject });

@@ -14,6 +14,26 @@ import 'token_storage.dart';
 ///  * broadcasts [ApiException]s on [errorStream] so cross-cutting cubits
 ///    (e.g. PremiumGateCubit) can react without each bloc re-implementing
 ///    error parsing.
+/// MG_LOGINFIX: публичные эндпоинты авторизации — им НЕЛЬЗЯ слать заголовок
+/// Authorization.
+///
+/// DRF проверяет токен раньше, чем permission_classes: протухший или отозванный
+/// Bearer в заголовке даёт 401 ещё до входа в AllowAny-вью. То есть на устройстве,
+/// где остался старый токен, вход «не работает», хотя логин и пароль верные.
+/// Выход (/auth/logout/) сюда не входит: он как раз требует токена.
+const _publicAuthPaths = {
+  '/auth/login/',
+  '/auth/refresh/',
+  '/auth/register/',
+  '/auth/email/register/',
+  '/auth/email/verify/',
+  '/auth/email/resend/',
+};
+const _publicAuthPrefixes = {'/auth/phone/'};
+
+bool isPublicAuthPath(String path) =>
+    _publicAuthPaths.contains(path) || _publicAuthPrefixes.any(path.startsWith);
+
 class DioApiClient implements ApiClient {
   late final Dio _dio;
   final TokenStorage tokenStorage;
@@ -37,6 +57,11 @@ class DioApiClient implements ApiClient {
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        if (isPublicAuthPath(options.path)) {
+          options.headers.remove('Authorization');
+          handler.next(options);
+          return;
+        }
         final token = await tokenStorage.getAccessToken();
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
@@ -47,7 +72,10 @@ class DioApiClient implements ApiClient {
         // MG_TOKENFIX: refresh once per request, sharing a single in-flight
         // refresh across concurrent 401s (otherwise parallel refreshes rotate
         // the token against each other and blacklist it -> spurious logout).
-        final alreadyRetried = error.requestOptions.extra['__retried'] == true;
+        // MG_LOGINFIX: 401 от самого входа/регистрации — это ответ по существу
+        // («неверные данные»), обновлять по нему токены нечего и незачем.
+        final alreadyRetried = error.requestOptions.extra['__retried'] == true ||
+            isPublicAuthPath(error.requestOptions.path);
         if (error.response?.statusCode == 401 && !alreadyRetried) {
           _refreshing ??= _refreshTokens();
           final ok = await _refreshing!;
@@ -95,6 +123,10 @@ class DioApiClient implements ApiClient {
     }
   }
 
+  /// Подменяет транспорт. Нужно тестам: проверить, какие заголовки уходят на
+  /// сервер, можно только перехватив запрос перед отправкой.
+  set httpClientAdapter(HttpClientAdapter adapter) => _dio.httpClientAdapter = adapter;
+
   void dispose() {
     _errors.close();
     _dio.close(force: true);
@@ -108,13 +140,11 @@ class DioApiClient implements ApiClient {
     dynamic body = resp?.data;
 
     if (body is Map) {
-      // DRF default error shape: {"detail": "..."}.
+      // DRF default error shape: {"detail": "..."}; ошибки сериализатора
+      // приходят полями ({"non_field_errors": [...]}) — их разбирает
+      // messageFromBody.
       // Also tolerate {"error_code": "..."} for forward-compat.
-      message = (body['detail'] ??
-              body['message'] ??
-              body['error'] ??
-              'Ошибка сервера')
-          .toString();
+      message = messageFromBody(body) ?? 'Ошибка сервера';
       // Freemium 403 шлёт {"code": "menu_quota_exceeded"}; принимаем оба ключа.
       final ec = body['error_code'] ?? body['code'];
       if (ec is String) errorCode = ec;

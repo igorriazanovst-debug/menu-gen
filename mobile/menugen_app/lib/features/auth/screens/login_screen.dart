@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kDebugMode; // MG_LOGINFIX
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // MG_APPICON
 import 'package:go_router/go_router.dart';
+import '../../../core/config/app_config.dart'; // MG_LOGINFIX
 import '../../../core/theme/app_theme.dart'; // MG_SKIN
 import '../bloc/auth_bloc.dart';
 
@@ -34,7 +36,12 @@ class _LoginScreenState extends State<LoginScreen> {
       body: BlocListener<AuthBloc, AuthState>(
         listener: (ctx, state) {
           if (state is AuthError) {
-            ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(state.message)));
+            // MG_LOGINFIX: причина отказа бывает длинной («подтвердите e-mail»),
+            // за две секунды её не прочитать.
+            ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+              content: Text(state.message),
+              duration: const Duration(seconds: 6),
+            ));
           }
         },
         child: SafeArea(
@@ -106,6 +113,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: () => context.push('/register/phone'),
                 child: const Text('Регистрация по телефону'),
               ),
+              // MG_LOGINFIX: какой сервер обслуживает эту сборку. Только в
+              // отладочных сборках (их и раздаём вручную) — в релизе не нужно.
+              if (kDebugMode) ...[
+                const SizedBox(height: 8),
+                Text('сервер: ${AppConfig.apiHost}',
+                    style: TextStyle(fontSize: 11, color: context.cs.outline)),
+              ],
                   ]),
                 ),
               ),

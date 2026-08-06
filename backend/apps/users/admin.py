@@ -153,6 +153,14 @@ class UserAdmin(BaseUserAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         if not change:
+            # MG_LOGINFIX: аккаунт, заведённый администратором, сразу считается
+            # подтверждённым. Ссылку на подтверждение ему никто не отправлял, а
+            # строгий гейт (EMAIL_VERIFICATION_REQUIRED) без неё не пускает —
+            # такой пользователь не смог бы войти вообще никогда.
+            from .email_verify import mark_verified
+
+            if obj.email:
+                mark_verified(obj)
             self._provision(request, obj, form)
 
     def _provision(self, request, user, form):

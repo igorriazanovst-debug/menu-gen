@@ -17,6 +17,12 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("user_type", User.UserType.ADMIN)
+        # MG_LOGINFIX: createsuperuser не шлёт письмо с подтверждением, поэтому
+        # при строгом гейте свежесозданный суперпользователь не смог бы войти
+        # через API. Адрес вводит тот, у кого и так полный доступ к серверу.
+        from django.utils import timezone
+
+        extra_fields.setdefault("email_verified_at", timezone.now())
         return self.create_user(email=email, password=password, **extra_fields)
 
 
