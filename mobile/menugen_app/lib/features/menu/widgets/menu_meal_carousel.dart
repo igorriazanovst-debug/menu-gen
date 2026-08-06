@@ -6,6 +6,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/food_groups.dart'; // MG_SWAPFREE
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
 
 /// Список крупных карточек блюд для выбранного приёма пищи.
 /// Если в slot 1 элемент — карточка во всю ширину; если несколько — Column со
@@ -630,13 +631,12 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: context.cs.secondary),
-        const SizedBox(width: 4),
-        Text(text, style: TextStyle(fontSize: 13, color: context.tokens.textSecondary)),
-      ],
+    // MG_NOOVERFLOW: подпись сжимается, а не выдавливает строку наружу.
+    return IconLabel(
+      icon: icon,
+      text: text,
+      iconColor: context.cs.secondary,
+      style: TextStyle(fontSize: 13, color: context.tokens.textSecondary),
     );
   }
 }

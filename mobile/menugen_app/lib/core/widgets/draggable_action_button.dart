@@ -71,12 +71,17 @@ class _DraggableActionButtonState extends State<DraggableActionButton> {
                         children: [
                           Icon(widget.icon, color: Colors.white, size: 20),
                           const SizedBox(width: 8),
-                          Text(
-                            widget.label,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
+                          // MG_NOOVERFLOW: длинная подпись сжимается.
+                          Flexible(
+                            child: Text(
+                              widget.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
                             ),
                           ),
                         ],

@@ -8,6 +8,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
 import '../../fridge/screens/recognize_photo_flow.dart' show pickPhoto; // MG_MADEPHOTO
 import '../widgets/ingredient_row.dart'; // MG_INGROW
 import '../widgets/recipe_gallery.dart'; // MG_GALLERY
@@ -425,13 +426,14 @@ class _MetaItem extends StatelessWidget {
   const _MetaItem({required this.icon, required this.text});
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18, color: context.cs.secondary),
-        const SizedBox(width: 6),
-        Text(text, style: const TextStyle(fontSize: 14)),
-      ],
+    // MG_NOOVERFLOW: подпись сжимается, а не выдавливает строку наружу.
+    return IconLabel(
+      icon: icon,
+      text: text,
+      iconSize: 18,
+      gap: 6,
+      iconColor: context.cs.secondary,
+      style: const TextStyle(fontSize: 14),
     );
   }
 }

@@ -46,6 +46,8 @@ class MenuDayCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   SizedBox(width: 70,
                     child: Text(_mealLabels[meal] ?? meal,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis, // MG_NOOVERFLOW
                         style: const TextStyle(fontSize: 12, color: Colors.grey))),
                   Expanded(child: item == null
                       ? const Text('—', style: TextStyle(color: Colors.grey))

@@ -52,7 +52,11 @@ class DiaryStatsCard extends StatelessWidget {
       children: [
         SizedBox(
           width: 64,
-          child: Text(label, style: const TextStyle(fontSize: 11)),
+          // MG_NOOVERFLOW: подпись обрезается по ширине колонки.
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11)),
         ),
         Expanded(
           child: ClipRRect(

@@ -659,7 +659,13 @@ class _EntryTile extends StatelessWidget {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(qty, style: TextStyle(color: Colors.grey.shade600)),
+                // MG_NOOVERFLOW: длинное количество не растягивает строку.
+                Flexible(
+                  child: Text(qty,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.grey.shade600)),
+                ),
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert, size: 20),
                   tooltip: 'Действия',

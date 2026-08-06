@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -140,16 +141,14 @@ class RecipeCard extends StatelessWidget {
         ),
       );
 
-  Widget _meta(BuildContext context, IconData icon, String text) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: context.tokens.textSecondary),
-          const SizedBox(width: 3),
-          Text(
-            text,
-            style: TextStyle(fontSize: 11, color: context.tokens.textSecondary),
-          ),
-        ],
+  // MG_NOOVERFLOW: подпись сжимается, а не выдавливает строку наружу.
+  Widget _meta(BuildContext context, IconData icon, String text) => IconLabel(
+        icon: icon,
+        text: text,
+        iconSize: 12,
+        gap: 3,
+        iconColor: context.tokens.textSecondary,
+        style: TextStyle(fontSize: 11, color: context.tokens.textSecondary),
       );
 
   Widget _badge(String text) => Builder(

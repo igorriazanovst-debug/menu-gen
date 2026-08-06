@@ -42,8 +42,13 @@ class SyncIndicator extends StatelessWidget {
                     decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 6),
-                  Text(label,
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+                  // MG_NOOVERFLOW: на узком экране подпись сжимается.
+                  Flexible(
+                    child: Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+                  ),
                 ],
               ),
             );
