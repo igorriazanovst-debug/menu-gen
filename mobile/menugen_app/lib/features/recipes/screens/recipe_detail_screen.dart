@@ -9,6 +9,7 @@ import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../fridge/screens/recognize_photo_flow.dart' show pickPhoto; // MG_MADEPHOTO
+import '../widgets/ingredient_row.dart'; // MG_INGROW
 import '../widgets/recipe_gallery.dart'; // MG_GALLERY
 
 // MG_CATRU: русские подписи для англ. токенов категорий (DishType/FoodGroup и пр.).
@@ -352,7 +353,12 @@ class _DetailBody extends StatelessWidget {
               if (_ingredients.isNotEmpty) ...[
                 const _SectionTitle('Ингредиенты'),
                 const SizedBox(height: 8),
-                ..._ingredients.map((i) => _buildIngredientRow(context, i)),
+                ..._ingredients.map(
+                  (i) => RecipeIngredientRow(
+                    name: (i['name'] as String?) ?? '',
+                    amount: RecipeIngredientRow.amountOf(i),
+                  ),
+                ),
                 const SizedBox(height: 20),
               ],
               if (_steps.isNotEmpty) ...[
@@ -370,43 +376,6 @@ class _DetailBody extends StatelessWidget {
     );
   }
 
-  Widget _buildIngredientRow(BuildContext context, Map<String, dynamic> ing) {
-    final cs = context.cs;
-    final tokens = context.tokens;
-    final name = (ing['name'] as String?) ?? '';
-    final qty = ing['quantity']?.toString() ?? '';
-    final unit = (ing['unit'] as String?) ?? '';
-    final amount = [qty, unit].where((s) => s.isNotEmpty).join(' ');
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: tokens.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: cs.secondary, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(name,
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: cs.onSurface)),
-          ),
-          if (amount.isNotEmpty)
-            Text(amount,
-                style: TextStyle(fontSize: 14, color: tokens.textSecondary)),
-        ],
-      ),
-    );
-  }
 }
 
 class _SectionTitle extends StatelessWidget {
