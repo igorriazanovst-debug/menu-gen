@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api/api_client.dart';
 import '../models/shopping_models.dart';
+import '../share_error_text.dart'; // MG_SHAREERR
 
 class ShoppingAccessSheet extends StatefulWidget {
   final ApiClient apiClient;
@@ -74,11 +75,11 @@ class _ShoppingAccessSheetState extends State<ShoppingAccessSheet> {
       _canExport = false;
       await _load();
     } catch (e) {
-      // Бэкенд отвечает «Пользователь с таким телефоном не найден» — доступ
-      // выдаётся только тем, кто уже зарегистрирован в приложении.
-      setState(() => _err = _byPhone
-          ? 'Не удалось выдать доступ. Проверьте номер — пользователь должен быть зарегистрирован.'
-          : 'Не удалось выдать доступ (проверьте email).');
+      // MG_SHAREERR: причину называет бэкенд («Пользователь не найден»,
+      // «Нет прав»). Раньше она терялась: на любой отказ показывался один и тот
+      // же текст «проверьте email», и понять, что адрес верный, а аккаунта с ним
+      // просто нет, было невозможно.
+      setState(() => _err = grantErrorText(e, byPhone: _byPhone));
     }
   }
 
@@ -157,6 +158,14 @@ class _ShoppingAccessSheetState extends State<ShoppingAccessSheet> {
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(labelText: 'email пользователя'),
               ),
+            // MG_SHAREERR: главное ограничение — видно до попытки, а не после.
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'Доступ выдаётся только тем, кто уже зарегистрирован в MenuGen.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: _canToggle,

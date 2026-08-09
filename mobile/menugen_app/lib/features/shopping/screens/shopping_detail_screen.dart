@@ -7,7 +7,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:shared_preferences/shared_preferences.dart'; // MG_SKIN: persist collapse
 
 import '../bloc/shopping_bloc.dart';
+import '../fridge_transfer.dart'; // MG_SHOP2FRIDGE: подтверждение переноса
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
+import '../widgets/item_photo_thumb.dart'; // MG_SHOPIMG: миниатюра + просмотр фото
 import '../models/shopping_models.dart';
 import 'shopping_access_sheet.dart';
 import 'shopping_add_item.dart';
@@ -155,9 +157,14 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
   }
 
   // MG_SHOP2FRIDGE: push purchased items into the family fridge.
-  Future<void> _addToFridge() async {
+  Future<void> _addToFridge(ShoppingListDetail d) async {
     final api = context.read<ShoppingBloc>().apiClient;
     final messenger = ScaffoldMessenger.of(context);
+    // Перенос необратим: обратно позиции придётся убирать вручную.
+    final candidates = fridgeCandidates(d.items);
+    if (candidates.isEmpty) return;
+    if (!await confirmAddToFridge(context, candidates)) return;
+    if (!mounted) return;
     try {
       final raw =
           await api.post('/shopping/lists/${widget.listId}/add-to-fridge/');
@@ -405,14 +412,11 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                 ),
               // MG_SHOP2FRIDGE: stock purchased FOOD items into the fridge
               // (non-food — pet food / chemistry / hygiene — excluded).
-              if (!_editMode &&
-                  caps.toggle &&
-                  d.items.any((it) =>
-                      it.isPurchased && !it.inFridge && it.fridgeEligible))
+              if (!_editMode && caps.toggle && fridgeCandidates(d.items).isNotEmpty)
                 IconButton(
                   icon: const Icon(Icons.kitchen_outlined),
                   tooltip: 'Добавить купленное в холодильник',
-                  onPressed: _addToFridge,
+                  onPressed: () => _addToFridge(d),
                 ),
               // MG_SHOPBUG_EDITMODE: global edit-mode toggle.
               if (caps.manage)
@@ -616,21 +620,11 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                               // MG_SHOP2FRIDGE: ❄ marks items in the fridge.
                                               title: Row(
                                                 children: [
-                                                  // MG_SHOPIMG: миниатюра изображения.
+                                                  // MG_SHOPIMG: миниатюра фото —
+                                                  // по нажатию открывается целиком.
                                                   if (it.image != null &&
                                                       it.image!.isNotEmpty) ...[
-                                                    ClipRRect(
-                                                      borderRadius:
-                                                          BorderRadius.circular(4),
-                                                      child: Image.network(
-                                                        it.image!,
-                                                        width: 30,
-                                                        height: 30,
-                                                        fit: BoxFit.cover,
-                                                        errorBuilder: (_, __, ___) =>
-                                                            const SizedBox.shrink(),
-                                                      ),
-                                                    ),
+                                                    ItemPhotoThumb(url: it.image!),
                                                     const SizedBox(width: 8),
                                                   ],
                                                   Flexible(

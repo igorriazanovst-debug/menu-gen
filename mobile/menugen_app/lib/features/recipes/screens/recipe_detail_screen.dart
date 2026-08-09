@@ -8,6 +8,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/allergens.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/full_image_viewer.dart'; // MG_PHOTOZOOM
 import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
 import '../../fridge/screens/recognize_photo_flow.dart' show pickPhoto; // MG_MADEPHOTO
 import '../widgets/ingredient_row.dart'; // MG_INGROW
@@ -227,13 +228,7 @@ class _DetailBody extends StatelessWidget {
 
   // MG_PHOTOZOOM: полноэкранный просмотр фото рецепта.
   void _openFullImage(BuildContext context, String url) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.black,
-        pageBuilder: (_, __, ___) => _FullImageViewer(url: url),
-      ),
-    );
+    FullImageViewer.open(context, url, cacheManager: RecipeImageCache.instance);
   }
   String? get _videoUrl => recipe['video_url'] as String?;
   String? get _cookTime => recipe['cook_time'] as String?;
@@ -775,53 +770,6 @@ class _MadePhotosSheetState extends State<_MadePhotosSheet> {
                   ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// MG_PHOTOZOOM: полноэкранный просмотр изображения с масштабированием (pinch/zoom).
-class _FullImageViewer extends StatelessWidget {
-  final String url;
-  const _FullImageViewer({required this.url});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: () => Navigator.of(context).maybePop(),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: InteractiveViewer(
-                minScale: 1,
-                maxScale: 5,
-                child: Center(
-                  child: CachedNetworkImage(
-                    imageUrl: url,
-                    cacheManager: RecipeImageCache.instance,
-                    fit: BoxFit.contain,
-                    placeholder: (_, __) => const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    ),
-                    errorWidget: (_, __, ___) => const Center(
-                      child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              right: 8,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

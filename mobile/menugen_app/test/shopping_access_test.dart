@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:menugen_app/core/api/api_client.dart';
+import 'package:menugen_app/core/api/api_exception.dart';
 import 'package:menugen_app/features/shopping/screens/shopping_access_sheet.dart';
 
 class _MockApi extends Mock implements ApiClient {}
@@ -66,9 +67,13 @@ void main() {
     verifyNever(() => api.post(any(), data: any(named: 'data')));
   });
 
-  testWidgets('ошибка по телефону объясняет, что пользователь должен быть зарегистрирован',
-      (tester) async {
-    when(() => api.post(any(), data: any(named: 'data'))).thenThrow(Exception('404'));
+  // MG_SHAREERR: раньше на ЛЮБУЮ ошибку показывалось «пользователь должен быть
+  // зарегистрирован» — и когда дело было в правах, и когда пропала сеть. Теперь
+  // причину называет сервер, а клиент лишь поясняет самую частую из них.
+  testWidgets('незнакомый номер объясняется словами сервера', (tester) async {
+    when(() => api.post(any(), data: any(named: 'data'))).thenThrow(
+      const ApiException(message: 'Пользователь с таким телефоном не найден.', statusCode: 400),
+    );
     await _pumpSheet(tester, api);
 
     await tester.tap(find.text('Телефон'));
@@ -77,6 +82,25 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Выдать доступ'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('должен быть зарегистрирован'), findsOneWidget);
+    expect(find.textContaining('зарегистрирован'), findsWidgets);
+  });
+
+  testWidgets('нехватка прав не выдаётся за отсутствие пользователя', (tester) async {
+    when(() => api.post(any(), data: any(named: 'data')))
+        .thenThrow(const ApiException(message: 'Нет прав.', statusCode: 403));
+    await _pumpSheet(tester, api);
+
+    await tester.enterText(find.widgetWithText(TextField, 'email пользователя'), 'a@b.ru');
+    await tester.tap(find.widgetWithText(FilledButton, 'Выдать доступ'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Нет прав управлять доступом'), findsOneWidget);
+  });
+
+  // Ограничение видно до попытки — самая частая причина отказа.
+  testWidgets('в форме сказано, что доступ только для зарегистрированных', (tester) async {
+    await _pumpSheet(tester, api);
+
+    expect(find.textContaining('уже зарегистрирован в MenuGen'), findsOneWidget);
   });
 }

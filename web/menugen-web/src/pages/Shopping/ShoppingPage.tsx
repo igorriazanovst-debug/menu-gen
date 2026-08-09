@@ -10,9 +10,12 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { printShoppingList } from '../../utils/printShoppingList';
+import { fridgeCandidates, fridgeConfirmText } from '../../utils/fridgeTransfer'; // MG_SHOP2FRIDGE
+import { apiErrorMessage } from '../../utils/apiError'; // MG_SHAREERR
 import { enqueueToggle, flushQueue, SYNC_FLUSHED_EVENT } from '../../utils/syncQueue'; // MG_T08
 import { ItemAutocomplete } from './ItemAutocomplete';
 import { ShoppingItemEditor } from '../../components/shopping/ShoppingItemEditor'; // MG_SHOPNOTE/IMG
+import { ImageLightbox } from '../../components/ui/ImageLightbox'; // MG_SHOPIMG: просмотр фото товара
 import type {
   ShoppingV2ListBrief,
   ShoppingV2List,
@@ -145,6 +148,10 @@ export const ShoppingPage: React.FC = () => {
   // MG_SHOP2FRIDGE: push all purchased (not-yet-stored) items into the fridge.
   const onAddToFridge = async () => {
     if (!detail) return;
+    // Перенос необратим: обратно позиции придётся убирать вручную.
+    const candidates = fridgeCandidates(detail.items);
+    if (candidates.length === 0) return;
+    if (!window.confirm(fridgeConfirmText(candidates))) return;
     try {
       const { data } = await shoppingApi.addToFridge(detail.id);
       await loadDetail(detail.id);
@@ -292,6 +299,10 @@ const ListDetail: React.FC<{
   // MG_SHOPBUG_EDITMODE: global edit mode (delete + inline fields gated).
   const [editMode, setEditMode] = useState(false);
   const [editorItem, setEditorItem] = useState<ShoppingV2Item | null>(null); // MG_SHOPNOTE/IMG
+  // MG_SHOPIMG: фото товара, открытое на весь экран. Клик по миниатюре раньше
+  // вёл в редактор — рассмотреть само фото было негде, а без прав на список
+  // редактор и вовсе не открывался.
+  const [photo, setPhoto] = useState<ShoppingV2Item | null>(null);
   const [onlyUnpurchased, setOnlyUnpurchased] = useState(false); // MG_T09
   const UNITS = ['шт','г','кг','мл','л','упак','банка','пучок','головка','бутылка','тюбик'];
 
@@ -476,10 +487,10 @@ const ListDetail: React.FC<{
                       {it.image && (
                         <img
                           src={it.image}
-                          alt=""
-                          className="w-8 h-8 rounded object-cover border border-gray-200 flex-shrink-0 cursor-pointer"
-                          onClick={() => setEditorItem(it)}
-                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                          alt={`Фото: ${it.name}`}
+                          title="Открыть фото"
+                          className="w-8 h-8 rounded object-cover border border-gray-200 flex-shrink-0 cursor-zoom-in"
+                          onClick={() => setPhoto(it)}
                         />
                       )}
                       <span className={it.is_purchased ? 'line-through text-gray-400 flex-1 min-w-0' : 'flex-1 min-w-0'}>
@@ -569,6 +580,11 @@ const ListDetail: React.FC<{
           <span className="text-sm text-gray-500">Итого</span>
           <span className="text-lg font-bold text-chocolate">{fmtMoney(detail.total_price)} {currency}</span>
         </div>
+      )}
+
+      {/* MG_SHOPIMG: фото товара во весь экран */}
+      {photo?.image && (
+        <ImageLightbox src={photo.image} alt={photo.name} onClose={() => setPhoto(null)} />
       )}
 
       {/* MG_SHOPNOTE/IMG: модалка комментария и изображения товара */}
@@ -880,9 +896,14 @@ const AccessModal: React.FC<{ listId: number; onClose: () => void }> = ({ listId
       setCanToggle(false);
       setCanExport(false);
       load();
-    } catch (e: any) {
-      const d = e?.response?.data;
-      setErr(d?.email?.[0] || d?.phone?.[0] || d?.detail || 'Ошибка.');
+    } catch (e: unknown) {
+      // MG_SHAREERR: показываем причину, которую назвал сервер.
+      const message = apiErrorMessage(e, ['email', 'phone', 'user_id']);
+      setErr(
+        message && /не найден/i.test(message)
+          ? `${message} Доступ можно выдать только тому, кто уже зарегистрирован в MenuGen.`
+          : message || 'Не удалось выдать доступ.',
+      );
     } finally {
       setBusy(false);
     }
@@ -939,6 +960,10 @@ const AccessModal: React.FC<{ listId: number; onClose: () => void }> = ({ listId
             placeholder={shareBy === 'email' ? 'email пользователя' : '+7 900 000-00-00'}
             type={shareBy === 'email' ? 'email' : 'tel'}
           />
+          {/* MG_SHAREERR: главное ограничение — видно до попытки, а не после */}
+          <p className="text-xs text-gray-400">
+            Доступ выдаётся только тем, кто уже зарегистрирован в MenuGen.
+          </p>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={canToggle} onChange={(e) => setCanToggle(e.target.checked)} />
             Может отмечать покупки

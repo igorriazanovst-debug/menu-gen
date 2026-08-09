@@ -178,7 +178,7 @@ class ShoppingListsView(APIView):
             .prefetch_related("items__fridge_items")  # MG_SHOP2FRIDGE
             .first()
         )
-        return Response(ShoppingListSerializer(sl).data, status=status.HTTP_201_CREATED)
+        return Response(ShoppingListSerializer(sl, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 class ShoppingListDetailView(APIView):
@@ -226,7 +226,7 @@ class ShoppingListDetailView(APIView):
             .prefetch_related("items__fridge_items")  # MG_SHOP2FRIDGE
             .first()
         )
-        return Response(ShoppingListSerializer(sl).data)
+        return Response(ShoppingListSerializer(sl, context={"request": request}).data)
 
     def delete(self, request, list_id):
         sl, caps = _get_list_for_user(request.user, list_id)
@@ -356,7 +356,7 @@ class ShoppingItemToggleView(APIView):
         prev = item.is_purchased
         target = (not prev) if new_val is None else bool(new_val)
         if target == prev:
-            return Response(ShoppingListItemSerializer(item).data)
+            return Response(ShoppingListItemSerializer(item, context={"request": request}).data)
         # MG_SHOP2FRIDGE: un-checking an item that was already pushed to the
         # fridge must remove it from the fridge (in the bought volume). Require
         # explicit confirmation so the client can warn the user first.
@@ -400,7 +400,7 @@ class ShoppingItemToggleView(APIView):
             item.purchased_by = None
             item.purchased_at = None
         item.save()
-        return Response(ShoppingListItemSerializer(item).data)
+        return Response(ShoppingListItemSerializer(item, context={"request": request}).data)
 
 
 class ShoppingAddToFridgeView(APIView):

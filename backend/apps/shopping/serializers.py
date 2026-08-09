@@ -199,13 +199,17 @@ class GrantAccessSerializer(serializers.Serializer):
             raise serializers.ValidationError("Укажите user_id, email или телефон.")
         return attrs
 
+    # MG_SHAREERR: причина отказа — списком, как во всех остальных ошибках DRF.
+    # ValidationError({"email": "текст"}) оставляет значение строкой (в список
+    # заворачивается только ошибка верхнего уровня), и клиент, читающий
+    # data.email[0], получал первую БУКВУ сообщения вместо самого сообщения.
     def resolve_user(self):
         data = self.validated_data
         if data.get("user_id"):
             try:
                 return User.objects.get(id=data["user_id"])
             except User.DoesNotExist:
-                raise serializers.ValidationError({"user_id": "Пользователь не найден."})
+                raise serializers.ValidationError({"user_id": ["Пользователь не найден."]})
         # MG_SHAREPHONE: резолв по номеру телефона (нормализуем как при регистрации).
         if (data.get("phone") or "").strip():
             from apps.users.phone_verify import normalize_phone
@@ -213,14 +217,14 @@ class GrantAccessSerializer(serializers.Serializer):
             phone = normalize_phone(data["phone"])
             user = User.objects.filter(phone=phone).order_by("id").first()
             if user is None:
-                raise serializers.ValidationError({"phone": "Пользователь с таким телефоном не найден."})
+                raise serializers.ValidationError({"phone": ["Пользователь с таким телефоном не найден."]})
             return user
         # MG_EMAILCI: e-mail регистронезависимо — пользователь может ввести адрес
         # в любом регистре (I.User@… == i.user@…).
         email = (data.get("email") or "").strip()
         user = User.objects.filter(email__iexact=email).order_by("id").first()
         if user is None:
-            raise serializers.ValidationError({"email": "Пользователь не найден."})
+            raise serializers.ValidationError({"email": ["Пользователь не найден."]})
         return user
 
 
