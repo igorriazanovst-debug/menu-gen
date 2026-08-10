@@ -102,8 +102,8 @@ def test_recipe_portion_grams_handles_comma_decimal():
 @pytest.mark.django_db
 def test_mg_304_top_up_when_shortfall(monkeypatch):
     """
-    Имитация: после основного цикла недобор — в items должен появиться
-    хотя бы один is_virtual snack-слот veg/fruit. Используем мок _build_pools_by_role.
+    Имитация: после основного цикла недобор — овощи добираются в приёмы
+    выбранного плана, остаток попадает в предупреждение.
     """
     from apps.family.models import Family, FamilyMember
     from apps.menu.generator import MenuGenerator
@@ -144,13 +144,18 @@ def test_mg_304_top_up_when_shortfall(monkeypatch):
     items = gen.generate()
     assert isinstance(items, list)
     veg_fruit_items = [i for i in items if i.get("component_role") == "salad"]  # RB001_V_step4
-    # 750г / 150г = 5 порций — должно быть достигнуто
     total_g = 0.0
     for it in veg_fruit_items:
         total_g += recipe_portion_grams(it["recipe"])
-    assert total_g >= 750.0 - 0.01
 
-    # warnings должно быть пусто, поскольку добили
-    # MG_302_V_tests: теперь last_warnings может содержать fatty_fish/plant shortfall — здесь проверяем только veg_fruit_shortfall  # noqa: E501
+    # MG_MEALCOUNT: норма 750 г = 5 порций по 150 г, а в плане на ТРИ приёма
+    # салат помещается только в обед и ужин. Раньше остаток добирался новыми
+    # перекусами — меню на три приёма превращалось в пять, причём эти перекусы
+    # ни веб, ни мобильное приложение не показывали. Теперь добор идёт в
+    # существующие приёмы, а недобор честно уходит в предупреждение.
+    assert total_g > 0, "овощной добор должен был случиться хотя бы частично"
+    assert not [i for i in items if str(i.get("meal_slot", "")).startswith("snack")]
+
     veg_warns = [w for w in getattr(gen, "last_warnings", []) if w.get("code") == "veg_fruit_shortfall"]
-    assert veg_warns == []
+    assert veg_warns, "то, что не поместилось в три приёма, должно быть названо"
+    assert veg_warns[0]["actual_grams"] == pytest.approx(total_g, abs=0.01)

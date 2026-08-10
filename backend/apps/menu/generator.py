@@ -40,6 +40,14 @@ logger = logging.getLogger(__name__)
 MEAL_PLAN_3 = ["breakfast", "lunch", "dinner"]
 MEAL_PLAN_5 = ["breakfast", "snack1", "lunch", "snack2", "dinner"]
 
+# MG_MEALCOUNT: куда складывать доборы. Нового приёма пищи не создаём: человек
+# выбрал три приёма — значит, три.
+#
+# Овощной добор (MG-304) идёт только в обед и ужин: салат есть в составе именно
+# этих приёмов (см. MEAL_COMPONENTS), а на завтрак и в перекус он не ставится —
+# состав приёма не должен меняться от того, добирали в этот день овощи или нет.
+VEG_TOPUP_SLOTS = ("lunch", "dinner")
+
 MEAL_TYPE_DB = {
     "breakfast": "breakfast",
     "lunch": "lunch",
@@ -419,6 +427,40 @@ class MenuGenerator:
                     )
         return out
 
+    # MG_MEALCOUNT: слоты для доборов — только те, что есть в выбранном плане.
+    #
+    # Раньше добор всегда создавал новые перекусы: snack1, snack2, дальше snack3
+    # и так до пяти. В плане на три приёма это превращало «завтрак, обед, ужин» в
+    # пять приёмов, а snack3+ вообще не показывался — ни в вебе, ни в мобильном:
+    # оба рисуют ровно слоты выбранного плана. То есть блюда подбирались, лежали
+    # в меню, попадали в список покупок — и не были видны.
+    #
+    # Порядок: сначала перекусы (если план на пять) — там добору самое место, —
+    # затем обед и ужин.
+    def _snack_topup_slots(self) -> tuple:
+        snacks = tuple(s for s in self.meal_types if s.startswith("snack"))
+        return snacks + VEG_TOPUP_SLOTS
+
+    @staticmethod
+    def _occupied_pairs(items) -> set:
+        """(member, день, слот, роль) — что уже занято.
+
+        В menu_items на эту четвёрку стоит UNIQUE: в одном приёме роль бывает
+        только одна. Поэтому добор не «дописывается» в приём вслепую, а ищет
+        свободную роль.
+        """
+        return {
+            (it["member"].id, it["day_offset"], it.get("meal_slot"), it.get("component_role")) for it in items
+        }
+
+    @staticmethod
+    def _free_topup_slot(slots, occupied: set, member_id: int, day: int, role: str):
+        """Первый слот, где эта роль ещё свободна. None — ставить некуда."""
+        for slot in slots:
+            if (member_id, day, slot, role) not in occupied:
+                return slot
+        return None
+
     # ── MG-304: добор порций овощей/фруктов ──────────────────────────────────
     def _ensure_veg_fruit_servings(self, items, pools, used_per_member, fridge_ids):
         warnings: list = []
@@ -430,13 +472,7 @@ class MenuGenerator:
                 grams[key] = grams.get(key, 0.0) + recipe_portion_grams(it["recipe"])
 
         veg_fruit_pool = list(pools.get("salad", []))
-
-        existing_snack_slots = {}
-        for it in items:
-            slot = it.get("meal_slot", "") or ""
-            if slot.startswith("snack"):
-                key = (it["member"].id, it["day_offset"])
-                existing_snack_slots[key] = existing_snack_slots.get(key, 0) + 1
+        occupied = self._occupied_pairs(items)  # MG_MEALCOUNT
 
         for member in self.members:
             target = daily_target_grams(member, ref_date=self.start_date)
@@ -462,15 +498,21 @@ class MenuGenerator:
                     if candidate is None:
                         break
 
-                    used_per_member[member.id].add(candidate.id)
-                    base_idx = existing_snack_slots.get(key, 0)
-                    slot_n = base_idx + added + 1
+                    # MG_MEALCOUNT: добор идёт в приём выбранного плана, а не в
+                    # новый перекус. Мест конечное число — остаток уйдёт в
+                    # предупреждение veg_fruit_shortfall ниже.
                     role = "salad"  # RB001_V_step4
+                    slot = self._free_topup_slot(VEG_TOPUP_SLOTS, occupied, member.id, day, role)
+                    if slot is None:
+                        break
+
+                    used_per_member[member.id].add(candidate.id)
+                    occupied.add((member.id, day, slot, role))
                     items.append(
                         {
                             "member": member,
-                            "meal_type": "snack",
-                            "meal_slot": f"snack{slot_n}",
+                            "meal_type": MEAL_TYPE_DB[slot],
+                            "meal_slot": slot,
                             "day_offset": day,
                             "recipe": candidate,
                             "component_role": role,
@@ -1109,7 +1151,13 @@ class MenuGenerator:
         )
 
     def _fill_snacks_s2(self, items, member, day, used, hard_exclude, fridge_ids, pools, target_cal):
-        """MG_STRAT: добор перекусов до дневного КБЖУ (±5% по калориям)."""
+        """MG_STRAT: добор до дневного КБЖУ (±5% по калориям).
+
+        MG_MEALCOUNT: добор кладётся в слоты выбранного плана. В плане на пять
+        приёмов это перекусы — как и раньше; в плане на три еда уходит в обед и
+        ужин. Раньше слот назывался snack1, snack2 всегда, из-за чего меню на три
+        приёма показывалось как пять.
+        """
         day_sum = 0.0
         for it in items:
             if it["member"].id == member.id and it["day_offset"] == day:
@@ -1117,6 +1165,7 @@ class MenuGenerator:
                 if k:
                     day_sum += float(k)
         snack_pool = list(pools.get("snack", []))
+        occupied = self._occupied_pairs(items)  # MG_MEALCOUNT
         lo = target_cal * 0.95
         added = 0
         MAX_ADD = 5
@@ -1127,16 +1176,23 @@ class MenuGenerator:
                 break
             fit = [r for r in cands if 0 < (self._recipe_kcal_portion(r) or 0) <= remaining * 1.05]
             rec = random.choice(fit if fit else cands)
+            role = getattr(rec, "dish_type", None) or "snack"
+            # MG_MEALCOUNT: свободное место в приёме выбранного плана; нет мест —
+            # добор заканчиваем, недобор калорий уйдёт в предупреждения.
+            slot = self._free_topup_slot(self._snack_topup_slots(), occupied, member.id, day, role)
+            if slot is None:
+                break
             self.tracker.add(member.id, day, rec)
             used.add(rec.id)
+            occupied.add((member.id, day, slot, role))
             items.append(
                 {
                     "member": member,
-                    "meal_type": "snack",
-                    "meal_slot": f"snack{added + 1}",
+                    "meal_type": MEAL_TYPE_DB[slot],
+                    "meal_slot": slot,
                     "day_offset": day,
                     "recipe": rec,
-                    "component_role": getattr(rec, "dish_type", None) or "snack",
+                    "component_role": role,
                     "is_cheat_meal": False,
                 }
             )

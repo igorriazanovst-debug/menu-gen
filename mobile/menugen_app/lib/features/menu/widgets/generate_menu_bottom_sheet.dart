@@ -278,8 +278,8 @@ class _State extends State<GenerateMenuBottomSheet> {
                   _strategyTile('2', 'По составу', 'Приём по макро-ролям'),
                   _strategyTile('3', 'Тарелка 25/25/50', 'Белок/гарнир/овощи по массе'),
                   const SizedBox(height: 16),
-                  // MG_STRAT_MOBILE: 3/5 только для s1
-                  if (_strategy == '1') ...[
+                  // MG_MEALCOUNT: в «тарелке 25/25/50» перекусов нет
+                  if (_strategy != '3') ...[
                   // Приёмов пищи
                   const Text('Приёмов пищи', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),

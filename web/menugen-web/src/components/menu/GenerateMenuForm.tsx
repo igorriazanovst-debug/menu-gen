@@ -156,7 +156,9 @@ export const GenerateMenuForm: React.FC<Props> = ({
         start_date: startDate,
         strategy, // MG_STRAT_WEB
       };
-      if (strategy === '1') payload.meal_plan_type = mealPlanType; // MG_STRAT_WEB: 3/5 только для s1
+      // MG_MEALCOUNT: число приёмов теперь соблюдают и «Стандарт», и «По составу»
+      // (раньше вторая всегда добирала два перекуса, сколько приёмов ни выбери).
+      if (strategy !== '3') payload.meal_plan_type = mealPlanType;
       if (selectedCountries.length > 0) payload.countries = selectedCountries;
       if (maxCookTime !== '' && Number(maxCookTime) > 0) payload.max_cook_time = Number(maxCookTime);
       if (!respectAllergies) payload.exclude_allergens = [];
@@ -262,7 +264,7 @@ export const GenerateMenuForm: React.FC<Props> = ({
             className="w-full px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-tomato"
           />
         </div>
-        {strategy === '1' && (  /* MG_STRAT_WEB */
+        {strategy !== '3' && (  /* MG_MEALCOUNT: в «тарелке 25/25/50» перекусов нет */
         <div>
           <label className="block text-xs text-gray-500 mb-1">Приёмов пищи</label>
           <div className="flex gap-1">
