@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart'; // MG_SKIN: persist
 
 import '../bloc/shopping_bloc.dart';
 import '../fridge_transfer.dart'; // MG_SHOP2FRIDGE: подтверждение переноса
+import '../item_delete.dart'; // MG_SHOPDEL: удаление долгим нажатием
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../widgets/item_photo_thumb.dart'; // MG_SHOPIMG: миниатюра + просмотр фото
 import '../models/shopping_models.dart';
@@ -182,6 +183,28 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
       messenger.showSnackBar(const SnackBar(
         content: Text('Не удалось добавить в холодильник.'),
       ));
+    }
+  }
+
+  // MG_SHOPDEL: удаление позиции долгим нажатием — только владельцу списка
+  // (у остальных бэкенд ответит 403, поэтому и жест им не предлагается).
+  Future<void> _deleteItem(ShoppingListDetail d, ShoppingItem it) async {
+    final bloc = context.read<ShoppingBloc>();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final deleted = await deleteShoppingItem(
+        context: context,
+        api: bloc.apiClient,
+        listId: d.id,
+        item: it,
+      );
+      if (!deleted) return;
+      bloc.add(ShoppingDetailRequested(d.id));
+      messenger.showSnackBar(SnackBar(content: Text('«${it.name}» удалён')));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Не удалось удалить товар.')),
+      );
     }
   }
 
@@ -607,8 +630,14 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                                       d.id)),
                                             )
                                           else
-                                            // MG_SHOPBUG_EDITMODE: view-mode (no delete).
-                                            CheckboxListTile(
+                                            // MG_SHOPDEL: долгое нажатие —
+                                            // удаление позиции (владельцу списка).
+                                            GestureDetector(
+                                              behavior: HitTestBehavior.opaque,
+                                              onLongPress: caps.manage
+                                                  ? () => _deleteItem(d, it)
+                                                  : null,
+                                              child: CheckboxListTile(
                                               key: ValueKey(
                                                   'view-${it.id}'),
                                               value: it.isPurchased,
@@ -664,6 +693,7 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                                                           _openNoteImage(d, it),
                                                     )
                                                   : null,
+                                              ),
                                             ),
                                       ],
                                     ),
