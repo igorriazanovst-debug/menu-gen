@@ -10,9 +10,9 @@ from __future__ import annotations
 from django.db.models import Exists, OuterRef
 from rest_framework.filters import SearchFilter
 
-from .search import yo_search_q
+from .search import search_q
 
-class YoSearchFilter(SearchFilter):
+class SmartSearchFilter(SearchFilter):
     """SearchFilter из DRF, не различающий «е» и «ё».
 
     Слова запроса, как и в оригинале, объединяются по И: «борщ красный» найдёт
@@ -32,7 +32,7 @@ class YoSearchFilter(SearchFilter):
 
         base = queryset
         for term in terms:
-            queryset = queryset.filter(yo_search_q(queryset.model, search_fields, term))
+            queryset = queryset.filter(search_q(queryset.model, search_fields, term))
 
         if self.must_call_distinct(queryset, search_fields):
             # Тот же приём, что в самом DRF: точнее distinct() на M2M и

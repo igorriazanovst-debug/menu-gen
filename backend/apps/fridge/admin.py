@@ -6,7 +6,7 @@ from django.contrib import admin
 from django.db.models import Q
 from django.utils.html import format_html
 
-from apps.common.search import YoAdminSearchMixin  # MG_YOSEARCH
+from apps.common.search import AdminSearchMixin  # MG_YOSEARCH/MG_MORPHSEARCH
 
 from .models import FridgeItem, Product
 
@@ -56,7 +56,7 @@ class ProductKindFilter(admin.SimpleListFilter):
 
 
 @admin.register(Product)
-class ProductAdmin(YoAdminSearchMixin, admin.ModelAdmin):
+class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
     form = ProductAdminForm
     # Продукты-кандидаты на замену блюда = все продукты в поиске (системные +
     # пользовательские). Для добавления фото удобны: превью, фильтр «без фото»,
@@ -161,7 +161,7 @@ class ProductAdmin(YoAdminSearchMixin, admin.ModelAdmin):
 
 
 @admin.register(FridgeItem)
-class FridgeItemAdmin(YoAdminSearchMixin, admin.ModelAdmin):
+class FridgeItemAdmin(AdminSearchMixin, admin.ModelAdmin):
     list_display = ("id", "family", "name", "quantity", "unit", "expiry_date", "is_deleted")
     list_filter = ("is_deleted",)
     search_fields = ("name", "family__name")

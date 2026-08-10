@@ -2,7 +2,7 @@
 import pytest
 from django.urls import reverse
 
-from apps.common.search import normalize_yo, yo_regex
+from apps.common.search import normalize_yo, search_regex
 from apps.fridge.models import Product
 from apps.recipes.models import Recipe
 from apps.users.models import User
@@ -17,21 +17,22 @@ def make_recipe(title: str, **kwargs) -> Recipe:
 
 class TestHelpers:
     def test_буквы_взаимозаменяемы(self):
-        assert yo_regex("мед") == "м[её]д"
-        assert yo_regex("мёд") == "м[её]д"
+        assert search_regex("мед") == "м[её]д"
+        assert search_regex("мёд") == "м[её]д"
 
     def test_регистр_тоже_учтён(self):
-        # поиск идёт через iregex, поэтому достаточно строчного класса
-        assert yo_regex("Ёлка") == "[её]лка"
+        # поиск идёт через iregex, поэтому достаточно строчного класса;
+        # MG_MORPHSEARCH: заодно отсекается окончание
+        assert search_regex("Ёлка") == "[её]лк"
 
     def test_спецсимволы_экранируются(self):
         """Иначе «(» сломал бы выражение, а «.*» неожиданно расширил выдачу."""
-        assert yo_regex("суп (острый)") == r"суп\ \(острый\)"
-        assert ".*" not in yo_regex("а.*я")
+        assert search_regex("суп (острый)") == r"суп\s+\(острый\)"
+        assert ".*" not in search_regex("а.*я")
 
     def test_пустой_запрос(self):
-        assert yo_regex("") == ""
-        assert yo_regex(None) == ""
+        assert search_regex("") == ""
+        assert search_regex(None) == ""
 
     def test_normalize_yo(self):
         assert normalize_yo("Свёкла тёртая") == "Свекла тертая"

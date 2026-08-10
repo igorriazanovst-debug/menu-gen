@@ -1,7 +1,7 @@
 # MG_SHOP001_admin
 from django.contrib import admin
 
-from apps.common.search import YoAdminSearchMixin  # MG_YOSEARCH
+from apps.common.search import AdminSearchMixin  # MG_YOSEARCH/MG_MORPHSEARCH
 
 from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, ShoppingListItem
 
@@ -17,7 +17,7 @@ class ShoppingListAccessInline(admin.TabularInline):
 
 
 @admin.register(ShoppingList)
-class ShoppingListAdmin(YoAdminSearchMixin, admin.ModelAdmin):
+class ShoppingListAdmin(AdminSearchMixin, admin.ModelAdmin):
     list_display = ("id", "name", "family", "source", "is_archived", "created_at")
     list_filter = ("source", "is_archived")
     search_fields = ("name",)
@@ -25,7 +25,7 @@ class ShoppingListAdmin(YoAdminSearchMixin, admin.ModelAdmin):
 
 
 @admin.register(PurchaseHistoryEntry)
-class PurchaseHistoryEntryAdmin(YoAdminSearchMixin, admin.ModelAdmin):
+class PurchaseHistoryEntryAdmin(AdminSearchMixin, admin.ModelAdmin):
     list_display = ("id", "name", "family", "quantity", "unit", "purchased_at")
     list_filter = ("category",)
     search_fields = ("name",)
