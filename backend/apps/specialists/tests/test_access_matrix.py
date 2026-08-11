@@ -22,6 +22,29 @@ from apps.specialists.models import Specialist, SpecialistActionLog, SpecialistA
 from apps.users.models import User
 
 
+def attach_premium(family):
+    """MG_SPECINVITE: приглашать специалиста может только премиум-семья."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from apps.subscriptions.models import Subscription, SubscriptionPlan
+
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        code="premium", defaults={"name": "Premium", "price": Decimal("0")}
+    )
+    Subscription.objects.get_or_create(
+        family=family,
+        plan=plan,
+        defaults={
+            "status": Subscription.Status.ACTIVE,
+            "started_at": timezone.now() - timedelta(days=1),
+            "expires_at": timezone.now() + timedelta(days=365),
+        },
+    )
+
+
 def make_specialist(email, kind, verified=True):
     user = User.objects.create_user(email=email, password="pass12345", name=email.split("@")[0])
     return Specialist.objects.create(user=user, specialist_type=kind, is_verified=verified)
@@ -270,6 +293,7 @@ class TestInviteRole:
 
     def test_приглашение_без_указания_роли_берёт_её_из_профиля(self, client_family):
         family, member = client_family
+        attach_premium(family)
         make_specialist("cook3@example.com", Specialist.Type.COOK)
         api = APIClient()
         api.force_authenticate(member.user)

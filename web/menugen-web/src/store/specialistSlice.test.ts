@@ -5,9 +5,9 @@ jest.mock('../api/client');
 import specialistReducer, {
   clearSpecialistError, fetchSpecialistProfile, registerAsSpecialist, fetchClients,
   fetchPendingAssignments, acceptAssignment, fetchClientMenus, fetchClientRecommendations,
-  createRecommendation, deleteRecommendation,
+  createRecommendation, deleteRecommendation, fetchInviteCode,
 } from './specialistSlice';
-import type { SpecialistProfile, ClientFamily, PendingAssignment, ClientMenu, Recommendation } from './specialistSlice';
+import type { SpecialistProfile, ClientFamily, PendingAssignment, ClientMenu, Recommendation, InviteCode } from './specialistSlice';
 import api from '../api/client';
 
 const mockApi = api as jest.Mocked<typeof api>;
@@ -16,7 +16,7 @@ const client1: ClientFamily = { id: 10, name: 'Семья', members: [], assignm
 const pending: PendingAssignment = { assignment_id: 99, family_id: 10, family_name: 'Семья' };
 const menu: ClientMenu = { id: 7, start_date: '2026-04-01', end_date: '2026-04-07', period_days: 7, status: 'active', generated_at: '2026-03-28T10:00:00Z' };
 const rec: Recommendation = { id: 3, rec_type: 'supplement', name: 'Омега-3', dosage: '1', frequency: 'daily', start_date: null, end_date: null, is_active: true, is_read: false, member_name: null, created_at: '2026-03-28T10:00:00Z' };
-const initialState = { profile: null, clients: [], pendingAssignments: [], selectedClientMenus: [], selectedClientRecs: [], loading: false, error: null };
+const initialState = { profile: null, inviteCode: null, clients: [], pendingAssignments: [], selectedClientMenus: [], selectedClientRecs: [], loading: false, error: null };
 
 describe('sync', () => {
   it('initial state', () => { expect(specialistReducer(undefined, { type: '@@INIT' })).toEqual(initialState); });
@@ -67,4 +67,26 @@ describe('recommendations', () => {
   it('fetch', () => { expect(specialistReducer(initialState, { type: fetchClientRecommendations.fulfilled.type, payload: [rec] }).selectedClientRecs).toHaveLength(1); });
   it('create prepends', () => { expect(specialistReducer({ ...initialState, selectedClientRecs: [{ ...rec, id: 1 }] }, { type: createRecommendation.fulfilled.type, payload: { ...rec, id: 2 } }).selectedClientRecs[0].id).toBe(2); });
   it('delete marks inactive', () => { expect(specialistReducer({ ...initialState, selectedClientRecs: [rec] }, { type: deleteRecommendation.fulfilled.type, payload: 3 }).selectedClientRecs[0].is_active).toBe(false); });
+});
+
+// MG_SPECINVITE: личный код специалиста
+describe('fetchInviteCode', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const code: InviteCode = { code: 'SP-AAAA-BBBB-CCCC', days: 30, redeemed_count: 2, max_redemptions: 100, is_active: true };
+
+  it('код попадает в состояние', () => {
+    expect(specialistReducer(initialState, { type: fetchInviteCode.fulfilled.type, payload: code }).inviteCode).toEqual(code);
+  });
+
+  it('до загрузки кода нет', () => {
+    expect(initialState.inviteCode).toBeNull();
+  });
+
+  it('thunk ходит по нужному адресу', async () => {
+    mockApi.get.mockResolvedValueOnce({ data: code });
+    const dispatch = jest.fn();
+    await fetchInviteCode()(dispatch, () => ({}), undefined);
+    expect(mockApi.get).toHaveBeenCalledWith('/specialists/invite-code/');
+    expect(dispatch.mock.calls.find((c: any[]) => c[0].type === fetchInviteCode.fulfilled.type)![0].payload).toEqual(code);
+  });
 });

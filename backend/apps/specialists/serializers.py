@@ -3,8 +3,14 @@ from rest_framework import serializers
 from apps.family.models import Family, FamilyMember
 from apps.menu.models import Menu
 
-from .access import permissions_for
-from .models import Recommendation, Specialist, SpecialistActionLog, SpecialistAssignment
+from .access import permissions_for, role_of
+from .models import (
+    Recommendation,
+    Specialist,
+    SpecialistActionLog,
+    SpecialistAssignment,
+    SpecialistInviteCode,
+)
 
 
 class SpecialistProfileSerializer(serializers.ModelSerializer):
@@ -116,3 +122,45 @@ class SpecialistActionLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpecialistActionLog
         fields = ("id", "section", "action", "summary", "member_name", "specialist_name", "created_at")
+
+
+class SpecialistInviteCodeSerializer(serializers.ModelSerializer):
+    """MG_SPECINVITE: код приглашения и его расход."""
+
+    code = serializers.CharField(source="promo.code", read_only=True)
+    days = serializers.IntegerField(source="promo.duration_days", read_only=True)
+    redeemed_count = serializers.IntegerField(source="promo.redeemed_count", read_only=True)
+    max_redemptions = serializers.IntegerField(source="promo.max_redemptions", read_only=True)
+    is_active = serializers.BooleanField(source="promo.is_redeemable", read_only=True)
+
+    class Meta:
+        model = SpecialistInviteCode
+        fields = ("code", "days", "redeemed_count", "max_redemptions", "is_active", "created_at")
+
+
+class MySpecialistSerializer(serializers.ModelSerializer):
+    """MG_SPECINVITE: строка списка «кто имеет доступ к моим данным»."""
+
+    specialist_name = serializers.CharField(source="specialist.user.name", read_only=True)
+    specialist_email = serializers.EmailField(source="specialist.user.email", read_only=True)
+    role = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SpecialistAssignment
+        fields = (
+            "id",
+            "specialist_name",
+            "specialist_email",
+            "role",
+            "permissions",
+            "status",
+            "assigned_at",
+        )
+
+    def get_role(self, obj) -> str:
+        return role_of(obj)
+
+    def get_permissions(self, obj) -> dict:
+        # Клиент должен видеть объём доступа теми же словами, что и специалист.
+        return permissions_for(role_of(obj))

@@ -12,6 +12,8 @@ const NAV = [
   { path: '/diary',         icon: '📓', label: 'Дневник',      premium: false },
   { path: '/fridge',        icon: '🧊', label: 'Холодильник',  premium: true  },
   { path: '/shopping',      icon: '🛒', label: 'Покупки',      premium: false },
+  // MG_SPECINVITE: кто имеет доступ к данным семьи — и как его прекратить
+  { path: '/my-specialists', icon: '🩺', label: 'Специалисты', premium: false },
   { path: '/subscriptions', icon: '💳', label: 'Подписка',     premium: false },
   { path: '/profile',       icon: '👤', label: 'Профиль',      premium: false },
 ];
@@ -58,6 +60,24 @@ export const Sidebar: React.FC = () => {
             {label}
           </NavLink>
         ))}
+        {/* MG_SPECINVITE: кабинет специалиста. Раньше ссылки не было вовсе —
+            попасть в него можно было только набрав /specialist руками. */}
+        {isSpecialist && (
+          <NavLink
+            to="/specialist"
+            className={({ isActive }) =>
+              [
+                'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors',
+                isActive
+                  ? 'bg-primary/20 text-primary font-semibold'
+                  : 'text-sidebar-muted hover:bg-white/5 hover:text-sidebar-fg',
+              ].join(' ')
+            }
+          >
+            <span className="text-base">🩺</span>
+            Кабинет специалиста
+          </NavLink>
+        )}
         {/* MG_CONSTRUCTOR: пункт только для специалистов/стаффа */}
         {isSpecialist && (
           <NavLink

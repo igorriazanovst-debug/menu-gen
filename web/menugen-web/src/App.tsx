@@ -27,6 +27,7 @@ import { RequisitesPage }     from './pages/Legal/RequisitesPage'; // MG_LEGAL
 import { OfferPage }          from './pages/Legal/OfferPage'; // MG_LEGAL
 import { PrivacyPage }        from './pages/Legal/PrivacyPage'; // MG_PRIVACY
 import { SpecialistDashboardPage } from './pages/specialist/SpecialistDashboardPage';
+import { MySpecialistsPage }       from './pages/Specialists/MySpecialistsPage'; // MG_SPECINVITE
 import { SpecialistRegisterPage }  from './pages/specialist/SpecialistRegisterPage';
 import { ClientDetailPage }        from './pages/specialist/ClientDetailPage';
 import { ClientMenuEditorPage }    from './pages/specialist/ClientMenuEditorPage';
@@ -91,6 +92,7 @@ const AppRoutes: React.FC = () => {
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="profile"       element={<ProfilePage />} />
         <Route path="profile/kbju-calculator" element={<KBJUCalculatorPage />} />
+        <Route path="my-specialists" element={<MySpecialistsPage />} />{/* MG_SPECINVITE */}
         <Route path="constructor"   element={<SpecialistRoute><ConstructorPage /></SpecialistRoute>} />{/* MG_CONSTRUCTOR */}
         <Route path="specialist"                                          element={<SpecialistDashboardPage />} />
         <Route path="specialist/register"                                 element={<SpecialistRegisterPage />} />

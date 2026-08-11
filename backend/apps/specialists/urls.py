@@ -11,6 +11,8 @@ from .views import (
     CabinetPendingAssignmentsView,
     CabinetRecommendationDetailView,
     CabinetRecommendationListView,
+    MySpecialistsView,
+    SpecialistInviteCodeView,
     SpecialistProfileView,
     SpecialistRegisterView,
 )
@@ -21,6 +23,9 @@ urlpatterns = [
     path("register/", SpecialistRegisterView.as_view(), name="specialist-register"),
     # Назначения (пользователь → приглашает)
     path("invite/", AssignmentInviteView.as_view(), name="specialist-invite"),
+    # MG_SPECINVITE: код приглашения специалиста и список «мои специалисты»
+    path("invite-code/", SpecialistInviteCodeView.as_view(), name="specialist-invite-code"),
+    path("my/", MySpecialistsView.as_view(), name="my-specialists"),
     path("assignments/<int:assignment_id>/accept/", AssignmentAcceptView.as_view(), name="assignment-accept"),
     path("assignments/<int:assignment_id>/end/", AssignmentEndView.as_view(), name="assignment-end"),
     # Кабинет специалиста

@@ -8,10 +8,13 @@ from apps.menu.models import Menu, MenuItem
 from apps.menu.serializers import MenuDetailSerializer
 
 from .access import Section, permissions_for
+from .invites import get_or_create_code
 from .journal import log_action
 from .models import Recommendation, Specialist, SpecialistAssignment
 from .serializers import (
     ClientFamilySerializer,
+    MySpecialistSerializer,
+    SpecialistInviteCodeSerializer,
     ClientMenuListSerializer,
     RecommendationSerializer,
     RecommendationWriteSerializer,
@@ -281,6 +284,21 @@ class AssignmentInviteView(APIView):
 
         family = family_membership.family
 
+        # MG_SPECINVITE: приглашать специалиста может премиум-семья. У клиента,
+        # пришедшего по коду специалиста, премиум к этому моменту уже есть —
+        # код его и выдаёт.
+        from apps.subscriptions.permissions import has_active_premium
+
+        if not has_active_premium(family):
+            return Response(
+                {
+                    "detail": "Пригласить специалиста можно на премиум-тарифе. "
+                    "Если у специалиста есть код приглашения — введите его: он даёт месяц премиума.",
+                    "code": "premium_required",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         assignment, created = SpecialistAssignment.objects.get_or_create(
             family=family,
             specialist=specialist,
@@ -356,3 +374,52 @@ class CabinetPendingAssignmentsView(APIView):
         ).select_related("family")
         data = [{"assignment_id": a.id, "family_id": a.family_id, "family_name": a.family.name} for a in assignments]
         return Response(data)
+
+
+# ── MG_SPECINVITE: приглашение со стороны специалиста ───────────────────────
+
+
+class SpecialistInviteCodeView(APIView):
+    """Личный код специалиста: клиент вводит его и получает месяц премиума.
+
+    Верификация обязательна: неподтверждённый специалист не должен раздавать
+    коды, дающие доступ к чужим данным.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsVerifiedSpecialist]
+
+    @extend_schema(responses={200: SpecialistInviteCodeSerializer})
+    def get(self, request):
+        specialist = _get_specialist(request.user)
+        try:
+            link = get_or_create_code(specialist)
+        except RuntimeError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(SpecialistInviteCodeSerializer(link).data)
+
+
+# ── MG_SPECINVITE: кто имеет доступ к моим данным ───────────────────────────
+
+
+class MySpecialistsView(APIView):
+    """Специалисты, у которых есть доступ к данным моей семьи.
+
+    Клиент должен видеть, кто и в каком объёме читает его данные, и уметь это
+    прекратить. Завершение — существующей ручкой assignments/<id>/end/.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(responses={200: MySpecialistSerializer(many=True)})
+    def get(self, request):
+        membership = FamilyMember.objects.filter(user=request.user).select_related("family").first()
+        if not membership:
+            return Response([])
+
+        assignments = (
+            SpecialistAssignment.objects.filter(family=membership.family)
+            .exclude(status=SpecialistAssignment.Status.ENDED)
+            .select_related("specialist__user")
+            .order_by("-assigned_at")
+        )
+        return Response(MySpecialistSerializer(assignments, many=True).data)

@@ -135,3 +135,23 @@ class SpecialistActionLog(models.Model):
 
     def __str__(self):
         return f"{self.specialist_id} {self.section}.{self.action} → семья {self.family_id}"
+
+
+class SpecialistInviteCode(models.Model):
+    """MG_SPECINVITE: личный код специалиста — приглашение со своей стороны.
+
+    Сам код живёт в PromoCode (там уже есть срок, счётчик активаций и защита от
+    повторной активации в одной семье). Здесь только связь «код → чей он»:
+    подписки про специалистов ничего не знают и знать не должны.
+    """
+
+    specialist = models.OneToOneField(Specialist, on_delete=models.CASCADE, related_name="invite_code")
+    promo = models.ForeignKey("subscriptions.PromoCode", on_delete=models.CASCADE, related_name="specialist_links")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "specialist_invite_codes"
+        indexes = [models.Index(fields=["promo"])]
+
+    def __str__(self):
+        return f"{self.promo.code} → {self.specialist}"

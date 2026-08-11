@@ -75,12 +75,14 @@ interface SpecialistState {
   pendingAssignments: PendingAssignment[];
   selectedClientMenus: ClientMenu[];
   selectedClientRecs: Recommendation[];
+  inviteCode: InviteCode | null; // MG_SPECINVITE
   loading: boolean;
   error: string | null;
 }
 
 const initialState: SpecialistState = {
   profile: null,
+  inviteCode: null, // MG_SPECINVITE
   clients: [],
   pendingAssignments: [],
   selectedClientMenus: [],
@@ -113,6 +115,27 @@ export const registerAsSpecialist = createAsyncThunk(
       return rejectWithValue(e.response?.data?.detail ?? "Ошибка");
     }
   }
+);
+
+// MG_SPECINVITE: личный код приглашения специалиста.
+export interface InviteCode {
+  code: string;
+  days: number;
+  redeemed_count: number;
+  max_redemptions: number;
+  is_active: boolean;
+}
+
+export const fetchInviteCode = createAsyncThunk<InviteCode, void, { rejectValue: string }>(
+  "specialist/fetchInviteCode",
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await api.get("/specialists/invite-code/");
+      return res.data;
+    } catch {
+      return rejectWithValue("Не удалось получить код приглашения");
+    }
+  },
 );
 
 export const fetchClients = createAsyncThunk(
@@ -278,6 +301,10 @@ const specialistSlice = createSlice({
         state.clients = action.payload;
       })
       .addCase(fetchClients.rejected, failed)
+
+      .addCase(fetchInviteCode.fulfilled, (state, action) => {
+        state.inviteCode = action.payload;
+      })
 
       .addCase(fetchPendingAssignments.fulfilled, (state, action) => {
         state.pendingAssignments = action.payload;

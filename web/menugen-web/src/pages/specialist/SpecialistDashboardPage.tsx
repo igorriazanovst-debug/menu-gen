@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from "../../hooks/useAppDispatch";
 import {
   acceptAssignment,
   fetchClients,
+  fetchInviteCode,
   fetchPendingAssignments,
   fetchSpecialistProfile,
 } from "../../store/specialistSlice";
@@ -16,13 +17,14 @@ import {
 
 export const SpecialistDashboardPage: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { profile, clients, pendingAssignments, loading, error } =
+  const { profile, clients, pendingAssignments, inviteCode, loading, error } =
     useAppSelector((s) => s.specialist);
 
   useEffect(() => {
     dispatch(fetchSpecialistProfile());
     dispatch(fetchClients());
     dispatch(fetchPendingAssignments());
+    dispatch(fetchInviteCode()); // MG_SPECINVITE
   }, [dispatch]);
 
   const handleAccept = (assignmentId: number) => {
@@ -111,6 +113,33 @@ export const SpecialistDashboardPage: React.FC = () => {
               );
             })}
           </ul>
+        </section>
+      )}
+
+      {/* MG_SPECINVITE: личный код — приглашение со стороны специалиста.
+          Клиент вводит его у себя и получает месяц премиума, а доступ
+          открывается сразу: ввод кода и есть его согласие. */}
+      {inviteCode && (
+        <section className="bg-surface rounded-2xl shadow p-6">
+          <h2 className="text-lg font-semibold text-chocolate mb-1">Код приглашения</h2>
+          <p className="text-sm text-gray-400 mb-4">
+            Дайте код клиенту: он получит {inviteCode.days} дней премиума, а вы — доступ к его
+            данным. Клиент может прекратить доступ в любой момент.
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <code className="text-lg font-mono bg-lemon/20 border border-lemon rounded-lg px-4 py-2 text-chocolate">
+              {inviteCode.code}
+            </code>
+            <button
+              onClick={() => navigator.clipboard?.writeText(inviteCode.code)}
+              className="text-sm border border-avocado text-avocado px-3 py-2 rounded-lg hover:bg-avocado hover:text-white transition"
+            >
+              Скопировать
+            </button>
+            <span className="text-sm text-gray-400">
+              активаций: {inviteCode.redeemed_count} из {inviteCode.max_redemptions}
+            </span>
+          </div>
         </section>
       )}
 

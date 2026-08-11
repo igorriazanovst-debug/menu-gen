@@ -93,11 +93,31 @@ class RedeemPromoView(APIView):
         if not family:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
 
+        code = serializer.validated_data["code"]
         try:
-            sub = redeem(serializer.validated_data["code"], family, request.user)
+            sub = redeem(code, family, request.user)
         except PromoError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         data = SubscriptionSerializer(sub).data
         data["detail"] = "Промокод активирован. Премиум подключён."
+
+        # MG_SPECINVITE: код специалиста, кроме премиума, открывает ему доступ к
+        # данным семьи. Ввод кода и есть согласие клиента, поэтому отдельного
+        # подтверждения не спрашиваем — но говорим об этом прямо.
+        from apps.specialists.invites import link_after_redeem
+
+        specialist = link_after_redeem(code, family, request.user)
+        if specialist is not None:
+            name = specialist.user.name or specialist.user.email
+            data["specialist"] = {
+                "name": name,
+                "type": specialist.specialist_type,
+                "type_display": specialist.get_specialist_type_display(),
+            }
+            data["detail"] = (
+                f"Промокод активирован. Премиум подключён, доступ к вашим данным открыт: "
+                f"{name} ({specialist.get_specialist_type_display().lower()}). "
+                f"Прекратить можно в разделе «Мои специалисты»."
+            )
         return Response(data)
