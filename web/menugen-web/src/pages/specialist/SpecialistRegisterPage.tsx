@@ -5,9 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAppDispatch, useAppSelector } from "../../hooks/useAppDispatch";
 import { registerAsSpecialist } from "../../store/specialistSlice";
+import { SPECIALIST_TYPES, SPECIALIST_TYPE_LABELS } from "../../constants/specialist"; // MG_SPECACCESS
 
 const schema = z.object({
-  specialist_type: z.enum(["dietitian", "trainer"]),
+  specialist_type: z.enum(["dietitian", "trainer", "cook"]),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -52,8 +53,9 @@ export const SpecialistRegisterPage: React.FC = () => {
             {...register("specialist_type")}
             className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-avocado"
           >
-            <option value="dietitian">Диетолог</option>
-            <option value="trainer">Тренер</option>
+            {SPECIALIST_TYPES.map((t) => (
+              <option key={t} value={t}>{SPECIALIST_TYPE_LABELS[t]}</option>
+            ))}
           </select>
         </div>
 

@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import api from "../api/client";
+import type { SpecialistPermissions, SpecialistType } from "../constants/specialist";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -7,9 +8,11 @@ export interface SpecialistProfile {
   id: number;
   name: string;
   email: string;
-  specialist_type: "dietitian" | "trainer";
+  specialist_type: SpecialistType;
   is_verified: boolean;
   verified_at: string | null;
+  // MG_SPECACCESS: что роль позволяет — таблица приходит с сервера
+  permissions?: SpecialistPermissions;
 }
 
 export interface FamilyMemberShort {

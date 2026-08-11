@@ -3,16 +3,24 @@ from rest_framework import serializers
 from apps.family.models import Family, FamilyMember
 from apps.menu.models import Menu
 
-from .models import Recommendation, Specialist, SpecialistAssignment
+from .access import permissions_for
+from .models import Recommendation, Specialist, SpecialistActionLog, SpecialistAssignment
 
 
 class SpecialistProfileSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source="user.name", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
+    # MG_SPECACCESS: права роли — чтобы интерфейс не гадал, что показывать.
+    # Прятать кнопку — не защита, решение всё равно за сервером; но и предлагать
+    # заведомо запретное не нужно.
+    permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = Specialist
-        fields = ("id", "name", "email", "specialist_type", "is_verified", "verified_at")
+        fields = ("id", "name", "email", "specialist_type", "is_verified", "verified_at", "permissions")
+
+    def get_permissions(self, obj) -> dict:
+        return permissions_for(obj.specialist_type)
 
 
 class FamilyMemberShortSerializer(serializers.ModelSerializer):
@@ -97,3 +105,14 @@ class ClientMenuListSerializer(serializers.ModelSerializer):
 
 class SpecialistVerifySerializer(serializers.Serializer):
     specialist_type = serializers.ChoiceField(choices=Specialist.Type.choices)
+
+
+class SpecialistActionLogSerializer(serializers.ModelSerializer):
+    """MG_SPECACCESS: история правок специалиста в данных клиента."""
+
+    specialist_name = serializers.CharField(source="specialist.user.name", read_only=True, default=None)
+    member_name = serializers.CharField(source="member.user.name", read_only=True, default=None)
+
+    class Meta:
+        model = SpecialistActionLog
+        fields = ("id", "section", "action", "summary", "member_name", "specialist_name", "created_at")

@@ -7,11 +7,12 @@ import {
   fetchPendingAssignments,
   fetchSpecialistProfile,
 } from "../../store/specialistSlice";
-
-const TYPE_LABELS: Record<string, string> = {
-  dietitian: "Диетолог",
-  trainer: "Тренер",
-};
+import {
+  LEVEL_LABELS,
+  SECTION_LABELS,
+  specialistTypeLabel,
+  type AccessSection,
+} from "../../constants/specialist"; // MG_SPECACCESS
 
 export const SpecialistDashboardPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -73,11 +74,45 @@ export const SpecialistDashboardPage: React.FC = () => {
             }`}
           >
             {profile.is_verified
-              ? `✓ Верифицирован · ${TYPE_LABELS[profile.specialist_type]}`
-              : "Ожидает верификации"}
+              ? `✓ Верифицирован · ${specialistTypeLabel(profile.specialist_type)}`
+              : `Ожидает верификации · ${specialistTypeLabel(profile.specialist_type)}`}
           </span>
         </div>
       </div>
+
+      {/* MG_SPECACCESS: что даёт роль. Специалист должен понимать границы
+          своего доступа до того, как упрётся в отказ на чужом экране. */}
+      {profile.permissions && (
+        <section className="bg-surface rounded-2xl shadow p-6">
+          <h2 className="text-lg font-semibold text-chocolate mb-1">Доступ к данным клиента</h2>
+          <p className="text-sm text-gray-400 mb-4">
+            Зависит от роли и действует, пока клиент не завершил доступ.
+          </p>
+          <ul className="text-sm divide-y divide-gray-100">
+            {(Object.keys(SECTION_LABELS) as AccessSection[]).map((section) => {
+              const level = profile.permissions![section];
+              return (
+                <li key={section} className="flex items-center justify-between py-2">
+                  <span className={level === "none" ? "text-gray-400" : "text-chocolate"}>
+                    {SECTION_LABELS[section]}
+                  </span>
+                  <span
+                    className={
+                      level === "write"
+                        ? "text-avocado font-medium"
+                        : level === "read"
+                          ? "text-gray-500"
+                          : "text-gray-300"
+                    }
+                  >
+                    {LEVEL_LABELS[level]}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {/* Ожидающие приглашения */}
       {pendingAssignments.length > 0 && (

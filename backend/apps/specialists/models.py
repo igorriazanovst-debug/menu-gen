@@ -6,8 +6,11 @@ from apps.users.models import User
 
 class Specialist(models.Model):
     class Type(models.TextChoices):
-        DIETITIAN = "dietitian", "Диетолог"
-        TRAINER = "trainer", "Тренер"
+        DIETITIAN = "dietitian", "Диетолог (нутрициолог)"
+        TRAINER = "trainer", "Фитнес-тренер"
+        # MG_SPECACCESS: личный повар — ведёт закупку и готовку, поэтому у него
+        # свои права (см. apps/specialists/access.py).
+        COOK = "cook", "Личный повар"
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="specialist_profile")
     specialist_type = models.CharField(max_length=20, choices=Type.choices)
@@ -103,3 +106,32 @@ class DocumentAccessLog(models.Model):
             models.Index(fields=["document_id", "accessed_at"]),
             models.Index(fields=["accessed_by_id"]),
         ]
+
+
+class SpecialistActionLog(models.Model):
+    """MG_SPECACCESS: что специалист сделал в данных клиента.
+
+    Специалист меняет чужие данные — меню, цели, холодильник. Без журнала на
+    вопрос «кто это поменял» ответить нечем: у клиента правка выглядит так, будто
+    она случилась сама. Пишем только изменения; чтение не пишем — это шум.
+    """
+
+    specialist = models.ForeignKey(Specialist, on_delete=models.CASCADE, related_name="actions")
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="specialist_actions")
+    member = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True, blank=True)
+    section = models.CharField(max_length=20)
+    action = models.CharField(max_length=40)
+    summary = models.CharField(max_length=500, blank=True, default="")
+    object_id = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "specialist_action_log"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["family", "-created_at"]),
+            models.Index(fields=["specialist", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.specialist_id} {self.section}.{self.action} → семья {self.family_id}"

@@ -1,9 +1,12 @@
 """
-MG-205: пермишены для специалистов.
+MG-205 / MG_SPECACCESS: пермишены для специалистов.
 
 IsVerifiedSpecialist — текущий user является verified Specialist'ом.
 SpecialistCanEditClientProfile — текущий user является verified Specialist'ом
     с активным SpecialistAssignment на семью target user.
+SpecialistSectionPermission — MG_SPECACCESS: доступ к разделу данных клиента по
+    матрице ролей (см. access.py). Вьюха объявляет `section`, метод запроса
+    решает, нужна правка или чтение.
 
 is_verified_specialist_for_user(actor, target_user) — хелпер для
 определения source='specialist' в serializers.
@@ -13,7 +16,11 @@ from __future__ import annotations
 
 from rest_framework import permissions
 
+from .access import Section, active_assignment, allows  # noqa: F401  (Section — для вьюх)
+
 MG_205_V = 1
+
+SAFE_METHODS = permissions.SAFE_METHODS
 
 
 def _get_specialist(user):
@@ -81,3 +88,37 @@ class SpecialistCanEditClientProfile(permissions.BasePermission):
         if target_user is None:
             return False
         return is_verified_specialist_for_user(request.user, target_user)
+
+
+class SpecialistSectionPermission(permissions.BasePermission):
+    """MG_SPECACCESS: доступ к разделу данных клиента.
+
+    Вьюха объявляет раздел атрибутом ``section = Section.MENU`` и получает
+    ``request.assignment`` — активное назначение, из которого берётся роль.
+    Безопасные методы требуют чтения, остальные — правки.
+
+    Отсутствие доступа к чужой семье отдаём как 404, а не 403: подтверждать
+    существование семьи тому, кто к ней не приставлен, незачем.
+    """
+
+    message = "Ваша роль не даёт доступа к этому разделу клиента."
+
+    def has_permission(self, request, view):
+        specialist = _get_specialist(request.user)
+        if specialist is None or not specialist.is_verified:
+            return False
+
+        family_id = view.kwargs.get("family_id")
+        assignment = active_assignment(specialist, family_id)
+        if assignment is None:
+            return False
+
+        # Кладём найденное на запрос: вьюхе оно нужно, второй раз ходить в базу
+        # незачем.
+        request.specialist = specialist
+        request.assignment = assignment
+
+        section = getattr(view, "section", None)
+        if section is None:
+            return True
+        return allows(assignment, section, write=request.method not in SAFE_METHODS)

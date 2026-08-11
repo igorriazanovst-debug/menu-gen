@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import DocumentAccessLog, DocumentArchive, Recommendation, Specialist, SpecialistAssignment
+from .models import (
+    DocumentAccessLog,
+    DocumentArchive,
+    Recommendation,
+    Specialist,
+    SpecialistActionLog,
+    SpecialistAssignment,
+)
 
 
 @admin.register(Specialist)
@@ -19,8 +26,23 @@ class SpecialistAdmin(admin.ModelAdmin):
 
 @admin.register(SpecialistAssignment)
 class SpecialistAssignmentAdmin(admin.ModelAdmin):
-    list_display = ("id", "family", "specialist", "status", "assigned_at")
-    list_filter = ("status",)
+    list_display = ("id", "family", "specialist", "specialist_type", "status", "assigned_at")
+    list_filter = ("status", "specialist_type")
+
+
+# MG_SPECACCESS: журнал правок только для чтения — иначе он не доказательство.
+@admin.register(SpecialistActionLog)
+class SpecialistActionLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "specialist", "family", "section", "action", "summary")
+    list_filter = ("section", "action")
+    search_fields = ("summary",)
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Recommendation)
