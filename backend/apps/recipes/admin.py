@@ -139,6 +139,37 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
     form = RecipeAdminForm
     inlines = (RecipeImageInline,)  # MG_GALLERY
 
+    # MG_ADMINUPLOAD: загрузка файла — своей админской ручкой, а не публичным API.
+    #
+    # Кнопка «Загрузить файл» ходила в /api/v1/recipes/upload-media/, а тот
+    # авторизует по JWT: браузер в админке шлёт только сессионную куку, и на проде
+    # запрос приходил анонимным — «Upload failed: Error: 401». Здесь же
+    # авторизация ровно та, которой открыта сама страница админки: сессия и
+    # проверка на staff, встроенная в admin_view.
+    def get_urls(self):
+        from django.urls import path as _p
+
+        return [
+            _p(
+                "upload-media/",
+                self.admin_site.admin_view(self.upload_media_view),
+                name="recipes_recipe_upload_media",
+            ),
+        ] + super().get_urls()
+
+    def upload_media_view(self, request):
+        from django.http import JsonResponse
+
+        from .media_upload import save_media
+
+        if request.method != "POST":
+            return JsonResponse({"detail": "Только POST."}, status=405)
+
+        path, error = save_media(request.FILES.get("file"), request.POST.get("media_type", "image"))
+        if error:
+            return JsonResponse({"detail": error}, status=400)
+        return JsonResponse({"url": request.build_absolute_uri(path)})
+
     list_display = (
         "id",
         "title",

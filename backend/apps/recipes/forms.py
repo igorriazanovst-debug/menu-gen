@@ -295,10 +295,15 @@ class _PassthroughField(forms.Field):
 class _MediaUploadWidget(forms.TextInput):
     """Text input for a media URL plus a button to upload a local file.
 
-    The file is POSTed to the same API endpoint the web client uses
-    (`/api/v1/recipes/upload-media/`); the returned absolute URL is written
-    back into the text input. No host/url is hardcoded — the path is relative
-    and resolved against the current origin in the browser.
+    MG_ADMINUPLOAD: файл уходит в админскую ручку (../upload-media/ рядом с этой
+    страницей), а не в публичный API. Тот авторизует по JWT, которого у админки
+    нет: браузер отправляет сессионную куку, запрос приходил анонимным, и
+    пользователь видел «Upload failed: Error: 401». Здесь авторизация та же, что
+    у самой страницы — сессия и проверка на staff.
+
+    Адрес берётся через reverse(), а не собирается из текущего пути: у страниц
+    добавления и правки рецепта разная глубина, и относительная ссылка вела бы у
+    них в разные места.
     """
 
     class Media:
@@ -342,11 +347,14 @@ class _MediaUploadWidget(forms.TextInput):
             "var f=file.files&&file.files[0];if(!f)return;"
             'status.textContent="{uploading}";'
             'var fd=new FormData();fd.append("file",f);fd.append("media_type","{mtype}");'
-            'fetch("/api/v1/recipes/upload-media/",{{method:"POST",body:fd,'
-            'headers:{{"X-CSRFToken":csrf()}},credentials:"same-origin"}})'
-            ".then(function(r){{if(!r.ok)throw new Error(r.status);return r.json();}})"
+            'fetch("{upload_url}",'
+            '{{method:"POST",body:fd,headers:{{"X-CSRFToken":csrf()}},credentials:"same-origin"}})'
+            # Причину отказа называет сервер; раньше наружу шёл голый код
+            # состояния, и «401» ничего не объяснял.
+            ".then(function(r){{return r.json().catch(function(){{return {{}};}})"
+            ".then(function(d){{if(!r.ok)throw new Error(d.detail||r.status);return d;}});}})"
             '.then(function(d){{if(input&&d&&d.url){{input.value=d.url;}}status.textContent=d&&d.url?d.url:"{err}";}})'
-            '.catch(function(e){{status.textContent="{err}: "+e;}})'
+            '.catch(function(e){{status.textContent="{err}: "+(e&&e.message?e.message:e);}})'
             '.finally(function(){{file.value="";}});'
             "}});"
             "}})();</script>"
@@ -359,8 +367,19 @@ class _MediaUploadWidget(forms.TextInput):
             uploading=uploading,
             mtype=self.media_type,
             err=err,
+            upload_url=self._upload_url(),
         )
         return mark_safe(html)
+
+    @staticmethod
+    def _upload_url() -> str:
+        """Админская ручка загрузки; API — запасной вариант вне админки."""
+        from django.urls import NoReverseMatch, reverse
+
+        try:
+            return reverse("admin:recipes_recipe_upload_media")
+        except NoReverseMatch:
+            return "/api/v1/recipes/upload-media/"
 
 
 # ── /PHOTO_UPLOAD_ADMIN ──────────────────────────────────────────────────────

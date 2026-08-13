@@ -18,6 +18,35 @@ MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 MAX_VIDEO_SIZE = 200 * 1024 * 1024  # 200 MB
 
 
+# MG_ADMINUPLOAD: проверка и сохранение файла — одни на оба входа (API для веба,
+# админский для админки). Раньше это жило внутри вьюхи, и второй вход пришлось бы
+# писать заново.
+def save_media(file, media_type: str = "image"):
+    """Сохраняет файл. Возвращает (относительный путь, ошибка). Ошибка — текст."""
+    if not file:
+        return None, "Файл не передан."
+
+    content_type = file.content_type or ""
+
+    if media_type == "image":
+        if content_type not in ALLOWED_IMAGE_TYPES:
+            return None, "Допустимы только JPEG, PNG, WebP, GIF."
+        if file.size > MAX_IMAGE_SIZE:
+            return None, "Изображение не должно превышать 10 МБ."
+        folder = "recipes/images"
+    else:
+        if content_type not in ALLOWED_VIDEO_TYPES:
+            return None, "Допустимы только MP4, WebM, MOV."
+        if file.size > MAX_VIDEO_SIZE:
+            return None, "Видео не должно превышать 200 МБ."
+        folder = "recipes/videos"
+
+    ext = os.path.splitext(file.name)[1].lower()
+    filename = f"{folder}/{uuid.uuid4().hex}{ext}"
+    saved_path = default_storage.save(filename, ContentFile(file.read()))
+    return settings.MEDIA_URL + saved_path, None
+
+
 class RecipeMediaUploadView(APIView):
     parser_classes = [MultiPartParser]
     # UPLOAD_MEDIA_AUTH: JWT for web client, Session for Django admin
@@ -37,29 +66,7 @@ class RecipeMediaUploadView(APIView):
         responses={200: {"type": "object", "properties": {"url": {"type": "string"}}}},
     )
     def post(self, request):
-        file = request.FILES.get("file")
-        media_type = request.data.get("media_type", "image")
-
-        if not file:
-            return Response({"detail": "Файл не передан."}, status=status.HTTP_400_BAD_REQUEST)
-
-        content_type = file.content_type or ""
-
-        if media_type == "image":
-            if content_type not in ALLOWED_IMAGE_TYPES:
-                return Response({"detail": "Допустимы только JPEG, PNG, WebP, GIF."}, status=400)
-            if file.size > MAX_IMAGE_SIZE:
-                return Response({"detail": "Изображение не должно превышать 10 МБ."}, status=400)
-            folder = "recipes/images"
-        else:
-            if content_type not in ALLOWED_VIDEO_TYPES:
-                return Response({"detail": "Допустимы только MP4, WebM, MOV."}, status=400)
-            if file.size > MAX_VIDEO_SIZE:
-                return Response({"detail": "Видео не должно превышать 200 МБ."}, status=400)
-            folder = "recipes/videos"
-
-        ext = os.path.splitext(file.name)[1].lower()
-        filename = f"{folder}/{uuid.uuid4().hex}{ext}"
-        saved_path = default_storage.save(filename, ContentFile(file.read()))
-        url = request.build_absolute_uri(settings.MEDIA_URL + saved_path)
-        return Response({"url": url})
+        path, error = save_media(request.FILES.get("file"), request.data.get("media_type", "image"))
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"url": request.build_absolute_uri(path)})
