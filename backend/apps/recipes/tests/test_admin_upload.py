@@ -124,3 +124,16 @@ class TestWidget:
         html = _MediaUploadWidget(media_type="image").render("image_url", "")
 
         assert "d.detail" in html
+
+    def test_виджет_узнаёт_протухшую_сессию(self):
+        """Админка уводит на вход, ответ приходит с HTML и кодом 200 —
+        без этой проверки было бы просто «не удалось»."""
+        from apps.recipes.forms import _MediaUploadWidget
+
+        html = _MediaUploadWidget(media_type="image").render("image_url", "")
+
+        assert "r.redirected" in html
+        assert "text/html" in html
+        # строка проходит через gettext; в каталоге её пока нет, поэтому в
+        # разметке лежит исходный текст
+        assert "session expired" in html

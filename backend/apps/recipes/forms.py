@@ -324,6 +324,7 @@ class _MediaUploadWidget(forms.TextInput):
         btn = str(_("Upload file"))
         uploading = str(_("Uploading…"))
         err = str(_("Upload failed"))
+        expired = str(_("session expired, sign in to the admin again"))
         html = (
             '<div class="mg-media-upload" style="margin-top:6px;">'
             "{base}"
@@ -351,7 +352,14 @@ class _MediaUploadWidget(forms.TextInput):
             '{{method:"POST",body:fd,headers:{{"X-CSRFToken":csrf()}},credentials:"same-origin"}})'
             # Причину отказа называет сервер; раньше наружу шёл голый код
             # состояния, и «401» ничего не объяснял.
-            ".then(function(r){{return r.json().catch(function(){{return {{}};}})"
+            #
+            # Отдельный случай — протухшая сессия админки: ручка уводит на
+            # страницу входа, ответ приходит с кодом 200 и HTML внутри. Без этой
+            # проверки пользователь увидел бы просто «не удалось» и гадал бы,
+            # что не так с файлом.
+            '.then(function(r){{if(r.redirected||(r.headers.get("content-type")||"")'
+            '.indexOf("text/html")>=0){{throw new Error("{expired}");}}'
+            "return r.json().catch(function(){{return {{}};}})"
             ".then(function(d){{if(!r.ok)throw new Error(d.detail||r.status);return d;}});}})"
             '.then(function(d){{if(input&&d&&d.url){{input.value=d.url;}}status.textContent=d&&d.url?d.url:"{err}";}})'
             '.catch(function(e){{status.textContent="{err}: "+(e&&e.message?e.message:e);}})'
@@ -367,6 +375,7 @@ class _MediaUploadWidget(forms.TextInput):
             uploading=uploading,
             mtype=self.media_type,
             err=err,
+            expired=expired,
             upload_url=self._upload_url(),
         )
         return mark_safe(html)
