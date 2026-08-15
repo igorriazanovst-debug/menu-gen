@@ -1,41 +1,9 @@
-// Pure-dart tests for slot mapping used in MenuScreen.
-// Не зависит от Flutter (нет imports flutter/*), считается чисто.
+// Раскладка позиций меню по слотам — та же функция, что зовёт MenuScreen.
+// Раньше тест держал собственную копию логики и проверял сам себя.
 import 'package:flutter_test/flutter_test.dart';
-
-List<String> mealSlotsFor(String mealPlanType) =>
-    mealPlanType == '5'
-        ? const ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner']
-        : const ['breakfast', 'lunch', 'dinner'];
-
-List<Map<String, dynamic>> itemsForSlot({
-  required List<Map<String, dynamic>> dayItems,
-  required String slot,
-}) {
-  if (slot == 'snack1' || slot == 'snack2') {
-    final snacks =
-        dayItems.where((i) => (i['meal_type'] as String?) == 'snack').toList();
-    if (snacks.isEmpty) return const [];
-    if (slot == 'snack1') return [snacks.first];
-    if (snacks.length >= 2) return [snacks[1]];
-    return const [];
-  }
-  return dayItems.where((i) => (i['meal_type'] as String?) == slot).toList();
-}
+import 'package:menugen_app/features/menu/meal_slots.dart';
 
 void main() {
-  group('mealSlotsFor', () {
-    test('plan=3', () {
-      expect(mealSlotsFor('3'), ['breakfast', 'lunch', 'dinner']);
-    });
-    test('plan=5', () {
-      expect(mealSlotsFor('5'),
-          ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner']);
-    });
-    test('unknown defaults to 3', () {
-      expect(mealSlotsFor('zzz'), ['breakfast', 'lunch', 'dinner']);
-    });
-  });
-
   group('itemsForSlot', () {
     final items = <Map<String, dynamic>>[
       {'id': 1, 'meal_type': 'breakfast'},
@@ -70,6 +38,21 @@ void main() {
         {'id': 11, 'meal_type': 'breakfast'},
       ], slot: 'snack1');
       expect(r, isEmpty);
+    });
+    test('точный meal_slot важнее порядка', () {
+      final r = itemsForSlot(dayItems: [
+        {'id': 20, 'meal_type': 'snack', 'meal_slot': 'snack2'},
+        {'id': 21, 'meal_type': 'snack', 'meal_slot': 'snack1'},
+      ], slot: 'snack2');
+      expect(r.single['id'], 20);
+    });
+    test('один рецепт на всю семью — одна карточка', () {
+      final r = itemsForSlot(dayItems: [
+        {'id': 30, 'meal_type': 'lunch', 'recipe': {'id': 7}, 'member': 1},
+        {'id': 31, 'meal_type': 'lunch', 'recipe': {'id': 7}, 'member': 2},
+        {'id': 32, 'meal_type': 'lunch', 'recipe': {'id': 8}, 'member': 1},
+      ], slot: 'lunch');
+      expect(r.map((i) => i['id']), [30, 32]);
     });
   });
 }

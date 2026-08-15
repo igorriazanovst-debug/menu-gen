@@ -9,6 +9,7 @@ import '../../../core/cache/recipe_detail_prefetch.dart'; // OFFLINE: прогр
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/theme/app_theme.dart';
 import '../bloc/menu_bloc.dart';
+import '../meal_slots.dart'; // MG_MEALCOUNT_UI: приёмы берём из меню, а не из профиля
 import '../widgets/generate_menu_bottom_sheet.dart';
 import '../widgets/menu_matrix.dart'; // MG_SKIN: матрица меню
 import '../widgets/menu_meal_carousel.dart';
@@ -25,10 +26,6 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
-  // --- /users/me/ snapshot
-  String _mealPlanType = '3';
-  bool _meLoaded = false;
-
   // --- выбранная дата
   DateTime? _selectedDate;
 
@@ -43,31 +40,8 @@ class _MenuScreenState extends State<MenuScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMe();
     context.read<MenuBloc>().add(const MenuLoadRequested());
   }
-
-  Future<void> _loadMe() async {
-    try {
-      final r = await widget.apiClient.get('/users/me/');
-      final data = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
-      final profile = data['profile'] is Map
-          ? Map<String, dynamic>.from(data['profile'] as Map)
-          : <String, dynamic>{};
-      if (!mounted) return;
-      setState(() {
-        _mealPlanType = (profile['meal_plan_type'] as String?) ?? '3';
-        _meLoaded = true;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _meLoaded = true);
-    }
-  }
-
-  List<String> get _mealSlots => _mealPlanType == '5'
-      ? const ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner']
-      : const ['breakfast', 'lunch', 'dinner'];
 
   static const _mealLabels = {
     'breakfast': 'Завтрак',
@@ -95,36 +69,6 @@ class _MenuScreenState extends State<MenuScreen> {
     } catch (_) {
       return null;
     }
-  }
-
-  /// Маппинг item → слот с дедупликацией по recipe.id (семейный режим).
-  List<Map<String, dynamic>> _itemsForSlot({
-    required List<Map<String, dynamic>> dayItems,
-    required String slot,
-  }) {
-    List<Map<String, dynamic>> result;
-    if (slot == 'snack1' || slot == 'snack2') {
-      // Сначала пробуем точный meal_slot (новые меню).
-      result = dayItems.where((i) => (i['meal_slot'] as String?) == slot).toList();
-      if (result.isEmpty) {
-        // Фоллбек по индексу для старых меню без meal_slot.
-        final snacks = dayItems
-            .where((i) => (i['meal_type'] as String?) == 'snack')
-            .toList();
-        if (slot == 'snack1' && snacks.isNotEmpty) result = [snacks.first];
-        else if (slot == 'snack2' && snacks.length >= 2) result = [snacks[1]];
-        else result = const [];
-      }
-    } else {
-      result = dayItems.where((i) => (i['meal_type'] as String?) == slot).toList();
-    }
-    // Дедуплицируем по recipe.id — в семейном режиме один рецепт на члена семьи.
-    final seen = <Object>{};
-    return result.where((i) {
-      final rid = (i['recipe'] as Map<String, dynamic>?)?['id'];
-      if (rid == null) return true;
-      return seen.add(rid);
-    }).toList();
   }
 
   String _shortRange(Map<String, dynamic> m) {
@@ -267,7 +211,7 @@ class _MenuScreenState extends State<MenuScreen> {
           Positioned.fill(
             child: BlocBuilder<MenuBloc, MenuState>(
               builder: (context, state) {
-          if (state is MenuLoading || state is MenuGenerating || !_meLoaded) {
+          if (state is MenuLoading || state is MenuGenerating) {
             return const Center(child: CircularProgressIndicator());
           }
           if (state is MenuError) {
@@ -419,7 +363,8 @@ class _MenuScreenState extends State<MenuScreen> {
                 child: MenuMatrix(
                   days: allDays,
                   start: start,
-                  mealSlots: _mealSlots,
+                  // MG_MEALCOUNT_UI: три приёма — три строки, без пустых перекусов.
+                  mealSlots: mealSlotsForMenu(menu),
                   labels: _mealLabels,
                   icons: _mealIcons,
                   selected: _selectedDate!,
@@ -427,7 +372,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     final di = items
                         .where((i) => (i['day_offset'] as int?) == off)
                         .toList();
-                    return _itemsForSlot(dayItems: di, slot: slot);
+                    return itemsForSlot(dayItems: di, slot: slot);
                   },
                   onDaySelected: (d) => setState(() => _selectedDate = d),
                   onCellTap: (d, slot, its) => _openMealSheet(d, slot, its),
