@@ -157,6 +157,21 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
             ),
         ] + super().get_urls()
 
+    # MG_LINKASYNC: связи с продуктами строит ИИ — это десятки секунд, и раньше
+    # сохранение рецепта ждало их прямо в запросе (регулярный 504 от nginx).
+    # Теперь пересборка уходит в очередь, и об этом надо сказать: иначе
+    # непонятно, почему состав изменился, а связи ещё старые.
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not change or "ingredients" in getattr(form, "changed_data", ()):
+            from django.contrib import messages
+
+            self.message_user(
+                request,
+                _("Ingredients changed — product links are being rebuilt in the background."),
+                messages.INFO,
+            )
+
     def upload_media_view(self, request):
         from django.http import JsonResponse
 

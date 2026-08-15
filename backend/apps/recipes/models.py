@@ -224,6 +224,28 @@ class Recipe(models.Model):
     def __str__(self):
         return self.title
 
+    # MG_LINKASYNC: снимок состава на момент загрузки из базы.
+    #
+    # Связи рецепт→продукт строит ИИ, это десятки секунд. Пересобирать их надо
+    # только когда состав действительно изменился, а для этого нужно с чем-то
+    # сравнить. Снимок — отпечаток, а не копия: сравнивать нужно значение, а
+    # список ингредиентов правки могут менять на месте.
+    @staticmethod
+    def ingredients_fingerprint(ingredients) -> str:
+        import json
+
+        try:
+            return json.dumps(ingredients, sort_keys=True, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return repr(ingredients)
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        obj = super().from_db(db, field_names, values)
+        if "ingredients" in field_names:
+            obj._mg_ingredients_snapshot = cls.ingredients_fingerprint(obj.ingredients)
+        return obj
+
     # MG_ALLERGEN14: держим allergens в синхроне с ингредиентами/названием.
     # Пересчитываем только при полном сохранении (без update_fields), чтобы не
     # мешать частичным .save(update_fields=[...]) и точечным .update() из команд.
