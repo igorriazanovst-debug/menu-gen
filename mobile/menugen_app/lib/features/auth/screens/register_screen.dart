@@ -1,13 +1,20 @@
 // MG_REG: экран регистрации. Бэкенд создаёт пользователя + семью + бесплатную
-// подписку и сразу возвращает JWT (пользователь логинится).
+// подписку.
+//
+// MG_EMAILVERIFY_MOBILE: входом это заканчивается не всегда. При включённом
+// подтверждении e-mail токенов в ответе нет — вместо перехода на главную
+// показываем, что письмо ушло, и даём выслать его повторно.
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../bloc/auth_bloc.dart';
+import '../widgets/verify_email_panel.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final ApiClient apiClient;
+  const RegisterScreen({super.key, required this.apiClient});
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
@@ -73,7 +80,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            child: Column(children: [
+            child: BlocBuilder<AuthBloc, AuthState>(builder: (ctx, state) {
+              // MG_EMAILVERIFY_MOBILE: аккаунт создан, но вход закрыт до
+              // перехода по ссылке — форма уступает место объяснению.
+              if (state is AuthEmailVerificationPending) {
+                return _sentPanel(context, state.email);
+              }
+              return Column(children: [
               Icon(Icons.restaurant_menu, size: 56, color: context.cs.primary),
               const SizedBox(height: 24),
               TextField(
@@ -137,10 +150,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 onPressed: () => context.pop(),
                 child: const Text('Уже есть аккаунт? Войти'),
               ),
-            ]),
+            ]);
+            }),
           ),
         ),
       ),
     );
+  }
+
+  // MG_EMAILVERIFY_MOBILE: что видит человек вместо входа.
+  Widget _sentPanel(BuildContext context, String email) {
+    return Column(children: [
+      Icon(Icons.mark_email_read_outlined, size: 56, color: context.cs.primary),
+      const SizedBox(height: 16),
+      const Text('Аккаунт создан',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 16),
+      VerifyEmailPanel(
+        apiClient: widget.apiClient,
+        email: email,
+        title: 'Остался один шаг',
+      ),
+      const SizedBox(height: 12),
+      TextButton(
+        onPressed: () => context.pop(),
+        child: const Text('Перейти ко входу'),
+      ),
+    ]);
   }
 }

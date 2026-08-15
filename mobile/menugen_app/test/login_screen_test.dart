@@ -3,7 +3,9 @@
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
 
+import 'package:menugen_app/core/api/api_client.dart';
 import 'package:menugen_app/core/config/app_config.dart';
 import 'package:menugen_app/core/theme/app_theme.dart';
 import 'package:menugen_app/features/auth/bloc/auth_bloc.dart';
@@ -12,10 +14,17 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 class _MockAuthBloc extends MockBloc<AuthEvent, AuthState> implements AuthBloc {}
 
+// MG_EMAILVERIFY_MOBILE: экран сам переотправляет письмо подтверждения,
+// поэтому ему нужен клиент.
+class _MockApi extends Mock implements ApiClient {}
+
 Future<void> _pump(WidgetTester tester, AuthBloc bloc) async {
   await tester.pumpWidget(MaterialApp(
     theme: AppTheme.light(),
-    home: BlocProvider<AuthBloc>.value(value: bloc, child: const LoginScreen()),
+    home: BlocProvider<AuthBloc>.value(
+      value: bloc,
+      child: LoginScreen(apiClient: _MockApi()),
+    ),
   ));
   await tester.pump();
 }

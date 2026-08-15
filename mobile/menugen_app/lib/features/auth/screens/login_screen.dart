@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // MG_APPICON
 import 'package:go_router/go_router.dart';
+import '../../../core/api/api_client.dart'; // MG_EMAILVERIFY_MOBILE
 import '../../../core/config/app_config.dart'; // MG_LOGINFIX
 import '../../../core/theme/app_theme.dart'; // MG_SKIN
 import '../bloc/auth_bloc.dart';
+import '../widgets/verify_email_panel.dart'; // MG_EMAILVERIFY_MOBILE
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final ApiClient apiClient;
+  const LoginScreen({super.key, required this.apiClient});
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -36,8 +39,8 @@ class _LoginScreenState extends State<LoginScreen> {
       body: BlocListener<AuthBloc, AuthState>(
         listener: (ctx, state) {
           if (state is AuthError) {
-            // MG_LOGINFIX: причина отказа бывает длинной («подтвердите e-mail»),
-            // за две секунды её не прочитать.
+            // MG_LOGINFIX: причина отказа бывает длинной, за две секунды её не
+            // прочитать.
             ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
               content: Text(state.message),
               duration: const Duration(seconds: 6),
@@ -89,6 +92,25 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () => setState(() => _obscure = !_obscure),
                   ),
                 )),
+              // MG_EMAILVERIFY_MOBILE: адрес ждёт подтверждения — либо только
+              // что зарегистрировались, либо вход отклонён по этой причине.
+              //
+              // Состояние берём у блока, а не из setState: смена AuthState
+              // пересоздаёт роутер (main.dart), а с ним и этот экран — локальное
+              // поле не пережило бы собственную причину появления.
+              BlocBuilder<AuthBloc, AuthState>(builder: (ctx, state) {
+                if (state is! AuthEmailVerificationPending) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: VerifyEmailPanel(
+                    apiClient: widget.apiClient,
+                    email: state.email,
+                    title: 'Подтвердите e-mail',
+                  ),
+                );
+              }),
               const SizedBox(height: 32),
               BlocBuilder<AuthBloc, AuthState>(builder: (ctx, state) {
                 final loading = state is AuthLoading;

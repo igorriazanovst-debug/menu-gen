@@ -58,8 +58,10 @@ class AppRouter {
         premiumLocked: premiumGate.state.status == PremiumStatus.lockedForRead,
       ),
       routes: [
-        GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-        GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()), // MG_REG
+        // MG_EMAILVERIFY_MOBILE: обоим экранам нужен клиент — они сами
+        // переотправляют письмо подтверждения.
+        GoRoute(path: '/login', builder: (_, __) => LoginScreen(apiClient: apiClient)),
+        GoRoute(path: '/register', builder: (_, __) => RegisterScreen(apiClient: apiClient)), // MG_REG
         // MG_PHONEVERIFY: регистрация по телефону с подтверждением в мессенджере.
         GoRoute(
           path: '/register/phone',

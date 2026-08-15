@@ -4,6 +4,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/api/token_storage.dart';
 import '../../../core/premium/premium_gate_cubit.dart';
 import '../auth_error_text.dart'; // MG_LOGINFIX
+import '../email_verification.dart'; // MG_EMAILVERIFY_MOBILE
 
 abstract class AuthEvent extends Equatable {
   const AuthEvent();
@@ -47,6 +48,12 @@ class AuthAuthenticated extends AuthState {
   @override List<Object?> get props => [user];
 }
 class AuthUnauthenticated extends AuthState { const AuthUnauthenticated(); }
+// MG_EMAILVERIFY_MOBILE: аккаунт создан, письмо ушло, входа ещё нет.
+class AuthEmailVerificationPending extends AuthState {
+  final String email;
+  const AuthEmailVerificationPending(this.email);
+  @override List<Object?> get props => [email];
+}
 class AuthError extends AuthState {
   final String message;
   const AuthError(this.message);
@@ -105,7 +112,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final meMap = Map<String, dynamic>.from(_data(me) as Map);
       premiumGate?.bootstrap(meMap);
       emit(AuthAuthenticated(meMap));
-    } catch (e) { emit(AuthError(authErrorText(e))); }
+    } catch (err) {
+      // MG_EMAILVERIFY_MOBILE: «подтвердите e-mail» — не ошибка ввода, а
+      // состояние аккаунта, и лечится оно тем же письмом, что и после
+      // регистрации. Поэтому состояние одно на оба случая.
+      final pending = pendingVerificationEmail(err, e.email);
+      if (pending != null) {
+        emit(AuthEmailVerificationPending(pending));
+        return;
+      }
+      emit(AuthError(authErrorText(err)));
+    }
   }
 
   Future<void> _onRegister(AuthRegisterRequested e, Emitter<AuthState> emit) async {
@@ -118,14 +135,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         'password2': e.password2,
       });
       final data = Map<String, dynamic>.from(_data(resp) as Map);
+      // MG_EMAILVERIFY_MOBILE: при включённом гейте токенов в ответе нет —
+      // регистрация закончилась письмом, а не входом.
+      if (needsEmailVerification(data)) {
+        emit(AuthEmailVerificationPending(verificationEmail(data, e.email)));
+        return;
+      }
       await tokenStorage.saveTokens(
           access: data['access'] as String, refresh: data['refresh'] as String);
       final me = await apiClient.get('/users/me/');
       final meMap = Map<String, dynamic>.from(_data(me) as Map);
       premiumGate?.bootstrap(meMap);
       emit(AuthAuthenticated(meMap));
-    } catch (e) {
-      emit(AuthError(authErrorText(e)));
+    } catch (err) {
+      emit(AuthError(authErrorText(err)));
     }
   }
 
@@ -146,8 +169,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final meMap = Map<String, dynamic>.from(_data(me) as Map);
       premiumGate?.bootstrap(meMap);
       emit(AuthAuthenticated(meMap));
-    } catch (e) {
-      emit(AuthError(authErrorText(e)));
+    } catch (err) {
+      emit(AuthError(authErrorText(err)));
     }
   }
 
