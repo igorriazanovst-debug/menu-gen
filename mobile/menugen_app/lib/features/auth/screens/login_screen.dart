@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart'; // MG_APPICON
 import 'package:go_router/go_router.dart';
 import '../../../core/api/api_client.dart'; // MG_EMAILVERIFY_MOBILE
 import '../../../core/config/app_config.dart'; // MG_LOGINFIX
+import '../../../core/deeplink/verified_notice_cubit.dart'; // MG_VERIFYDEEPLINK
 import '../../../core/theme/app_theme.dart'; // MG_SKIN
 import '../bloc/auth_bloc.dart';
 import '../widgets/verify_email_panel.dart'; // MG_EMAILVERIFY_MOBILE
@@ -36,8 +37,23 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: BlocListener<AuthBloc, AuthState>(
+      // MG_VERIFYDEEPLINK: пришли из браузера по menugen://verified — подставим
+      // адрес, чтобы человек только ввёл пароль. Слушатель, а не поле в build:
+      // перебивать уже набранный текст при каждой перерисовке нельзя.
+      body: BlocListener<VerifiedNoticeCubit, String?>(
+        listenWhen: (prev, curr) => curr != null && curr != prev,
+        listener: (ctx, email) {
+          if (email != null && email.isNotEmpty) {
+            setState(() {
+              _byPhone = false;
+              _email.text = email;
+            });
+          }
+        },
+        child: BlocListener<AuthBloc, AuthState>(
         listener: (ctx, state) {
+          // Вошли — отметка своё отработала и не должна всплыть при выходе.
+          if (state is AuthAuthenticated) ctx.read<VerifiedNoticeCubit>().clear();
           if (state is AuthError) {
             // MG_LOGINFIX: причина отказа бывает длинной, за две секунды её не
             // прочитать.
@@ -61,6 +77,22 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 12),
               Text('MenuGen Platform',
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: context.cs.primary)),
+              // MG_VERIFYDEEPLINK: подтверждение состоялось в браузере — здесь
+              // об этом надо сказать, иначе непонятно, зачем нас вернули.
+              BlocBuilder<VerifiedNoticeCubit, String?>(builder: (ctx, email) {
+                if (email == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.check_circle_outline, size: 18, color: context.cs.primary),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text('E-mail подтверждён — введите пароль',
+                          style: TextStyle(fontSize: 13, color: context.cs.primary)),
+                    ),
+                  ]),
+                );
+              }),
               const SizedBox(height: 48),
               SegmentedButton<bool>(
                 segments: const [
@@ -147,6 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );

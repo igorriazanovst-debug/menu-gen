@@ -55,6 +55,7 @@ dependencies:
   uuid: ^4.4.0
   url_launcher: ^6.3.0 # MG_PAY: открытие платёжной страницы YooKassa
   collection: ^1.18.0
+  app_links: ^6.4.1
 
 dev_dependencies:
   flutter_test:

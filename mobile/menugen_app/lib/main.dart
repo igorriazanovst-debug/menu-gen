@@ -1,3 +1,4 @@
+import 'package:app_links/app_links.dart'; // MG_VERIFYDEEPLINK
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,6 +11,7 @@ import 'core/api/dio_api_client.dart';
 import 'core/api/token_storage.dart';
 import 'core/connectivity/connectivity_cubit.dart';
 import 'core/db/app_database.dart';
+import 'core/deeplink/verified_notice_cubit.dart'; // MG_VERIFYDEEPLINK
 import 'core/premium/premium_gate_cubit.dart';
 import 'core/router/app_router.dart';
 import 'core/sync/pending_sync_cubit.dart'; // MG_T08
@@ -78,8 +80,17 @@ void main() async {
   // MG_SKIN: cubit выбранного скина (персист + синк в аккаунт).
   final themeCubit = ThemeCubit(prefs: prefs, apiClient: apiClient);
 
+  // MG_VERIFYDEEPLINK: возврат из браузера после подтверждения e-mail.
+  // Слушаем и «холодный» запуск (приложение подняли ссылкой), и «тёплый»
+  // (оно уже висело в фоне) — иначе отметка появлялась бы через раз.
+  final verifiedNotice = VerifiedNoticeCubit();
+  final appLinks = AppLinks();
+  verifiedNotice.handleLink(await appLinks.getInitialLink());
+  appLinks.uriLinkStream.listen(verifiedNotice.handleLink);
+
   syncService.start();
   runApp(MenuGenApp(
+    verifiedNotice: verifiedNotice, // MG_VERIFYDEEPLINK
     tokenStorage: tokenStorage,
     db: db,
     apiClient: apiClient,
@@ -104,6 +115,7 @@ class MenuGenApp extends StatelessWidget {
   final OfflineToggleQueue offlineToggleQueue; // MG_T09
   final ShoppingCache shoppingCache; // MG_CACHE
   final ThemeCubit themeCubit; // MG_SKIN
+  final VerifiedNoticeCubit verifiedNotice; // MG_VERIFYDEEPLINK
 
   const MenuGenApp({
     super.key,
@@ -117,6 +129,7 @@ class MenuGenApp extends StatelessWidget {
     required this.offlineToggleQueue, // MG_T09
     required this.shoppingCache, // MG_CACHE
     required this.themeCubit, // MG_SKIN
+    required this.verifiedNotice, // MG_VERIFYDEEPLINK
   });
 
   @override
@@ -131,6 +144,7 @@ class MenuGenApp extends StatelessWidget {
         BlocProvider.value(value: pendingSync), // MG_T09
         BlocProvider.value(value: premiumGate),
         BlocProvider.value(value: themeCubit), // MG_SKIN
+        BlocProvider.value(value: verifiedNotice), // MG_VERIFYDEEPLINK
         BlocProvider(
           create: (_) => AuthBloc(
             apiClient: apiClient,

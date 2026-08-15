@@ -12,6 +12,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:menugen_app/core/api/api_client.dart';
 import 'package:menugen_app/core/api/api_exception.dart';
 import 'package:menugen_app/core/api/token_storage.dart';
+import 'package:menugen_app/core/deeplink/verified_notice_cubit.dart';
 import 'package:menugen_app/core/theme/app_theme.dart';
 import 'package:menugen_app/features/auth/bloc/auth_bloc.dart';
 import 'package:menugen_app/features/auth/email_verification.dart';
@@ -207,8 +208,12 @@ void main() {
     Future<void> pump(WidgetTester tester, AuthBloc bloc, ApiClient api) async {
       await tester.pumpWidget(MaterialApp(
         theme: AppTheme.light(),
-        home: BlocProvider<AuthBloc>.value(
-          value: bloc,
+        home: MultiBlocProvider(
+          providers: [
+            BlocProvider<AuthBloc>.value(value: bloc),
+            // MG_VERIFYDEEPLINK: экран входа читает отметку о подтверждении
+            BlocProvider<VerifiedNoticeCubit>(create: (_) => VerifiedNoticeCubit()),
+          ],
           child: LoginScreen(apiClient: api),
         ),
       ));

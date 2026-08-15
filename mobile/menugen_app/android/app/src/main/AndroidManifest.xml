@@ -26,6 +26,20 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- MG_VERIFYDEEPLINK: возврат в приложение после подтверждения
+                 e-mail на веб-странице: menugen://verified?email=…
+                 Своя схема, а не https: App Links сверяют SHA-256 отпечаток
+                 подписи, а release пока подписывается debug-ключом, который в
+                 CI генерируется заново каждую сборку. Когда появятся свой
+                 applicationId и постоянный keystore — сюда добавится второй
+                 intent-filter на https + assetlinks.json, и ссылка из письма
+                 будет открывать приложение напрямую. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="menugen" android:host="verified"/>
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"

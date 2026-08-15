@@ -7,6 +7,7 @@ import 'package:mocktail/mocktail.dart';
 
 import 'package:menugen_app/core/api/api_client.dart';
 import 'package:menugen_app/core/config/app_config.dart';
+import 'package:menugen_app/core/deeplink/verified_notice_cubit.dart';
 import 'package:menugen_app/core/theme/app_theme.dart';
 import 'package:menugen_app/features/auth/bloc/auth_bloc.dart';
 import 'package:menugen_app/features/auth/screens/login_screen.dart';
@@ -21,8 +22,12 @@ class _MockApi extends Mock implements ApiClient {}
 Future<void> _pump(WidgetTester tester, AuthBloc bloc) async {
   await tester.pumpWidget(MaterialApp(
     theme: AppTheme.light(),
-    home: BlocProvider<AuthBloc>.value(
-      value: bloc,
+    home: MultiBlocProvider(
+      providers: [
+        BlocProvider<AuthBloc>.value(value: bloc),
+        // MG_VERIFYDEEPLINK: экран входа читает отметку о подтверждении
+        BlocProvider<VerifiedNoticeCubit>(create: (_) => VerifiedNoticeCubit()),
+      ],
       child: LoginScreen(apiClient: _MockApi()),
     ),
   ));
