@@ -1,10 +1,15 @@
-// MG_PAY: экран подписки — список тарифов + оплата через YooKassa.
-// Оплата открывается во внешнем браузере; смена тарифа происходит автоматически
-// по webhook'у платёжной системы (backend). После возврата — «Обновить».
+// MG_PAY: экран подписки — тарифы, выбор периода и оплата через ЮKassa.
+//
+// Оплата открывается во внешнем браузере: платёжная страница внутри WebView —
+// плохая идея и для банков, и для доверия. По возвращении приложение само
+// спрашивает бэкенд об исходе платежа (MG_PAYRELIABLE) — ждать уведомления
+// ЮKassa нельзя, оно может опоздать, а человек уже смотрит на экран.
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
+import '../pay_offers.dart';
+import '../pending_payment.dart';
 
 class SubscriptionScreen extends StatefulWidget {
   final ApiClient apiClient;
@@ -14,19 +19,37 @@ class SubscriptionScreen extends StatefulWidget {
   State<SubscriptionScreen> createState() => _SubscriptionScreenState();
 }
 
-class _SubscriptionScreenState extends State<SubscriptionScreen> {
+class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBindingObserver {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _plans = const [];
+  List<Map<String, dynamic>> _offers = const [];
+  final Map<String, String> _chosen = {}; // plan_code -> offer_code
   Map<String, dynamic>? _current;
   String? _subscribing; // plan_code в процессе
+  (String, bool)? _payResult; // (текст, успех)
 
-  static const _returnUrl = 'https://menugen.ru/subscriptions?status=success';
+  // Возврат ведёт на страницу сайта: ЮKassa принимает только http(s). Оттуда
+  // человек возвращается в приложение — либо кнопкой, либо просто переключившись.
+  static const _returnUrl = 'https://menugen.ru/pay/return';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Вернулись из браузера — самое время узнать, чем всё кончилось.
+    if (state == AppLifecycleState.resumed) _checkPendingPayment();
   }
 
   Future<void> _load() async {
@@ -35,11 +58,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       _error = null;
     });
     try {
-      final plansResp = await widget.apiClient.get('/subscriptions/plans/');
-      final raw = plansResp is Map ? plansResp['results'] : plansResp;
-      _plans = ((raw as List?) ?? const [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      _plans = await _list('/subscriptions/plans/');
+      _offers = await _list('/subscriptions/offers/');
+      for (final o in _offers) {
+        final plan = o['plan_code']?.toString();
+        final code = o['code']?.toString();
+        if (plan != null && code != null) _chosen.putIfAbsent(plan, () => code);
+      }
       try {
         final cur = await widget.apiClient.get('/subscriptions/current/');
         _current = cur is Map ? Map<String, dynamic>.from(cur) : null;
@@ -51,23 +76,72 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+    await _checkPendingPayment();
   }
 
-  Future<void> _subscribe(Map<String, dynamic> plan) async {
-    final code = plan['code'] as String;
-    setState(() => _subscribing = code);
+  Future<List<Map<String, dynamic>>> _list(String path) async {
+    final resp = await widget.apiClient.get(path);
+    final raw = resp is Map ? resp['results'] : resp;
+    return ((raw as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<void> _checkPendingPayment() async {
+    final paymentId = await takePendingPayment();
+    if (paymentId == null) return;
     try {
-      final resp = await widget.apiClient.post('/subscriptions/subscribe/',
-          data: {'plan_code': code, 'return_url': _returnUrl});
+      final resp = await widget.apiClient.get('/payments/$paymentId/status/');
+      final data = resp is Map ? Map<String, dynamic>.from(resp) : <String, dynamic>{};
+      final result = paymentResultText(data);
+      if (result == null) {
+        // Ещё в работе: идентификатор возвращаем, проверим при следующем заходе.
+        await rememberPayment(paymentId);
+        if (mounted) {
+          setState(() => _payResult = ('Платёж обрабатывается — обновите через минуту.', false));
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _payResult = result);
+      if (result.$2) await _reloadCurrent();
+    } catch (_) {
+      await rememberPayment(paymentId); // не потеряем: спросим в следующий раз
+    }
+  }
+
+  Future<void> _reloadCurrent() async {
+    try {
+      final cur = await widget.apiClient.get('/subscriptions/current/');
+      if (mounted) {
+        setState(() => _current = cur is Map ? Map<String, dynamic>.from(cur) : null);
+      }
+    } catch (_) {/* ignore */}
+  }
+
+  Future<void> _subscribe(Map<String, dynamic> plan, Map<String, dynamic> offer) async {
+    final planCode = plan['code']?.toString() ?? '';
+    setState(() {
+      _subscribing = planCode;
+      _payResult = null;
+    });
+    try {
+      final resp = await widget.apiClient.post(
+        '/subscriptions/subscribe/',
+        data: {'offer_code': offer['code'], 'return_url': _returnUrl},
+      );
       final data = resp is Map ? Map<String, dynamic>.from(resp) : <String, dynamic>{};
       final url = data['payment_url'] as String?;
+      final paymentId = data['payment_id'] as String?;
       if (url == null || url.isEmpty) {
         throw Exception('Нет ссылки на оплату');
       }
+      // Запоминаем ДО ухода: приложение могут выгрузить, пока человек платит.
+      if (paymentId != null && paymentId.isNotEmpty) await rememberPayment(paymentId);
+
       final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
         throw Exception('Не удалось открыть страницу оплаты');
       }
     } catch (e) {
@@ -99,17 +173,34 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      if (_payResult != null) _resultBanner(_payResult!),
                       if (_current != null) _currentCard(_current!),
                       ..._plans.map(_planCard),
                       const SizedBox(height: 12),
                       const Text(
-                        'Оплата откроется в браузере. Тариф сменится автоматически '
-                        'после подтверждения оплаты — вернитесь и нажмите «Обновить».',
+                        'Оплата откроется в браузере. Вернитесь в приложение — '
+                        'подписка обновится сама.',
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
                   ),
                 ),
+    );
+  }
+
+  Widget _resultBanner((String, bool) result) {
+    final ok = result.$2;
+    return Card(
+      color: ok ? Colors.green.shade50 : Colors.orange.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(children: [
+          Icon(ok ? Icons.check_circle_outline : Icons.info_outline,
+              color: ok ? Colors.green.shade700 : Colors.orange.shade800),
+          const SizedBox(width: 8),
+          Expanded(child: Text(result.$1)),
+        ]),
+      ),
     );
   }
 
@@ -140,13 +231,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Widget _planCard(Map<String, dynamic> plan) {
+    final planCode = plan['code']?.toString();
     final price = plan['price']?.toString() ?? '0';
     final isFree = price == '0.00' || price == '0';
-    final period = plan['period'] == 'year' ? 'год' : 'мес';
     final isCurrent = _current != null &&
         (_current!['plan'] is Map) &&
-        (Map<String, dynamic>.from(_current!['plan'] as Map)['code'] == plan['code']);
-    final busy = _subscribing == plan['code'];
+        (Map<String, dynamic>.from(_current!['plan'] as Map)['code'] == planCode);
+    final busy = _subscribing == planCode;
+
+    final planOffers = offersForPlan(_offers, planCode);
+    final offer = selectedOffer(planOffers, _chosen[planCode]);
+    final note = offer != null ? offerPriceNote(offer) : null;
 
     return Card(
       child: Padding(
@@ -157,28 +252,60 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             Text(plan['name']?.toString() ?? '',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(isFree ? 'Бесплатно' : '${price.split('.').first} ₽ / $period',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            Text(
+              isFree ? 'Бесплатно' : (offer != null ? offerPrice(offer) : '$price ₽'),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+            if (note != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(note, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ),
+            if (planOffers.length > 1) ...[
+              const SizedBox(height: 12),
+              _periodPicker(planCode!, planOffers, offer),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: isCurrent
-                  ? OutlinedButton(onPressed: null, child: const Text('Текущий тариф'))
-                  : isFree
-                      ? OutlinedButton(onPressed: null, child: const Text('Бесплатный тариф'))
+              child: isFree
+                  ? const OutlinedButton(onPressed: null, child: Text('Бесплатный тариф'))
+                  : offer == null
+                      ? const OutlinedButton(onPressed: null, child: Text('Оплата недоступна'))
                       : ElevatedButton(
-                          onPressed: busy ? null : () => _subscribe(plan),
+                          // Текущий тариф тоже можно оплатить: это продление, и
+                          // срок прибавляется к остатку, а не начинается заново.
+                          onPressed: busy ? null : () => _subscribe(plan, offer),
                           child: busy
                               ? const SizedBox(
                                   height: 20,
                                   width: 20,
                                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : const Text('Подключить'),
+                              : Text(isCurrent ? 'Продлить' : 'Подключить'),
                         ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _periodPicker(
+    String planCode,
+    List<Map<String, dynamic>> planOffers,
+    Map<String, dynamic>? selected,
+  ) {
+    return Wrap(
+      spacing: 8,
+      children: planOffers.map((o) {
+        final discount = offerDiscount(o);
+        final label = discount > 0 ? '${o['title']} · −$discount%' : '${o['title']}';
+        return ChoiceChip(
+          label: Text(label),
+          selected: o['code'] == selected?['code'],
+          onSelected: (_) => setState(() => _chosen[planCode] = o['code'].toString()),
+        );
+      }).toList(),
     );
   }
 }

@@ -39,6 +39,9 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="menugen" android:host="verified"/>
+                <!-- MG_PAYRELIABLE: возврат с оплаты (ЮKassa принимает только
+                     http(s) в return_url, поэтому возвращает через сайт). -->
+                <data android:scheme="menugen" android:host="payment"/>
             </intent-filter>
         </activity>
         <meta-data

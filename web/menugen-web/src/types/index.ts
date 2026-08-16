@@ -243,6 +243,18 @@ export interface Subscription {
   id: number; plan: SubscriptionPlan; status: string;
   started_at: string; expires_at: string; auto_renew: boolean;
 }
+// MG_PAYPERIOD: вариант покупки — период и цена. Выгоду считает бэкенд,
+// чтобы она была одинаковой в вебе и в мобильном.
+export interface PlanOffer {
+  code: string; title: string; months: number; price: string;
+  price_per_month: string; discount_percent: number; plan_code: string;
+}
+export interface PaymentStatus {
+  id: number; payment_id: string; amount: string; currency: string;
+  status: 'pending' | 'succeeded' | 'cancelled' | 'refunded';
+  offer_title: string | null; expires_at: string | null;
+  paid_at: string | null; created_at: string;
+}
 export interface PaginatedResponse<T> {
   count: number; next?: string; previous?: string; results: T[];
 }

@@ -12,6 +12,7 @@ import { LoginPage }         from './pages/Auth/LoginPage';
 import { RegisterPage }      from './pages/Auth/RegisterPage';
 import { PhoneRegisterPage } from './pages/Auth/PhoneRegisterPage'; // MG_PHONEVERIFY
 import { VerifyEmailPage }   from './pages/Auth/VerifyEmailPage'; // MG_EMAILVERIFY
+import { PayReturnPage } from './pages/Payments/PayReturnPage';
 import { DashboardPage }     from './pages/Dashboard/DashboardPage';
 import { RecipesPage }       from './pages/Recipes/RecipesPage';
 import { MenuPage }          from './pages/Menu/MenuPage';
@@ -76,6 +77,9 @@ const AppRoutes: React.FC = () => {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/register/phone" element={<PhoneRegisterPage />} />{/* MG_PHONEVERIFY */}
       <Route path="/verify-email" element={<VerifyEmailPage />} />{/* MG_EMAILVERIFY */}
+      {/* MG_PAYRELIABLE: возврат с оплаты для мобильного — публичная страница:
+          оплата началась в приложении, в браузере сессии может не быть. */}
+      <Route path="/pay/return" element={<PayReturnPage />} />
       {/* MG_LEGAL: публичные юридические страницы (без авторизации) */}
       <Route path="/requisites" element={<RequisitesPage />} />
       <Route path="/offer" element={<OfferPage />} />
