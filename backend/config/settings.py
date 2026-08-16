@@ -144,6 +144,21 @@ PRODUCT_IMAGE_SOURCE = config("PRODUCT_IMAGE_SOURCE", default="wikimedia")
 # payment.succeeded → назначение тарифа). В проде: False + реальные YOOKASSA_*.
 PAYMENTS_STUB = config("PAYMENTS_STUB", default=True, cast=bool)
 
+# MG_PAYRELIABLE: уведомления ЮKassa приходят с известных адресов — это первый
+# рубеж. Главный — перепроверка платежа через API (apps/payments/activation.py),
+# поэтому выключение проверки IP (например, за прокси, который не пробрасывает
+# X-Forwarded-For) не делает приём платежей подделываемым.
+PAYMENTS_WEBHOOK_CHECK_IP = config("PAYMENTS_WEBHOOK_CHECK_IP", default=True, cast=bool)
+
+# MG_PAYRECEIPT: чек по 54-ФЗ. ЮKassa пробивает и отправляет чек сама, но данные
+# для него передаём мы. Ставка НДС и признаки расчёта зависят от системы
+# налогообложения — поэтому в .env, а не в коде.
+#   PAYMENTS_RECEIPT_VAT_CODE: 1 — без НДС, 2 — 0%, 3 — 10%, 4 — 20%, 5/6 — расч.
+PAYMENTS_RECEIPT_ENABLED = config("PAYMENTS_RECEIPT_ENABLED", default=False, cast=bool)
+PAYMENTS_RECEIPT_VAT_CODE = config("PAYMENTS_RECEIPT_VAT_CODE", default=1, cast=int)
+PAYMENTS_RECEIPT_SUBJECT = config("PAYMENTS_RECEIPT_SUBJECT", default="service")
+PAYMENTS_RECEIPT_MODE = config("PAYMENTS_RECEIPT_MODE", default="full_prepayment")
+
 # MG_EMAILVERIFY: базовый URL веб-приложения для ссылок из писем (подтверждение
 # e-mail и т.п.). Прод: https://menugen.ru; dev: http://<host>:8081. Если пусто —
 # фолбэк на BACKEND_PUBLIC_URL, затем на https://menugen.ru.

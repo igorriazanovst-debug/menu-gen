@@ -4,7 +4,14 @@ from django.shortcuts import render
 from django.urls import path
 from django.utils import timezone
 
-from .models import MenuGenerationCounter, PromoCode, PromoRedemption, Subscription, SubscriptionPlan
+from .models import (
+    MenuGenerationCounter,
+    PlanOffer,
+    PromoCode,
+    PromoRedemption,
+    Subscription,
+    SubscriptionPlan,
+)
 from .promo import generate_unique_codes, revoke_code, revoke_redemption
 
 
@@ -152,3 +159,12 @@ class PromoRedemptionAdmin(admin.ModelAdmin):
             revoke_redemption(r, "block")
             n += 1
         self.message_user(request, f"Отозвано активаций: {n} (семьи заблокированы).", messages.SUCCESS)
+
+
+# MG_PAYPERIOD: периоды и цены правятся здесь, без выкладки.
+@admin.register(PlanOffer)
+class PlanOfferAdmin(admin.ModelAdmin):
+    list_display = ("code", "title", "plan", "months", "price", "price_per_month", "is_active", "sort_order")
+    list_editable = ("price", "is_active", "sort_order")
+    list_filter = ("is_active", "plan")
+    search_fields = ("code", "title")

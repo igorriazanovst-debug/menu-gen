@@ -1,22 +1,19 @@
-import hashlib
-import hmac
+import ipaddress
 import json
 import logging
 from urllib.parse import urlencode
 
-from decouple import config
 from django.conf import settings as django_settings
 from django.http import HttpResponse, HttpResponseNotFound, HttpResponseRedirect
-from django.utils import timezone
 from django.utils.html import escape
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.family.models import Family, FamilyMember
-from apps.subscriptions.models import Subscription, SubscriptionPlan
+from apps.family.models import FamilyMember
 
+from .activation import ActivationError, activate_payment, mark_cancelled, mark_refunded
 from .models import Payment
 from .serializers import PaymentSerializer
 
@@ -41,93 +38,123 @@ class PaymentHistoryView(generics.ListAPIView):
         return Payment.objects.filter(family=family).order_by("-created_at")
 
 
+class PaymentStatusView(APIView):
+    """MG_PAYRELIABLE: «я вернулся с оплаты, что там?»
+
+    Уведомление может задержаться или потеряться, а человек уже смотрит на
+    экран. Здесь мы сами спрашиваем ЮKassa о статусе и, если оплачено,
+    выдаём подписку — тем же путём, что и уведомление.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(responses={200: PaymentSerializer})
+    def get(self, request, payment_id: str):
+        family = _get_family(request.user)
+        payment = Payment.objects.filter(payment_id=payment_id, family=family).first()
+        if payment is None:
+            return Response({"detail": "Платёж не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+        if payment.status == Payment.Status.PENDING:
+            try:
+                payment = activate_payment(payment_id) or payment
+            except ActivationError as exc:
+                log.error("PaymentStatusView: %s", exc)
+
+        return Response(PaymentSerializer(payment).data)
+
+
+# ── вебхук ────────────────────────────────────────────────────────────────────
+
+# Уведомления ЮKassa приходят с этих адресов. Проверка по IP — первый рубеж;
+# второй и главный — перепроверка платежа через API (см. activation).
+YOOKASSA_NETWORKS = (
+    "185.71.76.0/27",
+    "185.71.77.0/27",
+    "77.75.153.0/25",
+    "77.75.156.11/32",
+    "77.75.156.35/32",
+    "77.75.154.128/25",
+    "2a02:5180::/32",
+)
+
+
+def _client_ip(request) -> str:
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
+
+def is_yookassa_ip(ip: str) -> bool:
+    if not ip:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for net in YOOKASSA_NETWORKS:
+        try:
+            if addr in ipaddress.ip_network(net):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 class YookassaWebhookView(APIView):
+    """MG_PAYRELIABLE: уведомление ЮKassa.
+
+    Раньше здесь сверялась HMAC-подпись тела на секретном ключе. ЮKassa так
+    уведомления не подписывает — проверка отвергала бы вообще все настоящие
+    уведомления, то есть деньги списывались бы, а подписка не включалась.
+
+    Теперь из тела берём только идентификатор платежа, а статус и сумму
+    спрашиваем у ЮKassa напрямую. Подделать нечего: что бы ни прислали,
+    решение принимается по ответу API.
+    """
+
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
     @extend_schema(exclude=True)
     def post(self, request):
-        # ЮKassa подписывает тело HMAC-SHA256
-        signature = request.headers.get("X-Yookassa-Signature", "")
-        from django.conf import settings as django_settings
-
-        secret = getattr(django_settings, "YOOKASSA_SECRET_KEY", config("YOOKASSA_SECRET_KEY", default=""))
-        body = request.body
-
-        expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, signature):
-            log.warning("YooKassa webhook: invalid signature")
-            return Response(status=status.HTTP_400_BAD_REQUEST)
+        ip = _client_ip(request)
+        if getattr(django_settings, "PAYMENTS_WEBHOOK_CHECK_IP", True) and not is_yookassa_ip(ip):
+            log.warning("YooKassa webhook: запрос с постороннего адреса %s", ip)
+            return Response(status=status.HTTP_403_FORBIDDEN)
 
         try:
-            event = json.loads(body)
-        except json.JSONDecodeError:
+            event = json.loads(request.body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
         event_type = event.get("event")
-        obj = event.get("object", {})
+        obj = event.get("object") or {}
+        payment_id = obj.get("id")
 
-        if event_type == "payment.succeeded":
-            _handle_payment_succeeded(obj)
-        elif event_type == "payment.canceled":
-            _handle_payment_canceled(obj)
-        elif event_type == "refund.succeeded":
-            _handle_refund(obj)
-        else:
-            log.info("YooKassa webhook: unhandled event %s", event_type)
+        try:
+            if event_type == "payment.succeeded":
+                activate_payment(payment_id)
+            elif event_type == "payment.canceled":
+                mark_cancelled(payment_id)
+            elif event_type == "refund.succeeded":
+                mark_refunded(obj.get("payment_id"))
+            else:
+                log.info("YooKassa webhook: событие %s не обрабатывается", event_type)
+        except ActivationError as exc:
+            # Отвечаем 200: повтор уведомления ничего не изменит, а ЮKassa
+            # будет слать его сутками. Разбираться нужно по логу.
+            log.error("YooKassa webhook: платёж %s не активирован — %s", payment_id, exc)
+        except Exception as exc:  # noqa: BLE001
+            # А вот здесь повтор поможет: сеть, недоступный API, дедлок.
+            log.error("YooKassa webhook: сбой на платеже %s — %s", payment_id, exc)
+            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response(status=status.HTTP_200_OK)
 
 
-# ── handlers ──────────────────────────────────────────────────────────────────
-
-
-def _handle_payment_succeeded(obj: dict):
-    payment_id = obj.get("id")
-    metadata = obj.get("metadata", {})
-    family_id = metadata.get("family_id")
-    plan_code = metadata.get("plan_code")
-
-    if not family_id or not plan_code:
-        log.error("YooKassa webhook: missing metadata family_id/plan_code")
-        return
-
-    try:
-        family = Family.objects.get(id=family_id)
-        plan = SubscriptionPlan.objects.get(code=plan_code)
-    except (Family.DoesNotExist, SubscriptionPlan.DoesNotExist) as e:
-        log.error("YooKassa webhook: %s", e)
-        return
-
-    from dateutil.relativedelta import relativedelta
-
-    now = timezone.now()
-    if plan.period == SubscriptionPlan.Period.MONTH:
-        expires = now + relativedelta(months=1)
-    else:
-        expires = now + relativedelta(years=1)
-
-    sub = Subscription.objects.create(
-        family=family,
-        plan=plan,
-        status=Subscription.Status.ACTIVE,
-        started_at=now,
-        expires_at=expires,
-        auto_renew=True,
-    )
-    amount_value = obj.get("amount", {}).get("value", "0")
-    Payment.objects.create(
-        subscription=sub,
-        family=family,
-        amount=amount_value,
-        status=Payment.Status.SUCCEEDED,
-        payment_id=payment_id,
-        paid_at=now,
-    )
-    log.info("Subscription created: family=%s plan=%s", family_id, plan_code)
-
-
-# ── MG_PAYSTUB: тестовая заглушка оплаты (имитация ЮMoney) ────────────────────
+# ── MG_PAYSTUB: тестовая заглушка оплаты ──────────────────────────────────────
 
 
 def _append_query(url: str, key: str, value: str) -> str:
@@ -140,12 +167,12 @@ def stub_checkout(request):
     if not getattr(django_settings, "PAYMENTS_STUB", False):
         return HttpResponseNotFound("Payments stub is disabled")
     p = request.GET
-    keep = {k: p.get(k, "") for k in ("payment_id", "family_id", "plan_code", "amount", "return_url")}
+    keep = {k: p.get(k, "") for k in ("payment_id", "offer_code", "amount", "return_url")}
     q = urlencode(keep)
     confirm_url = f"/api/v1/payments/stub/confirm/?{q}"
     cancel_url = f"/api/v1/payments/stub/cancel/?{q}"
     amount = escape(keep["amount"] or "—")
-    plan = escape(keep["plan_code"] or "—")
+    offer = escape(keep["offer_code"] or "—")
     html = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Тестовая оплата</title>
@@ -164,7 +191,7 @@ def stub_checkout(request):
  <div class="badge">ТЕСТОВЫЙ РЕЖИМ (заглушка)</div>
  <div class="logo">🍅</div>
  <h1>Оплата подписки</h1>
- <div class="muted">Тариф: {plan}</div>
+ <div class="muted">Период: {offer}</div>
  <div class="amount">{amount} ₽</div>
  <a class="btn pay" href="{confirm_url}">Оплатить</a>
  <a class="btn cancel" href="{cancel_url}">Отменить</a>
@@ -174,40 +201,23 @@ def stub_checkout(request):
 
 
 def stub_confirm(request):
-    """Имитация успешного платежа: прогоняем тот же обработчик, что и вебхук."""
+    """Имитация успешного платежа: тот же путь активации, что и у настоящего."""
     if not getattr(django_settings, "PAYMENTS_STUB", False):
         return HttpResponseNotFound("Payments stub is disabled")
     p = request.GET
     payment_id = p.get("payment_id", "")
     return_url = p.get("return_url", "/")
-    # Идемпотентность: повторный переход не создаёт вторую подписку.
-    already = payment_id and Payment.objects.filter(payment_id=payment_id, status=Payment.Status.SUCCEEDED).exists()
-    if not already:
-        obj = {
-            "id": payment_id,
-            "status": "succeeded",
-            "paid": True,
-            "amount": {"value": p.get("amount", "0"), "currency": "RUB"},
-            "metadata": {"family_id": p.get("family_id"), "plan_code": p.get("plan_code")},
-        }
-        _handle_payment_succeeded(obj)
+    try:
+        activate_payment(payment_id)
+    except ActivationError as exc:
+        log.error("stub_confirm: %s", exc)
+        return HttpResponseRedirect(_append_query(return_url, "payment", "error"))
     return HttpResponseRedirect(_append_query(return_url, "payment", "success"))
 
 
 def stub_cancel(request):
     if not getattr(django_settings, "PAYMENTS_STUB", False):
         return HttpResponseNotFound("Payments stub is disabled")
-    return_url = request.GET.get("return_url", "/")
-    return HttpResponseRedirect(_append_query(return_url, "payment", "cancel"))
-
-
-def _handle_payment_canceled(obj: dict):
-    payment_id = obj.get("id")
-    Payment.objects.filter(payment_id=payment_id).update(status=Payment.Status.CANCELLED)
-    log.info("Payment cancelled: %s", payment_id)
-
-
-def _handle_refund(obj: dict):
-    payment_id = obj.get("payment_id")
-    Payment.objects.filter(payment_id=payment_id).update(status=Payment.Status.REFUNDED)
-    log.info("Refund for payment: %s", payment_id)
+    p = request.GET
+    mark_cancelled(p.get("payment_id", ""))
+    return HttpResponseRedirect(_append_query(p.get("return_url", "/"), "payment", "cancel"))

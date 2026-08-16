@@ -5,9 +5,15 @@ from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
 
-from .models import Subscription, SubscriptionPlan
+from .models import PlanOffer, Subscription, SubscriptionPlan
 from .promo import PromoError, redeem
-from .serializers import RedeemPromoSerializer, SubscribeSerializer, SubscriptionPlanSerializer, SubscriptionSerializer
+from .serializers import (
+    PlanOfferSerializer,
+    RedeemPromoSerializer,
+    SubscribeSerializer,
+    SubscriptionPlanSerializer,
+    SubscriptionSerializer,
+)
 
 
 def _get_family(user):
@@ -19,6 +25,27 @@ class SubscriptionPlanListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = SubscriptionPlanSerializer
     queryset = SubscriptionPlan.objects.filter(is_active=True).order_by("sort_order", "price")
+
+
+class PlanOfferListView(generics.ListAPIView):
+    """MG_PAYPERIOD: из чего выбирает пользователь — периоды и цены."""
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = PlanOfferSerializer
+
+    def get_queryset(self):
+        return (
+            PlanOffer.objects.filter(is_active=True, plan__is_active=True)
+            .select_related("plan")
+            .order_by("sort_order", "months")
+        )
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        # Точка отсчёта для скидки — самый короткий период того же тарифа.
+        monthly = self.get_queryset().order_by("months").first()
+        ctx["monthly_price"] = monthly.price_per_month if monthly else None
+        return ctx
 
 
 class CurrentSubscriptionView(APIView):
@@ -55,13 +82,13 @@ class SubscribeView(APIView):
         if not family:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
 
-        plan = SubscriptionPlan.objects.get(code=serializer.validated_data["plan_code"])
+        offer = serializer.validated_data["offer"]
         return_url = serializer.validated_data["return_url"]
 
         # MG_PAYSTUB: реальная ЮKassa или тестовая заглушка (по settings.PAYMENTS_STUB).
         from apps.payments.service import initiate_payment
 
-        payment_url, payment_id = initiate_payment(family, plan, return_url)
+        payment_url, payment_id = initiate_payment(family, offer, return_url, user=request.user)
         return Response({"payment_url": payment_url, "payment_id": payment_id})
 
 

@@ -24,6 +24,43 @@ class SubscriptionPlan(models.Model):
         return f"{self.name} ({self.price} ₽/{self.period})"
 
 
+class PlanOffer(models.Model):
+    """MG_PAYPERIOD: вариант покупки тарифа — период и цена.
+
+    Периоды нельзя было сделать отдельными SubscriptionPlan: премиум по всему
+    коду определяется точным сравнением `plan.code == "premium"`
+    (`permissions.has_active_premium`), и план `premium_year` просто не включил
+    бы премиум. Поэтому тариф остаётся один, а «месяц» и «год» — это способы
+    его купить.
+
+    Цены и периоды правятся в админке, без выкладки.
+    """
+
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE, related_name="offers")
+    code = models.CharField(max_length=40, unique=True)
+    title = models.CharField(max_length=100)
+    months = models.PositiveSmallIntegerField(help_text="На сколько месяцев продлевает подписку")
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "plan_offers"
+        indexes = [models.Index(fields=["plan_id", "is_active"])]
+
+    def __str__(self):
+        return f"{self.title} — {self.price} ₽"
+
+    @property
+    def price_per_month(self):
+        """Цена за месяц — по ней считается выгода длинного периода."""
+        from decimal import ROUND_HALF_UP, Decimal
+
+        if not self.months:
+            return self.price
+        return (self.price / self.months).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 class Subscription(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "active", "Активна"
