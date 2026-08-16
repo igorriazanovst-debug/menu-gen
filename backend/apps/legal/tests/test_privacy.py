@@ -62,3 +62,47 @@ class TestPrivacyInApi:
         """Публичный эндпоинт только читает (правка — через админку)."""
         r = client.post(reverse("legal-info"), {"privacy_text": "hack"}, format="json")
         assert r.status_code in (401, 403, 405)
+
+
+@pytest.mark.django_db
+class TestPrivacyCoversActualProcessing:
+    """MG_PRIVACYSYNC: политика должна описывать то, что код реально делает.
+
+    Расхождение здесь — не косметика: анкету магазина и текст политики сверяет
+    модератор, а по 152-ФЗ нераскрытая передача данных третьим лицам это
+    нарушение. Проверки ниже — про три случая, которых в тексте не было, хотя
+    в коде они есть давно.
+    """
+
+    def text(self):
+        from apps.legal.privacy_default import default_privacy_text
+
+        legal = LegalInfo.load()
+        return default_privacy_text(legal)
+
+    def test_доступ_специалиста_описан(self):
+        """Диетолог получает профили, дневник и меню семьи — молчать нельзя."""
+        text = self.text()
+
+        assert "специалист" in text.lower()
+        assert "Мои специалисты" in text  # где прекратить доступ
+        assert "дневник питания" in text.lower()
+
+    def test_названы_оба_мессенджера(self):
+        """Подтверждение телефона работает и через Telegram, и через Max."""
+        text = self.text()
+
+        assert "Telegram" in text
+        assert "Max" in text
+
+    def test_передача_штрихкода_описана(self):
+        """Ненайденный товар ищется во внешнем справочнике продуктов."""
+        text = self.text()
+
+        assert "штрихкод" in text.lower()
+
+    def test_платёжные_реквизиты_по_прежнему_не_наши(self):
+        """Карты обрабатывает ЮKassa — это должно оставаться сказанным прямо."""
+        text = self.text()
+
+        assert "Реквизиты банковских карт Оператором не собираются" in text
