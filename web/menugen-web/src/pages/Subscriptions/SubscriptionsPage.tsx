@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { getErrorMessage } from '../../utils/api';
+import { apiErrorMessage } from '../../utils/apiError';
 import type { PlanOffer, SubscriptionPlan, Subscription } from '../../types';
 import { PeriodPicker, offerPriceNote } from '../../components/subscriptions/PeriodPicker';
 import { rememberPayment, takePendingPayment } from '../../utils/pendingPayment';
@@ -97,8 +98,12 @@ export const SubscriptionsPage: React.FC = () => {
       // Идентификатор известен только сейчас — в return_url его не подставить.
       rememberPayment(data.payment_id);
       window.location.href = data.payment_url;
-    } catch (e) { alert(getErrorMessage(e)); }
-    finally { setSubscribing(null); }
+    } catch (e) {
+      // Не alert: он теряет длинный текст и выглядит как пустое окно, если
+      // сервер ответил HTML-страницей ошибки. apiErrorMessage разбирает и
+      // строку, и {"поле": [...]}, и {"поле": "..."} — см. MG_SHAREERR.
+      setPayMsg({ ok: false, text: apiErrorMessage(e) ?? getErrorMessage(e) });
+    } finally { setSubscribing(null); }
   };
 
   if (loading) return <PageSpinner />;

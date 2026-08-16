@@ -8,6 +8,9 @@
 //
 // Здесь оба вида разбираются одинаково, а строка и список — равноправны.
 
+/** Похоже на страницу, а не на сообщение: 500 от Django, заглушка nginx и т. п. */
+const looksLikeHtml = (text: string): boolean => /^\s*<(!doctype|html|head|body)\b/i.test(text);
+
 /** Достаёт первое сообщение из значения поля: строка или список строк. */
 const firstMessage = (value: unknown): string | null => {
   if (typeof value === 'string') return value.trim() || null;
@@ -26,7 +29,11 @@ const firstMessage = (value: unknown): string | null => {
  */
 export const apiErrorMessage = (error: unknown, fields: string[] = []): string | null => {
   const data = (error as { response?: { data?: unknown } } | undefined)?.response?.data;
-  if (typeof data === 'string') return data.trim() || null;
+  if (typeof data === 'string') {
+    // HTML-страницу показывать нельзя: пользователь увидит разметку вместо
+    // причины. Пусть вызывающий код подставит свой текст.
+    return looksLikeHtml(data) ? null : (data.trim() || null);
+  }
   if (!data || typeof data !== 'object') return null;
 
   const body = data as Record<string, unknown>;
