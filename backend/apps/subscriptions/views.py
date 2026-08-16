@@ -1,3 +1,5 @@
+import logging
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
@@ -14,6 +16,9 @@ from .serializers import (
     SubscriptionPlanSerializer,
     SubscriptionSerializer,
 )
+
+
+log = logging.getLogger(__name__)
 
 
 def _get_family(user):
@@ -87,8 +92,18 @@ class SubscribeView(APIView):
 
         # MG_PAYSTUB: реальная ЮKassa или тестовая заглушка (по settings.PAYMENTS_STUB).
         from apps.payments.service import initiate_payment
+        from apps.payments.yookassa_client import PaymentsNotConfigured
 
-        payment_url, payment_id = initiate_payment(family, offer, return_url, user=request.user)
+        try:
+            payment_url, payment_id = initiate_payment(family, offer, return_url, user=request.user)
+        except PaymentsNotConfigured as exc:
+            # Настройки не заполнены — это про сервер, а не про пользователя.
+            # Причина уходит в лог, наружу — понятная фраза вместо 500.
+            log.error("Оплата не настроена: %s", exc)
+            return Response(
+                {"detail": "Оплата временно недоступна. Мы уже разбираемся."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response({"payment_url": payment_url, "payment_id": payment_id})
 
 

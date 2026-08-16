@@ -13,9 +13,26 @@ from yookassa import Payment as YKPayment
 from yookassa.domain.exceptions import ApiError
 
 
+class PaymentsNotConfigured(RuntimeError):
+    """Боевой режим включён, а реквизиты магазина не заданы.
+
+    Раньше config() без значения по умолчанию бросал UndefinedValueError прямо
+    из вьюхи: пользователь получал 500 и HTML-страницу вместо объяснения, а по
+    интерфейсу это выглядело как пустое окно «Подтвердите действие».
+    Незаполненный .env — это состояние настройки, а не сбой кода.
+    """
+
+
 def _configure():
-    yookassa.Configuration.account_id = config("YOOKASSA_SHOP_ID")
-    yookassa.Configuration.secret_key = config("YOOKASSA_SECRET_KEY")
+    shop_id = config("YOOKASSA_SHOP_ID", default="")
+    secret_key = config("YOOKASSA_SECRET_KEY", default="")
+    if not shop_id or not secret_key:
+        raise PaymentsNotConfigured(
+            "Не заданы YOOKASSA_SHOP_ID / YOOKASSA_SECRET_KEY. "
+            "Для тестового режима поставьте PAYMENTS_STUB=True."
+        )
+    yookassa.Configuration.account_id = shop_id
+    yookassa.Configuration.secret_key = secret_key
 
 
 def build_receipt(amount: Decimal, description: str, customer_email: str | None) -> dict | None:

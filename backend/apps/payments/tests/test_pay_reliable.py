@@ -313,6 +313,40 @@ class TestOffersApi:
 
 
 @pytest.mark.django_db
+class TestNotConfigured:
+    def test_пустые_реквизиты_объясняются_словами(self, setup, settings, monkeypatch):
+        """Незаполненный .env — состояние настройки, а не падение сервера.
+
+        Раньше config() бросал UndefinedValueError прямо из вьюхи: 500 и
+        HTML-страница, а в интерфейсе — пустое окно без всякой причины.
+        """
+        user, *_ = setup
+        settings.PAYMENTS_STUB = False
+        monkeypatch.setenv("YOOKASSA_SHOP_ID", "")
+        monkeypatch.setenv("YOOKASSA_SECRET_KEY", "")
+
+        resp = api(user).post(
+            reverse("subscription-subscribe"),
+            {"offer_code": "premium_month", "return_url": "https://menugen.ru/subscriptions"},
+            format="json",
+        )
+
+        assert resp.status_code == 503
+        assert "недоступна" in resp.data["detail"]
+        # платёж не заводим: за ним ничего не стоит
+        assert not Payment.objects.exists()
+
+    def test_подсказка_про_заглушку_уходит_в_лог(self, monkeypatch):
+        from apps.payments.yookassa_client import PaymentsNotConfigured, _configure
+
+        monkeypatch.setenv("YOOKASSA_SHOP_ID", "")
+        monkeypatch.setenv("YOOKASSA_SECRET_KEY", "")
+
+        with pytest.raises(PaymentsNotConfigured, match="PAYMENTS_STUB"):
+            _configure()
+
+
+@pytest.mark.django_db
 class TestReceipt:
     def test_чек_собирается_с_контактом_покупателя(self, settings):
         from apps.payments.yookassa_client import build_receipt
