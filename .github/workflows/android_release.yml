@@ -57,10 +57,18 @@ jobs:
           esac
           echo "Собираем против $URL"
 
-      - name: Проверить, что ключ подписи передан
+      # Проверяем все четыре сразу: без ключа Gradle подписал бы отладочным, а
+      # без паролей упал бы с «Keystore was tampered with, or password was
+      # incorrect» — сообщение, по которому причину не угадать.
+      - name: Проверить секреты подписи
         run: |
-          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "::error::Нет секрета ANDROID_KEYSTORE_BASE64 — сборка вышла бы подписанной отладочным ключом, а такую магазин не примет."
+          MISSING=""
+          [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]   || MISSING="$MISSING ANDROID_KEYSTORE_BASE64"
+          [ -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ] || MISSING="$MISSING ANDROID_KEYSTORE_PASSWORD"
+          [ -n "${{ secrets.ANDROID_KEY_ALIAS }}" ]         || MISSING="$MISSING ANDROID_KEY_ALIAS"
+          [ -n "${{ secrets.ANDROID_KEY_PASSWORD }}" ]      || MISSING="$MISSING ANDROID_KEY_PASSWORD"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Не заданы секреты:$MISSING (Settings → Secrets and variables → Actions)"
             exit 1
           fi
 
@@ -69,6 +77,21 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      # Пароль проверяем до сборки: иначе ошибка вылезет через несколько минут,
+      # в середине Gradle, и будет выглядеть как поломка сборки.
+      - name: Проверить, что ключ открывается паролем
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/check.jks" 2>/dev/null || {
+            echo "::error::ANDROID_KEYSTORE_BASE64 не разбирается — строка скопирована не целиком?"; exit 1; }
+          if ! keytool -list -keystore "$RUNNER_TEMP/check.jks" \
+                -alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
+                -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >/dev/null 2>&1; then
+            echo "::error::Ключ не открылся: неверный пароль хранилища или алиас (ANDROID_KEY_ALIAS)."
+            rm -f "$RUNNER_TEMP/check.jks"; exit 1
+          fi
+          rm -f "$RUNNER_TEMP/check.jks"
+          echo "Ключ и пароль в порядке."
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -135,10 +158,14 @@ jobs:
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           NAME="menugen-release-${{ github.run_number }}-$SHORT_SHA"
           mkdir -p artifacts
-          [ -f build/app/outputs/flutter-apk/app-release.apk ] && \
+          # if, а не «[ -f ] && cp»: при сборке только одного формата вторая
+          # проверка вернула бы ненулевой код и уронила шаг целиком.
+          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
             cp build/app/outputs/flutter-apk/app-release.apk "artifacts/$NAME.apk"
-          [ -f build/app/outputs/bundle/release/app-release.aab ] && \
+          fi
+          if [ -f build/app/outputs/bundle/release/app-release.aab ]; then
             cp build/app/outputs/bundle/release/app-release.aab "artifacts/$NAME.aab"
+          fi
           ls -lh artifacts
 
       - name: Выложить артефакты
