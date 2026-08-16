@@ -1,0 +1,153 @@
+# MG_RELEASE: подписанная сборка для магазинов (первый — RuStore).
+#
+# Отдельно от flutter_ci.yml намеренно: тот собирает отладочный APK на каждый
+# push, а этот запускается руками, требует секретов с ключом подписи и делает
+# то, что нельзя переделать после публикации.
+#
+# Ключ подписи в репозитории не лежит и лежать не может. Он приходит секретом
+# ANDROID_KEYSTORE_BASE64 и восстанавливается в файл только на время сборки.
+name: Android Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'Адрес API (по умолчанию прод)'
+        required: false
+        default: 'https://menugen.ru/api/v1'
+      build_name:
+        description: 'Версия для магазина, например 1.0.0 (пусто — из pubspec.yaml)'
+        required: false
+        default: ''
+      artifact:
+        description: 'Что собрать'
+        required: true
+        default: 'apk+aab'
+        type: choice
+        options: ['apk+aab', 'apk', 'aab']
+
+env:
+  FLUTTER_VERSION: '3.27.4'
+
+jobs:
+  build:
+    name: Signed release build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile/menugen_app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Проверка ДО сборки: собранный не с тем адресом релиз внешне не отличим
+      # от рабочего, а обнаружится это уже у пользователей магазина.
+      - name: Проверить адрес API
+        run: |
+          URL="${{ github.event.inputs.api_base_url }}"
+          [ -n "$URL" ] || URL="https://menugen.ru/api/v1"
+          echo "API_BASE_URL=$URL" >> "$GITHUB_ENV"
+          case "$URL" in
+            https://*) ;;
+            *) echo "::error::Магазинная сборка требует https, получено: $URL"; exit 1 ;;
+          esac
+          case "$URL" in
+            *localhost*|*127.0.0.1*|*10.0.2.2*|*192.168.*)
+              echo "::error::Локальный адрес в магазинной сборке: $URL"; exit 1 ;;
+          esac
+          echo "Собираем против $URL"
+
+      - name: Проверить, что ключ подписи передан
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "::error::Нет секрета ANDROID_KEYSTORE_BASE64 — сборка вышла бы подписанной отладочным ключом, а такую магазин не примет."
+            exit 1
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Восстановить keystore из секрета
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/menugen.jks"
+          # Путь и пароли build.gradle читает из переменных окружения,
+          # когда android/key.properties отсутствует (в CI его и нет).
+          echo "MENUGEN_KEYSTORE_PATH=$RUNNER_TEMP/menugen.jks" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Тесты
+        run: flutter test
+
+      - name: Собрать APK
+        if: ${{ github.event.inputs.artifact != 'aab' }}
+        env:
+          MENUGEN_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MENUGEN_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MENUGEN_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ARGS="--release --dart-define=API_BASE_URL=$API_BASE_URL --build-number=${{ github.run_number }}"
+          if [ -n "${{ github.event.inputs.build_name }}" ]; then
+            ARGS="$ARGS --build-name=${{ github.event.inputs.build_name }}"
+          fi
+          flutter build apk $ARGS
+
+      - name: Собрать AAB
+        if: ${{ github.event.inputs.artifact != 'apk' }}
+        env:
+          MENUGEN_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MENUGEN_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MENUGEN_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ARGS="--release --dart-define=API_BASE_URL=$API_BASE_URL --build-number=${{ github.run_number }}"
+          if [ -n "${{ github.event.inputs.build_name }}" ]; then
+            ARGS="$ARGS --build-name=${{ github.event.inputs.build_name }}"
+          fi
+          flutter build appbundle $ARGS
+
+      # Отладочным ключом подписывается сборка без реквизитов — снаружи она
+      # выглядит нормальным релизом, а магазин отвергнет её уже при загрузке.
+      - name: Убедиться, что подпись не отладочная
+        if: ${{ github.event.inputs.artifact != 'aab' }}
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          OWNER=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -i "Signer #1 certificate DN" || true)
+          echo "$OWNER"
+          if echo "$OWNER" | grep -qi "CN=Android Debug"; then
+            echo "::error::APK подписан отладочным ключом — магазин такую сборку не примет."
+            exit 1
+          fi
+
+      - name: Переименовать артефакты
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          NAME="menugen-release-${{ github.run_number }}-$SHORT_SHA"
+          mkdir -p artifacts
+          [ -f build/app/outputs/flutter-apk/app-release.apk ] && \
+            cp build/app/outputs/flutter-apk/app-release.apk "artifacts/$NAME.apk"
+          [ -f build/app/outputs/bundle/release/app-release.aab ] && \
+            cp build/app/outputs/bundle/release/app-release.aab "artifacts/$NAME.aab"
+          ls -lh artifacts
+
+      - name: Выложить артефакты
+        uses: actions/upload-artifact@v4
+        with:
+          name: menugen-release-${{ github.run_number }}
+          path: mobile/menugen_app/artifacts/*
+          retention-days: 30
+
+      - name: Удалить keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/menugen.jks"

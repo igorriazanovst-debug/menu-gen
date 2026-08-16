@@ -1,4 +1,4 @@
-package com.example.menugen_app
+package ru.menugen.app
 
 import io.flutter.embedding.android.FlutterActivity
 

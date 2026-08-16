@@ -23,8 +23,28 @@ if (flutterVersionName == null) {
     flutterVersionName = "1.0"
 }
 
+// MG_RELEASE: реквизиты подписи релиза.
+//
+// Локально — android/key.properties (в .gitignore). В CI файла нет, значения
+// приходят переменными окружения из секретов. Ключ в репозиторий не попадает
+// никогда: потеря или утечка keystore означает потерю возможности выпускать
+// обновления — сменить подпись у опубликованного приложения нельзя.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withReader("UTF-8") { reader ->
+        keystoreProperties.load(reader)
+    }
+}
+
+def signingValue = { String key, String envName ->
+    keystoreProperties.getProperty(key) ?: System.getenv(envName)
+}
+def releaseStorePath = signingValue("storeFile", "MENUGEN_KEYSTORE_PATH")
+def hasReleaseSigning = releaseStorePath != null && file(releaseStorePath).exists()
+
 android {
-    namespace = "com.example.menugen_app"
+    namespace = "ru.menugen.app"
     // MG_APPICON/SDK35: плагины Flutter требуют компиляции против SDK 35.
     // Это влияет только на то, какие API доступны при сборке; targetSdk (то
     // есть поведение в рантайме) сознательно оставлен на 34 — переход на 35
@@ -45,8 +65,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.menugen_app"
+        // MG_RELEASE: идентификатор приложения в магазинах. Меняется один раз и
+        // навсегда: у опубликованного приложения его сменить нельзя — это будет
+        // другое приложение, без обновлений для уже установивших.
+        applicationId = "ru.menugen.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdk = 21
@@ -55,11 +77,29 @@ android {
         versionName = flutterVersionName
     }
 
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile = file(releaseStorePath)
+                storePassword = signingValue("storePassword", "MENUGEN_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "MENUGEN_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "MENUGEN_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            // Без реквизитов подписи собираем отладочным ключом — иначе
+            // `flutter run --release` перестал бы работать на машине разработчика.
+            // В магазин такая сборка не годится, и CI это проверяет отдельно
+            // (см. .github/workflows/android_release.yml).
+            signingConfig = hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+
+            // Сжатие кода (minifyEnabled/R8) намеренно не включено: оно ломается
+            // только в релизе и только в рантайме, а проверить это можно лишь на
+            // устройстве. Включать — отдельным шагом, после того как обычная
+            // релизная сборка проверена целиком.
         }
     }
 }
