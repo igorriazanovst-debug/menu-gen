@@ -22,10 +22,13 @@ export const PayReturnPage: React.FC = () => {
       <div className="w-full max-w-sm text-center">
         <div className="text-6xl mb-3">🍅</div>
         <div className="bg-surface rounded-2xl shadow-sm border border-border p-8">
-          <div className="text-5xl mb-3">✅</div>
-          <h2 className="text-xl font-semibold text-text mb-1">Оплата завершена</h2>
+          {/* Ни успеха, ни отмены здесь утверждать нельзя: ЮKassa возвращает
+              на этот адрес в обоих случаях, а исхода страница не знает. Его
+              покажет приложение — у него есть и платёж, и авторизация. */}
+          <div className="text-5xl mb-3">📱</div>
+          <h2 className="text-xl font-semibold text-text mb-1">Возвращаемся в приложение</h2>
           <p className="text-muted text-sm mb-5">
-            Вернитесь в приложение — подписка обновится сама.
+            Откройте MenuGen — там будет виден результат оплаты.
           </p>
 
           {offerApp && (
