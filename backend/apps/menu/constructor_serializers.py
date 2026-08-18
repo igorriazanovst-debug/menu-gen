@@ -96,6 +96,23 @@ class ConstructedMenuSerializer(serializers.ModelSerializer):
             "updated_at",
         )
 
+    def validate_client_family(self, family):
+        """Привязать меню можно только к своей семье-клиенту.
+
+        Список семей в конструкторе уже отфильтрован, но фильтр списка чужой
+        client_family не остановит: без этой проверки специалист мог отправить
+        произвольный id и привязать меню к любой семье. Пустой client_family —
+        это меню-шаблон, не привязанное ни к кому, и он разрешён.
+        """
+        if family is None:
+            return family
+        from .constructor_views import allowed_family_ids
+
+        user = self.context["request"].user
+        if family.id not in allowed_family_ids(user):
+            raise serializers.ValidationError("Эта семья не в списке ваших клиентов.")
+        return family
+
     def _write_meals(self, menu, meals_data):
         menu.meals.all().delete()
         for m in meals_data:
