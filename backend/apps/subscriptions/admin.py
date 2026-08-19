@@ -1,3 +1,5 @@
+import json
+
 from django import forms
 from django.contrib import admin, messages
 from django.shortcuts import render
@@ -15,11 +17,99 @@ from .models import (
 from .promo import generate_unique_codes, revoke_code, revoke_redemption
 
 
+# MG_PLANFORM: возможности тарифа — галочками, а не JSON руками.
+#
+# Поле `features` — JSONField, и админка показывала его текстовой областью:
+# правильный JSON надо было помнить наизусть, а любая опечатка (или пустое
+# поле — JSONField обязателен) валила сохранение всей формы, включая цену.
+# Здесь форма разбирает JSON на галочки и число, а обратно собирает сама.
+PLAN_FEATURE_FLAGS = [
+    ("country", "🌍 Фильтр по стране"),
+    ("calories", "🔥 Учёт калорийности"),
+    ("fridge", "🧊 Холодильник"),
+    ("allergies_family", "⚕️ Аллергии семьи"),
+]
+PLAN_FLAG_KEYS = [key for key, _ in PLAN_FEATURE_FLAGS]
+PLAN_QUOTA_KEY = "menu_generations_per_month"
+
+
+class SubscriptionPlanForm(forms.ModelForm):
+    feature_flags = forms.MultipleChoiceField(
+        choices=PLAN_FEATURE_FLAGS,
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label="Строки в карточке тарифа",
+    )
+    menu_generations_per_month = forms.IntegerField(
+        required=False,
+        min_value=0,
+        label="Генераций меню в месяц",
+        help_text=(
+            "Пусто — без ограничения. Настоящий лимит это задаёт только тарифу free; "
+            "у премиума лимита нет в любом случае."
+        ),
+    )
+
+    class Meta:
+        model = SubscriptionPlan
+        exclude = ("features",)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        features = getattr(self.instance, "features", None) or {}
+        self.fields["feature_flags"].initial = [k for k in PLAN_FLAG_KEYS if features.get(k)]
+        self.fields[PLAN_QUOTA_KEY].initial = features.get(PLAN_QUOTA_KEY)
+
+    def save(self, commit=True):
+        plan = super().save(commit=False)
+        # Начинаем с того, что уже лежит в базе: ключи, которых нет среди
+        # галочек, форма не показывает — и потерять их при сохранении нельзя.
+        features = dict(plan.features or {})
+        chosen = set(self.cleaned_data.get("feature_flags") or ())
+        for key in PLAN_FLAG_KEYS:
+            if key in chosen:
+                features[key] = True
+            else:
+                features.pop(key, None)
+        quota = self.cleaned_data.get(PLAN_QUOTA_KEY)
+        if quota is None:
+            features.pop(PLAN_QUOTA_KEY, None)
+        else:
+            features[PLAN_QUOTA_KEY] = int(quota)
+        plan.features = features
+        if commit:
+            plan.save()
+        return plan
+
+
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(admin.ModelAdmin):
+    form = SubscriptionPlanForm
     list_display = ("id", "code", "name", "price", "period", "max_family_members", "is_active", "sort_order")
     list_editable = ("sort_order", "is_active")
     ordering = ("sort_order",)
+    readonly_fields = ("features_json",)
+    fieldsets = (
+        (None, {"fields": ("code", "name", "price", "period", "max_family_members", "is_active", "sort_order")}),
+        (
+            "Что видно в карточке тарифа",
+            {
+                "fields": ("feature_flags", PLAN_QUOTA_KEY),
+                "description": (
+                    "Это витрина: список возможностей, который видит покупатель на сайте. "
+                    "Доступ к самим функциям определяется кодом тарифа в генераторе, а не этими "
+                    "галочками — снятая галочка «Холодильник» уберёт строку из карточки, но не "
+                    "закроет холодильник владельцу премиума."
+                ),
+            },
+        ),
+        ("Служебное", {"fields": ("features_json",), "classes": ("collapse",)}),
+    )
+
+    @admin.display(description="features в базе")
+    def features_json(self, obj):
+        """Итоговый JSON — чтобы было видно, что собралось из галочек."""
+        return json.dumps(obj.features or {}, ensure_ascii=False, sort_keys=True)
 
 
 @admin.register(Subscription)
