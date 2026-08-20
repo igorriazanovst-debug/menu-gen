@@ -13,6 +13,7 @@ import { getErrorMessage } from '../../utils/api';
 import { MEAL_LABELS } from '../../types';
 import { WeightCard } from './WeightCard'; // MG_TRAINER
 import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
+import { dayTotalsHint } from '../../utils/dayTotalsHint'; // DIARY_TOTALS_V1
 import type { DiaryEntry, DiaryDayStats, FamilyMember, MealType } from '../../types';
 
 const today = todayIso; // ISO_DATE_V1: локальный календарь, а не UTC
@@ -27,7 +28,7 @@ const StatBox: React.FC<{ label: string; planned: number; actual: number; unit: 
   <div className="rounded-xl bg-rice px-3 py-2">
     <div className="text-xs text-gray-500">{label}</div>
     <div className="text-sm font-semibold text-chocolate">
-      {Math.round(actual)}<span className="text-xs font-normal text-gray-400"> / {Math.round(planned)} {unit}</span>
+      {Math.round(actual)}<span className="text-xs font-normal text-gray-500"> / {Math.round(planned)} {unit} по плану</span>
     </div>
   </div>
 );
@@ -47,7 +48,7 @@ const CalorieDonut: React.FC<{ fact: number; plan: number }> = ({ fact, plan }) 
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
         <span className="text-sm font-bold text-tomato">{Math.round(fact)}</span>
-        <span className="text-[10px] text-gray-400">/ {plan > 0 ? Math.round(plan) : '—'} ккал</span>
+        <span className="text-[10px] text-gray-500">/ {plan > 0 ? Math.round(plan) : '—'} ккал</span>
         {pct !== null && <span className="text-[10px] text-gray-400">{pct}%</span>}
       </div>
     </div>
@@ -241,6 +242,11 @@ export const DiaryPage: React.FC = () => {
               <StatBox label="Углеводы" planned={stats.planned.carbs} actual={stats.actual.carbs} unit="г" />
             </div>
           </div>
+          {/* DIARY_TOTALS_V1: нули в факте — норма для нетронутого плана,
+              но без объяснения это выглядит как сломанный подсчёт. */}
+          {dayTotalsHint(stats.planned, stats.actual) && (
+            <p className="text-xs text-gray-500 mt-3">{dayTotalsHint(stats.planned, stats.actual)}</p>
+          )}
         </Card>
       )}
 
