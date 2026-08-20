@@ -26,6 +26,14 @@ set -a; [ -f "$REPO/.env" ] && . "$REPO/.env"; set +a
 DB_NAME=${DB_NAME:-menugen}
 DB_USER=${DB_USER:-menugen_user}
 
+# Имя скрипта говорит «prod», но выполнить его можно где угодно — и снять копию
+# dev вместо прода, ничего не заметив: вывод выглядит одинаково. Проверяем.
+if [ "${MENUGEN_ENV:-prod}" = "dev" ]; then
+  echo "!! Это dev-сервер (MENUGEN_ENV=dev). Снимок делается НА ПРОДЕ:"
+  echo "     ssh root@158.255.5.166 'cd /opt/menugen && WITH_MEDIA=0 bash deploy/mirror/snapshot_prod.sh'"
+  exit 1
+fi
+
 mkdir -p "$OUT"
 echo "==> Снимок прода в $OUT"
 
