@@ -21,6 +21,7 @@ import { MadePhotoControl } from '../../components/recipes/MadePhotoControl'; //
 import { useEscapeKey } from '../../hooks/useEscapeKey'; // MG_ESC
 // MG_607_V_menupage
 import { GenerateMenuForm } from '../../components/menu/GenerateMenuForm';
+import { addDaysIso, todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 
 const MEAL_ICONS: Record<string, string> = {
   breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎',
@@ -39,12 +40,9 @@ const ROLE_ORDER: ComponentRole[] = ['protein', 'grain', 'vegetable', 'fruit', '
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('ru', { day: 'numeric', month: 'short' });
 }
-function addDays(dateStr: string, n: number) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
-}
-function today() { return new Date().toISOString().split('T')[0]; }
+// ISO_DATE_V1: календарная арифметика без UTC (см. utils/isoDate).
+const addDays = addDaysIso;
+const today = todayIso;
 
 // ── slot helpers ─────────────────────────────────────────────────────────────
 

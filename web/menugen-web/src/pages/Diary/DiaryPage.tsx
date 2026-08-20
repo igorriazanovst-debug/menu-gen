@@ -12,9 +12,10 @@ import { PrintDiaryModal } from '../../components/diary/PrintDiaryModal'; // DIA
 import { getErrorMessage } from '../../utils/api';
 import { MEAL_LABELS } from '../../types';
 import { WeightCard } from './WeightCard'; // MG_TRAINER
+import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 import type { DiaryEntry, DiaryDayStats, FamilyMember, MealType } from '../../types';
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = todayIso; // ISO_DATE_V1: локальный календарь, а не UTC
 const WATER_GOAL_ML = 2000;
 const WATER_STEPS = [250, 500];
 

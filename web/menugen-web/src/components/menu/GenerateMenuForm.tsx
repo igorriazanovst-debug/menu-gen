@@ -15,6 +15,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import type { Menu, MealPlan, UserProfile, MenuQuota } from '../../types';
 import { allergenLabel } from '../../constants/allergens';
+import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 
 // Маппинг кодов стран → display names. Если кода нет в маппинге — показываем как есть.
 const COUNTRY_LABELS: Record<string, string> = {
@@ -37,9 +38,7 @@ const COUNTRY_LABELS: Record<string, string> = {
 
 const POPULAR_COUNTRIES_LIMIT = 6;
 
-function todayISO() {
-  return new Date().toISOString().split('T')[0];
-}
+const todayISO = todayIso; // ISO_DATE_V1
 
 interface Props {
   onCreated: (menu: Menu) => void;

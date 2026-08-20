@@ -10,12 +10,13 @@ import { Ring } from '../../components/ui/Ring';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { MEAL_LABELS } from '../../types';
 import type { DiaryEntry, DiaryDayStats, MealType } from '../../types';
+import { dateToIso } from '../../utils/isoDate'; // ISO_DATE_V1
 
 const WATER_GOAL_ML = 2000;
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 const WEEKDAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
-const iso = (d: Date) => d.toISOString().split('T')[0];
+const iso = dateToIso; // ISO_DATE_V1: локальная дата, а не UTC
 const emptyBucket = { calories: 0, proteins: 0, fats: 0, carbs: 0 };
 
 // Калории одной записи дневника (nutrition может быть number | {value}).

@@ -7,6 +7,7 @@ import { diaryApi } from '../../api/diary';
 import { menuApi } from '../../api/menu';
 import { getErrorMessage } from '../../utils/api';
 import { importOutcome } from '../../utils/importOutcome'; // FILL_FROM_MENU_V5
+import { addDaysIso } from '../../utils/isoDate'; // ISO_DATE_V1
 import { MEAL_LABELS } from '../../types';
 import type { Menu, MenuItem, MealType } from '../../types';
 
@@ -19,11 +20,8 @@ interface Props {
 }
 
 // DIARY_MULTIDAY: сдвиг ISO-даты на N дней.
-const addDaysIso = (iso: string, n: number): string => {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
-};
+// ISO_DATE_V1: раньше считалось здесь и уводило подписи дней на сутки назад —
+// человек выбирал приёмы под заголовком «20 августа», а записи ложились на 21-е.
 
 const MEAL_SLOT_LABEL: Record<string, string> = {
   breakfast: 'Завтрак', snack1: 'Перекус 1', lunch: 'Обед',

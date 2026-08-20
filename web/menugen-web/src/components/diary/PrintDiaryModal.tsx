@@ -7,6 +7,7 @@ import { diaryApi } from '../../api/diary';
 import { getErrorMessage } from '../../utils/api';
 import { MEAL_LABELS } from '../../types';
 import type { DiaryEntry, MealType } from '../../types';
+import { addDaysIso, todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 
 interface Props {
   date: string;
@@ -15,7 +16,7 @@ interface Props {
 }
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
-const today = () => new Date().toISOString().split('T')[0];
+const today = todayIso; // ISO_DATE_V1
 
 const num = (e: DiaryEntry, key: 'calories' | 'proteins' | 'fats' | 'carbs'): number => {
   const raw = (e.nutrition as Record<string, unknown> | undefined)?.[key];
@@ -30,12 +31,12 @@ const num = (e: DiaryEntry, key: 'calories' | 'proteins' | 'fats' | 'carbs'): nu
 };
 
 const daysBetween = (from: string, to: string): string[] => {
+  // ISO_DATE_V1: перебор календарных дат, без перевода в UTC.
   const out: string[] = [];
-  const d = new Date(from);
-  const end = new Date(to);
-  while (d <= end) {
-    out.push(d.toISOString().split('T')[0]);
-    d.setDate(d.getDate() + 1);
+  let cur = from;
+  while (cur <= to && out.length < 366) {
+    out.push(cur);
+    cur = addDaysIso(cur, 1);
   }
   return out;
 };

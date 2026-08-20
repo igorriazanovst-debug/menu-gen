@@ -7,6 +7,7 @@ import { diaryApi } from '../../api/diary';
 import { getErrorMessage } from '../../utils/api';
 import { MEAL_LABELS } from '../../types';
 import type { DiaryEntry } from '../../types';
+import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 
 interface Props {
   targetDate: string;   // day the copies will land on (the page's current date)
@@ -15,7 +16,7 @@ interface Props {
   onCopied: () => void;
 }
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = todayIso; // ISO_DATE_V1
 
 export const CopyFromDayModal: React.FC<Props> = ({ targetDate, memberId, onClose, onCopied }) => {
   const [sourceDate, setSourceDate] = useState(today());
