@@ -110,13 +110,22 @@ $DC exec -T backend python manage.py collectstatic --noinput | tail -2 | sed 's/
 # ── 7. Подъём и проверка ─────────────────────────────────────────────────────
 echo "==> 7/7. Запуск и health-check"
 $DC up -d
+# Дёргаем настоящий эндпоинт, а не корень API: корень отдаёт 404 и на рабочем
+# приложении, и на сломанном — по нему видно только, что Django жив. Список
+# тарифов открыт без авторизации и лезет в базу: 200 означает, что связка
+# «приложение + восстановленная база» работает.
+HEALTH_URL="http://127.0.0.1:8003/api/v1/subscriptions/plans/"
 code="000"
 for _ in $(seq 1 20); do
   sleep 2
-  code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8003/api/v1/" || echo "000")
-  [ "$code" != "000" ] && [ "${code:0:1}" != "5" ] && break
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo "000")
+  [ "$code" = "200" ] && break
 done
-echo "    GET :8003/api/v1/ -> HTTP $code"
+echo "    GET /api/v1/subscriptions/plans/ -> HTTP $code"
+if [ "$code" != "200" ]; then
+  echo "    !! Ожидался 200. Зеркало залито, но приложение отвечает не так — смотри:"
+  echo "       $DC logs --tail=50 backend"
+fi
 
 echo
 echo "==> ГОТОВО. Откат к прежнему состоянию dev:"
