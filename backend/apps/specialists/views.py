@@ -610,3 +610,54 @@ class MyRecommendationDoneView(APIView):
     def _get(user, rec_id):
         family_ids = FamilyMember.objects.filter(user=user).values_list("family_id", flat=True)
         return Recommendation.objects.filter(id=rec_id, family_id__in=list(family_ids), is_active=True).first()
+
+
+# ── MG_DIETITIAN: разбор рациона и проверка на исключения ────────────────────
+
+
+class CabinetClientRationView(APIView):
+    """Состав рациона клиента: группы продуктов, белок, рыба, разнообразие.
+
+    Раздел — дневник: считается по съеденному. У повара дневника нет, значит и
+    разбор ему закрыт.
+    """
+
+    permission_classes = CABINET_PERMISSIONS
+    section = Section.DIARY
+
+    @extend_schema(
+        parameters=[OpenApiParameter("days", int, description="Период в днях (по умолчанию 14, максимум 90)")],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request, family_id):
+        try:
+            days = max(1, min(int(request.query_params.get("days", 14)), 90))
+        except (TypeError, ValueError):
+            days = 14
+        from .ration import family_ration
+
+        return Response({"days": days, "members": family_ration(request.assignment.family, days=days)})
+
+
+class CabinetClientExclusionsView(APIView):
+    """Где в дневнике и активных меню встречается исключённое.
+
+    Профиль (аллергии и нелюбимое) сверяется с фактами. Раздел — профиль:
+    это проверка ограничений клиента, а не чтение его дневника.
+    """
+
+    permission_classes = CABINET_PERMISSIONS
+    section = Section.PROFILE
+
+    @extend_schema(
+        parameters=[OpenApiParameter("days", int, description="Период в днях (по умолчанию 14, максимум 90)")],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request, family_id):
+        try:
+            days = max(1, min(int(request.query_params.get("days", 14)), 90))
+        except (TypeError, ValueError):
+            days = 14
+        from .ration import family_excluded
+
+        return Response({"days": days, "members": family_excluded(request.assignment.family, days=days)})

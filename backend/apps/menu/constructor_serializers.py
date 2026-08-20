@@ -98,6 +98,8 @@ class ConstructedMealSerializer(serializers.ModelSerializer):
 class ConstructedMenuSerializer(serializers.ModelSerializer):
     meals = ConstructedMealSerializer(many=True)
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
+    # MG_MENUAPPLY: заполнено — меню уже выдано клиенту.
+    applied_menu = serializers.IntegerField(source="applied_menu_id", read_only=True)
 
     class Meta:
         model = ConstructedMenu
@@ -108,6 +110,7 @@ class ConstructedMenuSerializer(serializers.ModelSerializer):
             "client_family",
             "days",
             "status",
+            "applied_menu",
             "meals",
             "created_at",
             "updated_at",
@@ -169,6 +172,7 @@ class ConstructedMenuListSerializer(serializers.ModelSerializer):
 
     author_name = serializers.CharField(source="author.name", read_only=True, default=None)
     client_family_name = serializers.CharField(source="client_family.name", read_only=True, default=None)
+    applied_menu = serializers.IntegerField(source="applied_menu_id", read_only=True)
     meals_count = serializers.IntegerField(source="meals.count", read_only=True)
 
     class Meta:
@@ -181,6 +185,7 @@ class ConstructedMenuListSerializer(serializers.ModelSerializer):
             "client_family_name",
             "days",
             "status",
+            "applied_menu",
             "meals_count",
             "created_at",
             "updated_at",

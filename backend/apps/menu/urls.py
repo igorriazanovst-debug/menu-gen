@@ -1,6 +1,11 @@
 from django.urls import path
 
-from .constructor_views import ConstructedMenuDetailView, ConstructedMenuListCreateView, ConstructorClientsView
+from .constructor_views import (
+    ConstructedMenuApplyView,
+    ConstructedMenuDetailView,
+    ConstructedMenuListCreateView,
+    ConstructorClientsView,
+)
 from .views import (
     DeletedMenuListView,
     MenuArchiveView,
@@ -23,6 +28,8 @@ urlpatterns = [
     path("constructor/", ConstructedMenuListCreateView.as_view(), name="constructor-list"),
     path("constructor/clients/", ConstructorClientsView.as_view(), name="constructor-clients"),
     path("constructor/<int:pk>/", ConstructedMenuDetailView.as_view(), name="constructor-detail"),
+    # MG_MENUAPPLY: развернуть составленное меню в меню семьи клиента.
+    path("constructor/<int:pk>/apply/", ConstructedMenuApplyView.as_view(), name="constructor-apply"),
     path("quarantine/", DeletedMenuListView.as_view(), name="menu-quarantine"),
     path("quarantine/purge-all/", MenuPurgeAllView.as_view(), name="menu-purge-all"),
     path("quarantine/<int:deleted_id>/restore/", MenuRestoreView.as_view(), name="menu-restore"),

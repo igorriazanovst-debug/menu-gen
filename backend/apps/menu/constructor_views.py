@@ -1,5 +1,7 @@
 """MG_CONSTRUCTOR: API ручного конструктора меню (для специалистов/стаффа)."""
 
+from datetime import date
+
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -86,3 +88,63 @@ class ConstructedMenuDetailView(generics.RetrieveUpdateDestroyAPIView):
     def destroy(self, request, *args, **kwargs):
         super().destroy(request, *args, **kwargs)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ConstructedMenuApplyView(APIView):
+    """MG_MENUAPPLY: выдать составленное меню клиенту.
+
+    POST /menu/constructor/<pk>/apply/  {"start_date": "YYYY-MM-DD"}
+
+    Право на выдачу — не то же, что право строить: конструктор открыт всем
+    специалистам, а класть меню в чужую семью может только роль, у которой меню
+    на запись (диетолог, повар). Тренер меню читает — выдать не может.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsSpecialistOrStaff]
+
+    def post(self, request, pk):
+        from apps.specialists.access import Section, active_assignment, allows
+        from apps.specialists.journal import log_action
+
+        from .constructor_apply import apply_to_family
+
+        menu = ConstructedMenu.objects.filter(id=pk, author=request.user).first()
+        if menu is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if menu.client_family_id is None:
+            return Response(
+                {"detail": "Меню не привязано к клиенту — выдавать некому."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        specialist = getattr(request.user, "specialist_profile", None)
+        assignment = active_assignment(specialist, menu.client_family_id)
+        if assignment is None or not allows(assignment, Section.MENU, write=True):
+            return Response(
+                {"detail": "Ваша роль не даёт права выдавать меню этому клиенту."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        raw = request.data.get("start_date")
+        try:
+            start = date.fromisoformat(raw) if raw else date.today()
+        except (TypeError, ValueError):
+            return Response({"detail": "Некорректная дата начала."}, status=status.HTTP_400_BAD_REQUEST)
+
+        created = apply_to_family(menu, start, request.user)
+        log_action(
+            assignment,
+            Section.MENU,
+            "apply_menu",
+            summary=f"{menu.name} → меню с {start}",
+            object_id=created.id,
+        )
+        return Response(
+            {
+                "menu_id": created.id,
+                "start_date": str(created.start_date),
+                "end_date": str(created.end_date),
+                "items": created.items.count(),
+            },
+            status=status.HTTP_201_CREATED,
+        )

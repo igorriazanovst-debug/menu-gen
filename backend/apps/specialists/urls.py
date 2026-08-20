@@ -2,6 +2,8 @@ from django.urls import path
 
 from .views import (
     AssignmentAcceptView,
+    CabinetClientExclusionsView,
+    CabinetClientRationView,
     CabinetClientSummaryView,
     CabinetClientTargetsHistoryView,
     CabinetClientWeightView,
@@ -63,6 +65,17 @@ urlpatterns = [
         "cabinet/clients/<int:family_id>/targets-history/",
         CabinetClientTargetsHistoryView.as_view(),
         name="cabinet-client-targets-history",
+    ),
+    # MG_DIETITIAN: состав рациона и проверка исключений
+    path(
+        "cabinet/clients/<int:family_id>/ration/",
+        CabinetClientRationView.as_view(),
+        name="cabinet-client-ration",
+    ),
+    path(
+        "cabinet/clients/<int:family_id>/exclusions/",
+        CabinetClientExclusionsView.as_view(),
+        name="cabinet-client-exclusions",
     ),
     # MG_TRAINER: рекомендации на стороне клиента
     path("recommendations/", MyRecommendationsView.as_view(), name="my-recommendations"),

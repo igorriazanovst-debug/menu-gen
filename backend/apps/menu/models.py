@@ -158,6 +158,11 @@ class ConstructedMenu(models.Model):
     )
     days = models.PositiveSmallIntegerField(default=1)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    # MG_MENUAPPLY: меню семьи, в которое это развернули. Заполнено — значит
+    # клиент его уже получил; специалисту видно, что выдано, а что черновик.
+    applied_menu = models.ForeignKey(
+        "menu.Menu", on_delete=models.SET_NULL, null=True, blank=True, related_name="from_constructed"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
