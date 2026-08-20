@@ -10,6 +10,12 @@ SECRET_KEY = config("SECRET_KEY")
 DEBUG = config("DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost").split(",")
 
+# MG_DEVMIRROR: какой это контур. По умолчанию «prod» — сервер без явной
+# пометки считается боевым. От этого зависит, разрешена ли команда
+# sanitize_dev, которая необратимо затирает персональные данные: на проде
+# она откажется работать, и забытая переменная не превращается в потерю данных.
+MENUGEN_ENV = config("MENUGEN_ENV", default="prod")
+
 DJANGO_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
