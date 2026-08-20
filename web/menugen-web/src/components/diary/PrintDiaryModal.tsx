@@ -181,12 +181,13 @@ export const PrintDiaryModal: React.FC<Props> = ({ date, memberId, onClose }) =>
           <div className="flex items-center gap-2 mb-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">С</label>
-              <input type="date" value={from} max={today()} onChange={(e) => setFrom(e.target.value)}
+              {/* DIARY_FUTURE_V1: печатают и план на будущее, не только прошедшее */}
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
                 className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-tomato/40 focus:border-tomato" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">По</label>
-              <input type="date" value={to} max={today()} onChange={(e) => setTo(e.target.value)}
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
                 className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-tomato/40 focus:border-tomato" />
             </div>
           </div>

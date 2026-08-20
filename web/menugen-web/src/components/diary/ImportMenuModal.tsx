@@ -133,6 +133,20 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
     });
 
   const allIds = useMemo(() => (detail?.items ?? []).map((i) => i.id), [detail]);
+
+  // FILL_FROM_MENU_V5: все позиции одного дня меню — для галочки «весь день».
+  const dayIds = useCallback((day: number): number[] => {
+    const slots = grouped.get(day);
+    if (!slots) return [];
+    const ids: number[] = [];
+    slots.forEach((dishes) => dishes.forEach((d) => ids.push(...d.ids)));
+    return ids;
+  }, [grouped]);
+
+  const dayChecked = useCallback((day: number): boolean => {
+    const ids = dayIds(day);
+    return ids.length > 0 && ids.every((id) => selected.has(id));
+  }, [dayIds, selected]);
   const allChecked = allIds.length > 0 && selected.size === allIds.length;
   // Счётчики по УНИКАЛЬНЫМ блюдам (а не по id-копиям).
   const totalDishes = dishList.length;
@@ -211,9 +225,15 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
                       .sort((a, b) => SLOT_ORDER.indexOf(a) - SLOT_ORDER.indexOf(b));
                     return (
                       <div key={day} className="rounded-xl border border-border">
-                        <div className="px-3 py-2 text-xs font-semibold text-chocolate bg-rice rounded-t-xl">
+                        {/* FILL_FROM_MENU_V5: галочка на весь день. Раньше день
+                            набирался приёмами по одному — при семи приёмах это
+                            семь кликов ради самого частого действия. */}
+                        <label className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-chocolate bg-rice rounded-t-xl cursor-pointer select-none">
+                          <input type="checkbox" checked={dayChecked(day)}
+                                 onChange={() => toggleMany(dayIds(day), !dayChecked(day))}
+                                 className="w-4 h-4 accent-tomato" />
                           День {day + 1} · {dayDate(day)}
-                        </div>
+                        </label>
                         <div className="p-2 space-y-2">
                           {slotKeys.map((sk) => {
                             const dishes = slots.get(sk)!;
