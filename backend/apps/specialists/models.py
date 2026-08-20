@@ -67,6 +67,9 @@ class Recommendation(models.Model):
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_read = models.BooleanField(default=False)
+    # MG_TRAINER: клиент отмечает выполнение. Прочитано и сделано — разные вещи:
+    # по одному «открыл» специалист не понимает, делают ли то, что он назначил.
+    completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

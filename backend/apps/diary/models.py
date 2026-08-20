@@ -53,3 +53,31 @@ class WaterLog(models.Model):
     class Meta:
         db_table = "water_logs"
         unique_together = [("member", "date")]
+
+
+class WeightLog(models.Model):
+    """MG_TRAINER: вес по датам.
+
+    В профиле вес — одно число, оно перезаписывается: истории нет, и главный
+    вопрос тренера «что происходит с весом на этом калораже» ответа не имеет.
+    Здесь — точки замеров, по одной на дату (перевзвесился — запись правится,
+    а не добавляется вторая).
+
+    Устройство намеренно повторяет WaterLog: тот же владелец (участник семьи),
+    та же уникальность по дню, та же простота.
+    """
+
+    member = models.ForeignKey(FamilyMember, on_delete=models.CASCADE, related_name="weight_logs")
+    date = models.DateField()
+    weight_kg = models.DecimalField(max_digits=5, decimal_places=1)
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "weight_logs"
+        unique_together = [("member", "date")]
+        ordering = ["-date"]
+        indexes = [models.Index(fields=["member_id", "-date"])]
+
+    def __str__(self):
+        return f"Weight({self.member}, {self.date}, {self.weight_kg})"

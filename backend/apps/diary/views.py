@@ -13,7 +13,7 @@ from apps.family.models import FamilyMember
 # MG_605D_V_views: импорт MenuItem для import-from-menu
 from apps.menu.models import Menu, MenuItem
 
-from .models import DiaryEntry, WaterLog
+from .models import DiaryEntry, WaterLog, WeightLog
 from .permissions import IsDiaryEntryOwner
 from .serializers import DiaryCopySerializer  # DIARY_COPY_V3
 from .serializers import (
@@ -22,6 +22,7 @@ from .serializers import (
     DiaryImportSerializer,
     DiaryStatsDaySerializer,
     WaterLogSerializer,
+    WeightLogSerializer,
 )
 
 
@@ -187,40 +188,11 @@ class DiaryEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().update(request, *args, **kwargs)
 
 
-# MG_605D_V_views: helper для вычисления КБЖУ одной записи
-_NUTRITION_KEYS = ("calories", "proteins", "fats", "carbs")
-
-
-def _entry_nutrition(entry):
-    """Вернуть dict {calories, proteins, fats, carbs} для записи DiaryEntry,
-    учитывая quantity. Безопасно к битым/частичным nutrition."""
-    nutr = entry.nutrition or {}
-    qty = float(entry.quantity or 1)
-    out = {}
-    for key in _NUTRITION_KEYS:
-        # DIARY_STATS_FLAT_V5: nutrition value may be a flat number, a numeric
-        # string, or a legacy {"value": ...} dict. Support all three.
-        raw = nutr.get(key)
-        try:
-            if isinstance(raw, dict):
-                val = float(raw.get("value", 0) or 0)
-            elif raw is None:
-                val = 0.0
-            else:
-                val = float(raw)
-            out[key] = val * qty
-        except (TypeError, ValueError, AttributeError):
-            out[key] = 0.0
-    return out
-
-
-def _empty_bucket():
-    return {k: 0.0 for k in _NUTRITION_KEYS}
-
-
-def _add_bucket(dst, src):
-    for k in _NUTRITION_KEYS:
-        dst[k] += src[k]
+# MG_605D_V_views: расчёт КБЖУ записи переехал в entry_nutrition.py — тем же
+# кодом считает кабинет специалиста. Имена сохранены: их зовут ниже по файлу.
+from .entry_nutrition import add_bucket as _add_bucket  # noqa: E402
+from .entry_nutrition import empty_bucket as _empty_bucket  # noqa: E402
+from .entry_nutrition import entry_nutrition as _entry_nutrition  # noqa: E402
 
 
 class DiaryStatsView(APIView):
@@ -416,6 +388,66 @@ class WaterLogView(APIView):
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
         return Response(WaterLogSerializer(obj).data)
+
+
+class WeightLogView(APIView):
+    """MG_TRAINER: GET — точки веса, POST — записать вес за дату.
+
+    `?member_id=` разбирается тем же правилом, что и в остальном дневнике:
+    свой участник всегда, чужой — только главе семьи.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)"),
+            OpenApiParameter("days", int, description="За сколько последних дней (по умолчанию 90)"),
+        ],
+        responses={200: WeightLogSerializer(many=True)},
+    )
+    def get(self, request):
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        try:
+            days = max(1, min(int(request.query_params.get("days", 90)), 730))
+        except (TypeError, ValueError):
+            days = 90
+        start = date.today() - timedelta(days=days - 1)
+        rows = WeightLog.objects.filter(member=target, date__gte=start).order_by("date")
+        return Response(WeightLogSerializer(rows, many=True).data)
+
+    @extend_schema(request=WeightLogSerializer, responses={200: WeightLogSerializer})
+    def post(self, request):
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        serializer = WeightLogSerializer(data=request.data, context={"member": target})
+        serializer.is_valid(raise_exception=True)
+        obj = serializer.save()
+        _sync_profile_weight(target)
+        return Response(WeightLogSerializer(obj).data)
+
+
+def _sync_profile_weight(member):
+    """Свежайший замер — в профиль, чтобы расчёты шли от актуального веса.
+
+    Пишем только когда запись действительно последняя по дате: правка старого
+    замера не должна откатывать профиль назад. Цели при этом не пересчитываются
+    (fill_profile_targets заполняет только пустые), поэтому коридор, выставленный
+    специалистом, остаётся на месте.
+    """
+    profile = getattr(getattr(member, "user", None), "profile", None)
+    if profile is None:
+        return
+    latest = WeightLog.objects.filter(member=member).order_by("-date").first()
+    if latest is None or profile.weight_kg == latest.weight_kg:
+        return
+    profile.weight_kg = latest.weight_kg
+    profile.save(update_fields=["weight_kg", "updated_at"])
 
 
 # DIARY_COPY_V3: copy selected entries from any day into target day as PLAN.

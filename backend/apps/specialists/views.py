@@ -1,4 +1,6 @@
-from drf_spectacular.utils import extend_schema
+from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -423,3 +425,188 @@ class MySpecialistsView(APIView):
             .order_by("-assigned_at")
         )
         return Response(MySpecialistSerializer(assignments, many=True).data)
+
+
+# ── MG_TRAINER: чтение динамики клиента ──────────────────────────────────────
+
+
+class CabinetClientSummaryView(APIView):
+    """Неделя клиента одним ответом: соблюдение, средние КБЖУ, вода, вес.
+
+    Раздел — дневник: это его данные, просто свёрнутые. Значит, повару сюда
+    хода нет (в матрице дневник ему закрыт), а тренер и диетолог читают.
+    """
+
+    permission_classes = CABINET_PERMISSIONS
+    section = Section.DIARY
+
+    @extend_schema(
+        parameters=[OpenApiParameter("days", int, description="Период в днях (по умолчанию 7, максимум 90)")],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request, family_id):
+        try:
+            days = max(1, min(int(request.query_params.get("days", 7)), 90))
+        except (TypeError, ValueError):
+            days = 7
+        from .summary import family_summary
+
+        return Response({"days": days, "members": family_summary(request.assignment.family, days=days)})
+
+
+class CabinetClientWeightView(APIView):
+    """Точки веса участника — для графика в карточке клиента."""
+
+    permission_classes = CABINET_PERMISSIONS
+    section = Section.DIARY
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("member_id", int, description="Участник семьи клиента"),
+            OpenApiParameter("days", int, description="Период в днях (по умолчанию 90)"),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request, family_id):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.diary.models import WeightLog
+
+        members = FamilyMember.objects.filter(family_id=family_id)
+        member_id = request.query_params.get("member_id")
+        if member_id:
+            member = members.filter(id=member_id).first()
+            if member is None:
+                # Участник чужой семьи — для этого специалиста его не существует.
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            members = [member]
+        try:
+            days = max(1, min(int(request.query_params.get("days", 90)), 730))
+        except (TypeError, ValueError):
+            days = 90
+        start = timezone.localdate() - timedelta(days=days - 1)
+
+        out = []
+        for m in members:
+            rows = WeightLog.objects.filter(member=m, date__gte=start).order_by("date")
+            out.append(
+                {
+                    "member_id": m.id,
+                    "member_name": getattr(m.user, "name", "") or "",
+                    "points": [
+                        {"date": str(r.date), "weight_kg": float(r.weight_kg), "note": r.note} for r in rows
+                    ],
+                }
+            )
+        return Response({"days": days, "members": out})
+
+
+class CabinetClientTargetsHistoryView(APIView):
+    """История правок коридора калорий и БЖУ.
+
+    Данные пишутся давно (ProfileTargetAudit, MG-205), но увидеть их было
+    негде. Специалисту важно не только текущее число, но и кто его поставил:
+    его собственная правка, автопересчёт или сам клиент, вернувший как было.
+    """
+
+    permission_classes = CABINET_PERMISSIONS
+    section = Section.PROFILE
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("member_id", int, description="Участник семьи клиента"),
+            OpenApiParameter("limit", int, description="Сколько записей (по умолчанию 50)"),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request, family_id):
+        from apps.users.models import ProfileTargetAudit
+
+        members = FamilyMember.objects.filter(family_id=family_id).select_related("user__profile")
+        member_id = request.query_params.get("member_id")
+        if member_id:
+            members = members.filter(id=member_id)
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", 50)), 200))
+        except (TypeError, ValueError):
+            limit = 50
+
+        out = []
+        for m in members:
+            profile = getattr(m.user, "profile", None)
+            if profile is None:
+                continue
+            rows = (
+                ProfileTargetAudit.objects.filter(profile=profile)
+                .select_related("by_user")
+                .order_by("-at")[:limit]
+            )
+            out.append(
+                {
+                    "member_id": m.id,
+                    "member_name": getattr(m.user, "name", "") or "",
+                    "changes": [
+                        {
+                            "field": r.field,
+                            "source": r.source,
+                            "by": getattr(r.by_user, "name", None),
+                            "old_value": float(r.old_value) if r.old_value is not None else None,
+                            "new_value": float(r.new_value) if r.new_value is not None else None,
+                            "reason": r.reason,
+                            "at": r.at.isoformat(),
+                        }
+                        for r in rows
+                    ],
+                }
+            )
+        return Response({"members": out})
+
+
+# ── MG_TRAINER: рекомендации на стороне клиента ──────────────────────────────
+
+
+class MyRecommendationsView(APIView):
+    """Рекомендации, выданные специалистами семье текущего пользователя.
+
+    До этого клиенту их было негде посмотреть: специалист писал в пустоту.
+    Просмотр помечает записи прочитанными — ровно то, что означает is_read.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(responses={200: RecommendationSerializer(many=True)})
+    def get(self, request):
+        family_ids = FamilyMember.objects.filter(user=request.user).values_list("family_id", flat=True)
+        recs = (
+            Recommendation.objects.filter(family_id__in=list(family_ids), is_active=True)
+            .select_related("member__user", "assignment__specialist__user")
+            .order_by("-created_at")
+        )
+        data = RecommendationSerializer(recs, many=True).data
+        # Отмечаем прочитанным после сериализации: иначе первый же ответ пришёл
+        # бы уже с is_read=True, и клиент не увидел бы, что было новым.
+        Recommendation.objects.filter(id__in=[r.id for r in recs], is_read=False).update(is_read=True)
+        return Response(data)
+
+
+class MyRecommendationDoneView(APIView):
+    """Клиент отмечает рекомендацию выполненной (и может снять отметку)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(request=None, responses={200: RecommendationSerializer})
+    def post(self, request, rec_id):
+        rec = self._get(request.user, rec_id)
+        if rec is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        done = request.data.get("done", True)
+        rec.completed_at = timezone.now() if done else None
+        rec.save(update_fields=["completed_at"])
+        return Response(RecommendationSerializer(rec).data)
+
+    @staticmethod
+    def _get(user, rec_id):
+        family_ids = FamilyMember.objects.filter(user=user).values_list("family_id", flat=True)
+        return Recommendation.objects.filter(id=rec_id, family_id__in=list(family_ids), is_active=True).first()

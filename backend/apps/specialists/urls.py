@@ -2,6 +2,11 @@ from django.urls import path
 
 from .views import (
     AssignmentAcceptView,
+    CabinetClientSummaryView,
+    CabinetClientTargetsHistoryView,
+    CabinetClientWeightView,
+    MyRecommendationDoneView,
+    MyRecommendationsView,
     AssignmentEndView,
     AssignmentInviteView,
     CabinetClientListView,
@@ -42,6 +47,29 @@ urlpatterns = [
         "cabinet/clients/<int:family_id>/menus/<int:menu_id>/items/<int:item_id>/",
         CabinetMenuItemSwapView.as_view(),
         name="cabinet-menu-item-swap",
+    ),
+    # MG_TRAINER: динамика клиента — сводка недели, вес, история целей
+    path(
+        "cabinet/clients/<int:family_id>/summary/",
+        CabinetClientSummaryView.as_view(),
+        name="cabinet-client-summary",
+    ),
+    path(
+        "cabinet/clients/<int:family_id>/weight/",
+        CabinetClientWeightView.as_view(),
+        name="cabinet-client-weight",
+    ),
+    path(
+        "cabinet/clients/<int:family_id>/targets-history/",
+        CabinetClientTargetsHistoryView.as_view(),
+        name="cabinet-client-targets-history",
+    ),
+    # MG_TRAINER: рекомендации на стороне клиента
+    path("recommendations/", MyRecommendationsView.as_view(), name="my-recommendations"),
+    path(
+        "recommendations/<int:rec_id>/done/",
+        MyRecommendationDoneView.as_view(),
+        name="my-recommendation-done",
     ),
     # Рекомендации
     path(

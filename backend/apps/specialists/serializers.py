@@ -64,6 +64,12 @@ class ClientFamilySerializer(serializers.ModelSerializer):
 
 class RecommendationSerializer(serializers.ModelSerializer):
     member_name = serializers.CharField(source="member.user.name", read_only=True, default=None)
+    # MG_TRAINER: клиенту нужно видеть, от кого рекомендация — у него может быть
+    # и тренер, и диетолог сразу.
+    specialist_name = serializers.CharField(
+        source="assignment.specialist.user.name", read_only=True, default=None
+    )
+    specialist_type = serializers.CharField(source="assignment.specialist_type", read_only=True, default=None)
 
     class Meta:
         model = Recommendation
@@ -77,6 +83,9 @@ class RecommendationSerializer(serializers.ModelSerializer):
             "end_date",
             "is_active",
             "is_read",
+            "completed_at",
+            "specialist_name",
+            "specialist_type",
             "member_name",
             "created_at",
         )

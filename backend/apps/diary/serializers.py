@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import DiaryEntry, WaterLog
+from .models import DiaryEntry, WaterLog, WeightLog
 
 
 class DiaryEntrySerializer(serializers.ModelSerializer):
@@ -110,6 +110,32 @@ class WaterLogSerializer(serializers.ModelSerializer):
         )
         obj.water_ml = validated_data["water_ml"]
         obj.save(update_fields=["water_ml"])
+        return obj
+
+
+class WeightLogSerializer(serializers.ModelSerializer):
+    """MG_TRAINER: точка замера веса. На дату — одна запись."""
+
+    class Meta:
+        model = WeightLog
+        fields = ("id", "date", "weight_kg", "note")
+        read_only_fields = ("id",)
+
+    def validate_weight_kg(self, value):
+        if value <= 0 or value > 500:
+            raise serializers.ValidationError("Вес должен быть в пределах 0–500 кг.")
+        return value
+
+    def create(self, validated_data):
+        member = self.context["member"]
+        obj, _ = WeightLog.objects.update_or_create(
+            member=member,
+            date=validated_data["date"],
+            defaults={
+                "weight_kg": validated_data["weight_kg"],
+                "note": validated_data.get("note", ""),
+            },
+        )
         return obj
 
 
