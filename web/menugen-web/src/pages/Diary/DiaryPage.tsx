@@ -14,6 +14,7 @@ import { MEAL_LABELS } from '../../types';
 import { WeightCard } from './WeightCard'; // MG_TRAINER
 import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 import { dayTotalsHint } from '../../utils/dayTotalsHint'; // DIARY_TOTALS_V1
+import { allEaten, toMark } from '../../utils/markEaten'; // DIARY_EATALL_V1
 import type { DiaryEntry, DiaryDayStats, FamilyMember, MealType } from '../../types';
 
 const today = todayIso; // ISO_DATE_V1: локальный календарь, а не UTC
@@ -64,6 +65,7 @@ export const DiaryPage: React.FC = () => {
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const [stats, setStats] = useState<DiaryDayStats | null>(null);
   const [waterMl, setWaterMl] = useState(0);
+  const [bulkBusy, setBulkBusy] = useState(false); // DIARY_EATALL_V1
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -120,6 +122,28 @@ export const DiaryPage: React.FC = () => {
       // Revert on failure.
       setEntries((prev) => prev.map((x) => (x.id === e.id ? { ...x, is_eaten: !next } : x)));
       alert(getErrorMessage(err));
+    }
+  };
+
+  // DIARY_EATALL_V1: отметить съеденным всё сразу — приём или весь день.
+  // Отмечать по одному семь раз подряд человек не станет, и факт останется
+  // пустым при съеденном плане.
+  const markAll = async (items: DiaryEntry[]) => {
+    const { ids, eaten } = toMark(items);
+    if (!ids.length) return;
+    const before = entries;
+    setEntries((prev) => prev.map((x) => (ids.includes(x.id) ? { ...x, is_eaten: eaten } : x)));
+    setBulkBusy(true);
+    try {
+      // Пачкой, а не по одному: иначе на семи приёмах экран будет дёргаться.
+      await Promise.all(ids.map((id) => diaryApi.patch(id, { is_eaten: eaten })));
+      const s = await diaryApi.stats(date, date, memberId).catch(() => [] as DiaryDayStats[]);
+      setStats(s[0] ?? { date, planned: emptyBucket, actual: emptyBucket, total: emptyBucket });
+    } catch (err) {
+      setEntries(before);
+      alert(getErrorMessage(err));
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -209,6 +233,12 @@ export const DiaryPage: React.FC = () => {
           <Button variant="ghost" onClick={() => setShowPrint(true)}>🖨 Печать</Button>
           <Button variant="ghost" onClick={() => setShowCopy(true)}>📋 Копировать</Button>
           <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Заполнить из меню</Button>
+          {/* DIARY_EATALL_V1: весь день одной кнопкой */}
+          {toMark(entries).ids.length > 0 && (
+            <Button variant="ghost" disabled={bulkBusy} onClick={() => markAll(entries)}>
+              {allEaten(entries) ? '↩️ Снять отметки' : '✅ Съедено всё'}
+            </Button>
+          )}
           <Button onClick={() => setShowAdd(true)}>＋ Добавить</Button>
         </div>
       </div>
@@ -306,7 +336,26 @@ export const DiaryPage: React.FC = () => {
                   {MEAL_LABELS[g.mt] ?? g.mt}
                   <span className="text-gray-400 font-normal"> · {g.items.length}</span>
                 </span>
-                <span className="text-sm text-gray-500">{mealKcal(g.items)} ккал</span>
+                <span className="flex items-center gap-3">
+                  {/* DIARY_EATALL_V1: отметить весь приём. Внутри summary, поэтому
+                      гасим всплытие — иначе клик схлопывает раскрытый список. */}
+                  {toMark(g.items).ids.length > 0 && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); markAll(g.items); }}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter' || ev.key === ' ') {
+                          ev.preventDefault(); ev.stopPropagation(); markAll(g.items);
+                        }
+                      }}
+                      className="text-xs text-avocado hover:underline cursor-pointer"
+                    >
+                      {allEaten(g.items) ? 'снять' : 'съедено всё'}
+                    </span>
+                  )}
+                  <span className="text-sm text-gray-500">{mealKcal(g.items)} ккал</span>
+                </span>
               </summary>
               <div className="px-3 pb-3 space-y-2">
                 {g.items.map((e) => <Entry key={e.id} e={e} canCheck={isPlan(e)} />)}
