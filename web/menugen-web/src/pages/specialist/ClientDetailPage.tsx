@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../hooks/useAppDispatch";
+import { ClientAnalytics } from "./ClientAnalytics"; // MG_SPECUI
 import {
   endAssignment,
   fetchClientMenus,
@@ -88,6 +89,9 @@ export const ClientDetailPage: React.FC = () => {
           </div>
         </section>
       )}
+
+      {/* MG_SPECUI: разбор клиента — неделя, рацион, исключения, вес, цели */}
+      <ClientAnalytics familyId={fid} />
 
       {/* Меню */}
       <section>

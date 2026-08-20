@@ -2,6 +2,8 @@
 // Список созданных меню + встроенный редактор одной структуры
 // (меню → дни → приёмы → блюда).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { applyConstructedMenu } from '../../api/specialistAnalytics'; // MG_MENUAPPLY
+import { apiErrorMessage } from '../../utils/apiError';
 import { constructorApi, type ConstructedMenuPayload } from '../../api/constructor';
 import { recipesApi } from '../../api/recipes';
 import { fridgeApi } from '../../api/fridge';
@@ -430,6 +432,9 @@ const MenuEditor: React.FC<{
 }> = ({ draft: initial, clients, onClose, onSaved }) => {
   const [draft, setDraft] = useState<DraftMenu>(initial);
   const [saving, setSaving] = useState(false);
+  // MG_MENUAPPLY: дата, с которой меню встанет у клиента, и результат выдачи.
+  const [applyDate, setApplyDate] = useState(new Date().toISOString().slice(0, 10));
+  const [applied, setApplied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const set = (patch: Partial<DraftMenu>) => setDraft((d) => ({ ...d, ...patch }));
@@ -449,18 +454,23 @@ const MenuEditor: React.FC<{
     setDraft((d) => ({ ...d, days }));
   };
 
-  const save = async (status: 'draft' | 'published') => {
+  // Возвращает id сохранённого меню: он нужен, чтобы сразу выдать меню клиенту.
+  const persist = async (status: 'draft' | 'published'): Promise<number | null> => {
     if (!draft.name.trim()) {
       setError('Укажите имя меню');
-      return;
+      return null;
     }
     setSaving(true);
     setError(null);
     const payload = toPayload({ ...draft, status });
     try {
-      if (draft.id) await constructorApi.update(draft.id, payload);
-      else await constructorApi.create(payload);
-      onSaved();
+      if (draft.id) {
+        await constructorApi.update(draft.id, payload);
+        return draft.id;
+      }
+      const { data } = await constructorApi.create(payload);
+      setDraft((d) => ({ ...d, id: data.id }));
+      return data.id;
     } catch (e: unknown) {
       const err = e as { response?: { data?: unknown } };
       setError(
@@ -468,6 +478,33 @@ const MenuEditor: React.FC<{
           ? err.response.data
           : 'Не удалось сохранить меню'
       );
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const save = async (status: 'draft' | 'published') => {
+    const id = await persist(status);
+    if (id !== null) onSaved();
+  };
+
+  // MG_MENUAPPLY: составленное меню разворачивается в меню семьи — только так
+  // клиент его увидит: конструкторские меню видны лишь их автору.
+  const handOver = async () => {
+    if (!draft.client_family) {
+      setError('Выберите клиента, которому выдать меню');
+      return;
+    }
+    const id = await persist('published');
+    if (id === null) return;
+    setSaving(true);
+    try {
+      const { data } = await applyConstructedMenu(id, applyDate);
+      setApplied(`Выдано клиенту: ${data.items} позиций, с ${data.start_date}`);
+      setError(null);
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e) ?? 'Не удалось выдать меню клиенту');
     } finally {
       setSaving(false);
     }
@@ -576,7 +613,26 @@ const MenuEditor: React.FC<{
         >
           Опубликовать
         </button>
+        {/* MG_MENUAPPLY: выдача клиенту — отдельное действие, а не публикация:
+            публикация лишь помечает меню готовым, увидеть его клиент не мог. */}
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            type="date"
+            value={applyDate}
+            onChange={(e) => setApplyDate(e.target.value)}
+            className="rounded-lg border border-border px-2 py-1.5 text-sm"
+          />
+          <button
+            onClick={handOver}
+            disabled={saving || !draft.client_family}
+            title={draft.client_family ? '' : 'Сначала выберите клиента'}
+            className="px-4 py-2 rounded-lg bg-avocado text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+          >
+            Выдать клиенту
+          </button>
+        </div>
       </div>
+      {applied && <p className="text-sm text-avocado mt-2">{applied}</p>}
     </div>
   );
 };

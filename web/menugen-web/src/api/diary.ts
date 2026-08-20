@@ -4,6 +4,14 @@ import type {
   DiaryEntry, DiaryDayStats, DiaryWaterLog, MealType,
 } from '../types';
 
+// MG_TRAINER: точка замера веса.
+export interface DiaryWeightPoint {
+  id: number;
+  date: string;
+  weight_kg: string;
+  note: string;
+}
+
 // DIARY_MULTIDAY: одиночная дата (date) ИЛИ диапазон (from/to). page_size — чтобы
 // диапазон уместился в одну страницу (бэкенд: PageNumberPagination, default 20).
 export interface DiaryListParams {
@@ -63,6 +71,18 @@ export const diaryApi = {
   },
   setWater: (date: string, water_ml: number) =>
     client.post<DiaryWaterLog>('/diary/water/', { date, water_ml }),
+
+  // MG_TRAINER: вес по датам — история, а не одно число в профиле.
+  getWeight: async (days = 90, memberId?: number): Promise<DiaryWeightPoint[]> => {
+    const params: Record<string, number> = { days };
+    if (memberId) params.member_id = memberId;
+    const { data } = await client.get<DiaryWeightPoint[]>('/diary/weight/', { params });
+    return Array.isArray(data) ? data : [];
+  },
+  setWeight: (date: string, weight_kg: string, note = '', memberId?: number) =>
+    client.post<DiaryWeightPoint>('/diary/weight/', { date, weight_kg, note },
+      { params: memberId ? { member_id: memberId } : undefined },
+    ),
 
   // DIARY_COPY_V3: copy selected entries into target day as plan.
   copy: (entryIds: number[], targetDate: string, memberId?: number) =>

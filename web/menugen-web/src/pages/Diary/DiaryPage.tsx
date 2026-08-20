@@ -11,6 +11,7 @@ import { CopyFromDayModal } from '../../components/diary/CopyFromDayModal'; // D
 import { PrintDiaryModal } from '../../components/diary/PrintDiaryModal'; // DIARY_HIER_PRINT_V5
 import { getErrorMessage } from '../../utils/api';
 import { MEAL_LABELS } from '../../types';
+import { WeightCard } from './WeightCard'; // MG_TRAINER
 import type { DiaryEntry, DiaryDayStats, FamilyMember, MealType } from '../../types';
 
 const today = () => new Date().toISOString().split('T')[0];
@@ -266,6 +267,9 @@ export const DiaryPage: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      {/* MG_TRAINER: вес по датам — без него у тренера пустой график */}
+      <WeightCard date={date} memberId={memberId} />
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
 

@@ -21,6 +21,7 @@ import {
   type AccessSection,
   type SpecialistPermissions,
 } from '../../constants/specialist';
+import { MyRecommendations } from './MyRecommendations'; // MG_TRAINER
 
 interface MySpecialist {
   id: number;
@@ -114,6 +115,9 @@ export const MySpecialistsPage: React.FC = () => {
           Кто имеет доступ к данным вашей семьи и в каком объёме.
         </p>
       </div>
+
+      {/* MG_TRAINER: что назначили специалисты — и отметка «сделал» */}
+      <MyRecommendations />
 
       <Card>
         {rows.length === 0 ? (
