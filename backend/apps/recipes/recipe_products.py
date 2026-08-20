@@ -81,11 +81,20 @@ def _allowed_categories():
 
 
 def _product_index():
-    """norm(name) -> (product_id, category_slug, category_id)."""
+    """norm(name) -> (product_id, category_slug, category_id).
+
+    MG_PRODFAMILY: только общий каталог. Ингредиент рецепта, привязанный к
+    продукту отдельной семьи, утащил бы её запись во все чужие меню и списки.
+    """
     from apps.fridge.models import Product
+    from apps.fridge.visibility import catalog_q
 
     idx = {}
-    for p in Product.objects.select_related("category_fk").only("id", "name", "category_fk__slug", "category_fk__id"):
+    for p in (
+        Product.objects.filter(catalog_q())
+        .select_related("category_fk")
+        .only("id", "name", "category_fk__slug", "category_fk__id")
+    ):
         n = _norm(p.name)
         if n and n not in idx:
             cat = p.category_fk
@@ -94,12 +103,16 @@ def _product_index():
 
 
 def _product_names():
-    """Distinct rubricator product display names (for AI resolution)."""
+    """Distinct rubricator product display names (for AI resolution).
+
+    MG_PRODFAMILY: каталог, без продуктов отдельных семей.
+    """
     from apps.fridge.models import Product
+    from apps.fridge.visibility import catalog_q
 
     seen = set()
     out = []
-    for p in Product.objects.only("id", "name").order_by("name"):
+    for p in Product.objects.filter(catalog_q()).only("id", "name").order_by("name"):
         nm = (p.name or "").strip()
         n = _norm(nm)
         if nm and n not in seen:

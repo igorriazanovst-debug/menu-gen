@@ -37,6 +37,8 @@ class ConstructedMealItemSerializer(serializers.ModelSerializer):
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source="product", write_only=True, required=False, allow_null=True
     )
+    # MG_PRODFAMILY: см. validate_product_id — queryset здесь общий (он строится
+    # один раз на класс), а видимость проверяется по текущему пользователю.
     # КБЖУ продукта-блюда на заданную порцию (для рецепта — null, берётся из рецепта).
     nutrition = serializers.SerializerMethodField()
 
@@ -48,6 +50,21 @@ class ConstructedMealItemSerializer(serializers.ModelSerializer):
         if obj.product_id and obj.grams:
             return obj.product.nutrition_for_grams(obj.grams)
         return None
+
+    def validate_product_id(self, product):
+        """MG_PRODFAMILY: продукт — из каталога или из своей семьи.
+
+        Специалист строит меню из общего справочника; продукт чужой семьи
+        по произвольному id сюда попасть не должен.
+        """
+        if product is None:
+            return product
+        from apps.fridge.visibility import visible_products_q
+
+        user = self.context["request"].user
+        if not Product.objects.filter(visible_products_q(user)).filter(id=product.id).exists():
+            raise serializers.ValidationError("Продукт недоступен.")
+        return product
 
     def validate(self, attrs):
         # Ровно один источник: рецепт ИЛИ продукт.

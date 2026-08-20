@@ -26,11 +26,21 @@ def normalize_alias(name):
 
 
 def product_ref_index():
-    """norm/alias -> {id, name, slug, cat_id}. Includes Product names + ProductAlias."""
+    """norm/alias -> {id, name, slug, cat_id}. Includes Product names + ProductAlias.
+
+    MG_PRODFAMILY: индекс строится по общему каталогу. Им пользуются рецепты и
+    импорт — то, что общее для всех; продукты отдельных семей туда попадать не
+    должны, иначе ингредиент рецепта привяжется к чужой «Маминой настойке».
+    """
     from .models import Product, ProductAlias
+    from .visibility import catalog_q
 
     idx = {}
-    for p in Product.objects.select_related("category_fk").only("id", "name", "category_fk__slug", "category_fk__id"):
+    for p in (
+        Product.objects.filter(catalog_q())
+        .select_related("category_fk")
+        .only("id", "name", "category_fk__slug", "category_fk__id")
+    ):
         n = normalize_alias(p.name)
         if n and n not in idx:
             cat = p.category_fk
@@ -52,17 +62,29 @@ def resolve_ref(name, index):
     return index.get(n) if n else None
 
 
-def resolve_product(name):
-    """Return canonical Product for a raw name (alias → else normalized name)."""
+def resolve_product(name, family=None):
+    """Return canonical Product for a raw name (alias → else normalized name).
+
+    MG_PRODFAMILY: `family` задаёт область поиска — каталог плюс продукты этой
+    семьи. Без неё ищем только по каталогу: синоним не должен приводить к
+    продукту чужой семьи.
+    """
     from .models import Product, ProductAlias
+    from .visibility import visible_products_q
 
     n = normalize_alias(name)
     if not n:
         return None
-    a = ProductAlias.objects.select_related("product").filter(alias_norm=n).first()
+    scope = visible_products_q(family=family)
+    a = (
+        ProductAlias.objects.select_related("product")
+        .filter(alias_norm=n)
+        .filter(product__in=Product.objects.filter(scope))
+        .first()
+    )
     if a is not None:
         return a.product
-    for p in Product.objects.only("id", "name"):
+    for p in Product.objects.filter(scope).only("id", "name"):
         if normalize_alias(p.name) == n:
             return p
     return None

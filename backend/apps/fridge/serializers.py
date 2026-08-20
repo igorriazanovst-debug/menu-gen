@@ -21,7 +21,7 @@ class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category_fk.name_ru", read_only=True, default=None)
     category_icon = serializers.CharField(source="category_fk.icon", read_only=True, default=None)
     category_color = serializers.CharField(source="category_fk.color", read_only=True, default=None)
-    # MG_PRODOWN: продукт пользователя (owner==текущий) vs системный (owner is null).
+    # MG_PRODFAMILY: продукт своей семьи (её можно править) vs каталожный.
     is_own = serializers.SerializerMethodField()
 
     class Meta:
@@ -46,7 +46,12 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def get_is_own(self, obj) -> bool:
         req = self.context.get("request")
-        return bool(req and obj.owner_id and req.user.is_authenticated and obj.owner_id == req.user.id)
+        if not req or not obj.owner_family_id or not req.user.is_authenticated:
+            return False
+        from .visibility import family_of
+
+        family = family_of(req.user)
+        return bool(family and obj.owner_family_id == family.id)
 
 
 class UserProductWriteSerializer(serializers.ModelSerializer):
@@ -158,25 +163,38 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         nutrition = nutrition if isinstance(nutrition, dict) else {}
         has_label_kbju = bool(nutrition) or calories is not None
 
+        # MG_PRODFAMILY: искать — только среди каталога и продуктов своей семьи.
+        family = self._family()
+
         # 1) reuse an existing product (alias-aware). MG_PRODALIAS
         from .aliases import resolve_product
+        from .visibility import visible_products_q
 
-        existing = resolve_product(name) or Product.objects.filter(name__iexact=name).order_by("id").first()
+        existing = resolve_product(name, family=family) or (
+            Product.objects.filter(visible_products_q(family=family))
+            .filter(name__iexact=name)
+            .order_by("id")
+            .first()
+        )
         if existing is not None:
-            updates = []
-            # MG_T07: fill only; never override a shared Product category.
-            if cat is not None and existing.category_fk_id is None:
-                existing.category_fk = cat
-                updates.append("category_fk")
-            # fill KBJU only if product lacks it and we have it from the label
-            if not existing.nutrition and nutrition:
-                existing.nutrition = nutrition
-                updates.append("nutrition")
-            if existing.calories_per_100g is None and calories is not None:
-                existing.calories_per_100g = calories
-                updates.append("calories_per_100g")
-            if updates:
-                existing.save(update_fields=updates)
+            # MG_PRODFAMILY: дописывать можно только в свой продукт. Каталог
+            # общий и неизменный — даже заполнение пустого поля меняет то, что
+            # видят все остальные семьи.
+            if existing.owner_family_id and family and existing.owner_family_id == family.id:
+                updates = []
+                # MG_T07: fill only; never override a shared Product category.
+                if cat is not None and existing.category_fk_id is None:
+                    existing.category_fk = cat
+                    updates.append("category_fk")
+                # fill KBJU only if product lacks it and we have it from the label
+                if not existing.nutrition and nutrition:
+                    existing.nutrition = nutrition
+                    updates.append("nutrition")
+                if existing.calories_per_100g is None and calories is not None:
+                    existing.calories_per_100g = calories
+                    updates.append("calories_per_100g")
+                if updates:
+                    existing.save(update_fields=updates)
             return existing
 
         # 2) nothing to attach? skip product creation
@@ -188,7 +206,18 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
             category_fk=cat,
             calories_per_100g=calories,
             nutrition=nutrition,
+            owner_family=family,
         )
+
+    def _family(self):
+        """Семья, от имени которой идёт запись. None — только у сирот."""
+        family = self.context.get("family")
+        if family is not None:
+            return family
+        from .visibility import family_of
+
+        request = self.context.get("request")
+        return family_of(request.user) if request else None
 
     @staticmethod
     def _cat_from_slug(category_slug):  # MG_T07

@@ -226,7 +226,7 @@ const SwapInline: React.FC<SwapInlineProps> = ({ itemId, menuId, foodGroup, curr
                   <li key={p.id} onClick={() => { setPickedProduct(p); setGrams('100'); }}
                       className="px-2 py-1.5 text-xs cursor-pointer hover:bg-rice flex items-center gap-2">
                     <span className="flex-1">{p.name}</span>
-                    {p.is_own && <span className="text-[10px] text-avocado">мой</span>}
+                    {p.is_own && <span className="text-[10px] text-avocado">наш</span>}
                     {p.calories_per_100g != null && <span className="text-[10px] text-gray-400">{p.calories_per_100g} ккал/100г</span>}
                   </li>
                 ))}

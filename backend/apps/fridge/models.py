@@ -47,16 +47,30 @@ class Product(models.Model):
     barcode = models.CharField(max_length=64, null=True, blank=True, unique=True)
     image_url = models.URLField(max_length=1024, null=True, blank=True)
     is_seed = models.BooleanField(default=False, help_text="True for built-in basic products")
-    # MG_PRODOWN: владелец продукта. NULL → «системный» продукт (каталог,
-    # управляется админами, виден всем). Задан → «пользовательский» продукт,
-    # виден только создателю. См. фильтрацию в views (product list/search).
+    # MG_PRODOWN: кто добавил продукт. На видимость больше не влияет — только
+    # авторство (видно в админке, помогает разобраться, откуда взялась запись).
     owner = models.ForeignKey(
         "users.User",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="products",
-        help_text="NULL = системный продукт (админский каталог); иначе — пользовательский.",
+        help_text="Кто добавил. Видимость определяет «Семья-владелец».",
+    )
+    # MG_PRODFAMILY: чей это продукт. NULL → общий каталог: он один на всех,
+    # правится только админами и не растёт от пользовательского ввода. Задана
+    # семья → продукт этой семьи, виден только её участникам.
+    #
+    # Владелец именно семья, а не пользователь: список покупок ведут вдвоём, и
+    # товар, добавленный одним, должен быть виден второму. Фильтр — один на все
+    # точки входа, см. apps/fridge/visibility.py.
+    owner_family = models.ForeignKey(
+        Family,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="products",
+        help_text="NULL = общий каталог (виден всем); иначе — продукт этой семьи.",
     )
     # MG_T04C: provenance — manual catalog vs auto-created from recipe ingredients.
     source = models.CharField(max_length=16, default="manual", help_text="manual|auto|import")
@@ -75,6 +89,7 @@ class Product(models.Model):
             models.Index(fields=["category_fk"]),
             models.Index(fields=["is_seed"]),
             models.Index(fields=["owner"]),  # MG_PRODOWN
+            models.Index(fields=["owner_family"]),  # MG_PRODFAMILY
         ]
 
     def __str__(self):

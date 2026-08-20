@@ -517,14 +517,11 @@ class MenuItemSwapView(APIView):
 
         # MG_PRODDISH: замена на ПРОДУКТ (с порцией в граммах).
         if data.get("product_id"):
-            from django.db.models import Q
-
             from apps.fridge.models import Product
+            from apps.fridge.visibility import visible_products_q  # MG_PRODFAMILY
 
             try:
-                product = Product.objects.filter(Q(owner__isnull=True) | Q(owner=request.user)).get(
-                    id=data["product_id"]
-                )
+                product = Product.objects.filter(visible_products_q(request.user)).get(id=data["product_id"])
             except Product.DoesNotExist:
                 return Response({"detail": "Продукт не найден."}, status=status.HTTP_404_NOT_FOUND)
 

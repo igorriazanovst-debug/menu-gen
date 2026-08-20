@@ -25,6 +25,7 @@ from .serializers import (
     UserProductWriteSerializer,
 )
 from .services import fetch_product_from_off
+from .visibility import visible_products_q
 
 
 def _get_family(user):
@@ -32,10 +33,10 @@ def _get_family(user):
     return membership.family if membership else None
 
 
-# MG_PRODOWN: продукты, видимые пользователю — системные (owner is null,
-# каталог) + собственные. Чужие пользовательские продукты скрыты.
+# MG_PRODFAMILY: видимость — общий каталог + продукты своей семьи. Правило
+# одно на все входы и лежит в visibility.py; здесь только псевдоним.
 def _visible_products_q(user):
-    return Q(owner__isnull=True) | Q(owner=user)
+    return visible_products_q(user)
 
 
 class FridgeListCreateView(generics.ListCreateAPIView):
@@ -274,11 +275,19 @@ class ProductListView(generics.ListCreateAPIView):
         if self.request.query_params.get("seed") in ("1", "true"):
             qs = qs.filter(is_seed=True)
         if self.request.query_params.get("own") in ("1", "true"):
-            qs = qs.filter(owner=self.request.user)
+            # MG_PRODFAMILY: «свои» — это продукты семьи, а не лично мои.
+            qs = qs.filter(owner_family=_get_family(self.request.user))
         return qs.order_by("category_fk__sort_order", "name")[:500]
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user, source="manual", is_seed=False)
+        # MG_PRODFAMILY: продукт заводится семейным. Каталог (owner_family=NULL)
+        # пополняется только через админку — иначе он растёт от каждого ввода.
+        serializer.save(
+            owner=self.request.user,
+            owner_family=_get_family(self.request.user),
+            source="manual",
+            is_seed=False,
+        )
 
     def create(self, request, *args, **kwargs):
         # Отдаём созданный продукт полной read-схемой (с category_*/is_own).
@@ -302,11 +311,14 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Product.objects.select_related("category_fk").filter(_visible_products_q(self.request.user))
 
     def _guard_own(self):
+        # MG_PRODFAMILY: править может вся семья — список ведут вдвоём, и
+        # исправить опечатку должен мочь не только тот, кто её сделал.
         obj = self.get_object()
-        if obj.owner_id != self.request.user.id:
+        family = _get_family(self.request.user)
+        if obj.owner_family_id is None or family is None or obj.owner_family_id != family.id:
             from rest_framework.exceptions import PermissionDenied
 
-            raise PermissionDenied("Системный продукт нельзя изменять или удалять.")
+            raise PermissionDenied("Продукт из общего каталога нельзя изменять или удалять.")
         return obj
 
     def update(self, request, *args, **kwargs):

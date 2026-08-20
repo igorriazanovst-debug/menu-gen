@@ -314,18 +314,27 @@ def parse_text_with_ai(text: str):
 
 
 # ── MG_RUBRIC002: product rubricator search + AI classify ───────────────────
-def search_rubric(query: str, limit: int = 20):
+def search_rubric(query: str, limit: int = 20, family=None):
     """Search the Product rubricator by name (icontains), ranked by popularity.
     Returns list of dicts {product_id, name, unit, category_slug, category_name,
-    subcategory}. Empty query -> []."""
+    subcategory}. Empty query -> [].
+
+    MG_PRODFAMILY: область поиска — общий каталог плюс продукты своей семьи.
+    Без `family` (сироты, служебные вызовы) остаётся только каталог.
+    """
     from apps.fridge.models import Product
+    from apps.fridge.visibility import visible_products_q
 
     q = (query or "").strip()
     if len(q) < 1:
         return []
 
     pop_rank = {"часто": 0, "средне": 1, "редко": 2, "": 3}
-    qs = Product.objects.select_related("category_fk").filter(name__icontains=q)[:200]
+    qs = (
+        Product.objects.filter(visible_products_q(family=family))
+        .select_related("category_fk")
+        .filter(name__icontains=q)[:200]
+    )
     rows = []
     for p in qs:
         cat = p.category_fk
@@ -348,7 +357,7 @@ def search_rubric(query: str, limit: int = 20):
     # MG_PRODALIAS: surface alias-resolved canonical product if missing.
     from apps.fridge.aliases import resolve_product
 
-    rp = resolve_product(q)
+    rp = resolve_product(q, family=family)
     if rp is not None and all(r["product_id"] != rp.id for r in rows):
         rcat = rp.category_fk
         rows.insert(
@@ -381,16 +390,31 @@ def classify_new_product(name: str):
     }
 
 
-def ensure_product(name: str, category_slug: str = "", unit: str = ""):
+def ensure_product(name: str, category_slug: str = "", unit: str = "", family=None):
     """Find a Product by name; if absent, create it under the given category
-    (or AI-classified if slug missing). Returns the Product instance."""
+    (or AI-classified if slug missing). Returns the Product instance.
+
+    MG_PRODFAMILY: созданный здесь продукт принадлежит семье, а не каталогу.
+    Раньше он создавался без владельца — то есть каждый товар, вписанный в
+    список покупок руками, попадал в общий каталог и находился поиском у всех
+    остальных («прокладки Белла ночные» в справочнике продуктов). Поиск
+    совпадений — тоже в пределах каталога и своей семьи, иначе позиция чужого
+    списка привязалась бы к продукту другой семьи вместе с её категорией,
+    единицей и последней ценой.
+    """
     from apps.fridge.models import Product, ProductCategory
     from apps.fridge.services import gpt_pick_category_slug
+    from apps.fridge.visibility import visible_products_q
 
     name = (name or "").strip()
     if not name:
         return None
-    existing = Product.objects.filter(name__iexact=name).select_related("category_fk").first()
+    existing = (
+        Product.objects.filter(visible_products_q(family=family))
+        .filter(name__iexact=name)
+        .select_related("category_fk")
+        .first()
+    )
     if existing:
         return existing
 
@@ -407,15 +431,18 @@ def ensure_product(name: str, category_slug: str = "", unit: str = ""):
         default_unit=unit or "",
         is_seed=False,
         nutrition={},
+        owner_family=family,
     )
 
 
 # MG_RUBRICBROWSE: browse rubricator by category (same row shape as search_rubric)
-def browse_rubric(category_slug: str = "", limit: int = 500):
+def browse_rubric(category_slug: str = "", limit: int = 500, family=None):
+    """MG_PRODFAMILY: та же область видимости, что и у поиска."""
     from apps.fridge.models import Product
+    from apps.fridge.visibility import visible_products_q
 
     pop_rank = {"часто": 0, "средне": 1, "редко": 2, "": 3}
-    qs = Product.objects.select_related("category_fk")
+    qs = Product.objects.filter(visible_products_q(family=family)).select_related("category_fk")
     slug = (category_slug or "").strip()
     if slug:
         qs = qs.filter(category_fk__slug=slug)

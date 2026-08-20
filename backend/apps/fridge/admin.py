@@ -39,19 +39,19 @@ class HasImageFilter(admin.SimpleListFilter):
 
 
 class ProductKindFilter(admin.SimpleListFilter):
-    """Системный (owner is null) vs пользовательский продукт."""
+    """MG_PRODFAMILY: общий каталог (owner_family is null) vs продукт семьи."""
 
     title = "Тип продукта"
     parameter_name = "kind"
 
     def lookups(self, request, model_admin):
-        return (("system", "Системные"), ("user", "Пользовательские"))
+        return (("system", "Каталог (общие)"), ("user", "Продукты семей"))
 
     def queryset(self, request, queryset):
         if self.value() == "system":
-            return queryset.filter(owner__isnull=True)
+            return queryset.filter(owner_family__isnull=True)
         if self.value() == "user":
-            return queryset.filter(owner__isnull=False)
+            return queryset.filter(owner_family__isnull=False)
         return queryset
 
 
@@ -74,9 +74,9 @@ class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
     )
     list_editable = ("image_url",)
     list_display_links = ("name",)
-    search_fields = ("name", "barcode", "owner__email", "owner__name")
+    search_fields = ("name", "barcode", "owner__email", "owner__name", "owner_family__name")
     list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "category")
-    raw_id_fields = ("owner", "category_fk")
+    raw_id_fields = ("owner", "owner_family", "category_fk")
     readonly_fields = ("image_preview",)
     actions = ("fetch_images_fill", "fetch_images_overwrite", "clear_images")
 
@@ -144,7 +144,10 @@ class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
 
     @admin.display(description="Тип")
     def kind(self, obj):
-        return "системный" if obj.owner_id is None else f"польз. #{obj.owner_id}"
+        # MG_PRODFAMILY: видимость определяет семья-владелец, не автор.
+        if obj.owner_family_id is None:
+            return "каталог"
+        return f"семья #{obj.owner_family_id}"
 
     @admin.display(boolean=True, description="Фото")
     def has_image(self, obj):

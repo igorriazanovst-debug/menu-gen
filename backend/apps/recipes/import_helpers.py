@@ -251,10 +251,11 @@ def compute_kbju_100g(ingredients, kcal_anchor, use_ai=True):
             continue
         name = ing["name"]
         cals100, nut100 = None, {}
-        p = (
-            Product.objects.filter(name__iexact=name).first()
-            or Product.objects.filter(name__icontains=name[:20]).first()
-        )
+        # MG_PRODFAMILY: КБЖУ берём из каталога, не из продуктов семей.
+        from apps.fridge.visibility import catalog_q
+
+        catalog = Product.objects.filter(catalog_q())
+        p = catalog.filter(name__iexact=name).first() or catalog.filter(name__icontains=name[:20]).first()
         if p and p.calories_per_100g is not None:
             cals100 = float(p.calories_per_100g)
             nut100 = dict(p.nutrition or {})

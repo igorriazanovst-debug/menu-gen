@@ -257,14 +257,26 @@ class ShoppingItemsView(APIView):
         product_id = data.pop("product_id", None)
         from apps.fridge.models import Product, ProductCategory
 
+        # MG_PRODFAMILY: владелец — семья списка, а не того, кто добавляет.
+        # Список могли открыть соседу: товар, который он вписал, принадлежит
+        # хозяевам списка, и уходить в его собственный справочник не должен.
+        from apps.fridge.visibility import visible_products_q
+
+        list_family = sl.family
         product = None
         if product_id:
-            product = Product.objects.select_related("category_fk").filter(id=product_id).first()
+            product = (
+                Product.objects.filter(visible_products_q(family=list_family))
+                .select_related("category_fk")
+                .filter(id=product_id)
+                .first()
+            )
         if product is None:
             product = ensure_product(
                 data.get("name", ""),
                 category_slug=category_slug,
                 unit=data.get("unit", ""),
+                family=list_family,
             )
         cat = product.category_fk if product else None
         if cat is None and category_slug:
@@ -393,7 +405,10 @@ class ShoppingItemToggleView(APIView):
             if item.price_per_unit is not None and item.product_id:
                 from apps.fridge.models import Product
 
-                Product.objects.filter(id=item.product_id).update(
+                # MG_PRODFAMILY: цену пишем только в свой продукт. На каталожном
+                # она была бы общей: одна семья отметила покупку — цена
+                # подставляется всем остальным.
+                Product.objects.filter(id=item.product_id, owner_family__isnull=False).update(
                     last_price=item.price_per_unit, last_price_at=timezone.now()
                 )
         else:
@@ -623,7 +638,8 @@ class RubricSearchView(APIView):
 
     def get(self, request):
         q = request.query_params.get("q", "")
-        results = search_rubric(q)
+        # MG_PRODFAMILY: каталог + продукты своей семьи, чужие не показываем.
+        results = search_rubric(q, family=get_user_family(request.user))
         payload = {"query": q, "results": results, "suggestion": None}
         if not results and request.query_params.get("classify") in ("1", "true") and q.strip():
             payload["suggestion"] = classify_new_product(q.strip())
@@ -693,4 +709,5 @@ class RubricBrowseView(APIView):
         from .services import browse_rubric
 
         slug = request.query_params.get("category", "")
-        return Response({"category": slug, "results": browse_rubric(slug)})
+        family = get_user_family(request.user)  # MG_PRODFAMILY
+        return Response({"category": slug, "results": browse_rubric(slug, family=family)})

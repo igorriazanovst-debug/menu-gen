@@ -265,7 +265,7 @@ const DishSearch: React.FC<{ onAdd: (it: DraftItem) => void }> = ({ onAdd }) => 
                 >
                   {p.image_url && <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" />}
                   <span className="text-chocolate flex-1">{p.name}</span>
-                  {p.is_own && <span className="text-[10px] text-avocado">мой</span>}
+                  {p.is_own && <span className="text-[10px] text-avocado">наш</span>}
                   {p.calories_per_100g != null && (
                     <span className="text-[10px] text-gray-400">{p.calories_per_100g} ккал/100г</span>
                   )}

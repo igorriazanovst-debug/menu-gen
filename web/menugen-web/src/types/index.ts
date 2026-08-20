@@ -315,7 +315,7 @@ export interface Product {
   barcode?: string | null;
   image_url?: string | null;
   is_seed?: boolean;
-  is_own?: boolean;   // MG_PRODOWN: продукт создан текущим пользователем
+  is_own?: boolean;   // MG_PRODFAMILY: продукт нашей семьи (не из общего каталога)
 }
 export interface FridgeItem {
   id: number;
