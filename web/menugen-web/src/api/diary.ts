@@ -4,6 +4,8 @@ import type {
   DiaryEntry, DiaryDayStats, DiaryWaterLog, MealType,
 } from '../types';
 
+import type { ImportResponse } from '../utils/importOutcome';
+
 // MG_TRAINER: точка замера веса.
 export interface DiaryWeightPoint {
   id: number;
@@ -62,7 +64,8 @@ export const diaryApi = {
     const params: Record<string, string | number> = { menu_id: menuId, date };
     if (memberId) params.member_id = memberId;
     const body = itemIds && itemIds.length ? { item_ids: itemIds } : null;
-    return client.post('/diary/import-from-menu/', body, { params });
+    // FILL_FROM_MENU_V5: ответ типизирован — по нему видно, что создалось и куда легло.
+    return client.post<ImportResponse>('/diary/import-from-menu/', body, { params });
   },
 
   getWater: async (date: string): Promise<DiaryWaterLog> => {

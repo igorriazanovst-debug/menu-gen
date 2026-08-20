@@ -6,6 +6,7 @@ import { Spinner } from '../ui/Spinner';
 import { diaryApi } from '../../api/diary';
 import { menuApi } from '../../api/menu';
 import { getErrorMessage } from '../../utils/api';
+import { importOutcome } from '../../utils/importOutcome'; // FILL_FROM_MENU_V5
 import { MEAL_LABELS } from '../../types';
 import type { Menu, MenuItem, MealType } from '../../types';
 
@@ -51,6 +52,7 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState(''); // FILL_FROM_MENU_V5: результат импорта
 
   // Load menu list; default to the first (active) menu.
   useEffect(() => {
@@ -141,11 +143,18 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
   const run = async () => {
     if (menuId == null) return;
     if (selected.size === 0) { setError('Выберите хотя бы один приём'); return; }
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setNotice('');
     try {
-      await diaryApi.importFromMenu(menuId, baseDate, memberId, Array.from(selected));
-      onImported(baseDate);
-      onClose();
+      const { data } = await diaryApi.importFromMenu(menuId, baseDate, memberId, Array.from(selected));
+      // FILL_FROM_MENU_V5: переходим туда, где записи оказались, а не на дату
+      // начала плана: блюда третьего дня меню ложатся на «начало + 2».
+      const outcome = importOutcome(data);
+      onImported(outcome.jumpDate ?? baseDate);
+      if (outcome.keepOpen) {
+        setNotice(outcome.message);
+      } else {
+        onClose();
+      }
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
@@ -250,6 +259,8 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
         )}
 
         {error && <p className="text-red-600 text-sm mt-3">{error}</p>}
+        {/* FILL_FROM_MENU_V5: молчание после импорта неотличимо от поломки */}
+        {notice && <p className="text-sm text-chocolate mt-3">{notice}</p>}
 
         <div className="flex gap-2 justify-end mt-4">
           <Button variant="ghost" onClick={onClose} disabled={busy}>Отмена</Button>
