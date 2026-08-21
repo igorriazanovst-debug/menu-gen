@@ -107,10 +107,19 @@ export const shoppingApi = {
     ),
 
   // MG_SHOP2FRIDGE: push purchased items into the family fridge.
-  addToFridge: (listId: number, itemIds?: number[]) =>
+  // MG_SHELFLIFE: expiry — {itemId: 'YYYY-MM-DD' | null}. null значит «без
+  // срока» именно для этой позиции: сервер не подставит свою дату вместо неё.
+  addToFridge: (
+    listId: number,
+    itemIds?: number[],
+    expiry?: Record<number, string | null>,
+  ) =>
     client.post<{ added: number; skipped: number }>(
       `/shopping/lists/${listId}/add-to-fridge/`,
-      itemIds && itemIds.length ? { item_ids: itemIds } : {},
+      {
+        ...(itemIds && itemIds.length ? { item_ids: itemIds } : {}),
+        ...(expiry && Object.keys(expiry).length ? { expiry } : {}),
+      },
     ),
 
   accesses: (listId: number) =>

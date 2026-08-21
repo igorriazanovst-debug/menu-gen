@@ -17,6 +17,16 @@ class ProductCategory(models.Model):
     sort_order = models.PositiveIntegerField(default=100)
     # MG_RUBRIC001: store department (магазинный отдел) for print routing.
     department = models.CharField(max_length=64, blank=True)
+    # MG_SHELFLIFE: сколько продукт этой категории живёт ПОСЛЕ ПОКУПКИ.
+    #
+    # Именно после покупки, а не от даты производства: производства мы не знаем,
+    # знаем только день, когда товар попал в дом. Хранить «срок по ГОСТу» и
+    # вычитать из него поправку на «сколько уже пролежал» — значит гадать дважды;
+    # поправка вдобавок не может быть одинаковой (у молока 8 дней и у крупы год).
+    # Пусто — срок не подставляется.
+    shelf_life_days = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Сколько хранится после покупки, дней. Пусто — не подставлять."
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -77,6 +87,12 @@ class Product(models.Model):
     # MG_RUBRIC001: rubricator metadata.
     subcategory = models.CharField(max_length=128, blank=True)
     popularity = models.CharField(max_length=16, blank=True, help_text="часто|средне|редко")
+    # MG_SHELFLIFE: срок хранения конкретного продукта, если он не как у всей
+    # категории (ультрапастеризованное молоко живёт полгода, обычное — неделю).
+    # Пусто — берётся из категории.
+    shelf_life_days = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Хранится после покупки, дней. Пусто — как у категории."
+    )
     # MG_RUBRIC006: last known price per unit (auto-updated on purchase).
     last_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     last_price_at = models.DateTimeField(null=True, blank=True)

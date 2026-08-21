@@ -10,7 +10,8 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { printShoppingList } from '../../utils/printShoppingList';
-import { fridgeCandidates, fridgeConfirmText } from '../../utils/fridgeTransfer'; // MG_SHOP2FRIDGE
+import { fridgeCandidates } from '../../utils/fridgeTransfer'; // MG_SHOP2FRIDGE
+import { TransferToFridgeModal } from '../../components/shopping/TransferToFridgeModal'; // MG_SHELFLIFE
 import { apiErrorMessage } from '../../utils/apiError'; // MG_SHAREERR
 import { enqueueToggle, flushQueue, SYNC_FLUSHED_EVENT } from '../../utils/syncQueue'; // MG_T08
 import { ItemAutocomplete } from './ItemAutocomplete';
@@ -48,6 +49,12 @@ export const ShoppingPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showAccess, setShowAccess] = useState(false);
+  // MG_SHELFLIFE: окно переноса со сроками годности вместо window.confirm.
+  // Даты нужно видеть и править до сохранения: молча проставленный неверный
+  // срок родит ложные «скоро испортится», а от них перестают читать настоящие.
+  const [transfer, setTransfer] = useState<ShoppingV2Item[] | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [autoExpiry, setAutoExpiry] = useState(true);
   // MG_T09: per-tab list counts.
   const [counts, setCounts] = useState<{ active: number; pending: number; archived: number; history: number }>(
     { active: 0, pending: 0, archived: 0, history: 0 },
@@ -83,6 +90,22 @@ export const ShoppingPage: React.FC = () => {
     loadLists(tab);
     loadCounts(); // MG_T09
   }, [tab, loadLists, loadCounts]);
+
+  // MG_SHELFLIFE: подставлять ли сроки — настройка семьи, не устройства.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await familyApi.get();
+        if (!cancelled) setAutoExpiry(data.auto_expiry !== false);
+      } catch {
+        /* non-fatal: без ответа считаем, что подсказки нужны */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadDetail = useCallback(async (id: number) => {
     const { data } = await shoppingApi.get(id);
@@ -146,22 +169,37 @@ export const ShoppingPage: React.FC = () => {
   };
 
   // MG_SHOP2FRIDGE: push all purchased (not-yet-stored) items into the fridge.
-  const onAddToFridge = async () => {
+  const onAddToFridge = () => {
     if (!detail) return;
-    // Перенос необратим: обратно позиции придётся убирать вручную.
+    // Перенос необратим: обратно позиции придётся убирать вручную. Раньше здесь
+    // стоял window.confirm; теперь окно заодно показывает и сроки годности —
+    // подтверждение и правка дат в одном шаге, а не двумя разными.
     const candidates = fridgeCandidates(detail.items);
     if (candidates.length === 0) return;
-    if (!window.confirm(fridgeConfirmText(candidates))) return;
+    setTransfer(candidates);
+  };
+
+  // MG_SHELFLIFE: expiry — что пользователь увидел и поправил в окне.
+  const doTransfer = async (expiry: Record<number, string | null>) => {
+    if (!detail || !transfer) return;
+    setTransferBusy(true);
     try {
-      const { data } = await shoppingApi.addToFridge(detail.id);
+      const { data } = await shoppingApi.addToFridge(
+        detail.id,
+        transfer.map((i) => i.id),
+        expiry,
+      );
+      setTransfer(null);
       await loadDetail(detail.id);
       window.alert(
         data.added > 0
           ? `Добавлено в холодильник: ${data.added}`
           : 'Нет новых купленных товаров для добавления.',
       );
-    } catch {
-      window.alert('Не удалось добавить в холодильник.');
+    } catch (e) {
+      window.alert(apiErrorMessage(e) ?? 'Не удалось добавить в холодильник.');
+    } finally {
+      setTransferBusy(false);
     }
   };
 
@@ -278,6 +316,17 @@ export const ShoppingPage: React.FC = () => {
 
       {showAccess && detail && (
         <AccessModal listId={detail.id} onClose={() => setShowAccess(false)} />
+      )}
+
+      {/* MG_SHELFLIFE: подтверждение переноса + сроки годности */}
+      {transfer && (
+        <TransferToFridgeModal
+          items={transfer}
+          autoExpiry={autoExpiry}
+          busy={transferBusy}
+          onCancel={() => setTransfer(null)}
+          onConfirm={doTransfer}
+        />
       )}
     </div>
   );

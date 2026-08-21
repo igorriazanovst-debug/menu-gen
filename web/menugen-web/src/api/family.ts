@@ -13,7 +13,8 @@ export const familyApi = {
   get: () => client.get<Family>('/family/'),
   rename: (name: string) => client.patch<Family>('/family/', { name }),
   // MG_RUBRIC007_update: patch family fields (currency, name).
-  update: (payload: { name?: string; currency?: string }) =>
+  // MG_SHELFLIFE: auto_expiry — подставлять ли сроки при переносе покупок.
+  update: (payload: { name?: string; currency?: string; auto_expiry?: boolean }) =>
     client.patch<Family>('/family/', payload),
   invite: (email?: string, phone?: string) =>
     client.post('/family/invite/', { email, phone }),

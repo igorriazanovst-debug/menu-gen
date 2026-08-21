@@ -49,6 +49,10 @@ export const ProfilePage: React.FC = () => {
   const [currency, setCurrency] = useState('RUB');
   const [curSaving, setCurSaving] = useState(false);
   const [curMsg, setCurMsg] = useState('');
+  // MG_SHELFLIFE: подставлять ли сроки годности при переносе покупок.
+  const [autoExpiry, setAutoExpiry] = useState(true);
+  const [expSaving, setExpSaving] = useState(false);
+  const [expMsg, setExpMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError]     = useState('');
@@ -68,6 +72,7 @@ export const ProfilePage: React.FC = () => {
         if (cancelled) return;
         setFamily(data);
         setCurrency(data.currency ?? 'RUB');
+        setAutoExpiry(data.auto_expiry !== false); // MG_SHELFLIFE
       } catch {
         /* non-fatal */
       }
@@ -90,6 +95,25 @@ export const ProfilePage: React.FC = () => {
       setCurMsg(getErrorMessage(e));
     } finally {
       setCurSaving(false);
+    }
+  };
+
+  // MG_SHELFLIFE: сохраняем сразу — галочка без кнопки «сохранить» врёт реже,
+  // чем с ней: видимое состояние всегда равно серверному.
+  const saveAutoExpiry = async (next: boolean) => {
+    const prev = autoExpiry;
+    setAutoExpiry(next);
+    setExpSaving(true);
+    setExpMsg('');
+    try {
+      const { data } = await familyApi.update({ auto_expiry: next });
+      setFamily(data);
+      setExpMsg(next ? 'Сроки будут подставляться.' : 'Сроки проставляются вручную.');
+    } catch (e) {
+      setAutoExpiry(prev);
+      setExpMsg(getErrorMessage(e));
+    } finally {
+      setExpSaving(false);
     }
   };
 
@@ -236,6 +260,32 @@ export const ProfilePage: React.FC = () => {
             <p className="text-xs text-gray-400 mt-1">Менять валюту может только глава семьи.</p>
           )}
           {curMsg && <p className="text-xs text-gray-500 mt-1">{curMsg}</p>}
+        </div>
+
+        {/* MG_SHELFLIFE: подстановка сроков годности при переносе покупок.
+            Настройка семейная: холодильник общий, и режим не должен зависеть
+            от того, кто сегодня разбирает пакеты. */}
+        <div className="mt-6 pt-6 border-t border-border">
+          <label className="flex items-start gap-2 text-sm text-chocolate">
+            <input
+              type="checkbox"
+              checked={autoExpiry}
+              disabled={!isOwner || expSaving}
+              onChange={(e) => saveAutoExpiry(e.target.checked)}
+              className="mt-0.5 accent-tomato"
+            />
+            <span>
+              Подставлять сроки годности при переносе покупок в холодильник
+              <span className="block text-xs text-gray-500">
+                Дата считается от дня покупки по справочным срокам и показывается
+                в окне переноса — её всегда можно поправить или стереть.
+              </span>
+            </span>
+          </label>
+          {!isOwner && (
+            <p className="text-xs text-gray-400 mt-1">Менять настройку может только глава семьи.</p>
+          )}
+          {expMsg && <p className="text-xs text-gray-500 mt-1">{expMsg}</p>}
         </div>
       </Card>
 

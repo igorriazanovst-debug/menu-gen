@@ -483,6 +483,13 @@ class ShoppingAddToFridgeView(APIView):
             except (TypeError, ValueError):
                 return Response({"detail": "Некорректная дата срока годности."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # MG_SHELFLIFE: если срок не передан явно, подставляем по справочнику —
+        # но только когда семья этого хочет. Настройка семейная: холодильник
+        # общий, и режим не должен зависеть от того, кто разбирает пакеты.
+        from apps.fridge.shelf_life import suggest_for_shopping_item
+
+        auto = bool(getattr(sl.family, "auto_expiry", True))
+
         added = 0
         skipped = 0
         for item in items:
@@ -503,7 +510,11 @@ class ShoppingAddToFridgeView(APIView):
                 unit=item.unit,
                 added_by_id=request.user.id,
                 source_shopping_item=item,
-                expiry_date=per_item.get(item.id, default_expiry),
+                expiry_date=(
+                    per_item[item.id]
+                    if item.id in per_item
+                    else (default_expiry or (suggest_for_shopping_item(item) if auto else None))
+                ),
             )
             added += 1
 

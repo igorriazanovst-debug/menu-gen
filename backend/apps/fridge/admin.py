@@ -8,7 +8,7 @@ from django.utils.html import format_html
 
 from apps.common.search import AdminSearchMixin  # MG_YOSEARCH/MG_MORPHSEARCH
 
-from .models import FridgeItem, Product
+from .models import FridgeItem, Product, ProductCategory
 
 
 class ProductAdminForm(forms.ModelForm):
@@ -55,6 +55,20 @@ class ProductKindFilter(admin.SimpleListFilter):
         return queryset
 
 
+# MG_SHELFLIFE: справочник сроков хранения правится здесь.
+#
+# Числа — «сколько живёт ПОСЛЕ ПОКУПКИ», а не срок с этикетки: дату
+# производства мы не знаем, поэтому поправка на пролежавшее уже зашита в само
+# число. Пусто — срок не подставляется (для бытовой химии и корма так и надо).
+@admin.register(ProductCategory)
+class ProductCategoryAdmin(admin.ModelAdmin):
+    list_display = ("id", "name_ru", "slug", "department", "shelf_life_days", "sort_order", "is_active")
+    list_editable = ("shelf_life_days", "sort_order", "is_active")
+    list_display_links = ("name_ru",)
+    search_fields = ("name_ru", "slug", "department")
+    list_filter = ("is_active",)
+
+
 @admin.register(Product)
 class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
     form = ProductAdminForm
@@ -69,6 +83,7 @@ class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
         "has_image",
         "image_url",
         "category",
+        "shelf_life_days",  # MG_SHELFLIFE
         "calories_per_100g",
         "barcode",
     )

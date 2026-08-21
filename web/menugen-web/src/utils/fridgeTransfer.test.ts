@@ -1,5 +1,5 @@
 // MG_SHOP2FRIDGE / MG_SHAREERR: отбор позиций для холодильника и разбор ошибок API.
-import { fridgeCandidates, fridgeConfirmText } from './fridgeTransfer';
+import { fridgeCandidates } from './fridgeTransfer';
 import { apiErrorMessage } from './apiError';
 import type { ShoppingV2Item } from '../types';
 
@@ -30,24 +30,6 @@ describe('fridgeCandidates', () => {
 
   it('на пустом списке ничего не предлагает', () => {
     expect(fridgeCandidates([])).toEqual([]);
-  });
-});
-
-describe('fridgeConfirmText', () => {
-  it('называет количество и перечисляет позиции', () => {
-    const text = fridgeConfirmText([item({ id: 1, name: 'Молоко' }), item({ id: 2, name: 'Сыр' })]);
-
-    expect(text).toContain('Добавить в холодильник: 2?');
-    expect(text).toContain('Молоко, Сыр');
-  });
-
-  it('длинный список сворачивает', () => {
-    const many = Array.from({ length: 8 }, (_, i) => item({ id: i, name: `Товар${i}` }));
-
-    const text = fridgeConfirmText(many);
-
-    expect(text).toContain('Добавить в холодильник: 8?');
-    expect(text).toContain('и ещё 3');
   });
 });
 

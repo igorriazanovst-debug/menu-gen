@@ -74,6 +74,15 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
     fridge_eligible = serializers.SerializerMethodField()
     # MG_SHOPIMG: резолвнутый абсолютный URL изображения (файл или ссылка).
     image = serializers.SerializerMethodField()
+    # MG_SHELFLIFE: предполагаемый срок годности — чтобы окно переноса показало
+    # дату заранее и её можно было поправить до сохранения, а не после.
+    suggested_expiry = serializers.SerializerMethodField()
+
+    def get_suggested_expiry(self, obj):
+        from apps.fridge.shelf_life import suggest_for_shopping_item
+
+        when = suggest_for_shopping_item(obj)
+        return str(when) if when else None
 
     def get_image(self, obj):
         return resolve_item_image_url(obj, self.context.get("request"))
@@ -114,6 +123,7 @@ class ShoppingListItemSerializer(serializers.ModelSerializer):
             "fridge_eligible",  # MG_SHOP2FRIDGE
             "note",  # MG_SHOPNOTE
             "image",  # MG_SHOPIMG (resolved url)
+            "suggested_expiry",  # MG_SHELFLIFE
             "image_url",  # MG_SHOPIMG (raw url)
             "is_purchased",
             "purchased_by",

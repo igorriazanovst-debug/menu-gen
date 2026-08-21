@@ -8,6 +8,13 @@ class Family(models.Model):
     name = models.CharField(max_length=255, blank=True)
     # MG_RUBRIC006: family currency (used for shopping prices/totals).
     currency = models.CharField(max_length=8, default="RUB")
+    # MG_SHELFLIFE: подставлять ли срок годности при переносе покупок в
+    # холодильник. Настройка семейная, а не личная: холодильник общий, разбирать
+    # пакеты может любой — включая повара, — и два разных режима у мужа и жены
+    # означали бы, что итог зависит от того, кто донёс сумку.
+    auto_expiry = models.BooleanField(
+        default=True, help_text="Подставлять срок годности при переносе покупок в холодильник"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

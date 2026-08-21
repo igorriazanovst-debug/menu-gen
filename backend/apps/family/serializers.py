@@ -94,7 +94,8 @@ class FamilySerializer(serializers.ModelSerializer):
     class Meta:
         model = Family
         # MG_RUBRIC006_family_fields
-        fields = ("id", "name", "currency", "owner_name", "members", "created_at")
+        # MG_SHELFLIFE: auto_expiry — семейная настройка подстановки сроков.
+        fields = ("id", "name", "currency", "auto_expiry", "owner_name", "members", "created_at")
         read_only_fields = ("id", "owner_name", "members", "created_at")
 
 

@@ -232,6 +232,10 @@ export interface FamilyMember {
 export interface Family {
   id: number; name: string; owner_name: string;
   currency?: string; // MG_RUBRIC007
+  // MG_SHELFLIFE: подставлять ли сроки годности при переносе покупок.
+  // Настройка семейная, а не личная: холодильник общий, и режим не должен
+  // зависеть от того, кто сегодня разбирает пакеты.
+  auto_expiry?: boolean;
   members: FamilyMember[]; created_at: string;
 }
 export interface SubscriptionPlan {
@@ -460,6 +464,9 @@ export interface ShoppingV2Item {
   line_total?: string | null;
   in_fridge?: boolean; // MG_SHOP2FRIDGE
   fridge_eligible?: boolean; // MG_SHOP2FRIDGE (non-food excluded)
+  // MG_SHELFLIFE: предполагаемый «годен до» по справочнику — предположение,
+  // которое показывают в окне переноса и правят до сохранения.
+  suggested_expiry?: string | null;
   note?: string; // MG_SHOPNOTE
   image?: string | null; // MG_SHOPIMG resolved url
   image_url?: string | null; // MG_SHOPIMG raw url
