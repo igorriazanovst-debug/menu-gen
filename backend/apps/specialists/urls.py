@@ -4,6 +4,7 @@ from .views import (
     AssignmentAcceptView,
     CabinetClientExclusionsView,
     CabinetClientRationView,
+    CabinetClientDayPlanView,
     CabinetClientSummaryView,
     CabinetClientTargetsHistoryView,
     CabinetClientWeightView,
@@ -76,6 +77,12 @@ urlpatterns = [
         "cabinet/clients/<int:family_id>/exclusions/",
         CabinetClientExclusionsView.as_view(),
         name="cabinet-client-exclusions",
+    ),
+    # MG_COOK: наряд на день — что готовить, чего не хватает, что портится
+    path(
+        "cabinet/clients/<int:family_id>/day-plan/",
+        CabinetClientDayPlanView.as_view(),
+        name="cabinet-client-day-plan",
     ),
     # MG_TRAINER: рекомендации на стороне клиента
     path("recommendations/", MyRecommendationsView.as_view(), name="my-recommendations"),

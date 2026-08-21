@@ -82,6 +82,26 @@ export interface MemberExclusions {
   menu: ExclusionHit[];
 }
 
+// MG_COOK: наряд повара на день.
+export interface DayPlanDish {
+  slot: string;
+  meal_type: string;
+  title: string;
+  recipe_id: number | null;
+  product_id: number | null;
+  grams: number | null;
+  servings: number;
+  eaters: string[];
+}
+
+export interface DayPlan {
+  date: string;
+  menu_id: number | null;
+  meals: { slot: string; dishes: DayPlanDish[] }[];
+  missing: { name: string; product_id: number | null; for_dish: string }[];
+  expiring: { name: string; expiry_date: string; days_left: number; quantity: string; unit: string }[];
+}
+
 const cabinet = (familyId: number, path: string) =>
   `/specialists/cabinet/clients/${familyId}/${path}`;
 
@@ -101,6 +121,12 @@ export const specialistAnalyticsApi = {
   ration: async (familyId: number, days = 14): Promise<MemberRation[]> => {
     const { data } = await client.get(cabinet(familyId, 'ration/'), { params: { days } });
     return data.members ?? [];
+  },
+  dayPlan: async (familyId: number, day?: string): Promise<DayPlan> => {
+    const { data } = await client.get(cabinet(familyId, 'day-plan/'), {
+      params: day ? { date: day } : undefined,
+    });
+    return data;
   },
   exclusions: async (familyId: number, days = 14): Promise<MemberExclusions[]> => {
     const { data } = await client.get(cabinet(familyId, 'exclusions/'), { params: { days } });

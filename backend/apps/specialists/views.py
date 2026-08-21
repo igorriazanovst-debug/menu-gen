@@ -661,3 +661,33 @@ class CabinetClientExclusionsView(APIView):
         from .ration import family_excluded
 
         return Response({"days": days, "members": family_excluded(request.assignment.family, days=days)})
+
+
+# ── MG_COOK: наряд повара на день ────────────────────────────────────────────
+
+
+class CabinetClientDayPlanView(APIView):
+    """Что готовить сегодня: блюда с порциями, нехватка, скоропортящееся.
+
+    Раздел — меню: повару и диетологу оно на запись, тренеру на чтение. Наряд
+    читают все трое, но пользуется им повар.
+    """
+
+    permission_classes = CABINET_PERMISSIONS
+    section = Section.MENU
+
+    @extend_schema(
+        parameters=[OpenApiParameter("date", str, description="Дата YYYY-MM-DD (по умолчанию сегодня)")],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request, family_id):
+        from datetime import date as _date
+
+        from .day_plan import day_plan
+
+        raw = request.query_params.get("date")
+        try:
+            day = _date.fromisoformat(raw) if raw else None
+        except (TypeError, ValueError):
+            return Response({"detail": "Некорректная дата."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(day_plan(request.assignment.family, day))

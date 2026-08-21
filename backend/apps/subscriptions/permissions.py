@@ -89,7 +89,7 @@ class IsFamilyPremiumOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        family = get_user_family(request.user)
+        family = get_user_family(request.user) or _client_family(request)
         if request.method in permissions.SAFE_METHODS:
             ok = has_ever_had_premium(family)
             if not ok:
@@ -99,3 +99,32 @@ class IsFamilyPremiumOrReadOnly(permissions.BasePermission):
         if not ok:
             self.message = self.message_write
         return ok
+
+
+def _client_family(request):
+    """MG_COOK: семья клиента, если специалист работает вместо своей семьи.
+
+    Премиум проверялся у семьи того, кто пришёл. У специалиста своей семьи нет —
+    и повар, приставленный к семье с оплаченной подпиской, упирался в «нужен
+    премиум». Платит клиент, работает специалист: смотрим на семью клиента.
+    """
+    from apps.specialists.access import active_assignment
+    from apps.specialists.models import SpecialistAssignment
+
+    spec = getattr(request.user, "specialist_profile", None)
+    if spec is None or not spec.is_verified:
+        return None
+
+    family_id = request.parser_context.get("kwargs", {}).get("family_id") if request.parser_context else None
+    family_id = family_id or request.query_params.get("family_id")
+    if family_id:
+        a = active_assignment(spec, family_id)
+        return a.family if a else None
+
+    active = list(
+        SpecialistAssignment.objects.filter(
+            specialist=spec, status=SpecialistAssignment.Status.ACTIVE
+        ).select_related("family")[:2]
+    )
+    # Один клиент — очевидно; несколько — пусть вьюха спросит family_id.
+    return active[0].family if len(active) == 1 else None

@@ -5,6 +5,7 @@
 // Каждая вкладка грузится при первом открытии и потом живёт в состоянии.
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  DayPlan,
   MemberExclusions,
   MemberRation,
   MemberSummary,
@@ -25,15 +26,27 @@ import {
   weightTrend,
 } from '../../utils/specialistFormat';
 
-type Tab = 'summary' | 'ration' | 'exclusions' | 'weight' | 'targets';
+type Tab = 'summary' | 'dayplan' | 'ration' | 'exclusions' | 'weight' | 'targets';
 
 const TABS: { key: Tab; title: string }[] = [
   { key: 'summary', title: 'Неделя' },
+  // MG_COOK: наряд на день — то, ради чего повар вообще открывает карточку.
+  { key: 'dayplan', title: 'На день' },
   { key: 'ration', title: 'Рацион' },
   { key: 'exclusions', title: 'Исключения' },
   { key: 'weight', title: 'Вес' },
   { key: 'targets', title: 'Цели' },
 ];
+
+// MG_COOK: подписи слотов приёма — те же, что в дневнике и меню.
+const SLOT_LABELS: Record<string, string> = {
+  breakfast: 'Завтрак',
+  snack1: 'Перекус 1',
+  lunch: 'Обед',
+  snack2: 'Перекус 2',
+  dinner: 'Ужин',
+  snack: 'Перекус',
+};
 
 const Card: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="bg-surface rounded-xl shadow p-4">
@@ -80,6 +93,7 @@ export const ClientAnalytics: React.FC<{ familyId: number }> = ({ familyId }) =>
   const [exclusions, setExclusions] = useState<MemberExclusions[] | null>(null);
   const [weight, setWeight] = useState<MemberWeight[] | null>(null);
   const [targets, setTargets] = useState<MemberTargets[] | null>(null);
+  const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,7 +105,8 @@ export const ClientAnalytics: React.FC<{ familyId: number }> = ({ familyId }) =>
       (tab === 'ration' && ration) ||
       (tab === 'exclusions' && exclusions) ||
       (tab === 'weight' && weight) ||
-      (tab === 'targets' && targets);
+      (tab === 'targets' && targets) ||
+      (tab === 'dayplan' && dayPlan);
     if (loaded) return;
     setBusy(true);
     try {
@@ -100,6 +115,7 @@ export const ClientAnalytics: React.FC<{ familyId: number }> = ({ familyId }) =>
       if (tab === 'exclusions') setExclusions(await specialistAnalyticsApi.exclusions(familyId));
       if (tab === 'weight') setWeight(await specialistAnalyticsApi.weight(familyId));
       if (tab === 'targets') setTargets(await specialistAnalyticsApi.targetsHistory(familyId));
+      if (tab === 'dayplan') setDayPlan(await specialistAnalyticsApi.dayPlan(familyId));
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number } })?.response?.status;
       // 403 здесь — не поломка: тренеру закрыт рацион, повару — дневник.
@@ -111,7 +127,7 @@ export const ClientAnalytics: React.FC<{ familyId: number }> = ({ familyId }) =>
     } finally {
       setBusy(false);
     }
-  }, [tab, familyId, summary, ration, exclusions, weight, targets]);
+  }, [tab, familyId, summary, ration, exclusions, weight, targets, dayPlan]);
 
   useEffect(() => {
     load();
@@ -185,6 +201,55 @@ export const ClientAnalytics: React.FC<{ familyId: number }> = ({ familyId }) =>
             );
           })}
           {(summary ?? []).length === 0 && <p className="text-sm text-gray-400">Нет данных.</p>}
+        </div>
+      )}
+
+      {!busy && !error && tab === 'dayplan' && dayPlan && (
+        <div className="space-y-3">
+          {dayPlan.menu_id === null ? (
+            <p className="text-sm text-gray-400">На {dayPlan.date} у клиента нет меню.</p>
+          ) : (
+            dayPlan.meals.map((meal) => (
+              <Card key={meal.slot} title={SLOT_LABELS[meal.slot] ?? meal.slot}>
+                <div className="space-y-1">
+                  {meal.dishes.map((d, i) => (
+                    <div key={`${d.title}-${i}`} className="flex justify-between text-sm text-chocolate">
+                      <span>{d.title}</span>
+                      <span className="text-gray-400">
+                        {d.servings} порц.
+                        {d.eaters.length > 0 && ` · ${d.eaters.join(', ')}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ))
+          )}
+          {dayPlan.expiring.length > 0 && (
+            <Card title="Использовать в первую очередь">
+              {dayPlan.expiring.map((e) => (
+                <div key={e.name} className="flex justify-between text-sm text-chocolate">
+                  <span>{e.name}</span>
+                  <span className={e.days_left <= 0 ? 'text-tomato' : 'text-gray-400'}>
+                    {e.days_left <= 0 ? 'срок вышел' : `${e.days_left} дн.`}
+                  </span>
+                </div>
+              ))}
+            </Card>
+          )}
+          {dayPlan.missing.length > 0 && (
+            <Card title="Нет в холодильнике">
+              {dayPlan.missing.map((m) => (
+                <div key={m.name} className="flex justify-between text-sm text-chocolate">
+                  <span>{m.name}</span>
+                  <span className="text-gray-400">для «{m.for_dish}»</span>
+                </div>
+              ))}
+              <p className="text-xs text-gray-400 mt-2">
+                Считается по связям рецепт—продукт: ингредиенты без связи сюда не попадают.
+              </p>
+            </Card>
+          )}
         </div>
       )}
 

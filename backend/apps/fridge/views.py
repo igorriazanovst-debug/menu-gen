@@ -33,6 +33,41 @@ def _get_family(user):
     return membership.family if membership else None
 
 
+def _family_for(request):
+    """MG_COOK: чей это холодильник.
+
+    Своя семья — как раньше. Если своей нет, но пользователь ведёт закупку у
+    клиента (матрица даёт повару холодильник), работаем с семьёй клиента: у
+    специалиста собственной семьи в этом разговоре нет, и без этого весь раздел
+    для него закрыт. Явный `?family_id=` нужен, когда клиентов несколько.
+    """
+    own = _get_family(request.user)
+    if own is not None:
+        return own
+
+    from apps.specialists.access import Section, active_assignment, allows
+    from apps.specialists.models import SpecialistAssignment
+
+    spec = getattr(request.user, "specialist_profile", None)
+    if spec is None or not spec.is_verified:
+        return None
+
+    family_id = request.query_params.get("family_id")
+    if family_id:
+        a = active_assignment(spec, family_id)
+        return a.family if a and allows(a, Section.FRIDGE) else None
+
+    allowed = [
+        a
+        for a in SpecialistAssignment.objects.filter(
+            specialist=spec, status=SpecialistAssignment.Status.ACTIVE
+        ).select_related("family", "specialist")
+        if allows(a, Section.FRIDGE)
+    ]
+    # Один клиент — понятно без уточнений; несколько — пусть выберут явно.
+    return allowed[0].family if len(allowed) == 1 else None
+
+
 # MG_PRODFAMILY: видимость — общий каталог + продукты своей семьи. Правило
 # одно на все входы и лежит в visibility.py; здесь только псевдоним.
 def _visible_products_q(user):
@@ -47,7 +82,7 @@ class FridgeListCreateView(generics.ListCreateAPIView):
 
     def get_family(self):
         if not hasattr(self, "_family"):
-            self._family = _get_family(self.request.user)
+            self._family = _family_for(self.request)
         return self._family
 
     def get_queryset(self):
@@ -104,7 +139,7 @@ class FridgeItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get_queryset(self):
-        family = _get_family(self.request.user)
+        family = _family_for(self.request)
         if not family:
             return FridgeItem.objects.none()
         return FridgeItem.objects.filter(family=family, is_deleted=False)
@@ -178,7 +213,7 @@ class FridgeItemDetailsView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get(self, request, pk: int):
-        family = _get_family(request.user)
+        family = _family_for(request)
         if not family:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
         item = FridgeItem.objects.filter(family=family, is_deleted=False, pk=pk).select_related("product").first()
@@ -276,7 +311,7 @@ class ProductListView(generics.ListCreateAPIView):
             qs = qs.filter(is_seed=True)
         if self.request.query_params.get("own") in ("1", "true"):
             # MG_PRODFAMILY: «свои» — это продукты семьи, а не лично мои.
-            qs = qs.filter(owner_family=_get_family(self.request.user))
+            qs = qs.filter(owner_family=_family_for(self.request))
         return qs.order_by("category_fk__sort_order", "name")[:500]
 
     def perform_create(self, serializer):
@@ -284,7 +319,7 @@ class ProductListView(generics.ListCreateAPIView):
         # пополняется только через админку — иначе он растёт от каждого ввода.
         serializer.save(
             owner=self.request.user,
-            owner_family=_get_family(self.request.user),
+            owner_family=_family_for(self.request),
             source="manual",
             is_seed=False,
         )
@@ -314,7 +349,7 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
         # MG_PRODFAMILY: править может вся семья — список ведут вдвоём, и
         # исправить опечатку должен мочь не только тот, кто её сделал.
         obj = self.get_object()
-        family = _get_family(self.request.user)
+        family = _family_for(self.request)
         if obj.owner_family_id is None or family is None or obj.owner_family_id != family.id:
             from rest_framework.exceptions import PermissionDenied
 
@@ -351,7 +386,7 @@ class FridgeExpiredBulkDeleteView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def post(self, request):
-        family = _get_family(request.user)
+        family = _family_for(request)
         if not family:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -400,7 +435,7 @@ class FridgeHistoryEntryView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def delete(self, request, name: str):
-        family = _get_family(request.user)
+        family = _family_for(request)
         if not family:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -423,7 +458,7 @@ class FridgeHistoryView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def get(self, request):
-        family = _get_family(request.user)
+        family = _family_for(request)
         if not family:
             return Response([], status=status.HTTP_200_OK)
         try:
@@ -546,7 +581,7 @@ class RecognizePhotoView(APIView):
         responses={200: OpenApiResponse(description="Recognized product(s)")},
     )
     def post(self, request):
-        family = _get_family(request.user)
+        family = _family_for(request)
         if not family:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
 

@@ -1,4 +1,6 @@
 # MG_SHOP001_views
+from datetime import date
+
 from django.db.models import Count, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -9,7 +11,8 @@ from rest_framework.views import APIView
 from apps.menu.models import Menu
 
 from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, ShoppingListItem
-from .permissions import access_level, get_user_family, is_family_head
+from .permissions import access_level, get_user_family, is_family_head  # noqa: F401
+from .permissions import resolve_write_family, specialist_shopping_families  # MG_COOK
 from .serializers import PendingSharedListSerializer  # MG_SHAREACCEPT
 from .serializers import (
     CreateListSerializer,
@@ -100,18 +103,24 @@ class ShoppingListsView(APIView):
         own = Q(family=family) if family else Q(pk__in=[])
         # MG_SHAREACCEPT: only ACCEPTED external shares show in the main list.
         shared = Q(accesses__user=user, accesses__status=ShoppingListAccess.Status.ACCEPTED)
-        qs = ShoppingList.objects.filter(own | shared, is_archived=archived).distinct()
+        # MG_COOK: списки семей, где специалист ведёт закупку. Без этого повар
+        # не видел ни одного списка — доступ опирался на членство в семье.
+        client_ids = specialist_shopping_families(user)
+        client = Q(family_id__in=client_ids) if client_ids else Q(pk__in=[])
+        qs = ShoppingList.objects.filter(own | shared | client, is_archived=archived).distinct()
         qs = _annotate(qs)
         return Response(ShoppingListBriefSerializer(qs, many=True).data)
 
     @extend_schema(request=CreateListSerializer, responses={201: ShoppingListSerializer})
     def post(self, request):
         user = request.user
-        family = get_user_family(user)
-        if not family:
-            return Response({"detail": "Нет семьи."}, status=status.HTTP_400_BAD_REQUEST)
-        if not is_family_head(user, family):
-            return Response({"detail": "Только глава семьи."}, status=status.HTTP_403_FORBIDDEN)
+        # MG_COOK: своя семья — главе; клиентская — специалисту с правом закупки.
+        # Раньше здесь стояло только «глава своей семьи», и повар, которому
+        # матрица отдала закупку, не мог завести список вообще.
+        family, err = resolve_write_family(user, request.query_params.get("family_id"))
+        if family is None:
+            code = status.HTTP_403_FORBIDDEN if err != "Нет семьи." else status.HTTP_400_BAD_REQUEST
+            return Response({"detail": err}, status=code)
 
         ser = CreateListSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -452,6 +461,28 @@ class ShoppingAddToFridgeView(APIView):
             items = items.filter(id__in=ids)
         items = items.select_related("product", "product__category_fk", "category_fk").prefetch_related("fridge_items")
 
+        # MG_COOK: сроки годности прямо при переносе. Раньше товар ложился в
+        # холодильник без срока, и напоминание «скоро испортится» молчало — а
+        # знает эти сроки как раз тот, кто разбирает пакеты.
+        # {"<item_id>": "YYYY-MM-DD"} для отдельных позиций, expiry_date — на все.
+        raw_expiry = request.data.get("expiry") or {}
+        default_expiry = request.data.get("expiry_date") or None
+        per_item = {}
+        if isinstance(raw_expiry, dict):
+            for k, v in raw_expiry.items():
+                try:
+                    per_item[int(k)] = date.fromisoformat(str(v)) if v else None
+                except (TypeError, ValueError):
+                    return Response(
+                        {"detail": f"Некорректная дата срока годности для позиции {k}."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+        if default_expiry:
+            try:
+                default_expiry = date.fromisoformat(str(default_expiry))
+            except (TypeError, ValueError):
+                return Response({"detail": "Некорректная дата срока годности."}, status=status.HTTP_400_BAD_REQUEST)
+
         added = 0
         skipped = 0
         for item in items:
@@ -472,6 +503,7 @@ class ShoppingAddToFridgeView(APIView):
                 unit=item.unit,
                 added_by_id=request.user.id,
                 source_shopping_item=item,
+                expiry_date=per_item.get(item.id, default_expiry),
             )
             added += 1
 
