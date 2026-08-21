@@ -140,8 +140,20 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
       // Запоминаем ДО ухода: приложение могут выгрузить, пока человек платит.
       if (paymentId != null && paymentId.isNotEmpty) await rememberPayment(paymentId);
 
+      // MG_TGLINK: тот же запасной путь, что и у ссылки на бота. Без <queries>
+      // в манифесте Android 11+ прячет от нас внешние приложения, и переход
+      // «во внешнем приложении» срывался даже при установленном браузере.
       final uri = Uri.parse(url);
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      var opened = false;
+      for (final mode in [LaunchMode.externalApplication, LaunchMode.platformDefault]) {
+        try {
+          opened = await launchUrl(uri, mode: mode);
+        } catch (_) {
+          opened = false;
+        }
+        if (opened) break;
+      }
+      if (!opened) {
         throw Exception('Не удалось открыть страницу оплаты');
       }
     } catch (e) {

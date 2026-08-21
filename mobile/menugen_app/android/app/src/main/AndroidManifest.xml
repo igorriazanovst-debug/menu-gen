@@ -3,6 +3,39 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- MG_TGLINK: без этого блока подтверждение телефона упиралось в «не удалось
+         открыть мессенджер».
+
+         С Android 11 приложение по умолчанию не видит, какие ещё приложения стоят
+         на устройстве. Поэтому canLaunchUrl() для https-ссылки отвечает «нельзя»
+         даже тогда, когда и Telegram, и браузер установлены — не потому, что
+         открыть нечем, а потому, что нам не дали посмотреть. Перечисляем
+         намерения, которые нам действительно нужны: открыть ссылку и написать
+         письмо. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
+        <!-- Telegram и MAX по своим схемам: если приложение стоит, ссылка
+             откроется прямо в нём, минуя браузер. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="tg"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="max"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
+        </intent>
+    </queries>
     <!-- MG_APPICON: android:label — короткая подпись под иконкой, лаунчер
          обрезает примерно после 12 символов. Полное название «MenuGen Platform»
          показывается внутри приложения (экран входа). -->

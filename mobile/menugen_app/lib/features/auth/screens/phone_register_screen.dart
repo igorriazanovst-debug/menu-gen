@@ -10,6 +10,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -130,15 +131,41 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen> {
     }
   }
 
+  // MG_TGLINK: открыть бота.
+  //
+  // Раньше здесь стоял `if (await canLaunchUrl(uri))` — и на Android 11+ он
+  // отвечал «нельзя» просто потому, что приложение не видит установленные
+  // мессенджеры без <queries> в манифесте. Ссылка при этом рабочая. Поэтому
+  // теперь пробуем открыть, а не спрашиваем разрешения: сначала во внешнем
+  // приложении (Telegram перехватит t.me сам), затем — обычным способом, если
+  // внешнего обработчика не нашлось.
+  //
+  // Если не вышло и так, ссылку даём скопировать: подтверждение упирается в
+  // один переход, и упереться в него насмерть нельзя.
   Future<void> _openMessenger() async {
     final link = _deepLink;
     if (link == null) return;
     final uri = Uri.parse(link);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
-      setState(() => _error = 'Не удалось открыть мессенджер. Ссылка: $link');
+    for (final mode in [LaunchMode.externalApplication, LaunchMode.platformDefault]) {
+      try {
+        if (await launchUrl(uri, mode: mode)) return;
+      } catch (_) {
+        // Обработчика для этого режима нет — пробуем следующий.
+      }
     }
+    if (!mounted) return;
+    setState(() => _error = 'Не удалось открыть мессенджер — скопируйте ссылку и '
+        'откройте её вручную.');
+  }
+
+  Future<void> _copyLink() async {
+    final link = _deepLink;
+    if (link == null) return;
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Ссылка скопирована')),
+    );
   }
 
   void _restart() {
@@ -256,7 +283,13 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen> {
           label: Text(_provider == 'telegram' ? 'Открыть Telegram' : 'Открыть Max'),
         ),
       ),
-      const SizedBox(height: 24),
+      // MG_TGLINK: запасной путь, если переход не сработал.
+      TextButton.icon(
+        onPressed: expired ? null : _copyLink,
+        icon: const Icon(Icons.copy, size: 18),
+        label: const Text('Скопировать ссылку'),
+      ),
+      const SizedBox(height: 16),
       if (mismatch)
         _Note(
           color: Colors.orange,
