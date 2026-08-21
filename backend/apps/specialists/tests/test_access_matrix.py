@@ -277,7 +277,7 @@ class TestInviteRole:
     def test_роль_назначения_равна_роли_специалиста(self, client_family):
         """Иначе приглашающий сам решал бы, какие права выдать."""
         family, member = client_family
-        spec = make_specialist("diet3@example.com", Specialist.Type.DIETITIAN)
+        make_specialist("diet3@example.com", Specialist.Type.DIETITIAN)
         api = APIClient()
         api.force_authenticate(member.user)
 

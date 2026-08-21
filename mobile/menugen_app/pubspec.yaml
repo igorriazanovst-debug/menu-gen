@@ -2,7 +2,10 @@ name: menugen_app
 description: Personalized meal planning app
 
 publish_to: "none"
-version: 1.0.0+1
+# Версия для магазина. Номер сборки (после «+») в релизном workflow
+# перебивается номером прогона (--build-number), поэтому здесь он лишь
+# значение по умолчанию для локальных сборок.
+version: 1.0.1+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

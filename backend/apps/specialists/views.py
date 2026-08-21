@@ -9,7 +9,7 @@ from apps.family.models import FamilyMember
 from apps.menu.models import Menu, MenuItem
 from apps.menu.serializers import MenuDetailSerializer
 
-from .access import Section, permissions_for
+from .access import Section
 from .invites import get_or_create_code
 from .journal import log_action
 from .models import Recommendation, Specialist, SpecialistAssignment

@@ -12,6 +12,7 @@ from rest_framework.filters import SearchFilter
 
 from .search import search_q
 
+
 class SmartSearchFilter(SearchFilter):
     """SearchFilter из DRF, не различающий «е» и «ё».
 

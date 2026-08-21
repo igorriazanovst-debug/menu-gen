@@ -82,10 +82,7 @@ class Product(models.Model):
         related_name="products",
         help_text="NULL = общий каталог (виден всем); иначе — продукт этой семьи.",
     )
-    # MG_T04C: provenance — manual catalog vs auto-created from recipe ingredients.
-    # MG_SCANSRC: плюс происхождение сканов. Отличать их важно: запись из
-    # OpenFoodFacts проверяема (штрих-код глобальный, база открытая), а догадка
-    # модели по коду — нет, и в общий каталог ей нельзя.
+
     class Source(models.TextChoices):
         MANUAL = "manual", "Заведён вручную"
         AUTO = "auto", "Из ингредиентов рецепта"
@@ -93,6 +90,10 @@ class Product(models.Model):
         OFF = "off", "Скан: OpenFoodFacts"
         AI = "ai", "Скан: догадка ИИ"
 
+    # MG_T04C: provenance — manual catalog vs auto-created from recipe ingredients.
+    # MG_SCANSRC: плюс происхождение сканов. Отличать их важно: запись из
+    # OpenFoodFacts проверяема (штрих-код глобальный, база открытая), а догадка
+    # модели по коду — нет, и в общий каталог ей нельзя (см. visibility.py).
     source = models.CharField(
         max_length=16, default=Source.MANUAL, choices=Source.choices, help_text="Откуда взялась запись."
     )
