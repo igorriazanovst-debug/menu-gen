@@ -3,6 +3,7 @@ import { Scanner } from '@yudiel/react-qr-scanner';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { fridgeApi } from '../../api/fridge';
+import { productKbjuLine } from '../../utils/productKbju'; // MG_SCANSRC
 import type {
   BarcodeLookupResult,
   FridgeHistoryItem,
@@ -28,6 +29,9 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const [imageUrl, setImageUrl]   = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  // MG_SCANSRC: что нашлось по штрих-коду — КБЖУ строкой и оговорка, если это
+  // догадка модели, а не запись из OpenFoodFacts.
+  const [scanInfo, setScanInfo] = useState<{ kbju: string | null; guess: boolean } | null>(null);
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const handledRef = useRef(false);
@@ -208,6 +212,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
     try {
       const { data } = await fridgeApi.scanBarcode(code);
       const p = data as BarcodeLookupResult;
+      setScanInfo({ kbju: productKbjuLine(p), guess: !!p.low_confidence }); // MG_SCANSRC
       setName(p.name);
       setProductId(p.id);
       if (p.image_url) setImageUrl(p.image_url);
@@ -217,6 +222,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
         if (found) setSelectedCat(found);
       }
     } catch (e: any) {
+      setScanInfo(null); // MG_SCANSRC
       if (e?.response?.status === 404) {
         setError('Штрих-код не найден. Заполните поля вручную.');
         setName(`Штрих-код ${code}`);
@@ -366,6 +372,19 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* MG_SCANSRC: что нашлось по коду. КБЖУ показываем справочно —
+                  сверить с этикеткой проще, пока упаковка в руках. */}
+              {scanInfo && (scanInfo.kbju || scanInfo.guess) && (
+                <div className="mb-2 text-xs">
+                  {scanInfo.kbju && <p className="text-gray-500">{scanInfo.kbju}</p>}
+                  {scanInfo.guess && (
+                    <p className="text-amber-700">
+                      Товара нет в справочнике — данные подобраны ИИ по коду. Проверьте по упаковке.
+                    </p>
+                  )}
                 </div>
               )}
 

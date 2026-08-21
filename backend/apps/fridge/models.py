@@ -83,7 +83,19 @@ class Product(models.Model):
         help_text="NULL = общий каталог (виден всем); иначе — продукт этой семьи.",
     )
     # MG_T04C: provenance — manual catalog vs auto-created from recipe ingredients.
-    source = models.CharField(max_length=16, default="manual", help_text="manual|auto|import")
+    # MG_SCANSRC: плюс происхождение сканов. Отличать их важно: запись из
+    # OpenFoodFacts проверяема (штрих-код глобальный, база открытая), а догадка
+    # модели по коду — нет, и в общий каталог ей нельзя.
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Заведён вручную"
+        AUTO = "auto", "Из ингредиентов рецепта"
+        IMPORT = "import", "Импорт"
+        OFF = "off", "Скан: OpenFoodFacts"
+        AI = "ai", "Скан: догадка ИИ"
+
+    source = models.CharField(
+        max_length=16, default=Source.MANUAL, choices=Source.choices, help_text="Откуда взялась запись."
+    )
     # MG_RUBRIC001: rubricator metadata.
     subcategory = models.CharField(max_length=128, blank=True)
     popularity = models.CharField(max_length=16, blank=True, help_text="часто|средне|редко")

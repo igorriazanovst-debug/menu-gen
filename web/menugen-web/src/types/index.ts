@@ -340,7 +340,11 @@ export interface FridgeItem {
   updated_at: string;
 }
 export interface BarcodeLookupResult extends Product {
-  source: 'local' | 'openfoodfacts';
+  // MG_SCANSRC: 'ai' — товара не нашлось в OpenFoodFacts и его «опознала»
+  // модель по коду. Такие данные показываем с оговоркой и не пускаем в общий
+  // каталог продуктов.
+  source: 'local' | 'openfoodfacts' | 'ai';
+  low_confidence?: boolean;
 }
 
 export interface FridgeMenuUsageRecipe {

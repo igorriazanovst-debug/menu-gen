@@ -378,16 +378,24 @@ def fetch_product_from_off(barcode: str) -> Optional[Product]:
                 fields["calories_per_100g"] = cals
             if nutrition:
                 fields["nutrition"] = nutrition
+        # MG_SCANSRC: запись из OFF — проверяемая (штрих-код глобальный, данные
+        # в открытой базе), ей место в общем каталоге.
+        origin = Product.Source.OFF
     else:
         # OFF miss: last-resort GPT lookup by barcode (low confidence).
         fields = gpt_lookup_by_barcode(barcode)
         if not fields:
             return None
         category_fk = _resolve_category_fk(fields, {})
+        # MG_SCANSRC: это догадка модели по штрих-коду — проверить её нечем.
+        # Пометка нужна, чтобы такая запись не растворилась в общем каталоге:
+        # именно так каталог и зарастал безымянными продуктами.
+        origin = Product.Source.AI
 
     defaults = dict(fields)
     if category_fk is not None:
         defaults["category_fk"] = category_fk
+    defaults["source"] = origin
 
     product, _ = Product.objects.update_or_create(barcode=barcode, defaults=defaults)
     return product
@@ -563,7 +571,7 @@ def _num_or_none(v):
 def gpt_pick_category_slug(name: str, hints: str = "") -> str:
     """Ask the text LLM to choose ONE slug from our active categories.
     Returns a valid slug or "" on failure. Never raises."""
-    from apps.common.ai_provider import AIRequestError, get_ai_client
+    from apps.common.ai_provider import AIConfigError, AIRequestError, get_ai_client
 
     choices = _allowed_slugs()
     if not name or not choices:
@@ -579,7 +587,7 @@ def gpt_pick_category_slug(name: str, hints: str = "") -> str:
     prompt = f"Название: {name}\nПодсказки: {hints or '—'}"
     try:
         raw = get_ai_client().complete(prompt=prompt, system=system, max_tokens=40, temperature=0.0)
-    except AIRequestError as exc:
+    except (AIConfigError, AIRequestError) as exc:
         logger.warning("gpt_pick_category_slug failed for %r: %s", name, exc)
         return ""
     data = _parse_json_loose(raw) or {}
@@ -590,7 +598,7 @@ def gpt_pick_category_slug(name: str, hints: str = "") -> str:
 def gpt_fill_nutrition(name: str):
     """Ask the text LLM for KBJU per 100 g by product name.
     Returns (calories_per_100g|None, nutrition_dict). Never raises."""
-    from apps.common.ai_provider import AIRequestError, get_ai_client
+    from apps.common.ai_provider import AIConfigError, AIRequestError, get_ai_client
 
     if not name:
         return None, {}
@@ -602,7 +610,7 @@ def gpt_fill_nutrition(name: str):
     )
     try:
         raw = get_ai_client().complete(prompt=f"Продукт: {name}", system=system, max_tokens=120, temperature=0.0)
-    except AIRequestError as exc:
+    except (AIConfigError, AIRequestError) as exc:
         logger.warning("gpt_fill_nutrition failed for %r: %s", name, exc)
         return None, {}
     data = _parse_json_loose(raw) or {}
@@ -619,7 +627,7 @@ def gpt_lookup_by_barcode(barcode: str):
     """Last resort when OFF has nothing: ask the LLM to identify a product by
     its barcode (EAN). High hallucination risk -> caller marks low confidence.
     Returns a normalized fields dict (like _normalize_off_product) or None."""
-    from apps.common.ai_provider import AIRequestError, get_ai_client
+    from apps.common.ai_provider import AIConfigError, AIRequestError, get_ai_client
 
     if not barcode:
         return None
@@ -630,7 +638,7 @@ def gpt_lookup_by_barcode(barcode: str):
     )
     try:
         raw = get_ai_client().complete(prompt=f"Штрих-код: {barcode}", system=system, max_tokens=160, temperature=0.0)
-    except AIRequestError as exc:
+    except (AIConfigError, AIRequestError) as exc:
         logger.warning("gpt_lookup_by_barcode failed for %s: %s", barcode, exc)
         return None
     data = _parse_json_loose(raw) or {}

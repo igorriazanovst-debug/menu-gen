@@ -52,6 +52,11 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   int? _productId;
   String? _imageUrl;
   bool _loadingBarcode = false;
+  // MG_SCANSRC: что нашлось по штрих-коду — КБЖУ строкой и оговорка, если это
+  // догадка модели, а не запись из справочника. Цифры удобнее сверить с
+  // этикеткой сразу, пока упаковка в руках.
+  String? _scanKbju;
+  bool _scanGuess = false;
   String? _error;
 
   // MG-609 additions
@@ -133,6 +138,29 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
     if (picked != null) setState(() => _expiry = picked);
   }
 
+  /// MG_SCANSRC: «121 ккал · Б 16 · Ж 5 · У 3 (на 100 г)» либо null, если
+  /// сервер ничего про КБЖУ не знает: пустое «0 ккал» хуже молчания.
+  static String? _kbjuLine(Map<String, dynamic> m) {
+    String? fmt(dynamic v) {
+      final n = v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
+      if (n == null) return null;
+      return n == n.roundToDouble() ? '${n.round()}' : n.toStringAsFixed(1);
+    }
+
+    final parts = <String>[];
+    final cals = fmt(m['calories_per_100g']);
+    if (cals != null) parts.add('$cals ккал');
+    final nutrition = (m['nutrition'] is Map)
+        ? Map<String, dynamic>.from(m['nutrition'] as Map)
+        : <String, dynamic>{};
+    for (final e in const [['proteins', 'Б'], ['fats', 'Ж'], ['carbs', 'У']]) {
+      final v = fmt(nutrition[e[0]]);
+      if (v != null) parts.add('${e[1]} $v');
+    }
+    if (parts.isEmpty) return null;
+    return '${parts.join(' · ')} (на 100 г)';
+  }
+
   Future<void> _scanAndLookup() async {
     final scanned = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
@@ -146,6 +174,8 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
       final r = await widget.apiClient.post('/fridge/scan/', data: {'barcode': scanned});
       final m = (r is Map) ? Map<String, dynamic>.from(r) : <String, dynamic>{};
       setState(() {
+        _scanKbju = _kbjuLine(m); // MG_SCANSRC
+        _scanGuess = m['low_confidence'] == true;
         _nameCtrl.text = (m['name'] as String?) ?? scanned;
         _productId = m['id'] as int?;
         _imageUrl = m['image_url'] as String?;
@@ -164,6 +194,8 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
     } catch (e) {
       final msg = e.toString();
       setState(() {
+        _scanKbju = null; // MG_SCANSRC
+        _scanGuess = false;
         _error = msg.contains('404') || msg.contains('not found')
             ? 'Штрих-код не найден. Заполните поля вручную.'
             : 'Ошибка поиска: $msg';
@@ -495,6 +527,21 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
                   ),
                 ],
               ),
+              // MG_SCANSRC: результат скана — справочно, до сохранения.
+              if (_scanKbju != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(_scanKbju!,
+                      style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                ),
+              if (_scanGuess)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    'Товара нет в справочнике — данные подобраны ИИ по коду. Проверьте по упаковке.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFFB45309)),
+                  ),
+                ),
               const SizedBox(height: 6),
 
               // ── HISTORY ──

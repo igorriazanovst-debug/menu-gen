@@ -83,6 +83,7 @@ class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
         "has_image",
         "image_url",
         "category",
+        "source",  # MG_SCANSRC: видно, откуда запись — скан, рецепт или руки
         "shelf_life_days",  # MG_SHELFLIFE
         "calories_per_100g",
         "barcode",
@@ -90,7 +91,7 @@ class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
     list_editable = ("image_url",)
     list_display_links = ("name",)
     search_fields = ("name", "barcode", "owner__email", "owner__name", "owner_family__name")
-    list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "category")
+    list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "source", "category")
     raw_id_fields = ("owner", "owner_family", "category_fk")
     readonly_fields = ("image_preview",)
     actions = ("fetch_images_fill", "fetch_images_overwrite", "clear_images")

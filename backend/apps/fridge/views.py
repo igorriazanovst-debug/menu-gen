@@ -188,13 +188,18 @@ class BarcodeLookupView(APIView):
             enrich_existing_product(product)
             data = ProductSerializer(product).data
             data["source"] = "local"
+            data["low_confidence"] = product.source == Product.Source.AI  # MG_SCANSRC
             return Response(data)
 
         product = fetch_product_from_off(barcode)
         if product is not None:
             data = ProductSerializer(product).data
             # MENUGEN_SCAN_SOURCE: product may be enriched via OFF or GPT fallback
-            data["source"] = "openfoodfacts"
+            # MG_SCANSRC: догадку модели показываем как догадку. Молча выданная
+            # за справочную, она разойдётся по дневнику и меню как факт.
+            ai = product.source == Product.Source.AI
+            data["source"] = "ai" if ai else "openfoodfacts"
+            data["low_confidence"] = ai
             return Response(data, status=status.HTTP_200_OK)
 
         return Response(

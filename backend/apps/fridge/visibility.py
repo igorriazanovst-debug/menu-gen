@@ -22,6 +22,28 @@ def family_of(user):
     return membership.family if membership else None
 
 
+# MG_SCANSRC: продукт, «опознанный» моделью по штрих-коду, когда его не нашлось
+# в OpenFoodFacts. Проверить такую запись нечем, поэтому в списки, где выбирают
+# продукт (дневник, покупки, конструктор меню), она не попадает: там её увидели
+# бы как обычный справочный продукт и поверили бы КБЖУ.
+#
+# Из базы её при этом не убираем — позиция холодильника ссылается на неё по FK,
+# и повторный скан того же кода должен находить её, а не ходить в сеть заново.
+UNVERIFIED_SOURCES = ("ai",)  # = Product.Source.AI, строкой — модуль не тянет модели fridge
+
+
+def _verified():
+    return ~Q(source__in=UNVERIFIED_SOURCES)
+
+
+def family_products_q(family):
+    """Продукты конкретной семьи — без оговорок про происхождение.
+
+    Свой продукт семья добавила сама и отвечает за него сама.
+    """
+    return Q(owner_family=family)
+
+
 def visible_products_q(user=None, family=None):
     """Условие видимости: общий каталог + продукты своей семьи.
 
@@ -30,8 +52,8 @@ def visible_products_q(user=None, family=None):
     if family is None:
         family = family_of(user)
     if family is None:
-        return Q(owner_family__isnull=True)
-    return Q(owner_family__isnull=True) | Q(owner_family=family)
+        return catalog_q()
+    return catalog_q() | family_products_q(family)
 
 
 def catalog_q():
@@ -41,4 +63,4 @@ def catalog_q():
     привязать ингредиент рецепта к «Маминой настойке» одной семьи значило бы
     протащить её в чужие меню.
     """
-    return Q(owner_family__isnull=True)
+    return Q(owner_family__isnull=True) & _verified()
