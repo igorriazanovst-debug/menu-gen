@@ -38,9 +38,12 @@
     </queries>
     <!-- MG_APPICON: android:label — короткая подпись под иконкой, лаунчер
          обрезает примерно после 12 символов. Полное название «MenuGen Platform»
-         показывается внутри приложения (экран входа). -->
+         показывается внутри приложения (экран входа).
+         MG_DEVBUILD: сама строка задаётся в build.gradle (resValue), чтобы
+         отладочная сборка называлась «MenuGen dev» и её было видно в лаунчере
+         рядом с магазинной. -->
     <application
-        android:label="MenuGen"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config">
