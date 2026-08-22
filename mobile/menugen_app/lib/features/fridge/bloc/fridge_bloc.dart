@@ -26,6 +26,9 @@ class FridgeItemAdded extends FridgeEvent {
   final String? categorySlug; // MENUGEN_KBJU
   final double? caloriesPer100g;
   final Map<String, dynamic>? nutrition;
+  // MG_FAMBARCODE: код отсканированной упаковки. Если товар не опознан, сервер
+  // запомнит название для семьи и подставит его при следующем скане.
+  final String? barcode;
   const FridgeItemAdded({
     required this.name,
     required this.quantity,
@@ -35,10 +38,11 @@ class FridgeItemAdded extends FridgeEvent {
     this.categorySlug, // MENUGEN_KBJU
     this.caloriesPer100g,
     this.nutrition,
+    this.barcode,
   });
   @override
   List<Object?> get props =>
-      [name, quantity, unit, expiryDate, productId, categorySlug, caloriesPer100g, nutrition];
+      [name, quantity, unit, expiryDate, productId, categorySlug, caloriesPer100g, nutrition, barcode];
 }
 
 class FridgeItemDeleted extends FridgeEvent {
@@ -191,6 +195,7 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
       }
       if (e.caloriesPer100g != null) body['calories_per_100g'] = e.caloriesPer100g;
       if (e.nutrition != null && e.nutrition!.isNotEmpty) body['nutrition'] = e.nutrition;
+      if (e.barcode != null && e.barcode!.isNotEmpty) body['barcode'] = e.barcode; // MG_FAMBARCODE
       await apiClient.post('/fridge/', data: body);
       add(const FridgeLoadRequested());
     } catch (err) {

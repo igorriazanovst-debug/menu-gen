@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from .barcodes import normalize  # MG_FAMBARCODE
 from .models import FridgeItem, Product, ProductCategory
 
 
@@ -126,6 +127,10 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
     category_slug = serializers.CharField(write_only=True, required=False, allow_blank=True)
     calories_per_100g = serializers.FloatField(write_only=True, required=False, allow_null=True)
     nutrition = serializers.DictField(write_only=True, required=False)
+    # MG_FAMBARCODE: код отсканированной упаковки. Приходит, когда товар не
+    # опознался и название человек вписал сам — тогда мы это запоминаем, и в
+    # следующий раз та же упаковка подставится без ввода.
+    barcode = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=64)
 
     class Meta:
         model = FridgeItem
@@ -138,6 +143,7 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
             "category_slug",
             "calories_per_100g",
             "nutrition",
+            "barcode",
         )
 
     def _resolve_product(self, name, category_slug, calories, nutrition):
@@ -231,6 +237,7 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         family = self.context["family"]
         user = self.context["request"].user
+        barcode = validated_data.pop("barcode", "")  # MG_FAMBARCODE
         category_slug = validated_data.pop("category_slug", "")
         calories = validated_data.pop("calories_per_100g", None)
         nutrition = validated_data.pop("nutrition", None)
@@ -245,11 +252,34 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
             if product is not None:
                 validated_data["product"] = product
 
-        return FridgeItem.objects.create(
+        item = FridgeItem.objects.create(
             **validated_data,
             family=family,
             added_by_id=user.id,
         )
+
+        # MG_FAMBARCODE: запоминаем, что этот код у этой семьи — вот этот товар.
+        #
+        # Условие — «позиция не привязана к продукту с этим кодом». Просто
+        # «product is None» не годится: указанная категория сама заводит продукт
+        # семьи по названию, но штрих-кода у него нет и при скане он не найдётся.
+        # А если позиция ссылается на продукт с этим кодом, значит скан его уже
+        # опознал — запоминать нечего.
+        linked = validated_data.get("product")
+        known = linked is not None and normalize(linked.barcode) == normalize(barcode)
+        if barcode and not known:
+            from .barcode_memory import remember
+
+            remember(
+                family=family,
+                barcode=barcode,
+                name=validated_data.get("name"),
+                unit=validated_data.get("unit"),
+                category=validated_data.get("category_fk"),
+                user=user,
+            )
+
+        return item
 
     # MG_B03: edit an existing item. Mirrors create()'s product resolution so
     # changing the category re-resolves/updates the Product (category_fk lives

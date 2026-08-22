@@ -161,6 +161,49 @@ class Product(models.Model):
         }
 
 
+class FamilyBarcode(models.Model):
+    """MG_FAMBARCODE: «этот код у нас — вот это». Память семьи о своих товарах.
+
+    Справочник сети покрывает её ассортимент, OpenFoodFacts — что попало в
+    открытую базу. Всё остальное человек вбивал руками каждый раз заново: код
+    нигде не оставался, и та же упаковка завтра снова «не найдена».
+
+    Отдельная таблица, а не продукт со штрих-кодом: `Product.barcode` уникален
+    на всю базу, и запись одной семьи заняла бы код у всех остальных. Здесь же
+    у каждой семьи своя строка на один и тот же код — а «Сметана 20%» у соседей
+    вполне может быть другой марки.
+
+    Хранится ровно то, что подставляется в форму добавления: название, единица
+    и категория. КБЖУ нет намеренно: в холодильник его не вводят, и выдумывать
+    место для чисел, которых никто не вносил, незачем.
+    """
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="barcodes")
+    # Канонический вид (13 цифр) — см. apps/fridge/barcodes.py. Сканеры отдают
+    # один и тот же код по-разному, поэтому сравниваем приведённым.
+    barcode = models.CharField(max_length=64, db_index=True)
+    name = models.CharField(max_length=255)
+    unit = models.CharField(max_length=50, blank=True)
+    category_fk = models.ForeignKey(
+        ProductCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="family_barcodes"
+    )
+    created_by = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="family_barcodes"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "family_barcodes"
+        constraints = [
+            models.UniqueConstraint(fields=["family", "barcode"], name="uniq_family_barcode"),
+        ]
+        indexes = [models.Index(fields=["barcode"])]
+
+    def __str__(self):
+        return f"{self.barcode} → {self.name}"
+
+
 class FridgeItem(models.Model):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="fridge_items")
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True)

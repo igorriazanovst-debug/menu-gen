@@ -32,6 +32,10 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   // MG_SCANSRC: что нашлось по штрих-коду — КБЖУ строкой и оговорка, если это
   // догадка модели, а не запись из OpenFoodFacts.
   const [scanInfo, setScanInfo] = useState<{ kbju: string | null; guess: boolean } | null>(null);
+  // MG_FAMBARCODE: код последней отсканированной упаковки. Уходит вместе с
+  // позицией: если товар не опознан, сервер запомнит название для семьи, и в
+  // следующий раз та же упаковка подставится без ввода.
+  const [scannedCode, setScannedCode] = useState<string | null>(null);
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const handledRef = useRef(false);
@@ -212,6 +216,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
     try {
       const { data } = await fridgeApi.scanBarcode(code);
       const p = data as BarcodeLookupResult;
+      setScannedCode(code); // MG_FAMBARCODE
       setScanInfo({ kbju: productKbjuLine(p), guess: !!p.low_confidence }); // MG_SCANSRC
       setName(p.name);
       setProductId(p.id);
@@ -224,8 +229,10 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
     } catch (e: any) {
       setScanInfo(null); // MG_SCANSRC
       if (e?.response?.status === 404) {
-        setError('Штрих-код не найден. Заполните поля вручную.');
-        setName(`Штрих-код ${code}`);
+        // MG_FAMBARCODE: код запомним по названию, которое впишет человек.
+        setScannedCode(code);
+        setError('Штрих-код не найден. Впишите название — в следующий раз подставим сами.');
+        setName('');
       } else {
         setError('Ошибка поиска: ' + (e?.response?.data?.detail || e?.message || ''));
       }
@@ -273,6 +280,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
         expiry_date: expiry,
         product: productId,
         category_slug: selectedCat?.slug, // MG_B02CAT
+        barcode: scannedCode ?? undefined, // MG_FAMBARCODE
       });
       onAdded(data);
       onClose();

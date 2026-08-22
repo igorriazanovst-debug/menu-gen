@@ -20,6 +20,9 @@ export const fridgeApi = {
     expiry_date: string;
     product?: number | null;
     category_slug?: string; // MG_B02CAT
+    // MG_FAMBARCODE: код отсканированной упаковки. Если товар не опознался и
+    // название вписали руками, сервер запомнит его для этой семьи.
+    barcode?: string;
   }) => client.post<FridgeItem>('/fridge/', data),
 
   delete: (id: number) => client.delete(`/fridge/${id}/`),

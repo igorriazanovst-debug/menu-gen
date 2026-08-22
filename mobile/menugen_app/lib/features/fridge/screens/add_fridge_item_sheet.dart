@@ -57,6 +57,9 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   // этикеткой сразу, пока упаковка в руках.
   String? _scanKbju;
   bool _scanGuess = false;
+  // MG_FAMBARCODE: код последней отсканированной упаковки — уходит вместе с
+  // позицией, чтобы сервер запомнил название, если товар не опознан.
+  String? _scannedCode;
   String? _error;
 
   // MG-609 additions
@@ -176,7 +179,11 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
       setState(() {
         _scanKbju = _kbjuLine(m); // MG_SCANSRC
         _scanGuess = m['low_confidence'] == true;
-        _nameCtrl.text = (m['name'] as String?) ?? scanned;
+        _scannedCode = scanned; // MG_FAMBARCODE
+        // MG_FAMBARCODE: без названия поле оставляем пустым. Раньше сюда
+        // подставлялся сам код — и он же уехал бы в память семьи как название.
+        final found = (m['name'] as String?) ?? '';
+        if (found.isNotEmpty) _nameCtrl.text = found;
         _productId = m['id'] as int?;
         _imageUrl = m['image_url'] as String?;
         final du = (m['default_unit'] as String?) ?? '';
@@ -196,8 +203,11 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
       setState(() {
         _scanKbju = null; // MG_SCANSRC
         _scanGuess = false;
+        // MG_FAMBARCODE: код всё равно запоминаем — по названию, которое
+        // впишет человек, и в следующий раз подставим сами.
+        _scannedCode = scanned;
         _error = msg.contains('404') || msg.contains('not found')
-            ? 'Штрих-код не найден. Заполните поля вручную.'
+            ? 'Штрих-код не найден. Впишите название — в следующий раз подставим сами.'
             : 'Ошибка поиска: $msg';
       });
     } finally {
@@ -301,6 +311,7 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
               (recMatchesName ? (rec.categorySlug ?? rec.category) : null),
           caloriesPer100g: recMatchesName ? rec.caloriesPer100g : null,
           nutrition: recMatchesName ? rec.nutrition : null,
+          barcode: _scannedCode, // MG_FAMBARCODE
         ));
     Navigator.of(context).pop();
   }

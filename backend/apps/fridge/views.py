@@ -165,7 +165,13 @@ class FridgeItemDetailView(generics.RetrieveUpdateDestroyAPIView):
 class BarcodeLookupView(APIView):
     """
     POST /fridge/scan/  body: {"barcode": "..."}
-    1) try local Product;  2) try OpenFoodFacts (cache locally);  3) 404.
+
+    Порядок — от самого надёжного к самому сомнительному:
+      1) память семьи (MG_FAMBARCODE) — она сама так назвала этот код;
+      2) свои записи: справочник сети, находки из OpenFoodFacts, прежние сканы;
+      3) OpenFoodFacts по сети (запись кэшируется);
+      4) догадка модели по коду — отдаётся с пометкой low_confidence;
+      5) 404 — название вписывает человек, и мы его запоминаем (см. п. 1).
     """
 
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
@@ -177,6 +183,32 @@ class BarcodeLookupView(APIView):
         barcode = serializer.validated_data["barcode"].strip()
         if not barcode:
             return Response({"detail": "barcode required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # MG_FAMBARCODE: сначала — что помнит сама семья. Это не только про
+        # товары, которых нигде нет: если в справочнике запись неудачная (не та
+        # марка, не тот объём), поправка, сделанная однажды, должна держаться,
+        # а не перебиваться выгрузкой при каждом скане.
+        from .barcode_memory import recall
+
+        remembered = recall(_family_for(request), barcode)
+        if remembered is not None:
+            cat = remembered.category_fk
+            return Response(
+                {
+                    "id": None,  # своей карточки продукта у такой записи нет
+                    "name": remembered.name,
+                    "default_unit": remembered.unit,
+                    "category_id": cat.id if cat else None,
+                    "category_slug": cat.slug if cat else None,
+                    "category_name": cat.name_ru if cat else None,
+                    "calories_per_100g": None,
+                    "nutrition": {},
+                    "barcode": barcode,
+                    "image_url": None,
+                    "source": "family",
+                    "low_confidence": False,
+                }
+            )
 
         # MG_BARCODEDB: ищем по всем написаниям кода — UPC-A с упаковки и
         # GTIN-13 из выгрузки сети это один и тот же товар.
