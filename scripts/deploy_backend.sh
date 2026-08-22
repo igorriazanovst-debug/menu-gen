@@ -131,17 +131,27 @@ $DC restart backend celery celery-beat
 echo "==> 7. Health-check API"
 # runserver после рестарта поднимается не мгновенно — ретраим до ~40с,
 # чтобы не получить ложный 502 от nginx, пока Django ещё стартует.
+# Код берём ТОЛЬКО из curl. Раньше стояло `$(curl ... || echo "000")`: при
+# недоступном адресе curl сам печатает 000 И возвращает ненулевой код, echo
+# дописывал ещё три нуля — получалось «000000», которое не равно «000» и не
+# начинается с «5», то есть проверка ниже пропускала недоступный backend как
+# успех и печатала «ГОТОВО».
 code="000"
 for _ in $(seq 1 20); do
   sleep 2
-  code=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo "000")
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" 2>/dev/null) || code="000"
   # Любой ответ кроме 000/5xx означает, что Django поднялся (401/404/200 — ок).
-  if [ "$code" != "000" ] && [ "${code:0:1}" != "5" ]; then
-    break
-  fi
+  case "$code" in
+    ""|000|5*) ;;
+    *) break ;;
+  esac
 done
-echo "    GET /api/v1/ -> HTTP $code"
-if [ "$code" = "000" ] || [ "${code:0:1}" = "5" ]; then
+echo "    GET $HEALTH_URL -> HTTP $code"
+case "$code" in
+  ""|000|5*) HEALTH_BAD=1 ;;
+  *) HEALTH_BAD=0 ;;
+esac
+if [ "$HEALTH_BAD" = "1" ]; then
   echo "!! Backend не отвечает корректно (HTTP $code) после ожидания. Проверь логи:"
   echo "     $DC logs --tail=80 backend"
   echo "!! Откат: см. шапку скрипта (backend.tar.gz.bak_${TS} + db.sql.gz.bak_${TS})."
