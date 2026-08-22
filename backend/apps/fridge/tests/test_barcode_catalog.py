@@ -154,6 +154,22 @@ class TestImport:
         assert product.name == "Молоко (моё)"
         assert product.source == Product.Source.OFF
 
+    def test_догадку_модели_справочник_заменяет(self, catalog_file):
+        """Догадку по коду проверить нечем, а запись сети привязана к артикулу."""
+        Product.objects.create(
+            name="Молоко в бутылке (догадка)",
+            barcode="4600000000017",
+            source=Product.Source.AI,
+            calories_per_100g=999,
+        )
+
+        call_command("import_barcode_catalog", file=catalog_file)
+
+        product = Product.objects.get(barcode="4600000000017")
+        assert product.name.startswith("Молоко Простоквашино")
+        assert product.source == Product.Source.RETAIL
+        assert float(product.calories_per_100g) == 59
+
     def test_но_пустое_кбжу_своей_записи_дополняет(self, catalog_file):
         Product.objects.create(name="Молоко (моё)", barcode="4600000000017", source=Product.Source.OFF)
 

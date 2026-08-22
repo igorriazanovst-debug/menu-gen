@@ -123,12 +123,16 @@ class Command(BaseCommand):
                 if not sane:
                     dropped_kbju += 1
 
-                # Запись, уже добытую сканером из OpenFoodFacts или заведённую
-                # руками, не переписываем: она проверена конкретным человеком с
-                # упаковкой в руках. Дополняем только пустое.
+                # Запись, добытую из OpenFoodFacts или заведённую руками, не
+                # переписываем: за ней стоит человек с упаковкой в руках или
+                # открытая база. Дополняем только пустое КБЖУ.
+                #
+                # Исключение — догадка модели по коду (source=ai). Проверить её
+                # нечем, а запись сети привязана к реальному артикулу, так что
+                # здесь справочник заведомо лучше и заменяет её целиком.
                 existing = Product.objects.filter(lookup_q(barcode)).first()
                 if existing is not None:
-                    if existing.source != Product.Source.RETAIL:
+                    if existing.source not in (Product.Source.RETAIL, Product.Source.AI):
                         changes = []
                         if sane and existing.calories_per_100g is None and not existing.nutrition:
                             existing.calories_per_100g = kcal
