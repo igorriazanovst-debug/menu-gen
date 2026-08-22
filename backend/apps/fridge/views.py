@@ -178,7 +178,11 @@ class BarcodeLookupView(APIView):
         if not barcode:
             return Response({"detail": "barcode required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        product = Product.objects.filter(barcode=barcode).first()
+        # MG_BARCODEDB: ищем по всем написаниям кода — UPC-A с упаковки и
+        # GTIN-13 из выгрузки сети это один и тот же товар.
+        from .barcodes import lookup_q
+
+        product = Product.objects.filter(lookup_q(barcode)).first()
         if product is not None:
             # MENUGEN_LOCAL_ENRICH: a product cached before the category/KBJU
             # fix may lack category_fk and/or nutrition. Backfill it on read so

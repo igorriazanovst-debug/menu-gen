@@ -701,7 +701,14 @@ def enrich_existing_product(product) -> bool:
             updates.append("category_fk")
 
     # KBJU: fill only if completely missing.
-    if not product.nutrition and product.calories_per_100g is None:
+    #
+    # MG_BARCODEDB: кроме записей из выгрузки сети. У них КБЖУ пустое не по
+    # недосмотру, а потому что в источнике оно не сходилось с калорийностью и
+    # мы его отбросили. Просить модель придумать числа вместо отброшенных —
+    # ровно то, от чего мы уходим, заводя справочник штрих-кодов.
+    if product.source == Product.Source.RETAIL:
+        pass
+    elif not product.nutrition and product.calories_per_100g is None:
         cals, nutrition = gpt_fill_nutrition(product.name or "")
         if cals is not None:
             product.calories_per_100g = cals

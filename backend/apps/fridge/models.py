@@ -89,6 +89,11 @@ class Product(models.Model):
         IMPORT = "import", "Импорт"
         OFF = "off", "Скан: OpenFoodFacts"
         AI = "ai", "Скан: догадка ИИ"
+        # MG_BARCODEDB: выгрузка товаров розничной сети со штрих-кодами.
+        # Это конкретные SKU («Соус Tabasco красный перечный, 350мл»), а не
+        # справочные продукты: они нужны, чтобы опознать сканируемую упаковку,
+        # но в списках выбора утопили бы каталог — см. visibility.py.
+        RETAIL = "retail", "Каталог сети (штрих-коды)"
 
     # MG_T04C: provenance — manual catalog vs auto-created from recipe ingredients.
     # MG_SCANSRC: плюс происхождение сканов. Отличать их важно: запись из
