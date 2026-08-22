@@ -11,12 +11,16 @@
 #
 # Запуск (на сервере):
 #   cd /opt/menugen
-#   git fetch origin claude/nifty-rubin-h90pfg
-#   git show origin/claude/nifty-rubin-h90pfg:scripts/deploy_backend.sh > /tmp/deploy_backend.sh
+#   git fetch origin main
+#   git show origin/main:scripts/deploy_backend.sh > /tmp/deploy_backend.sh
 #   sed -i 's/\r$//' /tmp/deploy_backend.sh    # на случай CRLF
 #   chmod +x /tmp/deploy_backend.sh
 #   /tmp/deploy_backend.sh                      # покажет план миграций и спросит подтверждение
 #   # неинтерактивно:  ASSUME_YES=1 /tmp/deploy_backend.sh
+#
+# Переменные пишутся В ОДНОЙ строке с командой, иначе они останутся в оболочке
+# и до скрипта не дойдут:
+#   BRANCH=other-branch HEALTH_URL=http://127.0.0.1:8003/api/v1/ /tmp/deploy_backend.sh
 #
 # Откат:
 #   - код:  tar -C "$REPO" -xzf backups/backend.tar.gz.bak_<TS>
@@ -26,7 +30,14 @@
 set -euo pipefail
 
 REPO=/opt/menugen
-BRANCH=${BRANCH:-claude/nifty-rubin-h90pfg}
+# Ветка по умолчанию — main.
+#
+# Раньше здесь стояла фичеветка той сессии, в которой скрипт писался. Забытая
+# переменная окружения (`BRANCH=main ...` отдельной строкой — это присваивание,
+# а не запуск с переменной) означала не отказ, а молчаливый откат прода на код
+# полугодовой давности: шаг синхронизации кода идёт ДО вопроса о миграциях, и
+# runserver подхватывает файлы сам. Дефолт должен быть безопасным.
+BRANCH=${BRANCH:-main}
 WT=/tmp/mg-backend-build           # изолированная копия ветки (worktree)
 TS=$(date +%Y%m%d_%H%M%S)
 # URL для health-check после рестарта. dev/старый: nginx на :8081. Прод
