@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import LegalInfo
+from .models import AndroidBuild, LegalInfo
 
 
 @admin.register(LegalInfo)
@@ -39,3 +39,23 @@ class LegalInfoAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(AndroidBuild)
+class AndroidBuildAdmin(admin.ModelAdmin):
+    """MG_APKSITE: выложенные сборки.
+
+    Файл сюда не загружают — он приезжает командой `publish_apk` (apk весит
+    десятки мегабайт и упёрся бы в ограничение nginx). Здесь правят описание
+    и снимают сборку с сайта галочкой.
+    """
+
+    list_display = ("version_name", "version_code", "size_mb", "is_published", "created_at")
+    list_editable = ("is_published",)
+    list_display_links = ("version_name",)
+    readonly_fields = ("file", "size_bytes", "sha256", "created_at")
+    search_fields = ("version_name", "sha256")
+
+    @admin.display(description="Размер")
+    def size_mb(self, obj):
+        return f"{obj.size_bytes / (1024 * 1024):.1f} МБ" if obj.size_bytes else "—"

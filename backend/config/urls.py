@@ -24,6 +24,8 @@ urlpatterns = [
     path("api/v1/social/", include("apps.social.urls")),
     path("api/v1/sync/", include("apps.sync.urls")),
     path("api/v1/legal/", include("apps.legal.urls")),
+    # MG_APKSITE: скачивание приложения мимо магазина, пока идёт модерация.
+    path("api/v1/app/", include("apps.legal.app_urls")),
     # Медиа отдаём и при DEBUG=False. Стек работает на runserver (gunicorn не
     # используется), на новом сервере за nginx /media/ проксируется в backend.
     # django.conf.urls.static.static() возвращает [] при DEBUG=False, поэтому

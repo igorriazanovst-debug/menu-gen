@@ -1,7 +1,10 @@
-"""MG_LEGAL: юридическая информация сайта (реквизиты ИП, оферта, логотип).
+"""MG_LEGAL: публичная информация сайта — реквизиты ИП, оферта, логотип.
 
 Синглтон: одна запись, редактируется в админке. Публично отдаётся через API,
 на вебе — страницы «Реквизиты» и «Оферта».
+
+MG_APKSITE: здесь же живёт запись о выложенной сборке приложения — это тоже
+публичная информация о сайте, доступная без входа.
 """
 
 from django.db import models
@@ -75,3 +78,44 @@ class LegalInfo(models.Model):
         from .privacy_default import default_privacy_text
 
         return default_privacy_text(self)
+
+
+class AndroidBuild(models.Model):
+    """MG_APKSITE: подписанная сборка приложения, выложенная для скачивания.
+
+    Модерация в RuStore идёт долго, а исправление иногда нужно людям сегодня.
+    Тот же самый подписанный файл лежит и на сайте: именно тот же, а не
+    пересобранный — Android не поставит поверх установленного магазинного
+    приложения сборку с другим ключом подписи.
+
+    Файл кладётся командой `publish_apk` (она же считает размер и контрольную
+    сумму), а не загружается через админку: apk весит десятки мегабайт, и
+    загрузка упёрлась бы в ограничение nginx на размер тела запроса.
+    """
+
+    version_name = models.CharField(max_length=32, verbose_name="Версия", help_text="Как в магазине: 1.0.2")
+    version_code = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Код версии", help_text="Номер сборки (versionCode)"
+    )
+    file = models.FileField(upload_to="apk/", verbose_name="Файл")
+    size_bytes = models.PositiveBigIntegerField(default=0, verbose_name="Размер, байт")
+    # Контрольная сумма нужна именно здесь: файл ставят в обход магазина, и
+    # сверить, что скачалось ровно то, что выложено, больше нечем.
+    sha256 = models.CharField(max_length=64, blank=True, verbose_name="SHA-256")
+    notes = models.TextField(blank=True, verbose_name="Что нового")
+    is_published = models.BooleanField(default=True, verbose_name="Показывать на сайте")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "android_builds"
+        ordering = ["-created_at"]
+        verbose_name = "Сборка Android"
+        verbose_name_plural = "Сборки Android"
+
+    def __str__(self):
+        return f"{self.version_name} ({self.size_bytes // (1024 * 1024)} МБ)"
+
+    @classmethod
+    def current(cls):
+        """Последняя выложенная сборка. None — если выкладывать нечего."""
+        return cls.objects.filter(is_published=True).exclude(file="").first()

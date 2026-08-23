@@ -617,3 +617,15 @@ export interface KBJUResult {
   carb_target_g: string;
   fiber_target_g: string;
 }
+
+// MG_APKSITE: сборка приложения, выложенная на сайте, пока идёт модерация в
+// магазине. Пусто — выкладывать нечего, блок скачивания не показывается.
+export interface AndroidBuild {
+  version_name: string;
+  version_code?: number | null;
+  url: string | null;
+  size_bytes?: number;
+  sha256?: string;
+  notes?: string;
+  created_at?: string;
+}

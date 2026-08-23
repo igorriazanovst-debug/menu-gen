@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { AndroidDownload } from '../../components/app/AndroidDownload'; // MG_APKSITE
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { login, loginPhone, clearError } from '../../store/slices/authSlice';
 import { authApi } from '../../api/auth';
@@ -160,6 +161,9 @@ export const LoginPage: React.FC = () => {
             {' · '}
             <Link to="/register/phone" className="text-tomato font-medium hover:underline">По телефону</Link>
           </p>
+
+          {/* MG_APKSITE: приложение можно поставить, не дожидаясь магазина. */}
+          <AndroidDownload />
         </div>
       </div>
     </div>

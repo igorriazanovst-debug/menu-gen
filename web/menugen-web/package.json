@@ -66,6 +66,7 @@
     "moduleNameMapper": {
       "^(\\.\\./)+api/auth$": "<rootDir>/src/api/__mocks__/auth.js",
       "^(\\.\\./)+api/client$": "<rootDir>/src/api/__mocks__/client.js",
+      "^(\\.\\./)+api/app$": "<rootDir>/src/api/__mocks__/app.js",
       "react-router-dom": "<rootDir>/node_modules/react-router-dom/dist/index.js",
       "react-router/dom": "<rootDir>/node_modules/react-router/dist/development/dom-export.js"
     }
