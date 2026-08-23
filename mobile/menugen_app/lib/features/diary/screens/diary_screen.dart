@@ -8,6 +8,8 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/premium/premium_gate_cubit.dart';
+import '../../../core/utils/package_size.dart'; // MG_DIARYSCAN
+import '../../fridge/screens/barcode_scanner_screen.dart'; // MG_DIARYSCAN
 import '../../../core/widgets/draggable_action_button.dart'; // MG_SKIN
 import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
@@ -1250,6 +1252,9 @@ class _AddManualDialogState extends State<_AddManualDialog>
 
   // Продукт
   final _productQuery = TextEditingController();
+  // MG_DIARYSCAN: состояние сканера в дневнике.
+  bool _scanLoading = false;
+  String? _scanNote;
   final _productGrams = TextEditingController(text: '100');
   List<Map<String, dynamic>> _productResults = const [];
   Map<String, dynamic>? _product;
@@ -1365,7 +1370,47 @@ class _AddManualDialogState extends State<_AddManualDialog>
       _product = p;
       _productResults = const [];
       _productGrams.text = '100';
+      _scanNote = null;
     });
+  }
+
+  // MG_DIARYSCAN: продукт по штрих-коду. В дневник еду вносят упаковками —
+  // выпил бутылку йогурта, съел пачку чипсов, — поэтому количество берём из
+  // фасовки: поправить проще, чем набрать заново.
+  Future<void> _scanProduct() async {
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+    );
+    if (code == null || code.isEmpty) return;
+    setState(() => _scanLoading = true);
+    try {
+      final r = await widget.apiClient.post('/fridge/scan/', data: {'barcode': code});
+      final m = (r is Map) ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+      final grams = packageGrams(m['default_unit'] as String?) ?? packageGrams(m['name'] as String?);
+      final n = (m['nutrition'] is Map) ? Map<String, dynamic>.from(m['nutrition'] as Map) : {};
+      final hasKbju = _toNum(m['calories_per_100g']) > 0 || _toNum(n['calories']) > 0;
+      if (!mounted) return;
+      setState(() {
+        _product = m;
+        _productResults = const [];
+        _productQuery.clear();
+        _productGrams.text = (grams ?? 100).toString();
+        _scanNote = !hasKbju
+            ? 'КБЖУ для этого товара неизвестно — впишите вручную с упаковки.'
+            : (m['low_confidence'] == true
+                ? 'Товара нет в справочниках — данные подобраны ИИ по коду. Проверьте по упаковке.'
+                : null);
+      });
+    } catch (e) {
+      final msg = e.toString();
+      if (mounted) {
+        setState(() => _scanNote = msg.contains('404')
+            ? 'Штрих-код не найден. Найдите продукт по названию или внесите вручную.'
+            : 'Ошибка поиска: $msg');
+      }
+    } finally {
+      if (mounted) setState(() => _scanLoading = false);
+    }
   }
 
   // (calories, proteins, fats, carbs) — итог для выбранного количества.
@@ -1545,11 +1590,31 @@ class _AddManualDialogState extends State<_AddManualDialog>
       padding: const EdgeInsets.only(top: 4),
       children: [
         if (_product == null) ...[
-          TextField(
-            controller: _productQuery,
-            decoration: _dec('Поиск продукта (от 2 букв)'),
-            onChanged: _searchProducts,
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _productQuery,
+                  decoration: _dec('Поиск продукта (от 2 букв)'),
+                  onChanged: _searchProducts,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // MG_DIARYSCAN: упаковку проще отсканировать, чем набрать.
+              IconButton(
+                tooltip: 'Сканировать штрих-код',
+                onPressed: _scanLoading ? null : _scanProduct,
+                icon: _scanLoading
+                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.qr_code_scanner),
+              ),
+            ],
           ),
+          if (_scanNote != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(_scanNote!, style: const TextStyle(fontSize: 12, color: Color(0xFFB45309))),
+            ),
           if (_productLoading) const Padding(padding: EdgeInsets.all(8), child: Text('Поиск…')),
           _searchResults(_productResults, _pickProduct, (p) => (p['name'] ?? '').toString()),
         ] else ...[
@@ -1566,6 +1631,11 @@ class _AddManualDialogState extends State<_AddManualDialog>
             ],
           ),
           const SizedBox(height: 8),
+          if (_scanNote != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(_scanNote!, style: const TextStyle(fontSize: 12, color: Color(0xFFB45309))),
+            ),
           TextField(
             controller: _productGrams,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),

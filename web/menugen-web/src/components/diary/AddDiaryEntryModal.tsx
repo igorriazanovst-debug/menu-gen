@@ -1,5 +1,6 @@
 // DIARY_V2 / freemium: ручное добавление — рецепт из базы, продукт из базы, либо вручную.
 import React, { useEffect, useRef, useState } from 'react';
+import { Scanner } from '@yudiel/react-qr-scanner';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -7,8 +8,9 @@ import { diaryApi } from '../../api/diary';
 import { recipesApi } from '../../api/recipes';
 import { fridgeApi } from '../../api/fridge';
 import { getErrorMessage } from '../../utils/api';
+import { packageGrams } from '../../utils/packageSize'; // MG_DIARYSCAN
 import { MEAL_LABELS } from '../../types';
-import type { MealType, Recipe, Product } from '../../types';
+import type { MealType, Recipe, Product, BarcodeLookupResult } from '../../types';
 
 interface Props {
   date: string;
@@ -83,6 +85,13 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
   const [productLoading, setProductLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productGrams, setProductGrams] = useState('100');
+  // MG_DIARYSCAN: в дневник еду вносят упаковками — выпил бутылку йогурта,
+  // съел пачку чипсов. Штрих-код избавляет от поиска по названию, а фасовка
+  // из справочника подставляет количество.
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanNote, setScanNote] = useState('');
+  const scanHandled = useRef(false);
 
   // Дебаунс-поиск рецептов.
   const recipeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -142,6 +151,47 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
     setSelectedProduct(p);
     setProductResults([]);
     setProductGrams('100');
+    setScanNote('');
+  };
+
+  // MG_DIARYSCAN: товар по штрих-коду. Количество берём из фасовки: съели,
+  // скорее всего, всю пачку — поправить проще, чем набрать заново.
+  const onBarcode = async (detected: { rawValue?: string }[]) => {
+    if (scanHandled.current) return;
+    const code = detected[0]?.rawValue;
+    if (!code) return;
+    scanHandled.current = true;
+    setShowScanner(false);
+    setScanLoading(true);
+    setError('');
+    try {
+      const { data } = await fridgeApi.scanBarcode(code);
+      const found = data as BarcodeLookupResult;
+      setSelectedProduct({ ...found, id: found.id ?? -1 } as Product);
+      setProductResults([]);
+      setProductQuery('');
+      const grams = packageGrams(found.default_unit) ?? packageGrams(found.name);
+      setProductGrams(grams ? String(grams) : '100');
+
+      const hasKbju = toNum(found.calories_per_100g) > 0 || toNum((found.nutrition ?? {}).calories) > 0;
+      if (!hasKbju) {
+        setScanNote('КБЖУ для этого товара неизвестно — впишите вручную с упаковки.');
+      } else if (found.low_confidence) {
+        setScanNote('Товара нет в справочниках — данные подобраны ИИ по коду. Проверьте по упаковке.');
+      } else {
+        setScanNote('');
+      }
+    } catch (e) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      setError(
+        status === 404
+          ? 'Штрих-код не найден. Найдите продукт по названию или внесите вручную.'
+          : getErrorMessage(e),
+      );
+    } finally {
+      setScanLoading(false);
+      scanHandled.current = false;
+    }
   };
 
   // ── Подсчёт КБЖУ для предпросмотра/сохранения ───────────────────────────
@@ -328,8 +378,15 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
             ) : (
               <>
                 <label className="block text-xs text-gray-500 mb-1">Поиск продукта</label>
-                <Input value={productQuery} onChange={(e) => setProductQuery(e.target.value)}
-                       placeholder="Введите название (от 2 букв)" />
+                <div className="flex gap-2">
+                  <Input value={productQuery} onChange={(e) => setProductQuery(e.target.value)}
+                         placeholder="Введите название (от 2 букв)" className="flex-1" />
+                  {/* MG_DIARYSCAN: упаковку проще отсканировать, чем набрать. */}
+                  <Button type="button" variant="ghost" disabled={scanLoading}
+                          onClick={() => { scanHandled.current = false; setShowScanner(true); }}>
+                    {scanLoading ? '…' : '📷'}
+                  </Button>
+                </div>
                 {productLoading && <p className="text-xs text-gray-400 mt-1">Поиск…</p>}
                 {productResults.length > 0 && (
                   <div className="mt-1 border border-gray-200 rounded-xl max-h-48 overflow-y-auto">
@@ -352,6 +409,20 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
                 <label className="block text-xs text-gray-500 mb-1">Количество (г)</label>
                 <Input type="number" value={productGrams} min="0" step="10"
                        onChange={(e) => setProductGrams(e.target.value)} className="mb-3" />
+                {/* MG_DIARYSCAN: что не так с найденным товаром, если не так. */}
+                {scanNote && (
+                  <div className="text-xs text-amber-700 mb-2">
+                    {scanNote}
+                    <button type="button" className="ml-2 underline"
+                            onClick={() => {
+                              setName(selectedProduct.name);
+                              setMode('manual');
+                              setScanNote('');
+                            }}>
+                      внести вручную
+                    </button>
+                  </div>
+                )}
                 <Preview t={productTotals()} />
               </>
             )}
@@ -388,6 +459,15 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
               </div>
             </div>
           </>
+        )}
+
+        {/* MG_DIARYSCAN: камера поверх формы, как в холодильнике. */}
+        {showScanner && (
+          <div className="mb-4">
+            <Scanner onScan={onBarcode} onError={() => setShowScanner(false)} />
+            <Button type="button" variant="ghost" className="mt-2"
+                    onClick={() => setShowScanner(false)}>Закрыть камеру</Button>
+          </div>
         )}
 
         {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
