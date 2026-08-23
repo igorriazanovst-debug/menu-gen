@@ -264,12 +264,17 @@ apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
 появляется на странице входа, а установленные с сайта копии обновляются сами.
 
 ```bash
-# 1. Скопировать артефакт прогона на прод
+# 1. Скопировать артефакт прогона на сервер
 scp menugen-release-3-abc1234.apk root@158.255.5.166:/opt/menugen/backups/
 
-# 2. Зарегистрировать (номер сборки = номер прогона workflow)
-cd /opt/menugen && docker compose exec -T backend python manage.py publish_apk \
-  /opt/menugen/backups/menugen-release-3-abc1234.apk \
+# 2. Положить файл В КОНТЕЙНЕР: команда выполняется внутри него, а каталог
+#    backups с хоста туда не смонтирован (видны только backend/ и том media).
+cd /opt/menugen
+docker compose cp ./backups/menugen-release-3-abc1234.apk backend:/tmp/menugen.apk
+
+# 3. Зарегистрировать. Номер сборки — из ИМЕНИ артефакта (номер прогона
+#    workflow), а не из хеша коммита.
+docker compose exec -T backend python manage.py publish_apk /tmp/menugen.apk \
   --version-name 1.0.2 --version-code 3 \
   --notes "Что нового в этой версии"
 ```

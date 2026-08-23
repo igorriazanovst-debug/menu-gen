@@ -8,12 +8,16 @@
 мегабайт и упёрся бы в ограничение nginx на размер тела запроса — а поднимать
 его ради одной формы значит открывать этот размер всем остальным ручкам.
 
-Запуск (на сервере, файл предварительно скопирован):
-    docker compose exec -T backend python manage.py publish_apk \\
-        /opt/menugen/backups/menugen-release-3-abc1234.apk \\
+Путь берётся ВНУТРИ контейнера: команда выполняется там, а каталоги хоста
+(backups, домашний каталог) в него не смонтированы — видны только backend/ и
+том с media. Поэтому файл сначала кладут в контейнер:
+
+    cd /opt/menugen
+    docker compose cp ./backups/menugen-release-3-abc1234.apk backend:/tmp/menugen.apk
+    docker compose exec -T backend python manage.py publish_apk /tmp/menugen.apk \\
         --version-name 1.0.2 --version-code 3
 
-    # заменить выложенное, ничего не показывая:  --unpublish
+    # снять выложенное с сайта:  --unpublish
 """
 
 from __future__ import annotations
