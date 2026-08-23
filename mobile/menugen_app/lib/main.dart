@@ -5,7 +5,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // MG_CACHE
 
-import 'core/api/api_client.dart'; // OFFLINE: тип интерфейса
+import 'core/api/api_client.dart';
+// OFFLINE: тип интерфейса
+import 'core/update/update_service.dart'; // MG_SELFUPDATE
 import 'core/api/caching_api_client.dart'; // OFFLINE: кэш-декоратор
 import 'core/api/dio_api_client.dart';
 import 'core/api/token_storage.dart';
@@ -134,7 +136,11 @@ class MenuGenApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RepositoryProvider<ShoppingCache>.value( // MG_CACHE
+    // MG_SELFUPDATE: сервис обновления есть только в сборке с сайта — в
+    // магазинной он не подключается, и виджет-наблюдатель просто молчит.
+    return RepositoryProvider<UpdateService?>.value(
+      value: kSelfUpdateEnabled ? UpdateService(apiClient) : null,
+      child: RepositoryProvider<ShoppingCache>.value( // MG_CACHE
       value: shoppingCache,
       child: RepositoryProvider<OfflineToggleQueue>.value( // MG_T09
       value: offlineToggleQueue,
@@ -189,6 +195,7 @@ class MenuGenApp extends StatelessWidget {
       ),
     ),
     ),
-    ); // MG_CACHE + MG_T09: close RepositoryProvider.value
+    ), // MG_CACHE + MG_T09: close RepositoryProvider.value
+    ); // MG_SELFUPDATE: close RepositoryProvider<UpdateService?>
   }
 }

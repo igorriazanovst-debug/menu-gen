@@ -3,6 +3,12 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- MG_SELFUPDATE: передать скачанное обновление системному установщику.
+         Само приложение установить его не может — тихая установка доступна
+         только системным приложениям, — но обязано иметь право попросить.
+         Разрешение действует только для сборки с сайта: магазинную собираем
+         без апдейтера (см. android_release.yml). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- MG_TGLINK: без этого блока подтверждение телефона упиралось в «не удалось
          открыть мессенджер».
 

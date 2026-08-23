@@ -40,7 +40,7 @@ class TestPublish:
     def test_сборка_выкладывается_с_размером_и_суммой(self, apk, settings, tmp_path):
         settings.MEDIA_ROOT = tmp_path / "media"
 
-        call_command("publish_apk", str(apk), version_name="1.0.2")
+        call_command("publish_apk", str(apk), version_name="1.0.2", version_code=3)
 
         build = AndroidBuild.objects.get()
         assert build.version_name == "1.0.2"
@@ -51,16 +51,16 @@ class TestPublish:
     def test_файл_копируется_в_media(self, apk, settings, tmp_path):
         settings.MEDIA_ROOT = tmp_path / "media"
 
-        call_command("publish_apk", str(apk), version_name="1.0.2")
+        call_command("publish_apk", str(apk), version_name="1.0.2", version_code=3)
 
         assert (tmp_path / "media" / "apk" / "menugen-1.0.2.apk").exists()
 
     def test_новая_сборка_снимает_с_сайта_прежнюю(self, apk, settings, tmp_path):
         """На странице должна быть одна ссылка, а не список версий."""
         settings.MEDIA_ROOT = tmp_path / "media"
-        call_command("publish_apk", str(apk), version_name="1.0.2")
+        call_command("publish_apk", str(apk), version_name="1.0.2", version_code=3)
 
-        call_command("publish_apk", str(apk), version_name="1.0.3")
+        call_command("publish_apk", str(apk), version_name="1.0.3", version_code=4)
 
         assert AndroidBuild.objects.filter(is_published=True).count() == 1
         assert AndroidBuild.current().version_name == "1.0.3"
@@ -68,11 +68,18 @@ class TestPublish:
     def test_прежняя_запись_не_удаляется(self, apk, settings, tmp_path):
         """У кого-то может быть открыта старая ссылка — пусть отдаёт файл."""
         settings.MEDIA_ROOT = tmp_path / "media"
-        call_command("publish_apk", str(apk), version_name="1.0.2")
+        call_command("publish_apk", str(apk), version_name="1.0.2", version_code=3)
 
-        call_command("publish_apk", str(apk), version_name="1.0.3")
+        call_command("publish_apk", str(apk), version_name="1.0.3", version_code=4)
 
         assert AndroidBuild.objects.count() == 2
+
+    def test_без_номера_сборки_не_выкладываем(self, apk, settings, tmp_path):
+        """Приложение сравнивает номер сборки; без него обновление не придёт."""
+        settings.MEDIA_ROOT = tmp_path / "media"
+
+        with pytest.raises(CommandError):
+            call_command("publish_apk", str(apk), version_name="1.0.2")
 
     def test_не_apk_отвергается(self, tmp_path, settings):
         settings.MEDIA_ROOT = tmp_path / "media"
@@ -80,7 +87,7 @@ class TestPublish:
         junk.write_text("не архив вовсе")
 
         with pytest.raises(CommandError):
-            call_command("publish_apk", str(junk), version_name="1.0.2")
+            call_command("publish_apk", str(junk), version_name="1.0.2", version_code=3)
 
     def test_zip_без_манифеста_тоже_отвергается(self, tmp_path, settings):
         """Иначе выложили бы zip с исходниками и заметили бы это по жалобам."""
@@ -92,13 +99,13 @@ class TestPublish:
         path.write_bytes(buf.getvalue())
 
         with pytest.raises(CommandError):
-            call_command("publish_apk", str(path), version_name="1.0.2")
+            call_command("publish_apk", str(path), version_name="1.0.2", version_code=3)
 
     def test_unpublish_убирает_ссылку_с_сайта(self, apk, settings, tmp_path):
         settings.MEDIA_ROOT = tmp_path / "media"
-        call_command("publish_apk", str(apk), version_name="1.0.2")
+        call_command("publish_apk", str(apk), version_name="1.0.2", version_code=3)
 
-        call_command("publish_apk", str(apk), version_name="1.0.2", unpublish=True)
+        call_command("publish_apk", unpublish=True)
 
         assert AndroidBuild.current() is None
 
@@ -108,7 +115,9 @@ class TestPublicApi:
     def test_ссылка_отдаётся_без_входа(self, apk, settings, tmp_path):
         """Человек приходит на сайт именно за тем, чтобы поставить приложение."""
         settings.MEDIA_ROOT = tmp_path / "media"
-        call_command("publish_apk", str(apk), version_name="1.0.2", notes="Починили вход через Telegram")
+        call_command(
+            "publish_apk", str(apk), version_name="1.0.2", version_code=3, notes="Починили вход через Telegram"
+        )
 
         r = APIClient().get(reverse("android-build"))
 

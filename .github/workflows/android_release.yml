@@ -120,7 +120,10 @@ jobs:
           MENUGEN_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           MENUGEN_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          ARGS="--release --dart-define=API_BASE_URL=$API_BASE_URL --build-number=${{ github.run_number }}"
+          # MG_SELFUPDATE: apk раздаётся с сайта, поэтому умеет обновлять себя
+          # сам. В aab для магазина этого флага нет — магазины запрещают
+          # обновление мимо себя, и кода апдейтера там не должно быть вовсе.
+          ARGS="--release --dart-define=API_BASE_URL=$API_BASE_URL --dart-define=SELF_UPDATE=true --build-number=${{ github.run_number }}"
           if [ -n "${{ github.event.inputs.build_name }}" ]; then
             ARGS="$ARGS --build-name=${{ github.event.inputs.build_name }}"
           fi
@@ -133,6 +136,7 @@ jobs:
           MENUGEN_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           MENUGEN_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          # MG_SELFUPDATE: без флага самообновления — это сборка для магазина.
           ARGS="--release --dart-define=API_BASE_URL=$API_BASE_URL --build-number=${{ github.run_number }}"
           if [ -n "${{ github.event.inputs.build_name }}" ]; then
             ARGS="$ARGS --build-name=${{ github.event.inputs.build_name }}"

@@ -10,7 +10,8 @@
 
 Запуск (на сервере, файл предварительно скопирован):
     docker compose exec -T backend python manage.py publish_apk \\
-        /opt/menugen/backups/menugen-release-3-abc1234.apk --version-name 1.0.2
+        /opt/menugen/backups/menugen-release-3-abc1234.apk \\
+        --version-name 1.0.2 --version-code 3
 
     # заменить выложенное, ничего не показывая:  --unpublish
 """
@@ -60,11 +61,14 @@ class Command(BaseCommand):
     help = "Выложить подписанный apk на сайт (страница входа)."
 
     def add_arguments(self, parser):
-        parser.add_argument("path", help="Путь к apk на сервере")
+        # Ничего не помечено required: со снятием сборки с сайта (--unpublish)
+        # ни файл, ни версия не нужны, и требовать их было бы издевательством.
+        # Проверяем ниже, по делу.
+        parser.add_argument("path", nargs="?", help="Путь к apk на сервере")
         # Не --version: так называется встроенный ключ Django, и argparse
         # отказывается регистрировать команду целиком.
-        parser.add_argument("--version-name", required=True, help="Версия для показа: 1.0.2")
-        parser.add_argument("--version-code", type=int, default=None, help="versionCode сборки")
+        parser.add_argument("--version-name", help="Версия для показа: 1.0.2")
+        parser.add_argument("--version-code", type=int, help="versionCode сборки (номер прогона CI)")
         parser.add_argument("--notes", default="", help="Что нового (показывается рядом со ссылкой)")
         parser.add_argument(
             "--unpublish", action="store_true", help="Снять с сайта всё выложенное и ничего не выкладывать"
@@ -75,6 +79,14 @@ class Command(BaseCommand):
             count = AndroidBuild.objects.filter(is_published=True).update(is_published=False)
             self.stdout.write(self.style.SUCCESS(f"Снято с сайта сборок: {count}"))
             return
+
+        if not opts["path"] or not opts["version_name"]:
+            raise CommandError("Нужны путь к apk и --version-name")
+        # Номер сборки обязателен: приложение сравнивает именно его, а не
+        # название версии. Без него апдейтер молча ничего не предложит — и
+        # понять, почему обновление «не приходит», будет неоткуда.
+        if opts["version_code"] is None:
+            raise CommandError("Нужен --version-code: по нему приложение понимает, что версия новее")
 
         src = Path(opts["path"]).expanduser()
         if not src.exists():
