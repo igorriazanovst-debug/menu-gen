@@ -16,7 +16,13 @@ from rest_framework.test import APIClient
 
 from apps.family.models import Family, FamilyMember
 from apps.fridge.barcodes import normalize, variants
-from apps.fridge.management.commands.import_barcode_catalog import nutrition_is_sane, section_of
+from apps.fridge.management.commands.import_barcode_catalog import (
+    canonical_row,
+    category_slug_for,
+    is_instore_code,
+    nutrition_is_sane,
+    section_of,
+)
 from apps.fridge.models import Product, ProductCategory
 from apps.fridge.visibility import catalog_q
 from apps.subscriptions.models import Subscription, SubscriptionPlan
@@ -29,6 +35,21 @@ ROW_MILK = (
 )
 ROW_BROKEN = "4600000000024,Масло оливковое Filippo Berio,500мл,0,0,100,900,/category/bakaleya,0\n"
 ROW_UPC = "011210000032,Соус Tabasco красный,350мл,0.95,0.14,2.55,13,/category/bakaleya,0\n"
+
+
+# Выгрузка другой сети: свои заголовки колонок и путь категории через «>».
+GLOBUS_HEADER = "GTIN,Наименование,Ккал/100г,Белки/100г,Жиры/100г,Углеводы/100г,Категория\n"
+GLOBUS_ROWS = (
+    "4660145820503,Творог Глобус 5%; 200г,121,16,5,3,Каталог > Молоко > Творог и творожные продукты\n"
+    "2000000110004,Абрикосы в корзине; 0.9-1кг,,,,,Каталог > Овощи и фрукты\n"
+)
+
+
+@pytest.fixture
+def globus_file(tmp_path):
+    path = tmp_path / "globus.csv"
+    path.write_text(GLOBUS_HEADER + GLOBUS_ROWS, encoding="utf-8")
+    return str(path)
 
 
 @pytest.fixture
@@ -113,10 +134,36 @@ class TestSanityCheck:
         assert section_of("") == ""
 
 
+class TestOtherRetailFormat:
+    """Выгрузки приходят от разных сетей: заголовки и категории у всех свои."""
+
+    def test_колонки_сопоставляются_по_синонимам(self):
+        row = canonical_row({"GTIN": "460", "Наименование": "Творог", "Ккал/100г": "121", "Категория": "Молоко"})
+
+        assert row == {"barcode": "460", "name": "Творог", "kcal": "121", "category": "Молоко"}
+
+    def test_неизвестные_колонки_не_мешают(self):
+        row = canonical_row({"SKU": "703399", "URL": "https://...", "GTIN": "460", "Наименование": "Творог"})
+
+        assert row == {"barcode": "460", "name": "Творог"}
+
+    def test_категория_определяется_по_ключевому_слову(self):
+        """У одной сети слаг раздела, у другой — «Каталог > Молоко > Творог…»."""
+        assert category_slug_for("Каталог > Молоко > Творог и творожные продукты") == "dairy"
+        assert category_slug_for("/category/myasnye") == "meat"
+        assert category_slug_for("Каталог > Непонятно что") == ""
+
+    def test_внутренний_код_магазина_опознаётся(self):
+        """EAN с 2 печатают весы: в разных сетях это разные товары."""
+        assert is_instore_code("2000000110004") is True
+        assert is_instore_code("4660145820503") is False
+        assert is_instore_code("") is False
+
+
 @pytest.mark.django_db
 class TestImport:
     def test_товары_заводятся_с_кбжу(self, catalog_file):
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         milk = Product.objects.get(barcode="4600000000017")
         assert milk.source == Product.Source.RETAIL
@@ -125,7 +172,7 @@ class TestImport:
 
     def test_несходящееся_кбжу_отбрасывается_а_товар_остаётся(self, catalog_file):
         """Опознать товар по коду полезно и без цифр. Неверные цифры — вредны."""
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         oil = Product.objects.get(barcode="4600000000024")
         assert oil.name.startswith("Масло оливковое")
@@ -134,13 +181,13 @@ class TestImport:
     def test_категория_берётся_из_раздела_сети(self, catalog_file, db):
         ProductCategory.objects.get_or_create(slug="dairy", defaults={"name_ru": "Молочные продукты"})
 
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         assert Product.objects.get(barcode="4600000000017").category_fk.slug == "dairy"
 
     def test_повторный_запуск_не_плодит_дубли(self, catalog_file):
-        call_command("import_barcode_catalog", file=catalog_file)
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         assert Product.objects.filter(barcode="4600000000017").count() == 1
 
@@ -148,7 +195,7 @@ class TestImport:
         """Запись из OFF проверял человек с упаковкой в руках — она главнее."""
         Product.objects.create(name="Молоко (моё)", barcode="4600000000017", source=Product.Source.OFF)
 
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         product = Product.objects.get(barcode="4600000000017")
         assert product.name == "Молоко (моё)"
@@ -163,7 +210,7 @@ class TestImport:
             calories_per_100g=999,
         )
 
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         product = Product.objects.get(barcode="4600000000017")
         assert product.name.startswith("Молоко Простоквашино")
@@ -173,12 +220,49 @@ class TestImport:
     def test_но_пустое_кбжу_своей_записи_дополняет(self, catalog_file):
         Product.objects.create(name="Молоко (моё)", barcode="4600000000017", source=Product.Source.OFF)
 
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         assert float(Product.objects.get(barcode="4600000000017").calories_per_100g) == 59
 
+    def test_выгрузка_другой_сети_читается_как_есть(self, globus_file, db):
+        ProductCategory.objects.get_or_create(slug="dairy", defaults={"name_ru": "Молочные продукты"})
+
+        call_command("import_barcode_catalog", file=[globus_file])
+
+        product = Product.objects.get(barcode="4660145820503")
+        assert product.name.startswith("Творог Глобус")
+        assert float(product.calories_per_100g) == 121
+        assert product.category_fk.slug == "dairy"
+
+    def test_внутренние_коды_магазина_не_берём(self, globus_file):
+        """Тот же код в другой сети — другой товар, опознание было бы ложным."""
+        call_command("import_barcode_catalog", file=[globus_file])
+
+        assert not Product.objects.filter(barcode="2000000110004").exists()
+
+    def test_ранее_загруженные_внутренние_коды_убираются(self, globus_file):
+        Product.objects.create(name="Развесное что-то", barcode="2100000000005", source=Product.Source.RETAIL)
+
+        call_command("import_barcode_catalog", file=[globus_file])
+
+        assert not Product.objects.filter(barcode="2100000000005").exists()
+
+    def test_чужие_записи_с_внутренним_кодом_не_трогаем(self, globus_file):
+        """За ручной записью стоит человек — даже если код внутренний."""
+        Product.objects.create(name="Моя развесная сметана", barcode="2100000000005", source=Product.Source.MANUAL)
+
+        call_command("import_barcode_catalog", file=[globus_file])
+
+        assert Product.objects.filter(barcode="2100000000005").exists()
+
+    def test_несколько_файлов_за_один_запуск(self, catalog_file, globus_file):
+        call_command("import_barcode_catalog", file=[catalog_file, globus_file])
+
+        assert Product.objects.filter(barcode="4600000000017").exists()
+        assert Product.objects.filter(barcode="4660145820503").exists()
+
     def test_dry_run_ничего_не_пишет(self, catalog_file):
-        call_command("import_barcode_catalog", file=catalog_file, dry_run=True)
+        call_command("import_barcode_catalog", file=[catalog_file], dry_run=True)
 
         assert Product.objects.filter(source=Product.Source.RETAIL).count() == 0
 
@@ -188,7 +272,7 @@ class TestScan:
     @patch("apps.fridge.services.requests.get")
     def test_товар_из_справочника_находится_без_сети(self, mock_get, user, catalog_file):
         """Ради этого всё и затевалось: ни OFF, ни модель не понадобились."""
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         r = scan(user, "4600000000017")
 
@@ -201,7 +285,7 @@ class TestScan:
     @patch("apps.fridge.services.requests.get")
     def test_код_с_упаковки_находит_запись_в_другом_написании(self, mock_get, user, catalog_file):
         """Сканер вернёт 12 цифр UPC-A, в выгрузке тот же товар — с нулём впереди."""
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
         Product.objects.filter(barcode="011210000032").update(barcode="0011210000032")
 
         r = scan(user, "011210000032")
@@ -214,7 +298,7 @@ class TestScan:
     @patch("apps.fridge.services.requests.get")
     def test_отброшенное_кбжу_не_дописывается_моделью(self, mock_get, mock_gpt, user, catalog_file):
         """Иначе выброшенные числа вернулись бы, только уже выдуманные."""
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         r = scan(user, "4600000000024")
 
@@ -225,7 +309,7 @@ class TestScan:
     @patch("apps.fridge.services.requests.get")
     def test_справочник_не_засоряет_поиск_продуктов(self, mock_get, user, catalog_file):
         """«Молоко Простоквашино 3.2%; 930мл» в автодополнении — это шум."""
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
 
         data = api(user).get(reverse("product-search"), {"q": "простоквашино"}).data
         rows = data["results"] if isinstance(data, dict) else data
@@ -236,7 +320,7 @@ class TestScan:
     @patch("apps.fridge.services.requests.get")
     def test_неизвестный_код_по_прежнему_идёт_в_off(self, mock_get, user, catalog_file):
         """Справочник — первая линия, а не единственная."""
-        call_command("import_barcode_catalog", file=catalog_file)
+        call_command("import_barcode_catalog", file=[catalog_file])
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"status": 0}
