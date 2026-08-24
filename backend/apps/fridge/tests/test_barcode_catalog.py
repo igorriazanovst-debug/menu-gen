@@ -19,9 +19,12 @@ from apps.fridge.barcodes import normalize, variants
 from apps.fridge.management.commands.import_barcode_catalog import (
     canonical_row,
     category_slug_for,
+    clean_name,
     is_instore_code,
+    name_is_usable,
     nutrition_is_sane,
     section_of,
+    source_for,
 )
 from apps.fridge.models import Product, ProductCategory
 from apps.fridge.visibility import catalog_q
@@ -49,6 +52,25 @@ GLOBUS_ROWS = (
 def globus_file(tmp_path):
     path = tmp_path / "globus.csv"
     path.write_text(GLOBUS_HEADER + GLOBUS_ROWS, encoding="utf-8")
+    return str(path)
+
+
+# Выгрузка OpenFoodFacts: колонка «categories» перечислением, названия с
+# HTML-экранированием и мусором вроде «0157», которого в аккуратной выгрузке
+# сети не бывает. Имя файла с «_off» — по нему источник определяется как off_bulk.
+OFF_HEADER = "gtin,name,kcal_100g,protein_100g,fat_100g,carbs_100g,categories\n"
+OFF_ROWS = (
+    "4680016590311,&quot;SAFO&quot; соус аджвар острый,120,1,10,4,en:Sauces\n"
+    "4607059870811,Яйца куриные столовые С1,157,12.7,11.5,0.7,en:Eggs\n"
+    "4780103112331,0157,,,,,\n"  # не название — артикул поставщика, отсеиваем
+    "2098765626007,.,,,,,\n"  # точка вместо названия
+)
+
+
+@pytest.fixture
+def off_file(tmp_path):
+    path = tmp_path / "barcode_catalog_off_ru.csv"
+    path.write_text(OFF_HEADER + OFF_ROWS, encoding="utf-8")
     return str(path)
 
 
@@ -159,6 +181,33 @@ class TestOtherRetailFormat:
         assert is_instore_code("4660145820503") is False
         assert is_instore_code("") is False
 
+    def test_категория_из_перечисления_берётся_справа_налево(self):
+        """OpenFoodFacts даёт список от общего к частному: «Еда…, Зёрна, Семена»."""
+        assert category_slug_for("Еда и напитки из растительного сырья, Зёрна, Семена подсолнечника") == "grains"
+        assert category_slug_for("en:Eggs") == "eggs"
+
+
+class TestNameCleaning:
+    """Названия в OpenFoodFacts вносят люди: с экранированием, кавычками и мусором."""
+
+    def test_снимаем_html_экранирование_и_кавычки(self):
+        assert clean_name("&quot;100% Pure Whey&quot;") == "100% Pure Whey"
+        assert clean_name("  Молоко   Домик  ") == "Молоко Домик"
+
+    def test_годное_название_проходит(self):
+        assert name_is_usable("Молоко") is True
+        assert name_is_usable("Karl Fazer") is True  # латиницей — тоже название
+
+    def test_мусор_вместо_названия_отсеивается(self):
+        assert name_is_usable("0157") is False  # артикул поставщика
+        assert name_is_usable(".") is False
+        assert name_is_usable("7") is False
+
+    def test_источник_определяется_по_имени_файла(self, tmp_path):
+        assert source_for(tmp_path / "barcode_catalog_off_ru.csv.gz") == "off_bulk"
+        assert source_for(tmp_path / "barcode_catalog_globus.csv.gz") == "retail"
+        assert source_for(tmp_path / "barcode_catalog.csv.gz") == "retail"
+
 
 @pytest.mark.django_db
 class TestImport:
@@ -265,6 +314,56 @@ class TestImport:
         call_command("import_barcode_catalog", file=[catalog_file], dry_run=True)
 
         assert Product.objects.filter(source=Product.Source.RETAIL).count() == 0
+
+    def test_openfoodfacts_читается_и_помечается_своим_источником(self, off_file, db):
+        ProductCategory.objects.get_or_create(slug="eggs", defaults={"name_ru": "Яйца"})
+
+        call_command("import_barcode_catalog", file=[off_file])
+
+        eggs = Product.objects.get(barcode="4607059870811")
+        assert eggs.source == Product.Source.OFFBULK
+        assert eggs.category_fk.slug == "eggs"
+        # HTML-экранирование и кавычки сняты.
+        assert Product.objects.get(barcode="4680016590311").name == "SAFO соус аджвар острый"
+
+    def test_openfoodfacts_мусорные_названия_не_заводятся(self, off_file):
+        """«0157» и точка — не названия, опознавать по ним нечего."""
+        call_command("import_barcode_catalog", file=[off_file])
+
+        assert not Product.objects.filter(barcode="4780103112331").exists()
+        assert not Product.objects.filter(barcode="2098765626007").exists()
+
+    def test_выгрузка_сети_главнее_openfoodfacts(self, off_file, tmp_path):
+        """У сети — свой артикул с аккуратным названием, у OFF — «cola» из формы.
+
+        Порядок файлов не должен решать: сеть побеждает при любом.
+        """
+        net = tmp_path / "barcode_catalog_net.csv"
+        net.write_text(
+            CSV_HEADER + "4680016590311,Соус аджвар SAFO острый 300г,300г,1,10,4,120,/category/bakaleya,0\n",
+            encoding="utf-8",
+        )
+        # OFF сначала, сеть потом — и наоборот: результат один.
+        call_command("import_barcode_catalog", file=[off_file, str(net)])
+        p = Product.objects.get(barcode="4680016590311")
+        assert p.source == Product.Source.RETAIL
+
+        call_command("import_barcode_catalog", file=[str(net), off_file])
+        p = Product.objects.get(barcode="4680016590311")
+        assert p.source == Product.Source.RETAIL
+        assert p.name.startswith("Соус аджвар SAFO")
+
+    def test_openfoodfacts_не_перетирает_запись_сети(self, off_file):
+        """Обратный случай явно: off_bulk поверх retail не ложится."""
+        Product.objects.create(
+            name="Соус аджвар SAFO острый 300г", barcode="4680016590311", source=Product.Source.RETAIL
+        )
+
+        call_command("import_barcode_catalog", file=[off_file])
+
+        p = Product.objects.get(barcode="4680016590311")
+        assert p.source == Product.Source.RETAIL
+        assert p.name.startswith("Соус аджвар SAFO")
 
 
 @pytest.mark.django_db

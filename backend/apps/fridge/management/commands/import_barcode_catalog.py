@@ -3,8 +3,8 @@
 Зачем. Скан упаковки искал товар в OpenFoodFacts, а когда тот не знал — просил
 модель «опознать» код. Догадка по штрих-коду проверяется ничем: код не несёт в
 себе названия, так что модель по сути угадывает по стране-производителю. Свой
-справочник закрывает ровно эту дыру: 6 тысяч российских товаров с КБЖУ, каждый
-со своим кодом.
+справочник закрывает ровно эту дыру: десятки тысяч российских товаров, каждый
+со своим кодом, у части — КБЖУ.
 
 Что с качеством. В выгрузке КБЖУ заполнено у всех, но у части записей числа не
 сходятся: оливковое масло с нулевым жиром и 900 ккал, бедро цыплёнка на 810 ккал.
@@ -17,6 +17,13 @@
 имена колонок сопоставляются по словарю синонимов, а не по точному совпадению:
 у одних `barcode`, у других «GTIN», у третьих «Ккал/100г».
 
+MG_BARCODEOFF. Кроме сетевых выгрузок есть открытая база OpenFoodFacts: она
+втрое больше их вместе взятых, но названия в неё вносят люди, и рядом с
+«Молоко Простоквашино 3.2%, 930 мл» там встречается «cola» и «0157». Поэтому
+источники не равны: у каждого файла свой `source`, и запись менее надёжного
+источника не затирает более надёжную (см. TRUST). Совсем мусорные названия —
+короче трёх символов и вовсе без букв — отсеиваются на входе.
+
 Запуск:
     python manage.py import_barcode_catalog                 # все файлы из репозитория
     python manage.py import_barcode_catalog --file /путь.csv --dry-run
@@ -26,7 +33,9 @@ from __future__ import annotations
 
 import csv
 import gzip
+import html
 import io
+import re
 from pathlib import Path
 
 from django.core.management.base import BaseCommand
@@ -44,18 +53,85 @@ def default_files():
     return sorted(REFERENCE_DIR.glob("barcode_catalog*.csv*"))
 
 
+# Насколько можно верить записи. Больше — надёжнее.
+#
+# Записи, которых здесь нет (manual, off, auto, import), — человеческие или
+# добытые по конкретной упаковке: их не трогаем вовсе, только дополняем пустое
+# КБЖУ. Внутри же таблицы правило простое: пришедшее не хуже лежащего —
+# перезаписываем, хуже — оставляем как есть. Без этого достаточно было бы
+# порядка файлов, чтобы «Добрый Кола 0,25 л» из выгрузки сети превратилась в
+# «cola» из OpenFoodFacts.
+TRUST = {
+    "ai": 0,  # догадка модели по коду — проверить нечем
+    "off_bulk": 1,  # общая база, названия вносят люди
+    "retail": 2,  # каталог сети: её собственный артикул
+}
+
+# Какой источник у файла. OpenFoodFacts узнаём по имени: у выгрузок сетей его в
+# названии нет и быть не может.
+OFF_FILE_MARKER = "_off"
+
+
+def source_for(path: Path) -> str:
+    return "off_bulk" if OFF_FILE_MARKER in path.stem.lower() else "retail"
+
+
 # Заголовки колонок у сетей свои. Сопоставляем по словарю: ключ — как назвали в
 # файле (без регистра и пробелов), значение — наше поле.
 COLUMN_ALIASES = {
-    "barcode": "barcode", "gtin": "barcode", "штрихкод": "barcode", "штрих-код": "barcode",
-    "name": "name", "наименование": "name", "название": "name", "товар": "name",
-    "quantity": "quantity", "объем": "quantity", "объём": "quantity", "фасовка": "quantity",
-    "protein_100g": "protein", "белки/100г": "protein", "белки": "protein",
-    "fat_100g": "fat", "жиры/100г": "fat", "жиры": "fat",
-    "carbs_100g": "carbs", "углеводы/100г": "carbs", "углеводы": "carbs",
-    "kcal_100g": "kcal", "ккал/100г": "kcal", "калорийность": "kcal", "ккал": "kcal",
-    "category_path": "category", "категория": "category", "раздел": "category",
+    "barcode": "barcode",
+    "gtin": "barcode",
+    "штрихкод": "barcode",
+    "штрих-код": "barcode",
+    "name": "name",
+    "наименование": "name",
+    "название": "name",
+    "товар": "name",
+    "quantity": "quantity",
+    "объем": "quantity",
+    "объём": "quantity",
+    "фасовка": "quantity",
+    "protein_100g": "protein",
+    "белки/100г": "protein",
+    "белки": "protein",
+    "fat_100g": "fat",
+    "жиры/100г": "fat",
+    "жиры": "fat",
+    "carbs_100g": "carbs",
+    "углеводы/100г": "carbs",
+    "углеводы": "carbs",
+    "kcal_100g": "kcal",
+    "ккал/100г": "kcal",
+    "калорийность": "kcal",
+    "ккал": "kcal",
+    "category_path": "category",
+    "категория": "category",
+    "раздел": "category",
+    "categories": "category",
 }
+
+
+# Названия в OpenFoodFacts приходят прямо из веб-формы, вместе с HTML-экранированием
+# («&quot;100% Pure Whey&quot;») и лишними пробелами. Двойные кавычки и ёлочки —
+# всегда шум от экранирования и выделения бренда, не часть названия, поэтому
+# убираем их целиком, а не только по краям: иначе «&quot;SAFO&quot; соус» оставит
+# кавычку в середине.
+def clean_name(value) -> str:
+    name = html.unescape(str(value or ""))
+    name = name.replace('"', " ").replace("«", " ").replace("»", " ")
+    name = re.sub(r"\s+", " ", name).strip()
+    return name.strip("'").strip()
+
+
+# В базу, которую пополняют люди, попадает и вовсе не название: точка, «0157»,
+# внутренний артикул поставщика. Опознать по такому товар нельзя, а в холодильнике
+# оно выглядит как сбой. Требуем хотя бы три символа и хотя бы одну букву —
+# любую, потому что названия бывают и латиницей («Karl Fazer»).
+_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
+
+
+def name_is_usable(name: str) -> bool:
+    return len(name) >= 3 and bool(_LETTER.search(name))
 
 
 def canonical_row(row: dict) -> dict:
@@ -131,6 +207,11 @@ def section_of(category_path: str) -> str:
 # творог в мясо и там останется, а пустую доопределит обычный разбор при скане.
 CATEGORY_BY_KEYWORD = (
     ("яйц", "eggs"),
+    ("семеч", "grains"),
+    ("семен", "grains"),
+    ("семя", "grains"),
+    ("зёрн", "grains"),
+    ("зерн", "grains"),
     ("сыр", "cheese"),
     ("творог", "dairy"),
     ("молок", "dairy"),
@@ -172,17 +253,107 @@ CATEGORY_BY_KEYWORD = (
 )
 
 
+# OpenFoodFacts помечает категории тегами таксономии, и чаще английскими
+# («en:Eggs», «en:Sunflower seeds and their products»). Их сопоставляем по целым
+# словам, а не по вхождению подстроки: в английском подстрока предаёт — «boiled»
+# содержит «oil», «steak» содержит «tea».
+CATEGORY_BY_EN_WORD = {
+    "egg": "eggs",
+    "eggs": "eggs",
+    "cheese": "cheese",
+    "cheeses": "cheese",
+    "milk": "dairy",
+    "yogurt": "dairy",
+    "yoghurt": "dairy",
+    "yogurts": "dairy",
+    "butter": "dairy",
+    "cream": "dairy",
+    "dairy": "dairy",
+    "kefir": "dairy",
+    "meat": "meat",
+    "meats": "meat",
+    "poultry": "meat",
+    "chicken": "meat",
+    "beef": "meat",
+    "pork": "meat",
+    "sausage": "sausages",
+    "sausages": "sausages",
+    "fish": "fish",
+    "fishes": "fish",
+    "seafood": "fish",
+    "mussels": "fish",
+    "bread": "bakery",
+    "breads": "bakery",
+    "bakery": "bakery",
+    "sauce": "sauces",
+    "sauces": "sauces",
+    "ketchup": "sauces",
+    "mayonnaise": "sauces",
+    "chocolate": "sweets",
+    "chocolates": "sweets",
+    "candy": "sweets",
+    "candies": "sweets",
+    "sweets": "sweets",
+    "cookies": "sweets",
+    "biscuits": "sweets",
+    "confectionery": "sweets",
+    "tea": "drinks",
+    "teas": "drinks",
+    "coffee": "drinks",
+    "juice": "drinks",
+    "juices": "drinks",
+    "water": "drinks",
+    "waters": "drinks",
+    "beer": "drinks",
+    "beers": "drinks",
+    "wine": "drinks",
+    "wines": "drinks",
+    "beverages": "drinks",
+    "drinks": "drinks",
+    "soda": "drinks",
+    "sodas": "drinks",
+    "oil": "oils",
+    "oils": "oils",
+    "seed": "grains",
+    "seeds": "grains",
+    "grain": "grains",
+    "grains": "grains",
+    "cereal": "grains",
+    "cereals": "grains",
+    "pasta": "grains",
+    "pastas": "grains",
+    "rice": "grains",
+    "flour": "grains",
+    "canned": "canned",
+    "frozen": "frozen",
+}
+
+
 def category_slug_for(raw_category: str) -> str:
     """Наш slug категории по разделу сети. Пусто — если не уверены."""
     raw = str(raw_category or "")
     by_section = CATEGORY_BY_SECTION.get(section_of(raw))
     if by_section:
         return by_section
-    # Самый конкретный уровень пути: «Каталог > … > Творог и творожные продукты».
-    tail = max(raw.replace("/", ">").split(">"), key=len, default="").strip().lower()
-    for word, slug in CATEGORY_BY_KEYWORD:
-        if word in tail:
+    # Идём от самого конкретного уровня к общему: и «Каталог > Молоко > Творог
+    # и творожные продукты», и перечисление OpenFoodFacts («Еда из растительного
+    # сырья, Зёрна, Семена») устроены одинаково — общее слева, конкретное справа.
+    # Брать самый длинный кусок, как раньше, тут нельзя: в том перечислении
+    # длиннее всех оказывается «Еда и напитки из растительного сырья», и семечки
+    # уезжают в напитки.
+    for part in reversed([p.strip().lower() for p in re.split(r"[>/,]", raw) if p.strip()]):
+        for word, slug in CATEGORY_BY_KEYWORD:
+            if word not in part:
+                continue
+            # «сырьё/сырья» (растительное сырьё) — не «сыр»: буква ь выдаёт
+            # исходный материал, а не продукт.
+            if slug == "cheese" and "сырь" in part:
+                continue
             return slug
+        for token in re.findall(r"[a-z]+", part):
+            slug = CATEGORY_BY_EN_WORD.get(token)
+            if slug:
+                return slug
     return ""
 
 
@@ -212,7 +383,7 @@ class Command(BaseCommand):
             return
 
         categories = {c.slug: c for c in ProductCategory.objects.filter(is_active=True)}
-        totals = dict(created=0, updated=0, skipped_existing=0, dropped_kbju=0, bad_row=0, instore=0)
+        totals = dict(created=0, updated=0, skipped_existing=0, dropped_kbju=0, bad_row=0, instore=0, bad_name=0)
 
         with transaction.atomic():
             for path in paths:
@@ -233,13 +404,14 @@ class Command(BaseCommand):
     @staticmethod
     def _line(s):
         return (
-            f"добавлено {s['created']}, обновлено {s['updated']}, своих не тронуто {s['skipped_existing']}, "
-            f"без КБЖУ (числа не сошлись) {s['dropped_kbju']}, внутренних кодов пропущено {s['instore']}, "
-            f"негодных строк {s['bad_row']}"
+            f"добавлено {s['created']}, обновлено {s['updated']}, чужих не тронуто {s['skipped_existing']}, "
+            f"без КБЖУ {s['dropped_kbju']}, внутренних кодов пропущено {s['instore']}, "
+            f"негодных названий {s['bad_name']}, негодных строк {s['bad_row']}"
         )
 
     def _load(self, path: Path, categories: dict, opts) -> dict:
-        stats = dict(created=0, updated=0, skipped_existing=0, dropped_kbju=0, bad_row=0, instore=0)
+        stats = dict(created=0, updated=0, skipped_existing=0, dropped_kbju=0, bad_row=0, instore=0, bad_name=0)
+        source = source_for(path)
 
         for i, raw in enumerate(open_rows(path)):
             if opts["limit"] and i >= opts["limit"]:
@@ -247,9 +419,12 @@ class Command(BaseCommand):
             row = canonical_row(raw)
 
             barcode = str(row.get("barcode") or "").strip()
-            name = str(row.get("name") or "").strip()
+            name = clean_name(row.get("name"))
             if not normalize(barcode) or not name:
                 stats["bad_row"] += 1
+                continue
+            if not name_is_usable(name):
+                stats["bad_name"] += 1
                 continue
             if is_instore_code(barcode):
                 stats["instore"] += 1
@@ -261,15 +436,16 @@ class Command(BaseCommand):
             if not sane:
                 stats["dropped_kbju"] += 1
 
-            # Запись, добытую из OpenFoodFacts или заведённую руками, не
-            # переписываем: за ней стоит человек с упаковкой в руках или
-            # открытая база. Дополняем только пустое КБЖУ.
+            # Запись, добытую из OpenFoodFacts по конкретной упаковке или
+            # заведённую руками, не переписываем: за ней стоит человек с
+            # упаковкой в руках. Дополняем только пустое КБЖУ.
             #
-            # Исключение — догадка модели по коду (source=ai). Проверить её
-            # нечем, а запись сети привязана к реальному артикулу, так что
-            # здесь справочник заведомо лучше и заменяет её целиком.
+            # Записи справочников (retail, off_bulk) и догадки модели (ai)
+            # обновляем — но только источником не хуже: выгрузка сети заменит
+            # догадку и запись OpenFoodFacts, а OpenFoodFacts поверх выгрузки
+            # сети не ляжет.
             existing = Product.objects.filter(lookup_q(barcode)).first()
-            if existing is not None and existing.source not in (Product.Source.RETAIL, Product.Source.AI):
+            if existing is not None and (existing.source not in TRUST or TRUST[source] < TRUST[existing.source]):
                 changes = []
                 if sane and existing.calories_per_100g is None and not existing.nutrition:
                     existing.calories_per_100g = kcal
@@ -282,7 +458,7 @@ class Command(BaseCommand):
 
             fields = {
                 "name": name[:255],
-                "source": Product.Source.RETAIL,
+                "source": source,
                 "default_unit": str(row.get("quantity") or "").strip()[:50],
                 "calories_per_100g": kcal if sane else None,
                 "nutrition": {"proteins": protein, "fats": fat, "carbs": carbs} if sane else {},
@@ -303,12 +479,15 @@ class Command(BaseCommand):
     def _purge_instore(self, opts) -> int:
         """Убрать внутренние коды, загруженные до того, как мы стали их отсеивать.
 
-        Только записи справочника: заведённое руками и находки из OFF не трогаем,
-        даже если код внутренний — там за записью стоит человек.
+        Только записи справочников: заведённое руками и найденное по конкретной
+        упаковке не трогаем, даже если код внутренний — там за записью стоит
+        человек.
         """
         doomed = [
             p.id
-            for p in Product.objects.filter(source=Product.Source.RETAIL).only("id", "barcode")
+            for p in Product.objects.filter(source__in=[Product.Source.RETAIL, Product.Source.OFFBULK]).only(
+                "id", "barcode"
+            )
             if is_instore_code(p.barcode)
         ]
         if doomed and not opts["dry_run"]:
