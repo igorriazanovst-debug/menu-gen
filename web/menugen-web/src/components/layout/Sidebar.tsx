@@ -11,6 +11,9 @@ const NAV = [
   { path: '/family',        icon: '👨‍👩‍👧', label: 'Семья',        premium: false },
   { path: '/diary',         icon: '📓', label: 'Дневник',      premium: false },
   { path: '/fridge',        icon: '🧊', label: 'Холодильник',  premium: true  },
+  // MG_MYPRODUCTS: продукты семьи, заведённые вручную. Premium — потому что
+  // заводить их умеет только он (POST /fridge/products/ под тем же гейтом).
+  { path: '/products',      icon: '🥑', label: 'Мои продукты', premium: true  },
   { path: '/shopping',      icon: '🛒', label: 'Покупки',      premium: false },
   // MG_SPECINVITE: кто имеет доступ к данным семьи — и как его прекратить
   { path: '/my-specialists', icon: '🩺', label: 'Специалисты', premium: false },

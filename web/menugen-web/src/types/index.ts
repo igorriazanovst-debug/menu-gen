@@ -320,6 +320,7 @@ export interface Product {
   image_url?: string | null;
   is_seed?: boolean;
   is_own?: boolean;   // MG_PRODFAMILY: продукт нашей семьи (не из общего каталога)
+  fridge_usage?: number | null; // MG_MYPRODUCTS: сколько позиций холодильника ссылается
 }
 export interface FridgeItem {
   id: number;

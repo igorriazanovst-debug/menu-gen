@@ -19,6 +19,7 @@ import { MenuPage }          from './pages/Menu/MenuPage';
 import { FamilyPage }        from './pages/Family/FamilyPage';
 import { DiaryPage }         from './pages/Diary/DiaryPage';
 import { FridgePage }        from './pages/Fridge/FridgePage';
+import { MyProductsPage }    from './pages/Products/MyProductsPage'; // MG_MYPRODUCTS
 import { ShoppingPage }      from './pages/Shopping/ShoppingPage';
 import { SubscriptionsPage } from './pages/Subscriptions/SubscriptionsPage';
 import { ProfilePage }       from './pages/Profile/ProfilePage';
@@ -92,6 +93,7 @@ const AppRoutes: React.FC = () => {
         <Route path="family"        element={<FamilyPage />} />
         <Route path="diary"         element={<DiaryPage />} />
         <Route path="fridge"        element={<PremiumRoute><FridgePage /></PremiumRoute>} />
+        <Route path="products"      element={<PremiumRoute><MyProductsPage /></PremiumRoute>} />{/* MG_MYPRODUCTS */}
         <Route path="shopping"      element={<ShoppingPage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="profile"       element={<ProfilePage />} />

@@ -24,6 +24,13 @@ class ProductSerializer(serializers.ModelSerializer):
     category_color = serializers.CharField(source="category_fk.color", read_only=True, default=None)
     # MG_PRODFAMILY: продукт своей семьи (её можно править) vs каталожный.
     is_own = serializers.SerializerMethodField()
+    # MG_MYPRODUCTS: сколько позиций холодильника ссылается на продукт. Нужно,
+    # чтобы предупредить перед удалением: сами позиции переживут удаление
+    # (FK стоит SET_NULL), но потеряют связь с КБЖУ и категорией.
+    #
+    # Считается только там, где запрошено (список своих продуктов): без
+    # аннотации поле не отдаётся, иначе каждый список продуктов ловил бы N+1.
+    fridge_usage = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -43,7 +50,11 @@ class ProductSerializer(serializers.ModelSerializer):
             "image_url",
             "is_seed",
             "is_own",
+            "fridge_usage",
         )
+
+    def get_fridge_usage(self, obj):
+        return getattr(obj, "fridge_usage", None)
 
     def get_is_own(self, obj) -> bool:
         req = self.context.get("request")
@@ -177,10 +188,7 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         from .visibility import visible_products_q
 
         existing = resolve_product(name, family=family) or (
-            Product.objects.filter(visible_products_q(family=family))
-            .filter(name__iexact=name)
-            .order_by("id")
-            .first()
+            Product.objects.filter(visible_products_q(family=family)).filter(name__iexact=name).order_by("id").first()
         )
         if existing is not None:
             # MG_PRODFAMILY: дописывать можно только в свой продукт. Каталог

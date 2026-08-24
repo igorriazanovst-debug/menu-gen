@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -353,6 +353,10 @@ class ProductListView(generics.ListCreateAPIView):
         if self.request.query_params.get("own") in ("1", "true"):
             # MG_PRODFAMILY: «свои» — это продукты семьи, а не лично мои.
             qs = qs.filter(owner_family=_family_for(self.request))
+            # MG_MYPRODUCTS: на экране «Мои продукты» перед удалением надо
+            # сказать, сколько позиций холодильника на продукт ссылается.
+            # Аннотацией, а не отдельным запросом на каждый продукт.
+            qs = qs.annotate(fridge_usage=Count("fridgeitem", distinct=True))
         return qs.order_by("category_fk__sort_order", "name")[:500]
 
     def perform_create(self, serializer):

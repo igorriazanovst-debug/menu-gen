@@ -93,6 +93,21 @@ export const fridgeApi = {
     default_unit?: string;
   }) => client.post<Product>('/fridge/products/', data),
 
+  // MG_MYPRODUCTS: правка и удаление своего продукта. Каталожные защищены на
+  // сервере — он ответит 403, даже если что-то дойдёт сюда по ошибке.
+  updateProduct: (
+    id: number,
+    data: {
+      name?: string;
+      calories_per_100g?: number | null;
+      nutrition?: Record<string, number>;
+      category_id?: number | null;
+      default_unit?: string;
+    },
+  ) => client.patch<Product>(`/fridge/products/${id}/`, data),
+
+  deleteProduct: (id: number) => client.delete(`/fridge/products/${id}/`),
+
   history: (limit = 40) =>
     client.get<FridgeHistoryItem[]>('/fridge/products/history/', {
       params: { limit },
