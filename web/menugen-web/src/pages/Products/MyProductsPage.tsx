@@ -35,6 +35,17 @@ type Draft = {
   categoryId: number | null;
 };
 
+// MG_MYPRODUCTS: заготовка нового продукта. Пустые поля КБЖУ означают
+// «неизвестно», а не ноль, — поэтому именно пустые строки, а не «0».
+const emptyDraft = (): Draft => ({
+  name: '',
+  cal: '',
+  prot: '',
+  fat: '',
+  carb: '',
+  categoryId: null,
+});
+
 const draftOf = (p: Product): Draft => {
   const n = (p.nutrition ?? {}) as Record<string, unknown>;
   const s = (v: unknown) => (v == null || v === '' ? '' : String(toNum(v)));
@@ -53,7 +64,8 @@ export const MyProductsPage: React.FC = () => {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editingId, setEditingId] = useState<number | null>(null);
+  // editingId: id правимого продукта, 'new' — создание нового, null — ничего.
+  const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -82,6 +94,12 @@ export const MyProductsPage: React.FC = () => {
     setError('');
   };
 
+  const startCreate = () => {
+    setEditingId('new');
+    setDraft(emptyDraft());
+    setError('');
+  };
+
   const cancelEdit = () => { setEditingId(null); setDraft(null); };
 
   const save = async () => {
@@ -96,12 +114,17 @@ export const MyProductsPage: React.FC = () => {
       if (draft.prot.trim()) kbju.proteins = num(draft.prot);
       if (draft.fat.trim()) kbju.fats = num(draft.fat);
       if (draft.carb.trim()) kbju.carbs = num(draft.carb);
-      await fridgeApi.updateProduct(editingId, {
+      const payload = {
         name: draft.name.trim(),
         calories_per_100g: draft.cal.trim() ? num(draft.cal) : null,
         nutrition: kbju,
         category_id: draft.categoryId,
-      });
+      };
+      if (editingId === 'new') {
+        await fridgeApi.createProduct(payload);
+      } else {
+        await fridgeApi.updateProduct(editingId, payload);
+      }
       cancelEdit();
       await load();
     } catch (e) {
@@ -138,6 +161,65 @@ export const MyProductsPage: React.FC = () => {
     return `${Math.round(cal)} ккал · Б ${toNum(n.proteins)} · Ж ${toNum(n.fats)} · У ${toNum(n.carbs)} (на 100 г)`;
   };
 
+  // Одна форма и на правку, и на создание: разъехавшись, они начали бы
+  // принимать разный набор полей — а продукт и там и там один и тот же.
+  // Обычная функция, а НЕ вложенный компонент: объявленный внутри рендера
+  // компонент — это новый тип на каждый рендер, React размонтирует поля и
+  // фокус слетает на каждой набранной букве.
+  const renderEditor = () => {
+    if (!draft) return null;
+    return (
+      <div className="space-y-3">
+        <Input
+          label="Название"
+          value={draft.name}
+          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+        />
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">КБЖУ на 100 г</label>
+          <div className="grid grid-cols-2 gap-3">
+            <Input type="number" min="0" placeholder="ккал" value={draft.cal}
+                   onChange={(e) => setDraft({ ...draft, cal: e.target.value })} />
+            <Input type="number" min="0" placeholder="белки" value={draft.prot}
+                   onChange={(e) => setDraft({ ...draft, prot: e.target.value })} />
+            <Input type="number" min="0" placeholder="жиры" value={draft.fat}
+                   onChange={(e) => setDraft({ ...draft, fat: e.target.value })} />
+            <Input type="number" min="0" placeholder="углеводы" value={draft.carb}
+                   onChange={(e) => setDraft({ ...draft, carb: e.target.value })} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Категория</label>
+          <div className="flex flex-wrap gap-1.5">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setDraft({
+                  ...draft,
+                  categoryId: draft.categoryId === c.id ? null : c.id,
+                })}
+                className={
+                  'px-2.5 py-1 rounded-full text-xs border transition ' +
+                  (draft.categoryId === c.id
+                    ? 'border-chocolate ring-2 ring-chocolate/30 font-semibold'
+                    : 'border-transparent')
+                }
+                style={{ backgroundColor: c.color || '#ECEFF1' }}
+              >
+                {c.icon ? `${c.icon} ` : ''}{c.name_ru}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" onClick={cancelEdit} disabled={busy}>Отмена</Button>
+          <Button onClick={save} disabled={busy}>{busy ? 'Сохранение…' : 'Сохранить'}</Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold text-chocolate mb-1">Мои продукты</h1>
@@ -146,68 +228,33 @@ export const MyProductsPage: React.FC = () => {
         Общий каталог правится только через поддержку.
       </p>
 
+      {/* MG_MYPRODUCTS: продукт можно и завести отсюда. Уметь править и удалять,
+          но не создавать — странная половина возможности. */}
+      {editingId !== 'new' && (
+        <Button className="mb-3" onClick={startCreate} disabled={busy || loading}>
+          + Добавить продукт
+        </Button>
+      )}
+
+      {editingId === 'new' && draft && (
+        <Card className="p-4 mb-3">{renderEditor()}</Card>
+      )}
+
       {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
 
       {loading ? (
         <p className="text-gray-400 text-sm">Загрузка…</p>
       ) : items.length === 0 ? (
         <Card className="p-6 text-center text-gray-500 text-sm">
-          Своих продуктов пока нет. Они появляются, когда вы вносите продукт
-          вручную в дневник и оставляете галочку «Сохранить продукт в каталог».
+          Своих продуктов пока нет. Заведите продукт кнопкой выше — или внесите
+          его вручную в дневник, оставив галочку «Сохранить продукт в каталог».
         </Card>
       ) : (
         <div className="space-y-2">
           {items.map((p) => (
             <Card key={p.id} className="p-4">
               {editingId === p.id && draft ? (
-                <div className="space-y-3">
-                  <Input
-                    label="Название"
-                    value={draft.name}
-                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  />
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">КБЖУ на 100 г</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Input type="number" min="0" placeholder="ккал" value={draft.cal}
-                             onChange={(e) => setDraft({ ...draft, cal: e.target.value })} />
-                      <Input type="number" min="0" placeholder="белки" value={draft.prot}
-                             onChange={(e) => setDraft({ ...draft, prot: e.target.value })} />
-                      <Input type="number" min="0" placeholder="жиры" value={draft.fat}
-                             onChange={(e) => setDraft({ ...draft, fat: e.target.value })} />
-                      <Input type="number" min="0" placeholder="углеводы" value={draft.carb}
-                             onChange={(e) => setDraft({ ...draft, carb: e.target.value })} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Категория</label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {categories.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => setDraft({
-                            ...draft,
-                            categoryId: draft.categoryId === c.id ? null : c.id,
-                          })}
-                          className={
-                            'px-2.5 py-1 rounded-full text-xs border transition ' +
-                            (draft.categoryId === c.id
-                              ? 'border-chocolate ring-2 ring-chocolate/30 font-semibold'
-                              : 'border-transparent')
-                          }
-                          style={{ backgroundColor: c.color || '#ECEFF1' }}
-                        >
-                          {c.icon ? `${c.icon} ` : ''}{c.name_ru}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button variant="ghost" onClick={cancelEdit} disabled={busy}>Отмена</Button>
-                    <Button onClick={save} disabled={busy}>{busy ? 'Сохранение…' : 'Сохранить'}</Button>
-                  </div>
-                </div>
+                renderEditor()
               ) : (
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

@@ -65,7 +65,8 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
     }
   }
 
-  Future<void> _edit(Map<String, dynamic> p) async {
+  // p == null — создание нового продукта.
+  Future<void> _edit(Map<String, dynamic>? p) async {
     final saved = await showDialog<bool>(
       context: context,
       builder: (_) => _EditProductDialog(
@@ -125,6 +126,13 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Мои продукты')),
+      // MG_MYPRODUCTS: продукт можно и завести отсюда. Уметь править и удалять,
+      // но не создавать — странная половина возможности.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _loading ? null : () => _edit(null),
+        icon: const Icon(Icons.add),
+        label: const Text('Продукт'),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -146,8 +154,8 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
                       child: Padding(
                         padding: EdgeInsets.all(24),
                         child: Text(
-                          'Своих продуктов пока нет.\n\nОни появляются, когда вы вносите '
-                          'продукт вручную в дневник и оставляете галочку '
+                          'Своих продуктов пока нет.\n\nЗаведите продукт кнопкой ниже — '
+                          'или внесите его вручную в дневник, оставив галочку '
                           '«Сохранить продукт в каталог».',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.grey),
@@ -201,9 +209,12 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
   }
 }
 
+// Одна форма и на правку, и на создание: разъехавшись, они начали бы принимать
+// разный набор полей — а продукт и там и там один и тот же.
+// product == null — создание нового.
 class _EditProductDialog extends StatefulWidget {
   final ApiClient apiClient;
-  final Map<String, dynamic> product;
+  final Map<String, dynamic>? product;
   final List<Map<String, dynamic>> categories;
   const _EditProductDialog({
     required this.apiClient,
@@ -231,16 +242,17 @@ class _EditProductDialogState extends State<_EditProductDialog> {
   void initState() {
     super.initState();
     final p = widget.product;
-    final n = (p['nutrition'] is Map)
-        ? Map<String, dynamic>.from(p['nutrition'] as Map)
+    final n = (p?['nutrition'] is Map)
+        ? Map<String, dynamic>.from(p!['nutrition'] as Map)
         : <String, dynamic>{};
-    _name = TextEditingController(text: _s(p['name']));
-    _cal = TextEditingController(text: _s(p['calories_per_100g']));
+    // Пустые поля КБЖУ означают «неизвестно», а не ноль.
+    _name = TextEditingController(text: _s(p?['name']));
+    _cal = TextEditingController(text: _s(p?['calories_per_100g']));
     _prot = TextEditingController(text: _s(n['proteins']));
     _fat = TextEditingController(text: _s(n['fats']));
     _carb = TextEditingController(text: _s(n['carbs']));
     for (final c in widget.categories) {
-      if (c['id'] == p['category_id']) {
+      if (p != null && c['id'] == p['category_id']) {
         _cat = c;
         break;
       }
@@ -276,12 +288,18 @@ class _EditProductDialogState extends State<_EditProductDialog> {
       if (_prot.text.trim().isNotEmpty) kbju['proteins'] = _n(_prot) ?? 0;
       if (_fat.text.trim().isNotEmpty) kbju['fats'] = _n(_fat) ?? 0;
       if (_carb.text.trim().isNotEmpty) kbju['carbs'] = _n(_carb) ?? 0;
-      await widget.apiClient.patch('/fridge/products/${widget.product['id']}/', data: {
+      final payload = {
         'name': _name.text.trim(),
         'calories_per_100g': _cal.text.trim().isEmpty ? null : _n(_cal),
         'nutrition': kbju,
         'category_id': _cat?['id'],
-      });
+      };
+      final p = widget.product;
+      if (p == null) {
+        await widget.apiClient.post('/fridge/products/', data: payload);
+      } else {
+        await widget.apiClient.patch('/fridge/products/${p['id']}/', data: payload);
+      }
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
@@ -299,7 +317,7 @@ class _EditProductDialogState extends State<_EditProductDialog> {
   Widget build(BuildContext context) {
     const kb = TextInputType.numberWithOptions(decimal: true);
     return AlertDialog(
-      title: const Text('Правка продукта'),
+      title: Text(widget.product == null ? 'Новый продукт' : 'Правка продукта'),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(
