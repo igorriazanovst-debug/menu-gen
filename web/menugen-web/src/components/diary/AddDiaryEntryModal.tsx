@@ -10,7 +10,7 @@ import { fridgeApi } from '../../api/fridge';
 import { getErrorMessage } from '../../utils/api';
 import { packageGrams } from '../../utils/packageSize'; // MG_DIARYSCAN
 import { MEAL_LABELS } from '../../types';
-import type { MealType, Recipe, Product, BarcodeLookupResult } from '../../types';
+import type { MealType, Recipe, Product, ProductCategory, BarcodeLookupResult } from '../../types';
 
 interface Props {
   date: string;
@@ -76,6 +76,24 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
   // MG_MANUALPROD: по умолчанию сохраняем продукт в каталог семьи — иначе он
   // нигде потом не ищется (ни в дневнике, ни в холодильнике).
   const [saveToCatalog, setSaveToCatalog] = useState(true);
+  // Категория продукта. Без неё продукт в каталоге есть, но в холодильнике
+  // подставить её неоткуда — а там она обязательна, и человеку приходится
+  // выбирать заново при каждом добавлении.
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [manualCat, setManualCat] = useState<ProductCategory | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await fridgeApi.categories();
+        if (!cancelled) setCategories(data ?? []);
+      } catch {
+        if (!cancelled) setCategories([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Recipe ──────────────────────────────────────────────────────────────
   const [recipeQuery, setRecipeQuery] = useState('');
@@ -270,6 +288,7 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
               name: name.trim(),
               calories_per_100g: cal.trim() ? num(cal) : null,
               nutrition: kbju,
+              category_id: manualCat?.id ?? null,
             });
           } catch { /* нет подписки или дубль — не мешаем записи приёма */ }
         }
@@ -503,6 +522,32 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
                      onChange={(e) => setSaveToCatalog(e.target.checked)} />
               Сохранить продукт в каталог (чтобы находить его потом)
             </label>
+
+            {/* MG_MANUALPROD: категория нужна холодильнику — там она обязательна.
+                Проставим её здесь один раз, чтобы потом подставлялась сама. */}
+            {saveToCatalog && categories.length > 0 && (
+              <div className="mb-3">
+                <label className="block text-xs text-gray-500 mb-1">Категория (для холодильника)</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {categories.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setManualCat(manualCat?.id === c.id ? null : c)}
+                      className={
+                        'px-2.5 py-1 rounded-full text-xs border transition ' +
+                        (manualCat?.id === c.id
+                          ? 'border-chocolate ring-2 ring-chocolate/30 font-semibold'
+                          : 'border-transparent')
+                      }
+                      style={{ backgroundColor: c.color || '#ECEFF1' }}
+                    >
+                      {c.icon ? `${c.icon} ` : ''}{c.name_ru}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Preview t={manualTotals()} />
           </>

@@ -92,6 +92,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const applyRecognized = (prod: RecognizedProduct) => {
     setName(prod.name);
     setProductId(null);
+    closeSuggest();
     if (prod.quantity) {
       const m = prod.quantity.match(/[0-9]+([.,][0-9]+)?/);
       if (m) setQuantity(m[0].replace(',', '.'));
@@ -154,12 +155,21 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const [seedProducts, setSeedProducts]   = useState<Product[]>([]);
   const [metaLoading, setMetaLoading]     = useState(true);
 
-  // MG_MANUALPROD: живой поиск по каталогу. Раньше форма подсказывала только
-  // базовые продукты выбранной категории и историю холодильника — свои продукты
-  // (заведённые вручную или из дневника) не находились никак.
-  const [search, setSearch]               = useState('');
+  // MG_MANUALPROD: живой поиск по каталогу прямо в поле «Название». Раньше форма
+  // подсказывала только базовые продукты выбранной категории и историю
+  // холодильника — свои продукты (заведённые вручную или из дневника) не
+  // находились никак.
+  //
+  // Отдельного поля поиска нет намеренно: «найти существующее» и «вписать новое»
+  // — это одно и то же действие, и раздваивать его значит заставлять человека
+  // заранее решить, есть продукт в базе или нет. Поэтому поле одно, а подсказки
+  // выпадают под ним.
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  // Подсказки открывает только набор текста руками. Скан, фото, история и
+  // базовые продукты тоже пишут в «Название» — и список, выпадающий им в ответ,
+  // выглядел бы как сбой.
+  const [searchOpen, setSearchOpen]       = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -197,7 +207,8 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
 
   // MG_MANUALPROD: дебаунс-поиск по каталогу (общий + продукты семьи).
   useEffect(() => {
-    const q = search.trim();
+    if (!searchOpen) return;
+    const q = name.trim();
     if (q.length < 2) { setSearchResults([]); return; }
     setSearchLoading(true);
     clearTimeout(searchTimer.current);
@@ -212,7 +223,17 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
       }
     }, 300);
     return () => clearTimeout(searchTimer.current);
-  }, [search]);
+  }, [name, searchOpen]);
+
+  // Набор текста руками разрывает связь с продуктом: иначе позиция осталась бы
+  // привязанной к прежнему продукту, а называлась бы уже иначе.
+  const onNameTyped = (value: string) => {
+    setName(value);
+    setProductId(null);
+    setSearchOpen(true);
+  };
+
+  const closeSuggest = () => { setSearchOpen(false); setSearchResults([]); };
 
   const applyProduct = (p: Product) => {
     setName(p.name);
@@ -223,13 +244,13 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
       const found = categories.find(c => c.slug === p.category_slug);
       if (found) setSelectedCat(found);
     }
-    setSearch('');
-    setSearchResults([]);
+    closeSuggest();
   };
 
   const applyHistory = (h: FridgeHistoryItem) => {
     setName(h.name);
     setProductId(h.product_id);
+    closeSuggest();
     if (h.image_url) setImageUrl(h.image_url);
     if (h.default_unit && UNITS.includes(h.default_unit)) setUnit(h.default_unit);
     if (h.category_slug) {
@@ -241,6 +262,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const applySeed = (p: Product) => {
     setName(p.name);
     setProductId(p.id);
+    closeSuggest();
     if (p.image_url) setImageUrl(p.image_url);
     if (p.default_unit && UNITS.includes(p.default_unit)) setUnit(p.default_unit);
   };
@@ -260,6 +282,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
       setScanInfo({ kbju: productKbjuLine(p), guess: !!p.low_confidence }); // MG_SCANSRC
       setName(p.name);
       setProductId(p.id);
+      closeSuggest();
       if (p.image_url) setImageUrl(p.image_url);
       if (p.default_unit && UNITS.includes(p.default_unit)) setUnit(p.default_unit);
       if (p.category_slug) {
@@ -273,6 +296,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
         setScannedCode(code);
         setError('Штрих-код не найден. Впишите название — в следующий раз подставим сами.');
         setName('');
+        closeSuggest();
       } else {
         setError('Ошибка поиска: ' + (e?.response?.data?.detail || e?.message || ''));
       }
@@ -373,34 +397,6 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
                   </div>
                 </div>
               )}
-
-              {/* MG_MANUALPROD: поиск по каталогу — общий справочник + продукты
-                  семьи (в т.ч. заведённые вручную в дневнике). */}
-              <div>
-                <label className="text-sm font-medium text-chocolate">Поиск по каталогу</label>
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Название продукта (от 2 букв)"
-                  className="mt-1"
-                />
-                {searchLoading && <p className="text-xs text-gray-400 mt-1">Поиск…</p>}
-                {searchResults.length > 0 && (
-                  <div className="mt-1 border border-border rounded-xl max-h-48 overflow-y-auto">
-                    {searchResults.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => applyProduct(p)}
-                        className="block w-full text-left px-3 py-2 text-sm hover:bg-rice truncate"
-                      >
-                        {p.name}
-                        {p.is_own && <span className="text-tomato"> · своё</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               {/* CATEGORY */}
               <div>
@@ -539,12 +535,47 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
                   onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               )}
 
-              <Input
-                label="Название *"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
+              {/* MG_MANUALPROD: поле-подсказка. Совпало с каталогом — берём
+                  готовый продукт (с категорией, единицей и КБЖУ); не совпало —
+                  остаётся то, что вписали, как и раньше. */}
+              <div className="relative">
+                <Input
+                  label="Название *"
+                  value={name}
+                  onChange={(e) => onNameTyped(e.target.value)}
+                  onBlur={() => setTimeout(closeSuggest, 150)}
+                  // Enter в форме отправляет её. Пока открыт список подсказок,
+                  // это почти наверняка не то, чего human хотел.
+                  onKeyDown={(e: React.KeyboardEvent) => {
+                    if (e.key === 'Enter' && searchOpen && searchResults.length > 0) {
+                      e.preventDefault();
+                    }
+                    if (e.key === 'Escape') closeSuggest();
+                  }}
+                  autoComplete="off"
+                  placeholder="Начните вводить — предложим из каталога"
+                  required
+                />
+                {searchOpen && searchLoading && (
+                  <p className="text-xs text-gray-400 mt-1">Поиск…</p>
+                )}
+                {searchOpen && searchResults.length > 0 && (
+                  <div className="absolute z-10 left-0 right-0 mt-1 bg-surface border border-border rounded-xl max-h-48 overflow-y-auto shadow-lg">
+                    {searchResults.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()} // не дать blur опередить клик
+                        onClick={() => applyProduct(p)}
+                        className="block w-full text-left px-3 py-2 text-sm hover:bg-rice truncate"
+                      >
+                        {p.name}
+                        {p.is_own && <span className="text-tomato"> · своё</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <Input
