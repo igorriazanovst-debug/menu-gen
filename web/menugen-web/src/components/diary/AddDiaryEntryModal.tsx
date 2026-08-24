@@ -63,12 +63,19 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
   };
 
   // ── Manual ────────────────────────────────────────────────────────────────
+  // MG_MANUALPROD: КБЖУ вводится НА 100 Г, а съеденное — в граммах. Так же, как
+  // во вкладке «Продукт»: пользователь считает КБЖУ один раз, а порции меняются.
+  // Раньше поля были «итог за порцию × число порций» — из них нельзя собрать
+  // переиспользуемый продукт (в каталоге КБЖУ хранится на 100 г).
   const [name, setName] = useState('');
-  const [qty, setQty] = useState('1');
-  const [cal, setCal] = useState('');
+  const [mGrams, setMGrams] = useState('100'); // съедено, г
+  const [cal, setCal] = useState(''); // на 100 г
   const [prot, setProt] = useState('');
   const [fat, setFat] = useState('');
   const [carb, setCarb] = useState('');
+  // MG_MANUALPROD: по умолчанию сохраняем продукт в каталог семьи — иначе он
+  // нигде потом не ищется (ни в дневнике, ни в холодильнике).
+  const [saveToCatalog, setSaveToCatalog] = useState(true);
 
   // ── Recipe ──────────────────────────────────────────────────────────────
   const [recipeQuery, setRecipeQuery] = useState('');
@@ -217,6 +224,17 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
     };
   };
 
+  // MG_MANUALPROD: КБЖУ на 100 г × съеденные граммы.
+  const manualTotals = (): Totals => {
+    const f = num(mGrams) / 100;
+    return {
+      calories: num(cal) * f,
+      proteins: num(prot) * f,
+      fats: num(fat) * f,
+      carbs: num(carb) * f,
+    };
+  };
+
   const productTotals = (): Totals => {
     const p = selectedProduct;
     if (!p) return { calories: 0, proteins: 0, fats: 0, carbs: 0 };
@@ -235,14 +253,32 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
     setSaving(true); setError('');
     try {
       if (mode === 'manual') {
-        if (!name.trim()) { setError('Укажите название блюда'); setSaving(false); return; }
-        const nutrition = totalsToNutrition({
-          calories: num(cal), proteins: num(prot), fats: num(fat), carbs: num(carb),
-        });
+        if (!name.trim()) { setError('Укажите название'); setSaving(false); return; }
+        const grams = num(mGrams);
+        if (grams <= 0) { setError('Укажите граммовку'); setSaving(false); return; }
+
+        // MG_MANUALPROD: сохранить продукт в каталог семьи, чтобы он находился
+        // потом. Best-effort: каталог — премиум-функция, а сам приём пищи
+        // (бесплатный) логируем в любом случае, даже если сохранить не вышло.
+        if (saveToCatalog) {
+          const kbju: Record<string, number> = {};
+          if (prot.trim()) kbju.proteins = num(prot);
+          if (fat.trim()) kbju.fats = num(fat);
+          if (carb.trim()) kbju.carbs = num(carb);
+          try {
+            await fridgeApi.createProduct({
+              name: name.trim(),
+              calories_per_100g: cal.trim() ? num(cal) : null,
+              nutrition: kbju,
+            });
+          } catch { /* нет подписки или дубль — не мешаем записи приёма */ }
+        }
+
         await diaryApi.create({
-          date, meal_type: mealType, custom_name: name.trim(),
-          quantity: num(qty) || 1, is_eaten: true,
-          nutrition: Object.keys(nutrition).length ? nutrition : undefined,
+          date, meal_type: mealType,
+          custom_name: `${name.trim()}, ${round0(grams)} г`,
+          quantity: 1, is_eaten: true,
+          nutrition: totalsToNutrition(manualTotals()),
         }, memberId);
       } else if (mode === 'recipe') {
         if (!selectedRecipe) { setError('Выберите рецепт'); setSaving(false); return; }
@@ -434,30 +470,41 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
           <>
             <label className="block text-xs text-gray-500 mb-1">Название</label>
             <Input value={name} onChange={(e) => setName(e.target.value)}
-                   placeholder="Например, Овсянка с бананом" className="mb-4" />
+                   placeholder="Например, Копчёная масляная рыба" className="mb-3" />
 
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            {/* MG_MANUALPROD: КБЖУ — на 100 г, чтобы продукт можно было
+                переиспользовать и пересчитывать под любую граммовку. */}
+            <label className="block text-xs text-gray-500 mb-1">КБЖУ на 100 г</label>
+            <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Количество (порций)</label>
-                <Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} min="0" step="0.5" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Калории (ккал)</label>
+                <label className="block text-xs text-gray-400 mb-1">Калории (ккал)</label>
                 <Input type="number" value={cal} onChange={(e) => setCal(e.target.value)} min="0" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Белки (г)</label>
+                <label className="block text-xs text-gray-400 mb-1">Белки (г)</label>
                 <Input type="number" value={prot} onChange={(e) => setProt(e.target.value)} min="0" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Жиры (г)</label>
+                <label className="block text-xs text-gray-400 mb-1">Жиры (г)</label>
                 <Input type="number" value={fat} onChange={(e) => setFat(e.target.value)} min="0" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Углеводы (г)</label>
+                <label className="block text-xs text-gray-400 mb-1">Углеводы (г)</label>
                 <Input type="number" value={carb} onChange={(e) => setCarb(e.target.value)} min="0" />
               </div>
             </div>
+
+            <label className="block text-xs text-gray-500 mb-1">Съедено (г)</label>
+            <Input type="number" value={mGrams} min="0" step="10"
+                   onChange={(e) => setMGrams(e.target.value)} className="mb-3" />
+
+            <label className="flex items-center gap-2 text-sm text-chocolate mb-3 cursor-pointer">
+              <input type="checkbox" checked={saveToCatalog}
+                     onChange={(e) => setSaveToCatalog(e.target.checked)} />
+              Сохранить продукт в каталог (чтобы находить его потом)
+            </label>
+
+            <Preview t={manualTotals()} />
           </>
         )}
 

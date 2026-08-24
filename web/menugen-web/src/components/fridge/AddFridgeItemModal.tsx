@@ -154,6 +154,14 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const [seedProducts, setSeedProducts]   = useState<Product[]>([]);
   const [metaLoading, setMetaLoading]     = useState(true);
 
+  // MG_MANUALPROD: живой поиск по каталогу. Раньше форма подсказывала только
+  // базовые продукты выбранной категории и историю холодильника — свои продукты
+  // (заведённые вручную или из дневника) не находились никак.
+  const [search, setSearch]               = useState('');
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -186,6 +194,38 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
     })();
     return () => { cancelled = true; };
   }, [selectedCat]);
+
+  // MG_MANUALPROD: дебаунс-поиск по каталогу (общий + продукты семьи).
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const data = await fridgeApi.searchProducts(q);
+        setSearchResults(data ?? []);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(searchTimer.current);
+  }, [search]);
+
+  const applyProduct = (p: Product) => {
+    setName(p.name);
+    setProductId(p.id);
+    if (p.image_url) setImageUrl(p.image_url);
+    if (p.default_unit && UNITS.includes(p.default_unit)) setUnit(p.default_unit);
+    if (p.category_slug) {
+      const found = categories.find(c => c.slug === p.category_slug);
+      if (found) setSelectedCat(found);
+    }
+    setSearch('');
+    setSearchResults([]);
+  };
 
   const applyHistory = (h: FridgeHistoryItem) => {
     setName(h.name);
@@ -333,6 +373,34 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
                   </div>
                 </div>
               )}
+
+              {/* MG_MANUALPROD: поиск по каталогу — общий справочник + продукты
+                  семьи (в т.ч. заведённые вручную в дневнике). */}
+              <div>
+                <label className="text-sm font-medium text-chocolate">Поиск по каталогу</label>
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Название продукта (от 2 букв)"
+                  className="mt-1"
+                />
+                {searchLoading && <p className="text-xs text-gray-400 mt-1">Поиск…</p>}
+                {searchResults.length > 0 && (
+                  <div className="mt-1 border border-border rounded-xl max-h-48 overflow-y-auto">
+                    {searchResults.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => applyProduct(p)}
+                        className="block w-full text-left px-3 py-2 text-sm hover:bg-rice truncate"
+                      >
+                        {p.name}
+                        {p.is_own && <span className="text-tomato"> · своё</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* CATEGORY */}
               <div>
