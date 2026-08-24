@@ -263,19 +263,24 @@ apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
 Пока идёт модерация, тот же подписанный apk раздаётся с сайта — ссылка
 появляется на странице входа, а установленные с сайта копии обновляются сами.
 
+Числа ниже — ПРИМЕР для версии 1.0.3, собранной прогоном № 4. Не копируйте их
+вслепую: `--version-name` берётся из pubspec.yaml, а `--version-code` — из имени
+артефакта (это номер прогона workflow). Указать код меньше или равный уже
+установленному значит выложить обновление, которое никому не предложится.
+
 ```bash
 # 1. Скопировать артефакт прогона на сервер
-scp menugen-release-3-abc1234.apk root@158.255.5.166:/opt/menugen/backups/
+scp menugen-release-4-abc1234.apk root@158.255.5.166:/opt/menugen/backups/
 
 # 2. Положить файл В КОНТЕЙНЕР: команда выполняется внутри него, а каталог
 #    backups с хоста туда не смонтирован (видны только backend/ и том media).
 cd /opt/menugen
-docker compose cp ./backups/menugen-release-3-abc1234.apk backend:/tmp/menugen.apk
+docker compose cp ./backups/menugen-release-4-abc1234.apk backend:/tmp/menugen.apk
 
 # 3. Зарегистрировать. Номер сборки — из ИМЕНИ артефакта (номер прогона
 #    workflow), а не из хеша коммита.
 docker compose exec -T backend python manage.py publish_apk /tmp/menugen.apk \
-  --version-name 1.0.2 --version-code 3 \
+  --version-name 1.0.3 --version-code 4 \
   --notes "Что нового в этой версии"
 ```
 
