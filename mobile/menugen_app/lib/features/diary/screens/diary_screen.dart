@@ -1234,12 +1234,21 @@ class _AddManualDialogState extends State<_AddManualDialog>
   MealType _meal = MealType.breakfast;
 
   // Вручную
+  // MG_MANUALPROD: КБЖУ вводится НА 100 Г, съеденное — в граммах. Так же, как
+  // во вкладке «Продукт»: КБЖУ человек считает один раз, а порции меняются.
+  // Раньше было «итог за порцию × число порций» — из такого нельзя собрать
+  // переиспользуемый продукт (в каталоге КБЖУ хранится на 100 г).
   final _name = TextEditingController();
-  final _qty = TextEditingController(text: '1');
+  final _mGrams = TextEditingController(text: '100');
   final _cal = TextEditingController();
   final _prot = TextEditingController();
   final _fat = TextEditingController();
   final _carb = TextEditingController();
+  // По умолчанию сохраняем продукт в каталог семьи — иначе он нигде потом
+  // не ищется (ни в дневнике, ни в холодильнике).
+  bool _saveToCatalog = true;
+  List<Map<String, dynamic>> _categories = const [];
+  Map<String, dynamic>? _manualCat;
 
   // Рецепт
   final _recipeQuery = TextEditingController();
@@ -1268,13 +1277,27 @@ class _AddManualDialogState extends State<_AddManualDialog>
     super.initState();
     _tab = TabController(length: 3, vsync: this);
     _tab.addListener(() => setState(() => _error = null));
+    _loadCategories();
+  }
+
+  // MG_MANUALPROD: категория нужна холодильнику — там она обязательна.
+  // Проставим её здесь один раз, чтобы дальше подставлялась сама.
+  Future<void> _loadCategories() async {
+    try {
+      final r = await widget.apiClient.get('/fridge/categories/');
+      if (!mounted || r is! List) return;
+      setState(() => _categories =
+          r.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList());
+    } catch (_) {
+      // Без категорий форма работает — просто не предложит выбрать.
+    }
   }
 
   @override
   void dispose() {
     _tab.dispose();
     _name.dispose();
-    _qty.dispose();
+    _mGrams.dispose();
     _cal.dispose();
     _prot.dispose();
     _fat.dispose();
@@ -1289,6 +1312,17 @@ class _AddManualDialogState extends State<_AddManualDialog>
   }
 
   num? _n(TextEditingController c) => double.tryParse(c.text.trim().replaceAll(',', '.'));
+
+  // MG_MANUALPROD: КБЖУ на 100 г × съеденные граммы.
+  List<num> _manualTotals() {
+    final f = (_n(_mGrams) ?? 0) / 100;
+    return [
+      (_n(_cal) ?? 0) * f,
+      (_n(_prot) ?? 0) * f,
+      (_n(_fat) ?? 0) * f,
+      (_n(_carb) ?? 0) * f,
+    ];
+  }
 
   dynamic _body(dynamic r) {
     try {
@@ -1450,7 +1484,7 @@ class _AddManualDialogState extends State<_AddManualDialog>
         border: const OutlineInputBorder(),
       );
 
-  void _submit() {
+  Future<void> _submit() async {
     final idx = _tab.index;
     if (idx == 0) {
       if (_recipe == null) {
@@ -1501,19 +1535,47 @@ class _AddManualDialogState extends State<_AddManualDialog>
       );
     } else {
       if (_name.text.trim().isEmpty) {
-        setState(() => _error = 'Укажите название блюда');
+        setState(() => _error = 'Укажите название');
         return;
       }
+      final g = _n(_mGrams) ?? 0;
+      if (g <= 0) {
+        setState(() => _error = 'Укажите граммовку');
+        return;
+      }
+
+      // MG_MANUALPROD: сохранить продукт в каталог семьи, чтобы он находился
+      // потом. Best-effort: каталог — премиум-функция, а сам приём пищи
+      // (бесплатный) записываем в любом случае, даже если сохранить не вышло.
+      if (_saveToCatalog) {
+        final kbju = <String, num>{};
+        if (_prot.text.trim().isNotEmpty) kbju['proteins'] = _n(_prot) ?? 0;
+        if (_fat.text.trim().isNotEmpty) kbju['fats'] = _n(_fat) ?? 0;
+        if (_carb.text.trim().isNotEmpty) kbju['carbs'] = _n(_carb) ?? 0;
+        try {
+          await widget.apiClient.post('/fridge/products/', data: {
+            'name': _name.text.trim(),
+            'calories_per_100g': _cal.text.trim().isEmpty ? null : _n(_cal),
+            'nutrition': kbju,
+            'category_id': _manualCat?['id'],
+          });
+        } catch (_) {
+          // нет подписки или дубль — не мешаем записи приёма пищи
+        }
+      }
+      if (!mounted) return;
+
+      final t = _manualTotals();
       Navigator.pop(
         context,
         _ManualEntry(
           mealType: _meal,
-          name: _name.text.trim(),
-          quantity: _n(_qty)?.toDouble() ?? 1.0,
-          calories: _n(_cal),
-          proteins: _n(_prot),
-          fats: _n(_fat),
-          carbs: _n(_carb),
+          name: '${_name.text.trim()}, ${g.round()} г',
+          quantity: 1,
+          calories: t[0].round(),
+          proteins: _r1(t[1]),
+          fats: _r1(t[2]),
+          carbs: _r1(t[3]),
         ),
       );
     }
@@ -1654,15 +1716,44 @@ class _AddManualDialogState extends State<_AddManualDialog>
       children: [
         TextField(controller: _name, decoration: _dec('Название')),
         const SizedBox(height: 12),
-        TextField(controller: _qty, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Количество (порций)')),
+        const Text('КБЖУ на 100 г', style: TextStyle(fontSize: 12, color: Colors.grey)),
+        const SizedBox(height: 6),
+        TextField(controller: _cal, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Калории (ккал)'), onChanged: (_) => setState(() {})),
         const SizedBox(height: 12),
-        TextField(controller: _cal, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Калории (ккал)')),
+        TextField(controller: _prot, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Белки (г)'), onChanged: (_) => setState(() {})),
         const SizedBox(height: 12),
-        TextField(controller: _prot, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Белки (г)')),
+        TextField(controller: _fat, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Жиры (г)'), onChanged: (_) => setState(() {})),
         const SizedBox(height: 12),
-        TextField(controller: _fat, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Жиры (г)')),
+        TextField(controller: _carb, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Углеводы (г)'), onChanged: (_) => setState(() {})),
         const SizedBox(height: 12),
-        TextField(controller: _carb, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Углеводы (г)')),
+        TextField(controller: _mGrams, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _dec('Съедено (г)'), onChanged: (_) => setState(() {})),
+        _previewLine(_manualTotals()),
+        const SizedBox(height: 4),
+        CheckboxListTile(
+          value: _saveToCatalog,
+          onChanged: (v) => setState(() => _saveToCatalog = v ?? false),
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: const Text('Сохранить продукт в каталог', style: TextStyle(fontSize: 14)),
+          subtitle: const Text('чтобы находить его потом', style: TextStyle(fontSize: 12)),
+        ),
+        if (_saveToCatalog && _categories.isNotEmpty) ...[
+          const Text('Категория (для холодильника)',
+              style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _categories.map((c) {
+              final selected = _manualCat?['id'] == c['id'];
+              return ChoiceChip(
+                label: Text('${c['icon'] ?? ''} ${c['name_ru'] ?? ''}'.trim()),
+                selected: selected,
+                onSelected: (_) => setState(() => _manualCat = selected ? null : c),
+              );
+            }).toList(),
+          ),
+        ],
       ],
     );
   }

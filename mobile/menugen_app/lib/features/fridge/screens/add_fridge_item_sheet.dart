@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -69,6 +71,22 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   List<Map<String, dynamic>> _history = [];          // family history
   bool _loadingMeta = true;
 
+  // MG_MANUALPROD: живой поиск по каталогу прямо в поле «Название». Раньше
+  // форма подсказывала только базовые продукты выбранной категории и историю
+  // холодильника — свои продукты (заведённые вручную или из дневника) не
+  // находились никак.
+  //
+  // Отдельного поля поиска нет намеренно: «найти существующее» и «вписать
+  // новое» — одно действие, и раздваивать его значит требовать от человека
+  // заранее знать, есть продукт в базе или нет.
+  List<Map<String, dynamic>> _searchResults = const [];
+  bool _searchLoading = false;
+  // Подсказки открывает только набор текста руками: скан, фото, история и
+  // базовые продукты тоже пишут в «Название», и выпадающий им в ответ список
+  // выглядел бы как сбой.
+  bool _searchOpen = false;
+  Timer? _searchDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -114,6 +132,7 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _nameCtrl.dispose();
     _qtyCtrl.dispose();
     _nameFocus.dispose();
@@ -185,6 +204,7 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
         final found = (m['name'] as String?) ?? '';
         if (found.isNotEmpty) _nameCtrl.text = found;
         _productId = m['id'] as int?;
+        _closeSuggest();
         _imageUrl = m['image_url'] as String?;
         final du = (m['default_unit'] as String?) ?? '';
         if (du.isNotEmpty && _UNITS.contains(du)) _unit = du;
@@ -215,10 +235,73 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
     }
   }
 
+  // MG_MANUALPROD: дебаунс-поиск по каталогу (общий + продукты семьи).
+  void _onNameTyped(String value) {
+    // Набор текста руками разрывает связь с продуктом: иначе позиция осталась
+    // бы привязана к прежнему продукту, а называлась бы уже иначе.
+    _productId = null;
+    _searchOpen = true;
+    _searchDebounce?.cancel();
+    final q = value.trim();
+    if (q.length < 2) {
+      setState(() => _searchResults = const []);
+      return;
+    }
+    setState(() => _searchLoading = true);
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        final r = await widget.apiClient
+            .get('/fridge/products/search/', params: {'q': q});
+        // Ответ пагинирован DRF; на всякий случай терпим и голый список.
+        final list = r is Map ? (r['results'] as List? ?? const []) : (r as List? ?? const []);
+        if (!mounted) return;
+        setState(() {
+          _searchResults =
+              list.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+          _searchLoading = false;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _searchResults = const [];
+          _searchLoading = false;
+        });
+      }
+    });
+  }
+
+  void _closeSuggest() {
+    _searchDebounce?.cancel();
+    _searchOpen = false;
+    _searchResults = const [];
+  }
+
+  void _applyProduct(Map<String, dynamic> p) {
+    setState(() {
+      _nameCtrl.text = (p['name'] as String?) ?? '';
+      _productId = p['id'] as int?;
+      final img = p['image_url'] as String?;
+      if (img != null && img.isNotEmpty) _imageUrl = img;
+      final unit = p['default_unit'] as String?;
+      if (unit != null && _UNITS.contains(unit)) _unit = unit;
+      final slug = p['category_slug'] as String?;
+      if (slug != null && slug.isNotEmpty) {
+        for (final c in _categories) {
+          if (c['slug'] == slug) {
+            _selectedCategory = c;
+            break;
+          }
+        }
+      }
+      _closeSuggest();
+    });
+  }
+
   void _applyHistory(Map<String, dynamic> h) {
     setState(() {
       _nameCtrl.text = (h['name'] as String?) ?? '';
       _productId = h['product_id'] as int?;
+      _closeSuggest();
       _imageUrl = h['image_url'] as String?;
       final du = (h['default_unit'] as String?) ?? '';
       if (du.isNotEmpty && _UNITS.contains(du)) _unit = du;
@@ -240,6 +323,7 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
       _imageUrl = p['image_url'] as String?;
       final du = (p['default_unit'] as String?) ?? '';
       if (du.isNotEmpty && _UNITS.contains(du)) _unit = du;
+      _closeSuggest();
     });
   }
 
@@ -404,6 +488,8 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
       _nameCtrl.text = p.name;
 
       _productId = null;
+
+      _closeSuggest();
 
       final q = p.quantity;
 
@@ -656,12 +742,56 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
                   ),
                 ),
 
+              // MG_MANUALPROD: поле-подсказка. Совпало с каталогом — берём
+              // готовый продукт (с категорией и единицей); не совпало —
+              // остаётся вписанное, как и раньше.
               TextFormField(
                 controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'Название *'),
+                decoration: InputDecoration(
+                  labelText: 'Название *',
+                  helperText: 'Начните вводить — предложим из каталога',
+                  suffixIcon: _searchLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : null,
+                ),
                 textInputAction: TextInputAction.next,
+                onChanged: _onNameTyped,
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Обязательно' : null,
               ),
+              if (_searchOpen && _searchResults.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  constraints: const BoxConstraints(maxHeight: 180),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _searchResults.length,
+                    itemBuilder: (_, i) {
+                      final p = _searchResults[i];
+                      final own = p['is_own'] == true;
+                      return ListTile(
+                        dense: true,
+                        title: Text(
+                          '${p['name'] ?? ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: own ? const Text('своё') : null,
+                        onTap: () => _applyProduct(p),
+                      );
+                    },
+                  ),
+                ),
               const SizedBox(height: 12),
               Row(
                 children: [

@@ -8,6 +8,7 @@ import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../bloc/fridge_bloc.dart';
 import 'add_fridge_item_sheet.dart';
 import 'fridge_history_screen.dart';
+import 'my_products_screen.dart';
 
 /// Days-left buckets for "by expiry" view.
 class _ExpiryBucket {
@@ -163,6 +164,19 @@ class _FridgeScreenState extends State<FridgeScreen>
       appBar: AppBar(
         title: const Text('Холодильник'),
         actions: [
+          // MG_MYPRODUCTS: свои продукты правятся и удаляются отсюда. Отдельной
+          // вкладки внизу не даём: их уже шесть, седьмая туда не влезает.
+          IconButton(
+            tooltip: 'Мои продукты',
+            icon: const Icon(Icons.inventory_2_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => MyProductsScreen(apiClient: widget.apiClient),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'История добавления',
             icon: const Icon(Icons.history),
