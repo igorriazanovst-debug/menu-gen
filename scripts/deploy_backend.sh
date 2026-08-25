@@ -94,17 +94,23 @@ trap cleanup EXIT
 
 echo "==> 3. Синхронизация кода backend/ (без media и кэшей)"
 # media/ — отдельный docker volume (/app/media), .env — в корне, их не трогаем.
+# staticfiles/ исключён наравне с media/: он в .gitignore, значит в ветке его
+# нет, и `--delete` сносил его с сервера при КАЖДОМ деплое. Nginx отдаёт
+# /static/ из этого каталога — после деплоя админка открывалась голым HTML без
+# единого стиля, и связать это с деплоем бэкенда было неоткуда.
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete \
     --exclude='media/' \
+    --exclude='staticfiles/' \
     --exclude='__pycache__/' \
     --exclude='*.pyc' \
     "$WT/backend/" "$REPO/backend/"
 else
-  echo "    rsync не найден — синхронизация через tar (mirror, media сохраняется)"
-  # Удаляем всё в backend/, кроме media/, затем распаковываем код из ветки.
-  find "$REPO/backend" -mindepth 1 -maxdepth 1 ! -name media -exec rm -rf {} +
-  tar -C "$WT/backend" --exclude='media' --exclude='__pycache__' --exclude='*.pyc' -cf - . \
+  echo "    rsync не найден — синхронизация через tar (mirror, media и staticfiles сохраняются)"
+  # Удаляем всё в backend/, кроме media/ и staticfiles/, затем код из ветки.
+  find "$REPO/backend" -mindepth 1 -maxdepth 1 ! -name media ! -name staticfiles -exec rm -rf {} +
+  tar -C "$WT/backend" --exclude='media' --exclude='staticfiles' \
+    --exclude='__pycache__' --exclude='*.pyc' -cf - . \
     | tar -C "$REPO/backend" -xf -
 fi
 
@@ -124,6 +130,12 @@ fi
 
 echo "==> 5. Применение миграций"
 $DC exec -T backend python manage.py migrate --noinput
+
+# Статика админки живёт не в git, а собирается из пакетов Django и приложений,
+# и меняется вместе с кодом. Собираем на каждом деплое: пропущенный
+# collectstatic виден не сразу, а когда кто-нибудь откроет админку.
+echo "==> 5b. Сборка статики"
+$DC exec -T backend python manage.py collectstatic --noinput | tail -3 | sed 's/^/    /'
 
 echo "==> 6. Рестарт backend + celery + celery-beat"
 $DC restart backend celery celery-beat
