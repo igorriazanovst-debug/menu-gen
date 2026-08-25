@@ -12,6 +12,18 @@
 истины: nginx читает `/etc/nginx/sites-available/…`. Поменяли на сервере —
 обновите копию здесь, иначе смысл теряется.
 
+Быстрая сверка, что серверы не разъехались:
+
+```bash
+grep -o 'location [^ ]*' deploy/nginx/menugen.ru.conf | sort > /tmp/prod.loc
+grep -o 'location [^ ]*' deploy/nginx/dev-8081.conf   | sort > /tmp/dev.loc
+diff /tmp/prod.loc /tmp/dev.loc
+```
+
+Разница по TLS и `@prod_media` законна — dev без сертификата и берёт чужие
+картинки. Разница по `/static/…` и `/api/`, `/admin/`, `/media/`, `/apk/` —
+нет.
+
 ## Правило, ради которого всё это заведено
 
 `/static/` делят между собой фронт и Django, и порядок тут не помогает:
