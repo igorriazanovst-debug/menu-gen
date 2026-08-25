@@ -8,98 +8,183 @@ from .forms import RecipeAdminForm, RecipeChangelistForm
 from .models import Cuisine, Recipe, RecipeAuthor, RecipeFavorite, RecipeImage
 
 # Human help texts (meaning in DB + allowed values), translatable.
+# MG_ADMINRU: подписи и пояснения — по-русски и прямо в коде.
+#
+# Раньше они лежали по-английски и переводились через .po. Каталог отставал
+# (пятнадцать строк так и остались без перевода), а язык админки вдобавок
+# зависел от Accept-Language браузера — при английском в браузере
+# редактор рецептов открывался по-английски целиком.
+#
+# Тексты пишем сразу по-русски: продукт русскоязычный, а длинные пояснения с
+# примерами через .po не живут — они устаревают первыми.
+#
+# Каждое пояснение отвечает на два вопроса: что сюда писать (с примером) и на
+# что это влияет в приложении. Поле, про которое нельзя ответить на второй
+# вопрос, скорее всего не нужно заполнять.
 HELP = {
-    "title": _("Recipe name. Stored as-is (free text)."),
-    "legacy_id": _("Original ID from the import source. Read-only."),
-    "cook_time": _("Cooking time as free text, e.g. '30 min'. Prefer cook_time_min for numbers."),
-    "cook_time_min": _("Cooking time in minutes (integer)."),
-    "servings": _("Number of servings as given by the source."),
-    "servings_normalized": _("Normalized servings count used by the generator."),
-    "portion_g": _("Weight of one serving, grams."),
-    "ingredients": _(
-        "List of ingredients. Each row: name, quantity, unit, grams. " "Grams are used to compute nutrition."
+    "title": (
+        "Название блюда так, как его увидит человек. "
+        "Например: «Гречка с грибами» или «Сырники из творога 5%». "
+        "Не пишите сюда вес и время — для них есть отдельные поля."
     ),
-    "steps": _("Ordered cooking steps. Numbering is assigned automatically."),
-    "nutrition": _("Per-100g nutrition object: calories, proteins, fats, carbs, sugars."),
-    "categories": _(
-        "Free tags. Allowed values mirror dish types: "
-        "soup, main, salad, side, dessert, drink, bakery, sauce, snack, breakfast_dish."
+    "legacy_id": "Идентификатор из источника, откуда рецепт импортирован. Заполняется сам, менять нельзя.",
+    "cook_time": (
+        "Время готовки словами, как в источнике: «около 30 минут», «1 час 20 мин». "
+        "Показывается в карточке. Для расчётов используется соседнее числовое поле."
     ),
-    "allergens": _(
-        "Allergens present in the dish. Allowed: eggs, milk, gluten, fish, " "shellfish, nuts, peanuts, soy, sesame."
+    "cook_time_min": (
+        "Время готовки в минутах, одним числом: 30. "
+        "По нему работает фильтр «быстрые рецепты», поэтому заполняйте его, даже если время указано словами."
     ),
-    "suitable_for": _("Meal slots this dish fits. Allowed: breakfast, lunch, dinner, snack."),
-    "dish_type": _("Dish type (first course / main / dessert ...). One value."),
-    "food_group": _("Primary food group: grain, protein, vegetable, fruit, dairy, oil, other."),
-    "protein_type": _("Protein origin: animal, plant, mixed."),
-    "grain_type": _("Grain type: whole, refined."),
-    "cooking_method": _("Cooking method: boiled, baked, fried, grilled, raw, stewed, steamed."),
-    "source": _("Recipe origin: own, import, user, parsed."),
-    "country": _("Country / cuisine as free text."),
-    "oil_tsp": _("Oil consumption in teaspoons."),
-    "serving_size_label": _("Serving size caption, e.g. '1 plate / 200 g'."),
-    "has_added_sugar": _("Contains added sugar."),
-    "is_fatty_fish": _("Dish is fatty fish."),
-    "is_red_meat": _("Dish is red meat."),
-    "is_vegan": _("Vegan."),
-    "is_vegetarian": _("Vegetarian."),
-    "is_gluten_free": _("Gluten-free."),
-    "is_lactose_free": _("Lactose-free."),
-    "is_custom": _("Created by a user (not from base import)."),
-    "is_published": _("Visible to clients."),
-    "image_url": _("Cover image URL."),
-    "video_url": _("Video URL."),
-    "source_url": _("Original source URL."),
-    "kcal": _("Calories per serving."),
-    "proteins": _("Proteins per serving, g."),
-    "fats": _("Fats per serving, g."),
-    "carbs": _("Carbs per serving, g."),
-    "kcal_per_100g": _("Calories per 100 g."),
-    "proteins_per_100g": _("Proteins per 100 g."),
-    "fats_per_100g": _("Fats per 100 g."),
-    "carbs_per_100g": _("Carbs per 100 g."),
-    "sugars_per_100g": _("Sugars per 100 g."),
+    "servings": "На сколько порций рассчитан рецепт по источнику. Например: 4.",
+    "servings_normalized": (
+        "Сколько порций считать генератору меню, если в источнике указано странно "
+        "(«2–3 порции» или пусто). Оставьте пустым, если поле «Порций» заполнено числом."
+    ),
+    "portion_g": (
+        "Вес одной порции в граммах: 250. "
+        "Ключевое поле: по нему пересчитывается КБЖУ порции и собирается меню под коридор калорий. "
+        "Без него рецепт не попадёт в стратегию «Тарелка»."
+    ),
+    "ingredients": (
+        "Состав блюда. В каждой строке: название, количество, единица и вес в граммах. "
+        "Например: «Гречка» · 1 · стакан · 200. "
+        "Название выбирайте из подсказок — так ингредиент свяжется с продуктом из каталога, "
+        "и рецепт будет попадать в подбор «что приготовить из холодильника». "
+        "Своё название тоже можно вписать, если продукта в каталоге нет. "
+        "Граммы обязательны: именно из них считается КБЖУ."
+    ),
+    "steps": (
+        "Шаги приготовления, по одному действию в строке. "
+        "Например: «Промыть гречку», «Залить водой 1:2», «Варить 15 минут под крышкой». "
+        "Нумерация проставляется сама — не пишите «1.», «2.» вручную."
+    ),
+    "nutrition": ("Служебный объект с КБЖУ на 100 г. Заполняется автоматически из полей ниже — вручную не трогайте."),
+    "categories": (
+        "Свободные метки для поиска и подборок. Значения те же, что у типов блюда: "
+        "soup, main, salad, side, dessert, drink, bakery, sauce, snack, breakfast_dish. "
+        "Например, для окрошки — soup."
+    ),
+    "allergens": (
+        "Аллергены в составе. Отмечайте по факту, а не «на всякий случай»: "
+        "по этим отметкам блюдо исключается из меню тех, кто указал аллергию. "
+        "Например, у сырников — milk (молоко) и eggs (яйца)."
+    ),
+    "suitable_for": (
+        "В какие приёмы пищи блюдо уместно: завтрак, обед, ужин, перекус. "
+        "Генератор ставит блюдо только в отмеченные слоты. "
+        "Например, сырники — завтрак и перекус, но не ужин."
+    ),
+    "dish_type": (
+        "Тип блюда: первое, основное, салат, гарнир, десерт, напиток, выпечка, соус, перекус, завтрак. "
+        "Определяет, в какую роль в меню блюдо встанет. Одно значение."
+    ),
+    "plate_component": (
+        "Роль в «Тарелке»: белок, гарнир или овощи. "
+        "Заполняйте у простых моно-блюд (отварной рис — гарнир, куриная грудка — белок). "
+        "У составных блюд оставьте пустым."
+    ),
+    "food_group": (
+        "Основная группа продуктов: крупы, белок, овощи, фрукты, молочное, масло, прочее. "
+        "По ней балансируется недельное меню, чтобы не выходило семь круп подряд."
+    ),
+    "protein_type": (
+        "Происхождение белка: животный, растительный, смешанный. " "Нужно для вегетарианских и постных меню."
+    ),
+    "grain_type": "Тип крупы: цельная или очищенная. Например, бурый рис — цельная, белый — очищенная.",
+    "cooking_method": (
+        "Способ приготовления: варка, запекание, жарка, гриль, сырое, тушение, на пару. "
+        "Используется, чтобы в одном дне не оказалось три жареных блюда подряд."
+    ),
+    "source": (
+        "Откуда взялся рецепт: own — наш собственный, import — из внешней базы, "
+        "user — добавил пользователь, parsed — распарсен с сайта. "
+        "На видимость не влияет, нужен для разбора качества базы."
+    ),
+    "country": "Кухня или страна: «Русская», «Итальянская». Показывается в карточке и работает как фильтр.",
+    "oil_tsp": (
+        "Сколько чайных ложек масла уходит на блюдо: 2. "
+        "Учитывается в подсчёте жиров — на глаз масло почти всегда недооценивают."
+    ),
+    "serving_size_label": (
+        "Как назвать порцию человеческим языком: «1 тарелка (250 г)», «2 сырника». "
+        "Показывается рядом с КБЖУ, чтобы цифры были понятны без весов."
+    ),
+    "has_added_sugar": "Есть ли добавленный сахар (не считая сахара самих фруктов и молока).",
+    "is_fatty_fish": "Жирная рыба: лосось, скумбрия, сельдь. Нужно для рекомендаций по омега-3.",
+    "is_red_meat": "Красное мясо: говядина, свинина, баранина. Ограничивается в части диет.",
+    "is_vegan": "Без продуктов животного происхождения вообще, включая мёд и молоко.",
+    "is_vegetarian": "Без мяса и рыбы, но молоко и яйца допустимы.",
+    "is_gluten_free": "Без глютена: без пшеницы, ржи, ячменя и обычного овса.",
+    "is_lactose_free": "Без лактозы. Твёрдые выдержанные сыры обычно можно, молоко и творог — нет.",
+    "is_custom": "Рецепт добавил пользователь, а не редакция. В общую базу такие не попадают.",
+    "is_published": (
+        "Показывать людям. Снимите галочку, пока рецепт не дописан: "
+        "неопубликованный рецепт не появится ни в поиске, ни в генераторе меню."
+    ),
+    "image_url": "Обложка блюда. Загрузите файл кнопкой ниже или вставьте ссылку. Первый кадр в карточке.",
+    "video_url": "Ссылка на видео с приготовлением. Необязательно.",
+    "source_url": "Адрес страницы-источника, если рецепт откуда-то взят. Нужен, чтобы можно было свериться.",
+    "kcal": "Калорийность одной порции. Считается из значений на 100 г и веса порции — вручную не нужно.",
+    "proteins": "Белки в одной порции, г. Считается автоматически.",
+    "fats": "Жиры в одной порции, г. Считается автоматически.",
+    "carbs": "Углеводы в одной порции, г. Считается автоматически.",
+    "kcal_per_100g": (
+        "Калорийность 100 г готового блюда. "
+        "Это основа всех расчётов: из неё и веса порции получается КБЖУ порции. "
+        "Берите с этикетки или из справочника, а не «на глаз»."
+    ),
+    "proteins_per_100g": "Белки на 100 г готового блюда.",
+    "fats_per_100g": "Жиры на 100 г готового блюда.",
+    "carbs_per_100g": "Углеводы на 100 г готового блюда.",
+    "sugars_per_100g": "Сахара на 100 г — часть углеводов, не добавляются к ним сверху.",
 }
 
 LABELS = {
-    "title": _("Title"),
-    "legacy_id": _("Legacy ID"),
-    "cook_time": _("Cook time (text)"),
-    "cook_time_min": _("Cook time (min)"),
-    "servings": _("Servings"),
-    "servings_normalized": _("Servings (normalized)"),
-    "portion_g": _("Portion, g"),
-    "nutrition": _("Nutrition (per 100 g)"),
-    "dish_type": _("Dish type"),
-    "food_group": _("Food group"),
-    "protein_type": _("Protein type"),
-    "grain_type": _("Grain type"),
-    "cooking_method": _("Cooking method"),
-    "source": _("Source"),
-    "country": _("Country / cuisine"),
-    "oil_tsp": _("Oil, tsp"),
-    "serving_size_label": _("Serving size label"),
-    "has_added_sugar": _("Has added sugar"),
-    "is_fatty_fish": _("Fatty fish"),
-    "is_red_meat": _("Red meat"),
-    "is_vegan": _("Vegan"),
-    "is_vegetarian": _("Vegetarian"),
-    "is_gluten_free": _("Gluten-free"),
-    "is_lactose_free": _("Lactose-free"),
-    "is_custom": _("Custom"),
-    "is_published": _("Published"),
-    "image_url": _("Image URL"),
-    "video_url": _("Video URL"),
-    "source_url": _("Source URL"),
-    "kcal": _("Calories / serving"),
-    "proteins": _("Proteins / serving"),
-    "fats": _("Fats / serving"),
-    "carbs": _("Carbs / serving"),
-    "kcal_per_100g": _("Calories / 100 g"),
-    "proteins_per_100g": _("Proteins / 100 g"),
-    "fats_per_100g": _("Fats / 100 g"),
-    "carbs_per_100g": _("Carbs / 100 g"),
-    "sugars_per_100g": _("Sugars / 100 g"),
+    "title": "Название",
+    "legacy_id": "Идентификатор источника",
+    "cook_time": "Время готовки (словами)",
+    "cook_time_min": "Время готовки, мин",
+    "servings": "Порций",
+    "servings_normalized": "Порций (для расчёта)",
+    "portion_g": "Вес порции, г",
+    "ingredients": "Состав",
+    "steps": "Приготовление",
+    "nutrition": "КБЖУ (служебное)",
+    "categories": "Метки",
+    "allergens": "Аллергены",
+    "suitable_for": "Для приёмов пищи",
+    "dish_type": "Тип блюда",
+    "plate_component": "Роль в «Тарелке»",
+    "food_group": "Группа продуктов",
+    "protein_type": "Тип белка",
+    "grain_type": "Тип крупы",
+    "cooking_method": "Способ приготовления",
+    "source": "Происхождение",
+    "country": "Кухня / страна",
+    "oil_tsp": "Масло, ч. л.",
+    "serving_size_label": "Порция словами",
+    "has_added_sugar": "Добавленный сахар",
+    "is_fatty_fish": "Жирная рыба",
+    "is_red_meat": "Красное мясо",
+    "is_vegan": "Веганское",
+    "is_vegetarian": "Вегетарианское",
+    "is_gluten_free": "Без глютена",
+    "is_lactose_free": "Без лактозы",
+    "is_custom": "Пользовательский",
+    "is_published": "Опубликован",
+    "image_url": "Обложка",
+    "video_url": "Видео",
+    "source_url": "Ссылка на источник",
+    "kcal": "Калории / порция",
+    "proteins": "Белки / порция",
+    "fats": "Жиры / порция",
+    "carbs": "Углеводы / порция",
+    "kcal_per_100g": "Калории / 100 г",
+    "proteins_per_100g": "Белки / 100 г",
+    "fats_per_100g": "Жиры / 100 г",
+    "carbs_per_100g": "Углеводы / 100 г",
+    "sugars_per_100g": "Сахара / 100 г",
 }
 
 
@@ -122,10 +207,10 @@ class RecipeImageInline(admin.TabularInline):
     extra = 1
     fields = ("preview", "image", "caption", "sort_order")
     readonly_fields = ("preview",)
-    verbose_name = _("Photo")
-    verbose_name_plural = _("Gallery photos (besides the cover)")
+    verbose_name = "Фото"
+    verbose_name_plural = "Фотогалерея (кроме обложки)"
 
-    @admin.display(description=_("Preview"))
+    @admin.display(description="Превью")
     def preview(self, obj):
         from django.utils.html import format_html
 
@@ -155,7 +240,42 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
                 self.admin_site.admin_view(self.upload_media_view),
                 name="recipes_recipe_upload_media",
             ),
+            # MG_INGPICK: подсказки по каталогу для поля ингредиента.
+            _p(
+                "ingredient-search/",
+                self.admin_site.admin_view(self.ingredient_search_view),
+                name="recipes_recipe_ingredient_search",
+            ),
         ] + super().get_urls()
+
+    # MG_INGPICK: поиск продукта для строки состава.
+    #
+    # Название ингредиента набиралось руками, и одно и то же писали по-разному
+    # («лук репчатый», «репчатый лук», «лук»). Связь рецепта с продуктом
+    # каталога строится по названию, поэтому каждый новый вариант написания —
+    # это рецепт, который не найдётся в подборе «из холодильника».
+    #
+    # Отдаём только каталог: справочники штрих-кодов (retail, off_bulk) и
+    # догадки ИИ — это 32 тысячи конкретных упаковок, и в подсказках к составу
+    # они бы утопили один «Лук репчатый» полусотней банок.
+    def ingredient_search_view(self, request):
+        from django.http import JsonResponse
+
+        from apps.common.search import search_q
+        from apps.fridge.models import Product
+        from apps.fridge.visibility import catalog_q
+
+        q = (request.GET.get("q") or "").strip()
+        if len(q) < 2:
+            return JsonResponse({"results": []})
+
+        rows = (
+            Product.objects.filter(catalog_q())
+            .filter(search_q(Product, ["name"], q))
+            .order_by("name")
+            .values("name", "default_unit")[:20]
+        )
+        return JsonResponse({"results": [{"name": r["name"], "unit": r["default_unit"] or ""} for r in rows]})
 
     # MG_LINKASYNC: связи с продуктами строит ИИ — это десятки секунд, и раньше
     # сохранение рецепта ждало их прямо в запросе (регулярный 504 от nginx).
@@ -168,7 +288,7 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
 
             self.message_user(
                 request,
-                _("Ingredients changed — product links are being rebuilt in the background."),
+                "Состав изменён — связи с продуктами пересобираются в фоне. Через минуту обновите страницу, чтобы увидеть результат.",
                 messages.INFO,
             )
 
@@ -221,8 +341,12 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
 
     fieldsets = (
         (
-            _("Main"),
+            "Основное",
             {
+                "description": (
+                    "Что человек увидит в карточке блюда. Пока не стоит галочка «Опубликован», "
+                    "рецепт не виден никому, кроме редакции."
+                ),
                 "fields": (
                     "title",
                     "country",
@@ -237,14 +361,24 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
             },
         ),
         (
-            _("Content"),
+            "Состав и приготовление",
             {
+                "description": (
+                    "Состав — основа всего: из граммов считается КБЖУ, а по названиям "
+                    "рецепт связывается с продуктами каталога и попадает в подбор "
+                    "«что приготовить из холодильника». Выбирайте названия из подсказок."
+                ),
                 "fields": ("ingredients", "steps"),
             },
         ),
         (
-            _("Classification"),
+            "Классификация — как блюдо попадёт в меню",
             {
+                "description": (
+                    "Эти поля решают, в какой день и в какой приём пищи генератор поставит блюдо "
+                    "и с чем его сочетает. Заполнять по факту: неверная классификация портит меню "
+                    "заметнее, чем незаполненная."
+                ),
                 "fields": (
                     "dish_type",
                     "plate_component",
@@ -258,8 +392,13 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
             },
         ),
         (
-            _("Flags"),
+            "Ограничения и аллергены",
             {
+                "description": (
+                    "По этим отметкам блюдо ИСКЛЮЧАЕТСЯ из меню людей с аллергией или диетой. "
+                    "Ошибка здесь — не косметическая: лишняя галочка прячет блюдо, "
+                    "недостающая отправляет аллергену то, что ему нельзя."
+                ),
                 "fields": (
                     "is_vegan",
                     "is_vegetarian",
@@ -273,8 +412,12 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
             },
         ),
         (
-            _("Portion & timing"),
+            "Порция и время",
             {
+                "description": (
+                    "«Вес порции» — обязательное поле: без него КБЖУ порции не посчитать "
+                    "и блюдо не попадёт в подбор под коридор калорий."
+                ),
                 "fields": (
                     "servings",
                     "servings_normalized",
@@ -287,7 +430,7 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
             },
         ),
         (
-            _("Nutrition"),
+            "КБЖУ",
             {
                 # MG_KBJU_ADMIN: объект `nutrition` больше не редактируется вручную —
                 # система собирает его из полей на 100 г при сохранении.
@@ -302,14 +445,16 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
                     "carbs_per_100g",
                     "sugars_per_100g",
                 ),
-                "description": _(
-                    "Введите КБЖУ на 100 г в отдельных полях ниже — объект nutrition " "система соберёт автоматически."
+                "description": (
+                    "Заполняйте значения НА 100 Г — верхние поля «на порцию» система посчитает сама "
+                    "из веса порции. Служебный объект nutrition тоже собирается автоматически."
                 ),
             },
         ),
         (
-            _("Service"),
+            "Служебное",
             {
+                "description": "Проставляется системой. Нужно, чтобы понять, откуда рецепт взялся и когда менялся.",
                 "fields": ("legacy_id", "created_at", "updated_at"),
                 "classes": ("collapse",),
             },
@@ -325,11 +470,11 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
                 field.help_text = HELP[name]
         return form
 
-    @admin.action(description=_("Publish selected"))
+    @admin.action(description="Опубликовать выбранные")
     def publish(self, request, queryset):
         queryset.update(is_published=True)
 
-    @admin.action(description=_("Unpublish selected"))
+    @admin.action(description="Снять с публикации")
     def unpublish(self, request, queryset):
         queryset.update(is_published=False)
 

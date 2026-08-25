@@ -60,6 +60,9 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.locale.LocaleMiddleware",  # RA-001
+    # MG_ADMINRU: админка — всегда по-русски, что бы ни просил браузер.
+    # Идёт СРАЗУ ПОСЛЕ LocaleMiddleware: та выбирает язык, мы для /admin/ его перебиваем.
+    "apps.common.admin_locale.AdminRussianLocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",

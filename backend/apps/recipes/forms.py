@@ -138,12 +138,12 @@ class _IngredientsWidget(forms.Widget):
 
     def render(self, name, value, attrs=None, renderer=None):
         items = self.format_value(value)
-        h_name = str(_("Name"))
-        h_qty = str(_("Quantity"))
-        h_unit = str(_("Unit"))
-        h_grams = str(_("Grams"))
-        h_del = str(_("Delete"))
-        h_add = str(_("Add ingredient"))
+        h_name = "Ингредиент"
+        h_qty = "Кол-во"
+        h_unit = "Ед."
+        h_grams = "Граммы"
+        h_del = "Удалить"
+        h_add = "Добавить ингредиент"
         rows = []
         for it in items:
             rows.append(
@@ -154,7 +154,7 @@ class _IngredientsWidget(forms.Widget):
         empty_row = self._row(name, "", "", "", "", h_del)
         return mark_safe(
             """
-<div class="mg-ing" data-name="{name}">
+<div class="mg-ing" data-name="{name}" data-search-url="{search_url}">
   <table class="mg-ing-table" style="border-collapse:collapse;width:100%;max-width:820px;">
     <thead><tr style="text-align:left;">
       <th style="padding:4px;">{h_name}</th>
@@ -167,18 +167,61 @@ class _IngredientsWidget(forms.Widget):
   </table>
   <template class="mg-ing-tpl">{empty}</template>
   <button type="button" class="mg-ing-add" style="margin-top:6px;">+ {h_add}</button>
+  <datalist id="mg-ing-options"></datalist>
+  <p class="help" style="margin-top:6px;">
+    Начните вводить название — подскажем продукты из каталога. Своё название тоже можно:
+    подсказка не обязательна, но с ней рецепт свяжется с продуктом и попадёт в подбор
+    «что приготовить из холодильника».
+  </p>
 </div>
 <script>(function(){{
   var root=document.currentScript.previousElementSibling;
   function bindDel(scope){{scope.querySelectorAll('.mg-ing-del').forEach(function(b){{
     if(b.dataset.b)return;b.dataset.b=1;b.addEventListener('click',function(){{b.closest('tr').remove();}});}});}}
   var body=root.querySelector('.mg-ing-body');var tpl=root.querySelector('.mg-ing-tpl');
+
+  // MG_INGPICK: подсказки из каталога. datalist, а не выпадающий список:
+  // произвольное название должно оставаться возможным — в рецепте бывает
+  // ингредиент, которого в каталоге нет.
+  var dl=root.querySelector('#mg-ing-options');
+  var url=root.dataset.searchUrl;
+  var units={{}};      // название -> единица из каталога
+  var timer=null, last='';
+  function suggest(q){{
+    if(q.length<2) return;
+    fetch(url+'?q='+encodeURIComponent(q),{{credentials:'same-origin'}})
+      .then(function(r){{return r.ok?r.json():{{results:[]}};}})
+      .then(function(d){{
+        dl.innerHTML='';
+        (d.results||[]).forEach(function(it){{
+          units[it.name]=it.unit;
+          var o=document.createElement('option');o.value=it.name;dl.appendChild(o);
+        }});
+      }})
+      .catch(function(){{}});   // сеть моргнула — молча остаёмся со свободным вводом
+  }}
+  function onType(e){{
+    var el=e.target;
+    if(!el.classList||!el.classList.contains('mg-ing-name'))return;
+    var q=el.value.trim();
+    // Выбрали подсказку — подставим единицу, если её ещё не вписали руками.
+    if(units[q]!==undefined){{
+      var tr=el.closest('tr');
+      var u=tr&&tr.querySelector('input[name$="_unit"]');
+      if(u&&!u.value.trim())u.value=units[q];
+    }}
+    if(q===last)return;last=q;
+    clearTimeout(timer);timer=setTimeout(function(){{suggest(q);}},250);
+  }}
+  root.addEventListener('input',onType);
+
   root.querySelector('.mg-ing-add').addEventListener('click',function(){{
     var tr=document.createElement('tr');tr.innerHTML=tpl.innerHTML;body.appendChild(tr);bindDel(tr);}});
   bindDel(root);
 }})();</script>
 """.format(
                 name=name,
+                search_url=self._search_url(),
                 h_name=h_name,
                 h_qty=h_qty,
                 h_unit=h_unit,
@@ -190,13 +233,23 @@ class _IngredientsWidget(forms.Widget):
         )
 
     @staticmethod
+    def _search_url():
+        """Адрес админской ручки подсказок. Пусто — подсказок просто не будет."""
+        from django.urls import NoReverseMatch, reverse
+
+        try:
+            return reverse("admin:recipes_recipe_ingredient_search")
+        except NoReverseMatch:
+            return ""
+
+    @staticmethod
     def _row(name, nm, qty, unit, grams, h_del):
         def esc(v):
             return _html_escape("" if v is None else str(v))
 
         return (
             "<tr>"
-            '<td style="padding:2px;"><input type="text" name="{n}_name" value="{nm}" style="width:100%;"></td>'
+            '<td style="padding:2px;"><input type="text" name="{n}_name" value="{nm}" style="width:100%;" class="mg-ing-name" list="mg-ing-options" autocomplete="off"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_quantity" value="{q}" style="width:100%;"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_unit" value="{u}" style="width:100%;"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_grams" value="{g}" style="width:100%;"></td>'
