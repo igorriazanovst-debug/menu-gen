@@ -137,6 +137,33 @@ $DC exec -T backend python manage.py migrate --noinput
 echo "==> 5b. Сборка статики"
 $DC exec -T backend python manage.py collectstatic --noinput | tail -3 | sed 's/^/    /'
 
+# Проверяем, что статика действительно легла на диск. Ловим тот самый случай,
+# из-за которого админка открывалась голым HTML: файлы стёрты синхронизацией
+# или collectstatic отработал не туда. Сам по себе деплой при этом «успешный»
+# — код работает, миграции применились, — и заметить пропажу можно только
+# открыв админку.
+ADMIN_CSS="$REPO/backend/staticfiles/admin/css/base.css"
+if [ -s "$ADMIN_CSS" ]; then
+  echo "    статика админки на месте"
+else
+  echo "!!  Статика админки НЕ собралась: $ADMIN_CSS пуст или отсутствует."
+  echo "!!  Админка откроется без стилей. Проверь STATIC_ROOT и права на каталог."
+fi
+
+# Раздаёт ли её nginx. Без этой проверки поломка видна только глазами: запрос
+# за css попадает в SPA-фолбэк фронта и возвращает 200 с index.html —
+# формально успех, а браузер получает HTML вместо стилей.
+# Задать: STATIC_CHECK_URL=http://127.0.0.1:8081/static/admin/css/base.css
+if [ -n "${STATIC_CHECK_URL:-}" ]; then
+  ctype=$(curl -s -o /dev/null -w '%{content_type}' "$STATIC_CHECK_URL" 2>/dev/null || echo "")
+  case "$ctype" in
+    *css*) echo "    nginx отдаёт статику админки ($ctype)" ;;
+    *)     echo "!!  По $STATIC_CHECK_URL вместо CSS приходит '$ctype'."
+           echo "!!  Похоже, в конфиге nginx нет правила location /static/admin/ —"
+           echo "!!  см. deploy/nginx/ в репозитории." ;;
+  esac
+fi
+
 echo "==> 6. Рестарт backend + celery + celery-beat"
 $DC restart backend celery celery-beat
 
