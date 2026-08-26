@@ -168,20 +168,37 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
     products_listing = ", ".join(_product_names())
     system = _SYS_CANON_CAT.replace("__PRODUCTS__", products_listing).replace("__LISTING__", listing)
 
+    # MG_AIPING: отказы провайдера считаем и показываем.
+    #
+    # Ошибка чанка гасится намеренно — из-за одного таймаута ронять прогон на
+    # полутора тысячах рецептов незачем. Но молча гасить нельзя: если провайдер
+    # лежит, прогон доходит до конца и выглядит успешным, просто все названия
+    # остаются сырыми. По результату «модель не поняла ингредиент» от «до модели
+    # не достучались» не отличить, поэтому счётчик и первая причина — в лог.
+    failures = {"chunks": 0, "first": ""}
+
     def _ask(indices, phase="canon"):
         if client is None or _parse_json_loose is None:
+            failures["chunks"] += 1
+            failures["first"] = failures["first"] or "клиент ИИ не собрался (проверьте manage.py mg_ai_ping)"
             return
         nchunks = (len(indices) + chunk_size - 1) // chunk_size
         for ci, base in enumerate(range(0, len(indices), chunk_size), 1):
             grp = indices[base : base + chunk_size]
             _log("  %s chunk %d/%d (segments %d)" % (phase, ci, nchunks, len(grp)))
             payload = json.dumps([{"i": j, "name": names[j]} for j in grp], ensure_ascii=False)
+            reason = ""
             try:
                 raw = client.complete(prompt=payload, system=system, max_tokens=3000, temperature=0.0)
                 data = _parse_json_loose(raw)
-            except Exception:
+                if not isinstance(data, list):
+                    reason = "ответ не разобрался как список"
+            except Exception as exc:
                 data = None
-            if not isinstance(data, list):
+                reason = "%s: %s" % (type(exc).__name__, exc)
+            if reason:
+                failures["chunks"] += 1
+                failures["first"] = failures["first"] or reason
                 continue
             for d in data:
                 if not isinstance(d, dict) or "i" not in d:
@@ -215,6 +232,12 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
     # ключа видно, что название никто не проверял, и заводить по нему запись в
     # общем каталоге нельзя. Раньше здесь стояла заглушка `(_cap(raw), "", None)`,
     # и разница между «ИИ сказал» и «ИИ промолчал» стиралась.
+    if failures["chunks"]:
+        _log(
+            "  ВНИМАНИЕ: отказов провайдера — %d, названий без ответа — %d из %d. "
+            "Первая причина: %s. Проверить связь: manage.py mg_ai_ping"
+            % (failures["chunks"], len(names) - len(out), len(names), failures["first"])
+        )
     return out
 
 
