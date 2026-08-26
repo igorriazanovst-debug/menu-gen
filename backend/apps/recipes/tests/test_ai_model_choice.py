@@ -100,3 +100,52 @@ class TestSentenceCase:
 
         assert _clean_canon("null") is None
         assert _clean_canon("  ") is None
+
+
+class TestTimeoutOverride:
+    """MG_AITIMEOUT: пакетная работа ждёт дольше, чем пользовательский запрос.
+
+    AI_TIMEOUT = 30 с подобран под разовый запрос, где пользователь смотрит в
+    экран. Канонизация шлёт пачку из 30 названий и просит до 3000 токенов
+    ответа: сильная модель в 30 секунд не укладывается. На прогоне по 1751
+    названию так отвалилось 96 пачек, и 1331 название осталось без ответа —
+    после чего связи строились по сырым названиям из рецептов.
+    """
+
+    def test_таймаут_перебивается_параметром(self):
+        with env():
+            client = get_ai_client(provider="openai", timeout=120.0)
+
+        assert client._timeout == 120.0
+
+    @pytest.mark.django_db
+    def test_канонизация_ждёт_дольше_по_умолчанию(self):
+        from apps.recipes.recipe_products import canonicalize_and_categorize
+
+        with patch("apps.common.ai_provider.get_ai_client") as factory:
+            factory.return_value.complete.return_value = "[]"
+            canonicalize_and_categorize(["гречка"])
+
+        assert factory.call_args.kwargs["timeout"] == 120.0
+
+
+@pytest.mark.django_db
+class TestPreflightMatchesRun:
+    """Проверять надо тем же, чем работать: ключ бывает жив, а модель — нет."""
+
+    def test_проверка_идёт_моделью_канонизации(self, db):
+        from apps.recipes.models import Recipe
+        from apps.recipes.recipe_products import backfill
+
+        with patch("apps.recipes.tasks.rebuild_recipe_links_task.delay"):
+            Recipe.objects.create(title="Компот", ingredients=[{"name": "сливы", "grams": 300}])
+
+        def fake_config(key, default=None, **kw):
+            return "сильная-модель" if key == "AI_CANON_MODEL" else default
+
+        with patch("apps.common.ai_provider.get_ai_client") as factory:
+            factory.return_value.complete.return_value = "Москва"
+            with patch("decouple.config", side_effect=fake_config):
+                backfill(force=True, log=lambda m: None)
+
+        assert factory.call_args_list[0].kwargs["model"] == "сильная-модель"

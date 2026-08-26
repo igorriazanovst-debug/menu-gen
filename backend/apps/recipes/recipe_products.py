@@ -188,9 +188,14 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
         # (падежи, «листочек шалфея» вместо шалфея) — ровно то, на чём дешёвые
         # модели сбоят. Пусто — работаем на общей AI_TEXT_MODEL.
         canon_model = config("AI_CANON_MODEL", default="").strip() or None
-        if canon_model:
-            _log("  модель канонизации: %s" % canon_model)
-        client = get_ai_client(model=canon_model)
+        # MG_AITIMEOUT: свой таймаут. AI_TIMEOUT (30 с) подобран под разовый
+        # запрос в пользовательском пути, где ждать нельзя. Здесь уходит пачка
+        # из 30 названий с лимитом 3000 токенов ответа, и сильная модель в 30
+        # секунд не укладывается: на прогоне по 1751 названию так отвалилось
+        # 96 пачек из 110, и 1331 название осталось без ответа.
+        canon_timeout = config("AI_CANON_TIMEOUT", default=120.0, cast=float)
+        _log("  модель канонизации: %s, таймаут %.0f с" % (canon_model or "как у всех (AI_TEXT_MODEL)", canon_timeout))
+        client = get_ai_client(model=canon_model, timeout=canon_timeout)
     except Exception:
         client = None
     try:
@@ -441,7 +446,7 @@ def rebuild_recipe_links(
     return len(rows)
 
 
-def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print, require_ai=True):
+def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print, require_ai=True, chunk_size=30):
     """Backfill links across recipes. Collects all distinct SEGMENTS, runs one AI
     canonicalization, builds product index once, then per-recipe rebuild."""
     from apps.menu.models import MenuItem
@@ -473,11 +478,19 @@ def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print, 
 
     log("recipes_total=%d todo=%d distinct_segments=%d" % (len(recipes), len(todo), len(segments)))
     if require_ai and segments:
+        # MG_AITIMEOUT: проверяем ровно тем, чем будем работать. Ключ бывает
+        # валиден, а модель из AI_CANON_MODEL — недоступна: тогда проверка общей
+        # моделью проходит, а прогон отваливается на каждой пачке.
+        from decouple import config
+
         from apps.common.ai_provider import check_ai_available
 
-        check_ai_available()
+        check_ai_available(
+            model=config("AI_CANON_MODEL", default="").strip() or None,
+            timeout=config("AI_CANON_TIMEOUT", default=120.0, cast=float),
+        )
     log(">>> AI canonicalization (chunked, slow provider) ...")
-    canon_map = canonicalize_and_categorize(sorted(segments), log=log) if segments else {}
+    canon_map = canonicalize_and_categorize(sorted(segments), chunk_size=chunk_size, log=log) if segments else {}
     log(">>> AI done; building links ...")
     prod_index = _product_index()
     cat_id_by_slug = {s: cid for s, _, cid in _allowed_categories()}

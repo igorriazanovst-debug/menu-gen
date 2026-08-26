@@ -26,6 +26,12 @@ class Command(BaseCommand):
         parser.add_argument("--recipe", type=int, nargs="*", default=None)
         parser.add_argument("--limit", type=int, default=None)
         parser.add_argument(
+            "--chunk-size",
+            type=int,
+            default=30,
+            help="Сколько названий слать в одной пачке. Меньше — дольше, но реже упирается в таймаут.",
+        )
+        parser.add_argument(
             "--no-ai",
             action="store_true",
             help="Не проверять провайдера и строить связи по сырым названиям. Качество будет хуже.",
@@ -40,6 +46,7 @@ class Command(BaseCommand):
                 limit=opts.get("limit"),
                 log=lambda m: self.stdout.write(str(m)),
                 require_ai=not opts["no_ai"],
+                chunk_size=opts["chunk_size"],
             )
         except AIUnavailable as exc:
             raise CommandError(

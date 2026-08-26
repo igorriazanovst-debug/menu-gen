@@ -50,6 +50,11 @@ class Command(BaseCommand):
         self.stdout.write("AI_TEXT_MODEL: %s" % config("AI_TEXT_MODEL", default="(по умолчанию провайдера)"))
         self.stdout.write("AI_BASE_URL:   %s" % config("AI_BASE_URL", default="(по умолчанию провайдера)"))
         self.stdout.write("AI_TIMEOUT:    %s" % config("AI_TIMEOUT", default="30"))
+        # MG_AITIMEOUT: пакетная канонизация живёт на своих настройках. Показываем
+        # их рядом: тяжёлая модель в AI_TEXT_MODEL бьёт по пользовательским путям
+        # (скан штрих-кода, фото, список покупок), а не только по разовым прогонам.
+        self.stdout.write("AI_CANON_MODEL:   %s" % (config("AI_CANON_MODEL", default="") or "(как AI_TEXT_MODEL)"))
+        self.stdout.write("AI_CANON_TIMEOUT: %s" % config("AI_CANON_TIMEOUT", default="120"))
         self.stdout.write("AI_API_KEY:    %s" % mask(config("AI_API_KEY", default="")))
         if provider.strip().lower() == "yandex":
             self.stdout.write("AI_FOLDER_ID:  %s" % (config("AI_FOLDER_ID", default="") or "не задан"))

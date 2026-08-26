@@ -40,8 +40,11 @@ class AIUnavailable(RuntimeError):
     """Провайдер не отвечает — долгий прогон запускать бессмысленно."""
 
 
-def check_ai_available():
+def check_ai_available(model=None, timeout=None):
     """Один дешёвый запрос перед длинной работой. Отказ — исключение, не None.
+
+    `model` и `timeout` — те же, с которыми пойдёт сама работа. Проверять чем-то
+    другим смысла нет: ключ бывает валиден, а модель из настройки недоступна.
 
     MG_AIPING: `get_ai_client()` только СОБИРАЕТ клиента. Пустой ключ он ловит,
     а неверный — нет: неправильный токен виден лишь по ответу сервиса. Поэтому
@@ -53,7 +56,7 @@ def check_ai_available():
     из текста рецепта — «Сливы», «Мандарина», «Время приготовления 40 мин».
     """
     try:
-        client = get_ai_client()
+        client = get_ai_client(model=model, timeout=timeout)
         answer = client.complete(prompt="Ответь одним словом: столица России?", max_tokens=20, temperature=0.0)
     except Exception as exc:
         raise AIUnavailable("%s: %s" % (type(exc).__name__, exc))
@@ -226,7 +229,9 @@ class AnthropicAIClient(BaseAIClient):
         return resp.content[0].text
 
 
-def get_ai_client(provider: Optional[str] = None, model: Optional[str] = None) -> BaseAIClient:
+def get_ai_client(
+    provider: Optional[str] = None, model: Optional[str] = None, timeout: Optional[float] = None
+) -> BaseAIClient:
     """Factory. Reads configuration from environment.
 
     Env vars:
@@ -242,10 +247,16 @@ def get_ai_client(provider: Optional[str] = None, model: Optional[str] = None) -
     её работы видят все пользователи в каталоге, а запускается она изредка.
     Раньше такую подмену делали через setattr на приватное поле клиента, и она
     молча ничего не делала для всех провайдеров, кроме Yandex.
+
+    MG_AITIMEOUT: `timeout` — туда же. AI_TIMEOUT подобран под разовый запрос в
+    пользовательском пути, где ждать нельзя. Пакетная работа устроена иначе: она
+    шлёт пачками по три десятка названий и просит до 3000 токенов ответа, и
+    сильная модель в те же 30 секунд не укладывается. Отваливаться по таймауту
+    там дороже, чем подождать.
     """
     provider = (provider or config("AI_PROVIDER", default="yandex")).strip().lower()
     api_key = config("AI_API_KEY", default="")
-    timeout = config("AI_TIMEOUT", default=30.0, cast=float)
+    timeout = timeout or config("AI_TIMEOUT", default=30.0, cast=float)
 
     if provider == "yandex":
         base_url = config("AI_BASE_URL", default="https://llm.api.cloud.yandex.net/v1")
