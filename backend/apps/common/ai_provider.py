@@ -57,7 +57,10 @@ def check_ai_available(model=None, timeout=None):
     """
     try:
         client = get_ai_client(model=model, timeout=timeout)
-        answer = client.complete(prompt="Ответь одним словом: столица России?", max_tokens=20, temperature=0.0)
+        # MG_AIEMPTY: щедрый лимит намеренно. Двадцати токенов хватало обычной
+        # модели, но рассуждатель тратит их на размышление и отдаёт пустой текст
+        # при HTTP 200 — проверка падала на живом провайдере.
+        answer = client.complete(prompt="Ответь одним словом: столица России?", max_tokens=256, temperature=0.0)
     except Exception as exc:
         raise AIUnavailable("%s: %s" % (type(exc).__name__, exc))
     if not (answer or "").strip():
@@ -196,9 +199,28 @@ class OpenAIAIClient(BaseAIClient):
             raise AIRequestError(f"OpenAI HTTP {resp.status_code}: {resp.text[:500]}")
         data = resp.json()
         try:
-            return data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise AIRequestError(f"Unexpected OpenAI response: {data}") from exc
+
+        # MG_AIEMPTY: у совместимых шлюзов content бывает списком частей
+        # ({"type": "text", "text": ...}) — так отвечают модели семейства Gemini.
+        if isinstance(content, list):
+            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        content = content or ""
+
+        # Пустой текст при HTTP 200 — это отказ, который ни на что не похож.
+        # Так ведут себя модели-рассуждатели: весь лимит max_tokens уходит на
+        # размышление, на сам ответ не остаётся ничего, и finish_reason=length.
+        # Без этих подробностей причину по «пустому ответу» не угадать.
+        if not content.strip():
+            raise AIRequestError(
+                "OpenAI: пустой ответ при HTTP 200 (model=%s, finish_reason=%s, usage=%s). "
+                "Для модели-рассуждателя увеличьте max_tokens: лимит уходит на размышление."
+                % (self._text_model, choice.get("finish_reason"), data.get("usage"))
+            )
+        return content
 
 
 class AnthropicAIClient(BaseAIClient):

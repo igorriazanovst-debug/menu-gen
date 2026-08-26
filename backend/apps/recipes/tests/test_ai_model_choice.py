@@ -11,7 +11,7 @@
 AI_IMAGE_PROMPT_MODEL для промптов картинок, AI_TEXT_MODEL для остального.
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -149,3 +149,51 @@ class TestPreflightMatchesRun:
                 backfill(force=True, log=lambda m: None)
 
         assert factory.call_args_list[0].kwargs["model"] == "сильная-модель"
+
+
+class TestEmptyAnswer:
+    """MG_AIEMPTY: HTTP 200 с пустым текстом — отказ, который ни на что не похож.
+
+    Так отвечает модель-рассуждатель, когда весь лимит max_tokens уходит на
+    размышление: ошибки нет, ответа тоже нет. По одному слову «пусто» причину не
+    угадать, поэтому в текст ошибки идут модель, finish_reason и usage.
+    """
+
+    def _resp(self, payload, status=200):
+        response = MagicMock()
+        response.status_code = status
+        response.json.return_value = payload
+        return response
+
+    def test_пустой_текст_объясняет_причину(self):
+        with env():
+            client = get_ai_client(provider="openai")
+        payload = {
+            "choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+            "usage": {"completion_tokens": 20, "total_tokens": 120},
+        }
+
+        with patch("requests.post", return_value=self._resp(payload)):
+            with pytest.raises(Exception) as exc:
+                client.complete(prompt="привет")
+
+        text = str(exc.value)
+        assert "finish_reason=length" in text
+        assert "max_tokens" in text
+
+    def test_ответ_частями_склеивается(self):
+        """Шлюзы семейства Gemini отдают content списком частей, а не строкой."""
+        with env():
+            client = get_ai_client(provider="openai")
+        payload = {"choices": [{"message": {"content": [{"type": "text", "text": "Мос"}, {"text": "ква"}]}}]}
+
+        with patch("requests.post", return_value=self._resp(payload)):
+            assert client.complete(prompt="столица?") == "Москва"
+
+    def test_обычный_ответ_не_трогаем(self):
+        with env():
+            client = get_ai_client(provider="openai")
+        payload = {"choices": [{"message": {"content": "Москва"}}]}
+
+        with patch("requests.post", return_value=self._resp(payload)):
+            assert client.complete(prompt="столица?") == "Москва"

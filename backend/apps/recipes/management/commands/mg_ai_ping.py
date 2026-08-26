@@ -40,7 +40,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--prompt", default=PROMPT, help="Свой текст запроса.")
-        parser.add_argument("--max-tokens", type=int, default=20)
+        # MG_AIEMPTY: 20 токенов хватало обычной модели, но не рассуждателю:
+        # он тратит лимит на размышление и возвращает пустой текст при HTTP 200.
+        parser.add_argument("--max-tokens", type=int, default=256)
 
     def handle(self, *args, **opts):
         from decouple import config
