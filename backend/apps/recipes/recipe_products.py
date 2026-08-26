@@ -209,10 +209,12 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
     missing = [j for j in all_idx if names[j] not in out]
     if missing:
         _ask(missing, "retry")
-    # fallback for AI failures (NOT explicit null): keep raw name, no category, no product
-    for j in all_idx:
-        if names[j] not in out:
-            out[names[j]] = (_cap(names[j]), "", None)
+    # MG_AUTOPROD2: сегмент, на который канонизатор не ответил ни за один из двух
+    # проходов, в словарь НЕ попадает. Связь по нему всё равно построится — на
+    # месте использования подставляется исходное написание, — но по отсутствию
+    # ключа видно, что название никто не проверял, и заводить по нему запись в
+    # общем каталоге нельзя. Раньше здесь стояла заглушка `(_cap(raw), "", None)`,
+    # и разница между «ИИ сказал» и «ИИ промолчал» стиралась.
     return out
 
 
@@ -343,13 +345,18 @@ def rebuild_recipe_links(
         quantity = str(ing.get("quantity") or "")[:64]
         unit = (ing.get("unit") or "")[:50]
         for seg in _split_segments(nm):
+            # MG_AUTOPROD2: опознан ли сегмент канонизатором. Если нет — ниже
+            # подставится исходное написание из рецепта, со всеми падежами и
+            # числительными («сливы», «2 яйца вареных», «клюква для украшения»).
+            # Для связи это годится, для новой записи в общем каталоге — нет.
+            recognized = seg in canon_map
             canon, ai_slug, prod_name = canon_map.get(seg, (_cap(seg), "", None))
             if not canon:
                 continue  # noise -> no link
             product_id, canon_disp, slug, cat_id = _resolve_segment(
                 canon, ai_slug, prod_name, prod_index, cat_id_by_slug, ref_index=ref_index
             )
-            if product_id is None and create_missing and _is_seedable(canon_disp, cat_id):  # MG_T04C
+            if product_id is None and create_missing and recognized and _is_seedable(canon_disp, cat_id):  # MG_T04C
                 product_id = _get_or_create_catalog_product(canon_disp, cat_id)  # MG_AUTOPROD
             key = _norm(canon_disp)
             if not key or key in seen:
