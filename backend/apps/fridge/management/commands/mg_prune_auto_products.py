@@ -1,35 +1,47 @@
-"""MG_AUTOPROD2: убрать из каталога машинные продукты, которые никому не нужны.
+"""MG_AUTOPROD2: убрать из каталога машинные записи, которые продуктами не являются.
 
 Продукты с `source=auto` заводит сборка связей рецепт→продукт: если ингредиента
 в каталоге нет, она создаёт запись, иначе рецепт не найдётся в подборе «что
-приготовить из холодильника».
+приготовить из холодильника». Источник `auto` из подборщиков не скрыт, поэтому
+всё, что она завела, пользователь видит в холодильнике и дневнике.
 
-Пока название приходило от канонизатора, это работало. Но там, где ИИ не
-отвечал, в каталог уходило исходное написание из рецепта — «Сливы», «Мандарина»,
-«2 яйца вареных», «Клюква для украшения». Пользователь видит их в холодильнике и
-дневнике наравне с выверенными продуктами.
+За несколько импортов туда натекло то, что ингредиентом никогда не было:
+у части рецептов в состав уехала разметка страницы — «Время приготовления
+40 мин», «Итальянская кухня», «Завтрак», — а ещё в каталоге осели названия
+блюд («Рататуй», «Запеканка картофельная»): в исходнике они стояли в списке
+ингредиентов.
 
-Причина закрыта в `recipe_products.py` (по неопознанному сегменту запись больше
-не заводится), а эта команда разгребает то, что уже создано.
+Первая версия команды сносила всё машинное из «Прочего», и это было неверно:
+«Прочее» — не метка ошибки, а честная категория для того, что не разложилось по
+рубрикам. В той же куче оказались «Бекон копчёный», «Соль мелкая», «Морской
+коктейль» — нормальные продукты. Поэтому теперь удаление идёт по правилам, и по
+умолчанию работают только те, где ошибиться нельзя:
 
-Под удаление попадает запись, у которой сошлось всё:
+- `metadata` — строка со страницы рецепта, а не еда: «Время приготовления N мин»,
+  «… кухня», названия разделов и приёмов пищи, одинокие прилагательные
+  («Очищенный», «Чёрный»);
+- `dish` — название совпадает с заголовком рецепта, то есть это блюдо. Признак
+  не выдуманный, а взятый из своей же базы.
 
-- `source=auto` — завела машина, не редактор;
-- категория «Прочее» или пустая — именно так помечается ингредиент, который
-  канонизатор не разобрал: категорию он не назвал, и подставилась общая;
-- на неё не ссылается ничего, кроме связей рецептов: ни холодильник, ни
-  дневник, ни список покупок, ни синоним из админки.
+Остальное командой не трогается: разбирать «Икру» и «Бульон» должен редактор.
+Правило `all` (всё машинное из «Прочего») оставлено, но включать его руками и
+только посмотрев список.
 
-Связь рецепта переживает удаление: `RecipeProduct.product` — SET_NULL, название
+В любом правиле запись пропускается, если на неё ссылается хоть что-то, кроме
+связей рецептов: холодильник, дневник, список покупок, синоним из админки.
+
+Связь рецепта удаление переживает: `RecipeProduct.product` — SET_NULL, название
 и категория ингредиента хранятся в самой связи, так что список покупок не
-меняется. Потеряется только сопоставление этого ингредиента с холодильником —
-которого и не было: ни у кого в холодильнике нет «Мандарины».
+меняется.
 
 По умолчанию — DRY-RUN. Запись — флагом --apply.
 
     docker compose exec -T backend python manage.py mg_prune_auto_products
     docker compose exec -T backend python manage.py mg_prune_auto_products --apply
+    docker compose exec -T backend python manage.py mg_prune_auto_products --rules all
 """
+
+import re
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -41,6 +53,38 @@ from apps.fridge.models import Product
 # mg_backfill_recipe_products. Всё остальное, что ссылается на продукт, —
 # признак того, что запись живая, и трогать её нельзя.
 RECIPE_LINK = "recipes.RecipeProduct"
+
+# Строки со страницы рецепта, принятые за ингредиент. Список набран по тому,
+# что реально лежит в каталоге, а не по догадкам.
+METADATA_RE = [
+    re.compile(r"^время приготовления\b"),
+    re.compile(r"^\d+\s*(мин|минут|час)\w*$"),
+    re.compile(r"\bкухня$"),
+    re.compile(r"^(завтрак|обед|ужин|полдник|перекус|десерты|закуски|напитки|выпечка)$"),
+    re.compile(r"^(выше|ниже|далее|остальное|по вкусу|по желанию|опционально|см)$"),
+    # Одинокое прилагательное — это обрывок строки: «Очищенный», «Чёрный»,
+    # «Вегетарианские». Продукта из одного прилагательного не бывает.
+    #
+    # Окончания -ое и -ее сюда не входят намеренно: «Мороженое», «Заливное»,
+    # «Жаркое» — прилагательные по форме, но продукты по смыслу.
+    re.compile(r"^\S+(ый|ий|ой|ая|яя|ые|ие)$"),
+]
+
+
+def _norm(name):
+    return (name or "").strip().lower().replace("ё", "е")
+
+
+def is_metadata(name):
+    n = _norm(name)
+    return any(rx.search(n) for rx in METADATA_RE)
+
+
+def dish_titles():
+    """Заголовки рецептов — нормализованные, для сверки с названиями продуктов."""
+    from apps.recipes.models import Recipe
+
+    return {_norm(t) for t in Recipe.objects.values_list("title", flat=True) if t}
 
 
 def user_referenced_ids(product_ids):
@@ -61,8 +105,8 @@ def user_referenced_ids(product_ids):
     return used
 
 
-def candidates():
-    """Машинные продукты без категории (или в «Прочем»), не тронутые людьми."""
+def classify(rules):
+    """-> (к удалению, остаток) среди машинных записей «Прочего», не тронутых людьми."""
     rows = list(
         Product.objects.filter(
             Q(category_fk__slug="other") | Q(category_fk__isnull=True),
@@ -71,36 +115,70 @@ def candidates():
         ).order_by("id")
     )
     if not rows:
-        return []
+        return {}, []
     used = user_referenced_ids([p.id for p in rows])
-    return [p for p in rows if p.id not in used]
+    rows = [p for p in rows if p.id not in used]
+
+    if "all" in rules:
+        return {"all": rows}, []
+
+    titles = dish_titles() if "dish" in rules else set()
+    hit = {"metadata": [], "dish": []}
+    rest = []
+    for p in rows:
+        if "metadata" in rules and is_metadata(p.name):
+            hit["metadata"].append(p)
+        elif "dish" in rules and _norm(p.name) in titles:
+            hit["dish"].append(p)
+        else:
+            rest.append(p)
+    return {k: v for k, v in hit.items() if v}, rest
 
 
 class Command(BaseCommand):
-    help = "Удалить машинные продукты (source=auto) из «Прочего», на которые никто не ссылается. По умолчанию dry-run."
+    help = "Удалить машинные записи (source=auto), которые продуктами не являются. По умолчанию dry-run."
 
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true", help="Удалить (иначе только показать список).")
-        parser.add_argument("--limit", type=int, default=60, help="Сколько названий показать.")
+        parser.add_argument(
+            "--rules",
+            default="metadata,dish",
+            help="Через запятую: metadata, dish или all (всё машинное из «Прочего»).",
+        )
+        parser.add_argument("--limit", type=int, default=40, help="Сколько названий показать на правило.")
 
     def handle(self, *args, **opts):
-        rows = candidates()
-        total_auto = Product.objects.filter(source=Product.Source.AUTO).count()
-
-        self.stdout.write("Продуктов source=auto всего: %d" % total_auto)
-        self.stdout.write("Под удаление подходит: %d" % len(rows))
-        for p in rows[: opts["limit"]]:
-            self.stdout.write("  %s" % p.name)
-        if len(rows) > opts["limit"]:
-            self.stdout.write("  … и ещё %d" % (len(rows) - opts["limit"]))
-
-        if not opts["apply"]:
-            self.stdout.write(self.style.WARNING("DRY-RUN. Ничего не удалено — повторите с --apply."))
+        rules = {r.strip() for r in opts["rules"].split(",") if r.strip()}
+        unknown = rules - {"metadata", "dish", "all"}
+        if unknown:
+            self.stderr.write("Неизвестные правила: %s" % ", ".join(sorted(unknown)))
             return
-        if not rows:
+
+        hit, rest = classify(rules)
+        doomed = [p for group in hit.values() for p in group]
+
+        self.stdout.write("Продуктов source=auto всего: %d" % Product.objects.filter(source="auto").count())
+        for rule, group in hit.items():
+            self.stdout.write("")
+            self.stdout.write("%s — %d:" % (rule, len(group)))
+            for p in group[: opts["limit"]]:
+                self.stdout.write("  %s" % p.name)
+            if len(group) > opts["limit"]:
+                self.stdout.write("  … и ещё %d" % (len(group) - opts["limit"]))
+        if rest:
+            self.stdout.write("")
+            self.stdout.write("Оставлено редактору — %d, например:" % len(rest))
+            for p in rest[: opts["limit"]]:
+                self.stdout.write("  %s" % p.name)
+
+        self.stdout.write("")
+        if not opts["apply"]:
+            self.stdout.write(self.style.WARNING("DRY-RUN: под удаление %d. Повторите с --apply." % len(doomed)))
+            return
+        if not doomed:
             return
 
         with transaction.atomic():
-            Product.objects.filter(id__in=[p.id for p in rows]).delete()
-        self.stdout.write(self.style.SUCCESS("Удалено записей: %d" % len(rows)))
+            Product.objects.filter(id__in=[p.id for p in doomed]).delete()
+        self.stdout.write(self.style.SUCCESS("Удалено записей: %d" % len(doomed)))
         self.stdout.write("Связи рецептов сохранены: название и категория ингредиента лежат в самой связи.")
