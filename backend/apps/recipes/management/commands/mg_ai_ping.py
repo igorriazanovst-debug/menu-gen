@@ -21,10 +21,18 @@ PROMPT = "Ответь одним словом: столица России?"
 
 
 def mask(value):
-    """Ключ в вывод не пишем — только длину и хвост, чтобы отличить два ключа."""
+    """Ключ целиком не пишем: начало, длина, хвост.
+
+    Начало — не секрет и решает половину вопросов: у каждого сервиса свой
+    префикс (`sk-aitunnel-`, `sk-proj-`, `AQVN`), и по нему сразу видно, тот ли
+    это вообще ключ. Хвост нужен, чтобы отличить старый ключ от нового, когда
+    контейнер поднялся со старым окружением.
+    """
     if not value:
         return "не задан"
-    return "задан (%d символов, …%s)" % (len(value), value[-4:])
+    if len(value) < 12:
+        return "задан, но подозрительно короткий (%d символов)" % len(value)
+    return "задан (%s…%s, %d символов)" % (value[:11], value[-4:], len(value))
 
 
 class Command(BaseCommand):
@@ -45,6 +53,25 @@ class Command(BaseCommand):
         self.stdout.write("AI_API_KEY:    %s" % mask(config("AI_API_KEY", default="")))
         if provider.strip().lower() == "yandex":
             self.stdout.write("AI_FOLDER_ID:  %s" % (config("AI_FOLDER_ID", default="") or "не задан"))
+
+        # Куда реально уйдёт запрос: опечатка в base_url (потерянный /v1) даёт
+        # ошибку, которую по тексту от сервиса не опознать.
+        if provider.strip().lower() in ("openai", "yandex"):
+            base = config(
+                "AI_BASE_URL",
+                default=(
+                    "https://api.openai.com/v1"
+                    if provider.strip().lower() == "openai"
+                    else "https://llm.api.cloud.yandex.net/v1"
+                ),
+            )
+            self.stdout.write("URL запроса:   %s/chat/completions" % base.rstrip("/"))
+
+        # Ключ мог приехать в контейнер с переносом строки или пробелом на конце —
+        # заголовок Authorization тогда битый, а на глаз это не видно.
+        key = config("AI_API_KEY", default="")
+        if key != key.strip():
+            self.stdout.write(self.style.WARNING("ВНИМАНИЕ: в ключе есть пробелы или перенос строки по краям."))
         self.stdout.write("")
 
         from apps.common.ai_provider import get_ai_client

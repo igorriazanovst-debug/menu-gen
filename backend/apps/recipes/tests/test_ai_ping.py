@@ -19,15 +19,27 @@ from apps.recipes.management.commands.mg_ai_ping import mask
 
 
 class TestMask:
-    def test_ключ_в_вывод_не_попадает(self):
-        """Вывод команды уходит в переписку и в тикеты — целиком ключу там не место."""
-        out = mask("AQVN0secretkey1234")
+    def test_середина_ключа_в_вывод_не_попадает(self):
+        """Вывод уходит в переписку и в тикеты — целиком ключу там не место."""
+        out = mask("sk-aitunnel-СЕКРЕТНАЯСЕРЕДИНА-1234")
 
-        assert "secretkey" not in out
-        assert out.endswith("…1234)")
+        assert "СЕКРЕТНАЯСЕРЕДИНА" not in out
+
+    def test_видно_чей_это_ключ(self):
+        """Префикс не секрет и сразу отвечает, тот ли сервис: sk-aitunnel-, AQVN…"""
+        assert "sk-aitunnel" in mask("sk-aitunnel-abcdefghij-1234")
+        assert "sk-proj-" in mask("sk-proj-abcdefghijklmnop")
+
+    def test_видно_какой_именно_ключ(self):
+        """Хвост отличает новый ключ от старого, когда контейнер не перезапустили."""
+        assert mask("sk-aitunnel-abcdefghij-1234").endswith("…1234, 27 символов)")
 
     def test_пустой_ключ_назван_прямо(self):
         assert mask("") == "не задан"
+
+    def test_обрубок_назван_обрубком(self):
+        """Ключ в пять символов — это ошибка при копировании, а не ключ."""
+        assert "коротк" in mask("sk-12")
 
 
 @pytest.mark.django_db
