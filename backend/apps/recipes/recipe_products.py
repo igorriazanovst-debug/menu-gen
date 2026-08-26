@@ -264,6 +264,29 @@ def _is_seedable(canon_disp, cat_id):
     return cat_id is not None
 
 
+# MG_AUTOPROD: недостающий продукт заводим ТОЛЬКО в общем каталоге.
+#
+# Раньше здесь стоял `get_or_create(name=...)` по всей таблице продуктов. Пока
+# в ней был один каталог, это работало. После загрузки справочников штрих-кодов
+# (retail + off_bulk — 32 тысячи конкретных упаковок) сломалось дважды:
+#
+# - одноимённых записей там по нескольку («Кола», «Смузи», «Хлеб»), и `get()`
+#   падал с MultipleObjectsReturned посреди прогона;
+# - а там, где запись была одна, ингредиент рецепта привязывался к упаковке из
+#   справочника — то есть к тому, чего нет ни в одном подборщике продуктов.
+#
+# Ищем в том же множестве, где искал `_resolve_segment` (`catalog_q()`), и не
+# падаем на дублях внутри самого каталога: берём старшую запись.
+def _get_or_create_catalog_product(name, cat_id):
+    from apps.fridge.models import Product
+    from apps.fridge.visibility import catalog_q
+
+    obj = Product.objects.filter(catalog_q(), name__iexact=name).order_by("id").first()
+    if obj is None:
+        obj = Product.objects.create(name=name, category_fk_id=cat_id, source=Product.Source.AUTO)
+    return obj.id
+
+
 def rebuild_recipe_links(
     recipe,
     canon_map=None,
@@ -327,12 +350,7 @@ def rebuild_recipe_links(
                 canon, ai_slug, prod_name, prod_index, cat_id_by_slug, ref_index=ref_index
             )
             if product_id is None and create_missing and _is_seedable(canon_disp, cat_id):  # MG_T04C
-                from apps.fridge.models import Product
-
-                obj, _created = Product.objects.get_or_create(
-                    name=canon_disp, defaults={"category_fk_id": cat_id, "source": "auto"}
-                )
-                product_id = obj.id
+                product_id = _get_or_create_catalog_product(canon_disp, cat_id)  # MG_AUTOPROD
             key = _norm(canon_disp)
             if not key or key in seen:
                 continue
