@@ -411,10 +411,14 @@ class Command(BaseCommand):
         legacy = f"{LEGACY_PREFIX}{row.get('site_id')}"
         existing = Recipe.objects.filter(legacy_id=legacy).first()
         if existing is None:
-            # Тот же рецепт мог приехать раньше из другого источника. Заводить
-            # второй с тем же названием — значит показать человеку дубль.
-            existing = Recipe.objects.filter(title__iexact=title).first()
-            if existing is not None and existing.legacy_id and not existing.legacy_id.startswith(LEGACY_PREFIX):
+            # Рецепт с таким названием уже есть — не наш. Заводить второй значит
+            # показать человеку дубль, а перезаписывать чужой нельзя тем более:
+            # у него может быть фотография и он может быть опубликован, а мы
+            # затрём и то и другое (импорт снимает публикацию).
+            #
+            # Своими считаем ТОЛЬКО записи с нашим legacy_id. Пустой legacy_id —
+            # это рецепт, заведённый руками в админке, и он чужой.
+            if Recipe.objects.filter(title__iexact=title).exists():
                 return "skipped"
 
         ingredients = row.get("ingredients") or []

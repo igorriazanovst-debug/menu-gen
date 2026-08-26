@@ -187,6 +187,27 @@ class TestImport:
         assert survivor.legacy_id == "tg:99"
         assert survivor.is_published is True
 
+    def test_рецепт_заведённый_руками_тоже_чужой(self, data_file):
+        """Пустой legacy_id — это ручная запись из админки.
+
+        Раньше такой рецепт считался «своим» и перезаписывался целиком: терял
+        фотографию, содержимое и публикацию. Самый обидный случай — редактор
+        завёл карточку с фото, а импорт её обнулил.
+        """
+        Recipe.objects.create(
+            title="Гречка с грибами",
+            image_url="/media/recipes/grechka.jpg",
+            is_published=True,
+        )
+
+        call_command("import_say7_recipes", file=data_file([ROW]))
+
+        assert Recipe.objects.filter(title="Гречка с грибами").count() == 1
+        survivor = Recipe.objects.get(title="Гречка с грибами")
+        assert survivor.image_url == "/media/recipes/grechka.jpg"
+        assert survivor.is_published is True
+        assert survivor.legacy_id is None
+
     def test_dry_run_ничего_не_пишет(self, data_file):
         call_command("import_say7_recipes", file=data_file([ROW]), dry_run=True)
 
