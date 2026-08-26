@@ -15,6 +15,7 @@
 
 import gzip
 import json
+from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
@@ -25,6 +26,7 @@ from apps.recipes.management.commands.import_say7_recipes import (
     cooking_method_for,
     diet_flags,
     dish_type_for,
+    normalize_units,
     portion_grams,
 )
 
@@ -41,10 +43,11 @@ ROW = {
     "protein_100g": 4.0,
     "fat_100g": 3.0,
     "carbs_100g": 18.0,
+    # Единицы в выгрузке — латинские коды парсера, ровно как в файле.
     "ingredients": [
-        {"name": "Гречка", "quantity": "1", "unit": "стакан", "grams": 200},
-        {"name": "Шампиньоны", "quantity": "300", "unit": "г", "grams": 300},
-        {"name": "Масло растительное", "quantity": "2", "unit": "ст. л.", "grams": 30},
+        {"name": "Гречка", "quantity": "1", "unit": "cup", "grams": 200},
+        {"name": "Шампиньоны", "quantity": "300", "unit": "g", "grams": 300},
+        {"name": "Масло растительное", "quantity": "2", "unit": "tbsp", "grams": 30},
     ],
     "steps": ["Промыть гречку.", "Обжарить грибы 10 минут.", "Варить 15 минут под крышкой."],
 }
@@ -92,6 +95,36 @@ class TestPortion:
         """
         assert portion_grams({**ROW, "cooked_weight_g": 20, "servings_min": 4}) is None
         assert portion_grams({**ROW, "cooked_weight_g": 12000, "servings_min": 4}) is None
+
+
+class TestUnits:
+    """Единицы в выгрузке — коды парсера, а не то, что читает человек.
+
+    Дело не только в виде карточки: список покупок складывает количества по
+    своей таблице единиц, и кода «g» в ней нет — «700 g» и «300 г» окажутся в
+    списке двумя разными строками.
+    """
+
+    def test_коды_переводятся_в_наши_токены(self):
+        out = normalize_units([{"name": "Мука", "unit": "g"}, {"name": "Молоко", "unit": "ml"}])
+
+        assert [i["unit"] for i in out] == ["г", "мл"]
+
+    def test_ложки_и_штуки_тоже(self):
+        rows = [{"unit": "tbsp"}, {"unit": "tsp"}, {"unit": "piece"}, {"unit": "cup"}]
+
+        assert [i["unit"] for i in normalize_units(rows)] == ["ст.л.", "ч.л.", "шт", "стакан"]
+
+    def test_незнакомую_единицу_не_выдумываем(self):
+        """Пустое или непонятное поле видно редактору, подменённое — нет."""
+        rows = [{"unit": "щепотка"}, {"unit": ""}, {}]
+
+        assert [i["unit"] for i in normalize_units(rows)] == ["щепотка", "", ""]
+
+    def test_остальные_поля_на_месте(self):
+        out = normalize_units([{"name": "Мука", "quantity": "2", "unit": "g", "grams": 100}])
+
+        assert out[0] == {"name": "Мука", "quantity": "2", "unit": "г", "grams": 100}
 
 
 class TestFromSteps:
@@ -208,7 +241,42 @@ class TestImport:
         assert survivor.is_published is True
         assert survivor.legacy_id is None
 
+    def test_состав_приходит_с_русскими_единицами(self, data_file):
+        call_command("import_say7_recipes", file=data_file([ROW]))
+
+        r = Recipe.objects.get(legacy_id="say7:4242")
+        assert [i["unit"] for i in r.ingredients] == ["стакан", "г", "ст.л."]
+
     def test_dry_run_ничего_не_пишет(self, data_file):
         call_command("import_say7_recipes", file=data_file([ROW]), dry_run=True)
 
         assert Recipe.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+class TestNoPerRecipeAI:
+    """Задача пересборки связей ставится в on_commit — нужна настоящая транзакция.
+
+    На сохранении рецепта висит сигнал, который ставит эту задачу, а она ходит
+    в ИИ на каждый рецепт отдельно. Полторы тысячи строк — полторы тысячи
+    обращений к платному провайдеру вместо примерно сорока, если тот же состав
+    канонизировать пачками. Пачками это делает mg_backfill_recipe_products, он
+    и указан в подсказке после импорта.
+    """
+
+    def test_импорт_не_ставит_задачу_на_каждый_рецепт(self, data_file):
+        with patch("apps.recipes.tasks.rebuild_recipe_links_task.delay") as enqueue:
+            call_command("import_say7_recipes", file=data_file([ROW]))
+
+        enqueue.assert_not_called()
+
+    def test_обычное_сохранение_задачу_ставит(self, data_file):
+        """Контроль: сигнал жив, и молчание выше — заслуга импорта, а не поломки."""
+        call_command("import_say7_recipes", file=data_file([ROW]))
+        r = Recipe.objects.get(legacy_id="say7:4242")
+
+        with patch("apps.recipes.tasks.rebuild_recipe_links_task.delay") as enqueue:
+            r.ingredients = ROW["ingredients"] + [{"name": "Соль", "unit": "g", "grams": 5}]
+            r.save()
+
+        enqueue.assert_called_once_with(r.pk)

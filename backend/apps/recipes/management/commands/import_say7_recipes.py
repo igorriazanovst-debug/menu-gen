@@ -115,6 +115,40 @@ SUITABLE_BY_DISH = {
     "sauce": [],
 }
 
+# ── единицы измерения ───────────────────────────────────────────────────────
+# В выгрузке единицы записаны латинскими кодами парсера: g, ml, piece, tsp.
+# Это не то, что читает человек, и не то, с чем работает остальной проект:
+# список покупок складывает количества по таблице единиц (apps/shopping/
+# services.py, _MG_UNIT_SYN), а кода «g» в ней нет — «700 g» и «300 г» для неё
+# разные единицы, и в списке они окажутся двумя строками.
+#
+# Токены справа — канонические, ровно те, что использует shopping.
+UNIT_RU = {
+    "g": "г",
+    "gr": "г",
+    "kg": "кг",
+    "ml": "мл",
+    "l": "л",
+    "piece": "шт",
+    "pcs": "шт",
+    "pc": "шт",
+    "tsp": "ч.л.",
+    "tbsp": "ст.л.",
+    "cup": "стакан",
+}
+
+
+def normalize_units(ingredients: list) -> list:
+    """Единицы — по-русски. Незнакомый код оставляем как есть: врать хуже."""
+    out = []
+    for ing in ingredients:
+        if not isinstance(ing, dict):
+            continue
+        unit = (ing.get("unit") or "").strip()
+        out.append({**ing, "unit": UNIT_RU.get(unit.lower(), unit)})
+    return out
+
+
 # ── способ приготовления ────────────────────────────────────────────────────
 # Порядок важен: у блюда обычно несколько действий, и берём самое
 # характерное — «запечь» важнее «нарезать».
@@ -421,7 +455,7 @@ class Command(BaseCommand):
             if Recipe.objects.filter(title__iexact=title).exists():
                 return "skipped"
 
-        ingredients = row.get("ingredients") or []
+        ingredients = normalize_units(row.get("ingredients") or [])
         steps_raw = row.get("steps") or []
         steps = [{"text": t, "order": n} for n, t in enumerate(steps_raw, 1)]
 
@@ -481,11 +515,24 @@ class Command(BaseCommand):
         if opts["dry_run"]:
             return "updated" if existing else "created"
 
+        # MG_SAY7LINK: связи рецепт→продукт здесь НЕ пересобираем.
+        #
+        # На сохранение рецепта висит сигнал, который ставит задачу пересборки,
+        # а она ходит в ИИ на каждый рецепт отдельно. На полутора тысячах строк
+        # это полторы тысячи обращений к платному провайдеру — вместо примерно
+        # сорока, если тот же состав канонизировать пачками.
+        #
+        # Пачками это и делает mg_backfill_recipe_products: собирает все
+        # уникальные сегменты состава разом, отправляет по 30 штук и только
+        # потом строит связи. Он и указан в подсказке после импорта.
         if existing is not None:
             for key, value in fields.items():
                 setattr(existing, key, value)
+            existing._mg_skip_link_rebuild = True
             existing.save()
             return "updated"
 
-        Recipe.objects.create(**fields)
+        obj = Recipe(**fields)
+        obj._mg_skip_link_rebuild = True
+        obj.save()
         return "created"
