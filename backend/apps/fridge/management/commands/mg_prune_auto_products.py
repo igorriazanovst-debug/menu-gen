@@ -26,12 +26,19 @@
   «Вареная сгущенка», «Томатный соус», «Карамельный соус», «Сахарная глазурь» —
   то, что покупают в магазине. Багет можно испечь и можно купить, и по названию
   рецепта одно от другого не отличить;
+- `orphan` — на запись не ссылается ВООБЩЕ ничто, включая связи рецептов.
+  Такое остаётся после пересборки связей: связи ушли на правильные продукты, а
+  запись, заведённая прошлым прогоном по сырому названию, повисла. Именно это
+  и оставил после себя мёртвый провайдер. Правило не смотрит ни на название, ни
+  на категорию — только на ссылки, поэтому ошибиться в нём негде;
 - `all` — всё машинное из «Прочего». Включать руками и только посмотрев список.
 
 Остальное командой не трогается: разбирать «Икру» и «Бульон» должен редактор.
 
-В любом правиле запись пропускается, если на неё ссылается хоть что-то, кроме
-связей рецептов: холодильник, дневник, список покупок, синоним из админки.
+В правилах `metadata`, `dish` и `all` запись пропускается, если на неё ссылается
+хоть что-то, кроме связей рецептов: холодильник, дневник, список покупок,
+синоним из админки. В `orphan` не считается ссылкой вообще ничего — там и
+берутся только записи без единой ссылки.
 
 Связь рецепта удаление переживает: `RecipeProduct.product` — SET_NULL, название
 и категория ингредиента хранятся в самой связи, так что список покупок не
@@ -90,17 +97,22 @@ def dish_titles():
     return {_norm(t) for t in Recipe.objects.values_list("title", flat=True) if t}
 
 
-def user_referenced_ids(product_ids):
-    """id продуктов, на которые ссылается хоть что-нибудь, кроме связей рецептов.
+def referenced_ids(product_ids, skip_recipe_links=True):
+    """id продуктов, на которые хоть что-то ссылается.
 
     Обходим входящие связи через _meta, а не списком моделей: появится новая
     ссылка на продукт — она учтётся сама, без правки этой команды.
+
+    `skip_recipe_links` — связь рецепта не считать: её пересобирает
+    mg_backfill_recipe_products, и держаться за неё смысла нет. Для правила
+    `orphan` наоборот важно учесть и её: там ищут записи, на которые не
+    ссылается вообще ничто.
     """
     used = set()
     for rel in Product._meta.related_objects:
         model = rel.related_model
         label = "%s.%s" % (model._meta.app_label, model.__name__)
-        if label == RECIPE_LINK:
+        if skip_recipe_links and label == RECIPE_LINK:
             continue
         field = rel.field.name
         used.update(model.objects.filter(**{"%s__in" % field: product_ids}).values_list("%s_id" % field, flat=True))
@@ -108,8 +120,29 @@ def user_referenced_ids(product_ids):
     return used
 
 
+def orphans():
+    """Машинные записи, на которые не ссылается НИЧТО — даже связь рецепта.
+
+    Появляются так: связи пересобрали, и они ушли на правильные продукты, а
+    запись, заведённая прошлым прогоном по сырому названию, осталась висеть.
+    Ровно это и оставил после себя мёртвый провайдер: «Мандарина» вместо
+    «Мандарина» в именительном, «Время приготовления 40 мин» и прочее.
+
+    Правило не смотрит ни на название, ни на категорию — только на ссылки,
+    поэтому и ошибиться в нём негде: удаляется то, чем никто не пользуется.
+    """
+    rows = list(Product.objects.filter(source=Product.Source.AUTO, owner_family__isnull=True).order_by("id"))
+    if not rows:
+        return []
+    used = referenced_ids([p.id for p in rows], skip_recipe_links=False)
+    return [p for p in rows if p.id not in used]
+
+
 def classify(rules):
-    """-> (к удалению, остаток) среди машинных записей «Прочего», не тронутых людьми."""
+    """-> (к удалению, остаток) среди машинных записей, не тронутых людьми."""
+    if "orphan" in rules:
+        return {"orphan": orphans()}, []
+
     rows = list(
         Product.objects.filter(
             Q(category_fk__slug="other") | Q(category_fk__isnull=True),
@@ -119,7 +152,7 @@ def classify(rules):
     )
     if not rows:
         return {}, []
-    used = user_referenced_ids([p.id for p in rows])
+    used = referenced_ids([p.id for p in rows])
     rows = [p for p in rows if p.id not in used]
 
     if "all" in rules:
@@ -146,13 +179,13 @@ class Command(BaseCommand):
         parser.add_argument(
             "--rules",
             default="metadata",
-            help="Через запятую: metadata (по умолчанию), dish, all (всё машинное из «Прочего»).",
+            help="Через запятую: metadata (по умолчанию), orphan, dish, all.",
         )
         parser.add_argument("--limit", type=int, default=40, help="Сколько названий показать на правило.")
 
     def handle(self, *args, **opts):
         rules = {r.strip() for r in opts["rules"].split(",") if r.strip()}
-        unknown = rules - {"metadata", "dish", "all"}
+        unknown = rules - {"metadata", "dish", "orphan", "all"}
         if unknown:
             self.stderr.write("Неизвестные правила: %s" % ", ".join(sorted(unknown)))
             return

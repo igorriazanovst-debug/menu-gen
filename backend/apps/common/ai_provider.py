@@ -226,7 +226,7 @@ class AnthropicAIClient(BaseAIClient):
         return resp.content[0].text
 
 
-def get_ai_client(provider: Optional[str] = None) -> BaseAIClient:
+def get_ai_client(provider: Optional[str] = None, model: Optional[str] = None) -> BaseAIClient:
     """Factory. Reads configuration from environment.
 
     Env vars:
@@ -236,6 +236,12 @@ def get_ai_client(provider: Optional[str] = None) -> BaseAIClient:
       AI_FOLDER_ID    Yandex folder id                    (required for yandex)
       AI_TEXT_MODEL   model id or full URI                (per-provider default)
       AI_TIMEOUT      request timeout, seconds            (default 30)
+
+    MG_AIMODEL: `model` перебивает AI_TEXT_MODEL для одной задачи. Нужно там, где
+    качество важнее цены — например, канонизация названий продуктов: результат
+    её работы видят все пользователи в каталоге, а запускается она изредка.
+    Раньше такую подмену делали через setattr на приватное поле клиента, и она
+    молча ничего не делала для всех провайдеров, кроме Yandex.
     """
     provider = (provider or config("AI_PROVIDER", default="yandex")).strip().lower()
     api_key = config("AI_API_KEY", default="")
@@ -244,7 +250,7 @@ def get_ai_client(provider: Optional[str] = None) -> BaseAIClient:
     if provider == "yandex":
         base_url = config("AI_BASE_URL", default="https://llm.api.cloud.yandex.net/v1")
         folder_id = config("AI_FOLDER_ID", default="")
-        text_model = config("AI_TEXT_MODEL", default="yandexgpt-lite")
+        text_model = model or config("AI_TEXT_MODEL", default="yandexgpt-lite")
         return YandexAIClient(
             api_key=api_key,
             folder_id=folder_id,
@@ -255,7 +261,7 @@ def get_ai_client(provider: Optional[str] = None) -> BaseAIClient:
 
     if provider == "openai":
         base_url = config("AI_BASE_URL", default="https://api.openai.com/v1")
-        text_model = config("AI_TEXT_MODEL", default="gpt-4o-mini")
+        text_model = model or config("AI_TEXT_MODEL", default="gpt-4o-mini")
         return OpenAIAIClient(
             api_key=api_key,
             base_url=base_url,
@@ -267,7 +273,7 @@ def get_ai_client(provider: Optional[str] = None) -> BaseAIClient:
         # Backward-compat: fall back to ANTHROPIC_API_KEY if AI_API_KEY empty.
         if not api_key:
             api_key = config("ANTHROPIC_API_KEY", default="")
-        text_model = config("AI_TEXT_MODEL", default="claude-haiku-4-5-20251001")
+        text_model = model or config("AI_TEXT_MODEL", default="claude-haiku-4-5-20251001")
         return AnthropicAIClient(api_key=api_key, text_model=text_model)
 
     raise AIConfigError(f"Unknown AI_PROVIDER: {provider!r}")

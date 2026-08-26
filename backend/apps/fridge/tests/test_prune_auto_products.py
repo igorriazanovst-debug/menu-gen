@@ -190,3 +190,60 @@ class TestUntouchable:
         link = RecipeProduct.objects.get(recipe=recipe)
         assert link.product_id is None
         assert link.name_canonical == "Время приготовления 40 мин"
+
+
+@pytest.mark.django_db
+class TestOrphanRule:
+    """Записи, на которые не ссылается вообще ничто.
+
+    Остаются после пересборки связей: связи ушли на правильные продукты, а то,
+    что завёл прошлый прогон по сырому названию, повисло. Правило смотрит только
+    на ссылки, поэтому берёт и то, чего не поймать по названию, — «Мандарина».
+    """
+
+    def test_запись_без_единой_ссылки_удаляется(self, auto):
+        stale = auto("Мандарина")
+
+        run(rules="orphan")
+
+        assert not Product.objects.filter(pk=stale.pk).exists()
+
+    def test_связь_рецепта_здесь_считается(self, auto):
+        """В остальных правилах ею пренебрегают, тут — нет: на запись ссылаются."""
+        used = auto("Мандарин")
+        recipe = Recipe.objects.create(title="Компот")
+        RecipeProduct.objects.create(recipe=recipe, product=used, name_raw="мандарин")
+
+        run(rules="orphan")
+
+        assert Product.objects.filter(pk=used.pk).exists()
+
+    def test_категория_и_название_роли_не_играют(self, cats):
+        """Правило про ссылки, а не про текст: годная «Слива» без ссылок тоже уйдёт."""
+        _other, fruit = cats
+        good_name = Product.objects.create(name="Слива", source=Product.Source.AUTO, category_fk=fruit)
+
+        run(rules="orphan")
+
+        assert not Product.objects.filter(pk=good_name.pk).exists()
+
+    def test_выверенный_продукт_не_трогаем(self, cats):
+        other, _fruit = cats
+        mine = Product.objects.create(name="Мамина аджика", source=Product.Source.MANUAL, category_fk=other)
+
+        run(rules="orphan")
+
+        assert Product.objects.filter(pk=mine.pk).exists()
+
+    def test_продукт_из_холодильника_не_трогаем(self, auto, django_user_model):
+        from apps.family.models import Family
+        from apps.fridge.models import FridgeItem
+
+        stale = auto("Мандарина")
+        owner = django_user_model.objects.create_user(email="o@example.com", password="pass12345", name="О")
+        family = Family.objects.create(name="Семья", owner=owner)
+        FridgeItem.objects.create(family=family, product=stale, name=stale.name, quantity=1)
+
+        run(rules="orphan")
+
+        assert Product.objects.filter(pk=stale.pk).exists()

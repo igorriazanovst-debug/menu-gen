@@ -122,10 +122,11 @@ def _fallback_slots(title: str, dish_type: Optional[str]) -> dict:
 
 def build_slots(title: str, ingredients=None, steps=None, dish_type: Optional[str] = None) -> dict:
     """Ask the text LLM for per-dish slots; fall back to dish_type defaults."""
-    client = get_ai_client()
+    # MG_AIMODEL: подмена модели идёт параметром фабрики. Раньше здесь стоял
+    # setattr на приватное поле клиента, да ещё и только для Yandex: на любом
+    # другом провайдере AI_IMAGE_PROMPT_MODEL молча не применялся.
     model = getattr(settings, "AI_IMAGE_PROMPT_MODEL", "") or getattr(settings, "AI_TEXT_MODEL", "")
-    if model and type(client).__name__ == "YandexAIClient":
-        setattr(client, "_text_model", model)
+    client = get_ai_client(model=model or None)
 
     try:
         raw = client.complete(
