@@ -198,6 +198,15 @@ class OpenAIAIClient(BaseAIClient):
         if resp.status_code != 200:
             raise AIRequestError(f"OpenAI HTTP {resp.status_code}: {resp.text[:500]}")
         data = resp.json()
+
+        # MG_AIEMPTY: шлюз умеет отдать ошибку с кодом 200 в теле ответа
+        # ({"error": {"message": "The operation was aborted", "code": 504}}).
+        # Без этой ветки такое приходило как «Unexpected OpenAI response» —
+        # формально верно, но по тексту не понять, что это таймаут у шлюза.
+        if isinstance(data, dict) and isinstance(data.get("error"), dict):
+            err = data["error"]
+            raise AIRequestError("OpenAI: ошибка в теле ответа (code=%s): %s" % (err.get("code"), err.get("message")))
+
         try:
             choice = data["choices"][0]
             content = choice["message"]["content"]

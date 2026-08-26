@@ -37,6 +37,17 @@ class Command(BaseCommand):
             help="Не проверять провайдера и строить связи по сырым названиям. Качество будет хуже.",
         )
 
+    def say(self, message):
+        """Пишем и сразу выталкиваем.
+
+        MG_LIVELOG: вывод команды уходит в пайп (docker compose exec -T), а он
+        буферизуется. Пачка канонизации идёт 5-10 секунд, и без выталкивания
+        строки долетают рывками — прогон выглядит зависшим ровно тогда, когда
+        он просто работает. В fill_kbju_ai этот flush стоит по той же причине.
+        """
+        self.stdout.write(str(message))
+        self.stdout.flush()
+
     def handle(self, *args, **opts):
         try:
             stats = backfill(
@@ -44,7 +55,7 @@ class Command(BaseCommand):
                 menu_id=opts.get("menu"),
                 recipe_ids=opts.get("recipe"),
                 limit=opts.get("limit"),
-                log=lambda m: self.stdout.write(str(m)),
+                log=self.say,
                 require_ai=not opts["no_ai"],
                 chunk_size=opts["chunk_size"],
             )

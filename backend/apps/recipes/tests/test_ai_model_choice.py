@@ -197,3 +197,17 @@ class TestEmptyAnswer:
 
         with patch("requests.post", return_value=self._resp(payload)):
             assert client.complete(prompt="столица?") == "Москва"
+
+    def test_ошибка_в_теле_ответа_названа_ошибкой(self):
+        """Шлюз отдаёт 504 с кодом 200 в теле — раньше это выглядело «неожиданным ответом»."""
+        with env():
+            client = get_ai_client(provider="openai")
+        payload = {"error": {"message": "The operation was aborted", "code": 504}, "model": "gemini-3.7-flash"}
+
+        with patch("requests.post", return_value=self._resp(payload)):
+            with pytest.raises(Exception) as exc:
+                client.complete(prompt="привет")
+
+        text = str(exc.value)
+        assert "504" in text and "aborted" in text
+        assert "Unexpected" not in text
