@@ -20,7 +20,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from apps.recipes.models import Recipe, RecipeProduct
-from apps.recipes.recipe_products import AIUnavailable, check_ai_available
+from apps.common.ai_provider import AIUnavailable, check_ai_available
 
 
 @pytest.fixture

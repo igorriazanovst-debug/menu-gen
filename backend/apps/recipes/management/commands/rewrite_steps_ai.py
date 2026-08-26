@@ -130,8 +130,15 @@ class Command(BaseCommand):
             from apps.common.ai_provider import get_ai_client
 
             client = get_ai_client()
+            # MG_AIPING: фабрика только собирает клиента и ловит пустой ключ.
+            # Неверный ключ виден лишь по ответу сервиса — без запроса команда
+            # уходила в прогон и ловила 401 на каждой пачке.
+            from apps.common.ai_provider import check_ai_available
+
+            check_ai_available()
         except Exception as e:
-            self.stderr.write(self.style.ERROR(f"AI-клиент недоступен: {e}"))
+            self.stderr.write(self.style.ERROR(f"ИИ-провайдер недоступен: {e}"))
+            self.stderr.write(self.style.ERROR("Проверить настройки: manage.py mg_ai_ping"))
             return
         try:
             from apps.fridge.services import _parse_json_loose

@@ -1,10 +1,13 @@
 # MG_SHOP001_services — list builders + AI/CSV importers
 import csv
 import io
+import logging
 from decimal import Decimal, InvalidOperation
 
 from apps.fridge.models import FridgeItem
 from apps.menu.models import Menu, MenuItem
+
+logger = logging.getLogger(__name__)
 
 # MG_SHOP2FRIDGE: non-food categories never go into the fridge (pet food,
 # household chemistry, hygiene / other non-edible goods).
@@ -663,6 +666,7 @@ def ai_clean_item_names(items, chunk_size=20):
 
     # ---- pass 1: clean + drop ----
     clean = {}
+    failures = []
 
     def _ask(indices):
         if client is None or _parse_json_loose is None:
@@ -673,8 +677,13 @@ def ai_clean_item_names(items, chunk_size=20):
             try:
                 raw = client.complete(prompt=payload, system=_MG_SYS_CLEAN, max_tokens=2000, temperature=0.0)
                 data = _parse_json_loose(raw)
-            except Exception:
+            except Exception as exc:
                 data = None
+                # MG_AIPING: падать нельзя — список покупок пользователю нужен и
+                # без ИИ, названия просто останутся сырыми. Но и молчать нельзя:
+                # ровно так недействительный ключ провайдера прожил незамеченным,
+                # пока не полез мусор в каталоге продуктов.
+                failures.append("%s: %s" % (type(exc).__name__, exc))
             if isinstance(data, list):
                 for d in data:
                     if isinstance(d, dict) and "i" in d:
@@ -691,6 +700,15 @@ def ai_clean_item_names(items, chunk_size=20):
         missing = [i for i in all_idx if i not in clean]
         if missing:
             _ask(missing)
+    if failures:
+        logger.warning(
+            "ai_clean_item_names: отказов провайдера %d, названий без ответа %d из %d. "
+            "Первая причина: %s. Проверить: manage.py mg_ai_ping",
+            len(failures),
+            len(names) - len(clean),
+            len(names),
+            failures[0],
+        )
 
     stage = []  # (item, name) survivors
     for i, it in enumerate(items):

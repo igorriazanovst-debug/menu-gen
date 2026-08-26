@@ -36,6 +36,31 @@ class AIRequestError(RuntimeError):
     """Raised when the upstream AI request fails."""
 
 
+class AIUnavailable(RuntimeError):
+    """Провайдер не отвечает — долгий прогон запускать бессмысленно."""
+
+
+def check_ai_available():
+    """Один дешёвый запрос перед длинной работой. Отказ — исключение, не None.
+
+    MG_AIPING: `get_ai_client()` только СОБИРАЕТ клиента. Пустой ключ он ловит,
+    а неверный — нет: неправильный токен виден лишь по ответу сервиса. Поэтому
+    проверки вида «AI-клиент недоступен» вокруг фабрики от протухшего ключа не
+    спасают: команда доходит до конца, ловя 401 на каждой пачке.
+
+    Дороже всего это обходилось канонизации состава: она гасила ошибку пачки
+    молча, и прогон выглядел успешным, а в каталог ехали сырые названия прямо
+    из текста рецепта — «Сливы», «Мандарина», «Время приготовления 40 мин».
+    """
+    try:
+        client = get_ai_client()
+        answer = client.complete(prompt="Ответь одним словом: столица России?", max_tokens=20, temperature=0.0)
+    except Exception as exc:
+        raise AIUnavailable("%s: %s" % (type(exc).__name__, exc))
+    if not (answer or "").strip():
+        raise AIUnavailable("провайдер ответил пустым текстом")
+
+
 class BaseAIClient:
     def complete(
         self,

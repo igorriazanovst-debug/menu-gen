@@ -13,7 +13,8 @@
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.recipes.recipe_products import AIUnavailable, backfill
+from apps.common.ai_provider import AIUnavailable
+from apps.recipes.recipe_products import backfill
 
 
 class Command(BaseCommand):
