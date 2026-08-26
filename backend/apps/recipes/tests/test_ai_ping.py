@@ -63,7 +63,7 @@ class TestPing:
         with patch("apps.common.ai_provider.get_ai_client") as factory:
             factory.return_value.complete.return_value = "   "
 
-            with pytest.raises(CommandError, match="пустым"):
+            with pytest.raises(CommandError, match="пустой текст"):
                 call_command("mg_ai_ping")
 
     def test_несобравшийся_клиент_это_ошибка(self):
@@ -95,3 +95,53 @@ class TestCanonReportsFailures:
             canonicalize_and_categorize(["гречка"], log=lines.append)
 
         assert not any("ВНИМАНИЕ" in line for line in lines)
+
+
+@pytest.mark.django_db
+class TestBothModelsChecked:
+    """Модель канонизации ломается отдельно — проверять надо и её.
+
+    Пользовательские пути (скан штрих-кода, фото, список покупок) живут на
+    AI_TEXT_MODEL, долгий прогон по каталогу — на AI_CANON_MODEL. Зелёная
+    проверка первой ничего не говорит про вторую: ровно так и вышло, когда
+    ping отвечал «Москва» на gpt-4o-mini, а канонизация шла на другой модели.
+    """
+
+    def _cfg(self, **values):
+        def fake(key, default=None, **kw):
+            return values.get(key, default)
+
+        return patch("decouple.config", side_effect=fake)
+
+    def test_обе_модели_опрашиваются(self, capsys):
+        with patch("apps.common.ai_provider.get_ai_client") as factory:
+            factory.return_value.complete.return_value = "Москва"
+            with self._cfg(AI_TEXT_MODEL="gpt-4o-mini", AI_CANON_MODEL="gemini-3.7-flash"):
+                call_command("mg_ai_ping")
+
+        out = capsys.readouterr().out
+        assert "AI_TEXT_MODEL — ответ" in out
+        assert "AI_CANON_MODEL — ответ" in out
+
+    def test_отказ_модели_канонизации_виден(self):
+        answers = ["Москва", RuntimeError("HTTP 404 model not found")]
+
+        def complete(*a, **kw):
+            value = answers.pop(0)
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        with patch("apps.common.ai_provider.get_ai_client") as factory:
+            factory.return_value.complete.side_effect = complete
+            with self._cfg(AI_TEXT_MODEL="gpt-4o-mini", AI_CANON_MODEL="gemini-3.7-flash"):
+                with pytest.raises(CommandError, match="AI_CANON_MODEL"):
+                    call_command("mg_ai_ping")
+
+    def test_одинаковые_модели_не_спрашиваем_дважды(self):
+        with patch("apps.common.ai_provider.get_ai_client") as factory:
+            factory.return_value.complete.return_value = "Москва"
+            with self._cfg(AI_TEXT_MODEL="gpt-4o-mini", AI_CANON_MODEL="gpt-4o-mini"):
+                call_command("mg_ai_ping")
+
+        assert factory.return_value.complete.call_count == 1

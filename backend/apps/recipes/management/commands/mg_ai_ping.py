@@ -81,23 +81,40 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("ВНИМАНИЕ: в ключе есть пробелы или перенос строки по краям."))
         self.stdout.write("")
 
+        self.ask("AI_TEXT_MODEL", None, None, opts)
+
+        # MG_AIEMPTY: модель канонизации — отдельная настройка, и ломается она
+        # отдельно. Проверять надо обе: пользовательские пути живут на одной,
+        # долгий прогон по каталогу — на другой, и зелёная проверка первой
+        # ничего не говорит про вторую.
+        canon_model = (config("AI_CANON_MODEL", default="") or "").strip()
+        if canon_model and canon_model != (config("AI_TEXT_MODEL", default="") or "").strip():
+            self.ask(
+                "AI_CANON_MODEL",
+                canon_model,
+                config("AI_CANON_TIMEOUT", default=120.0, cast=float),
+                opts,
+            )
+
+    def ask(self, label, model, timeout, opts):
+        """Один настоящий запрос указанной моделью, с замером времени."""
         from apps.common.ai_provider import get_ai_client
 
         try:
-            client = get_ai_client()
+            client = get_ai_client(model=model, timeout=timeout)
         except Exception as exc:
-            raise CommandError("Клиент не собрался: %s: %s" % (type(exc).__name__, exc))
+            raise CommandError("%s: клиент не собрался — %s: %s" % (label, type(exc).__name__, exc))
 
         started = time.monotonic()
         try:
             answer = client.complete(prompt=opts["prompt"], system="", max_tokens=opts["max_tokens"], temperature=0.0)
         except Exception as exc:
             spent = time.monotonic() - started
-            raise CommandError("Запрос не прошёл за %.1f с — %s: %s" % (spent, type(exc).__name__, exc))
+            raise CommandError("%s: запрос не прошёл за %.1f с — %s: %s" % (label, spent, type(exc).__name__, exc))
 
         spent = time.monotonic() - started
         text = (answer or "").strip()
         if not text:
-            raise CommandError("Провайдер ответил пустым текстом за %.1f с — это тоже отказ." % spent)
+            raise CommandError("%s: пустой текст за %.1f с — это тоже отказ." % (label, spent))
 
-        self.stdout.write(self.style.SUCCESS("Ответ за %.1f с: %s" % (spent, text[:200])))
+        self.stdout.write(self.style.SUCCESS("%s — ответ за %.1f с: %s" % (label, spent, text[:200])))
