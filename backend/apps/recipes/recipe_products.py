@@ -405,7 +405,31 @@ def rebuild_recipe_links(
     return len(rows)
 
 
-def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print):
+class AIUnavailable(RuntimeError):
+    """Провайдер не отвечает — сборку связей запускать бессмысленно."""
+
+
+def check_ai_available():
+    """Один дешёвый запрос перед долгим прогоном. Ошибка — исключение, не None.
+
+    MG_AIPING: без этой проверки сборка связей при мёртвом провайдере доходит
+    до конца и выглядит успешной. Названия при этом остаются сырыми — прямо из
+    текста рецепта, в падежах и с числительными, — и связи строятся по ним.
+    Именно так в каталог попали «Сливы», «Мандарина» и «Время приготовления
+    40 мин»: ключ провайдера был недействителен, а никто об этом не знал.
+    """
+    from apps.common.ai_provider import get_ai_client
+
+    try:
+        client = get_ai_client()
+        answer = client.complete(prompt="Ответь одним словом: столица России?", max_tokens=20, temperature=0.0)
+    except Exception as exc:
+        raise AIUnavailable("%s: %s" % (type(exc).__name__, exc))
+    if not (answer or "").strip():
+        raise AIUnavailable("провайдер ответил пустым текстом")
+
+
+def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print, require_ai=True):
     """Backfill links across recipes. Collects all distinct SEGMENTS, runs one AI
     canonicalization, builds product index once, then per-recipe rebuild."""
     from apps.menu.models import MenuItem
@@ -436,6 +460,8 @@ def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print):
                     segments.update(_split_segments(nm))
 
     log("recipes_total=%d todo=%d distinct_segments=%d" % (len(recipes), len(todo), len(segments)))
+    if require_ai and segments:
+        check_ai_available()
     log(">>> AI canonicalization (chunked, slow provider) ...")
     canon_map = canonicalize_and_categorize(sorted(segments), log=log) if segments else {}
     log(">>> AI done; building links ...")
