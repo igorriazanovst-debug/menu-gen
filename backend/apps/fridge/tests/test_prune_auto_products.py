@@ -35,7 +35,7 @@ def auto(cats):
     return _make
 
 
-def run(rules="metadata,dish", apply=True):
+def run(rules="metadata", apply=True):
     call_command("mg_prune_auto_products", rules=rules, **({"apply": True} if apply else {}))
 
 
@@ -77,12 +77,25 @@ class TestPrune:
 
         assert not Product.objects.filter(pk=junk.pk).exists()
 
-    def test_название_блюда_удаляется(self, auto):
-        """Признак берём из своей же базы: так называется рецепт, а не продукт."""
+    def test_блюдо_по_умолчанию_не_трогаем(self, auto):
+        """Совпадение с рецептом не доказывает, что продукта не существует.
+
+        «Багет» есть и в рецептах, и на полке магазина. Правило dish на проверке
+        забирало шесть таких из десяти, поэтому по умолчанию оно выключено.
+        """
+        Recipe.objects.create(title="Багет")
+        product = auto("Багет")
+
+        run()
+
+        assert Product.objects.filter(pk=product.pk).exists()
+
+    def test_правило_dish_включается_руками(self, auto):
+        """Для явного разбора коротких списков правило всё же нужно."""
         Recipe.objects.create(title="Рататуй")
         dish = auto("Рататуй")
 
-        run()
+        run(rules="metadata,dish")
 
         assert not Product.objects.filter(pk=dish.pk).exists()
 
