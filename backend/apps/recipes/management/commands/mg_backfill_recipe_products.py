@@ -6,11 +6,21 @@
 названиям из текста рецепта, в падежах и с числительными. Именно так каталог
 однажды наполнился «Сливами» и «Временем приготовления 40 мин».
 
+Проход ИИ идёт целиком до того, как записана хоть одна связь, поэтому обрыв на
+середине терял всё — и время, и деньги. Ответы модели теперь копятся в файле и
+переиспользуются: повторный запуск спрашивает только то, чего в нём нет. Кэш
+привязан к модели и к тексту промпта, так что смена любого из двух его
+обесценивает — старые ответы применяться не будут.
+
     python manage.py mg_backfill_recipe_products
     python manage.py mg_backfill_recipe_products --force        # пересобрать всё
     python manage.py mg_backfill_recipe_products --no-ai        # осознанно без ИИ
+    python manage.py mg_backfill_recipe_products --no-cache     # спросить всё заново
 """
 
+import os
+
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.common.ai_provider import AIUnavailable
@@ -32,10 +42,26 @@ class Command(BaseCommand):
             help="Сколько названий слать в одной пачке. Меньше — дольше, но реже упирается в таймаут.",
         )
         parser.add_argument(
+            "--cache",
+            default="",
+            help="Файл с ответами модели. По умолчанию — canon_cache.json в MEDIA_ROOT.",
+        )
+        parser.add_argument(
+            "--no-cache",
+            action="store_true",
+            help="Не читать и не писать кэш: спросить модель обо всём заново.",
+        )
+        parser.add_argument(
             "--no-ai",
             action="store_true",
             help="Не проверять провайдера и строить связи по сырым названиям. Качество будет хуже.",
         )
+
+    def cache_path(self, opts):
+        """Где лежат ответы модели. MEDIA_ROOT — чтобы деплой их не сносил."""
+        if opts["no_cache"]:
+            return None
+        return opts["cache"] or os.path.join(settings.MEDIA_ROOT, "canon_cache.json")
 
     def say(self, message):
         """Пишем и сразу выталкиваем.
@@ -58,6 +84,7 @@ class Command(BaseCommand):
                 log=self.say,
                 require_ai=not opts["no_ai"],
                 chunk_size=opts["chunk_size"],
+                cache_path=self.cache_path(opts),
             )
         except AIUnavailable as exc:
             raise CommandError(

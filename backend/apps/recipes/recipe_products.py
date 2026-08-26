@@ -166,7 +166,65 @@ _SYS_CANON_CAT = (
 )
 
 
-def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
+def _cache_signature(system_prompt, model):
+    """Отпечаток условий, при которых ответы модели ещё считаются годными."""
+    import hashlib
+
+    digest = hashlib.sha256((system_prompt or "").encode("utf-8")).hexdigest()[:16]
+    return {"model": model or "", "prompt": digest}
+
+
+def _cache_load(path, signature, log):
+    """MG_CANONCACHE: ответы прошлых прогонов, если условия те же.
+
+    Проход ИИ идёт целиком до того, как записана хоть одна связь: обрыв на
+    середине терял всё — и время, и деньги. За один день так пропало три
+    прогона: падение на MultipleObjectsReturned, смена модели и обрыв
+    терминала.
+
+    Кэш привязан к модели и к тексту промпта. Поменяли любое из двух — старые
+    ответы больше не годятся, и кэш игнорируется целиком: иначе правки промпта
+    молча не применялись бы к уже разобранным названиям.
+    """
+    import json
+    import os
+
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            blob = json.load(fh)
+    except (OSError, ValueError) as exc:
+        log("  кэш не прочитался (%s) — начинаем с нуля" % exc)
+        return {}
+    if blob.get("signature") != signature:
+        log("  кэш от другой модели или промпта — игнорируем")
+        return {}
+    items = blob.get("items")
+    if not isinstance(items, dict):
+        return {}
+    return {name: tuple(value) for name, value in items.items() if isinstance(value, list) and len(value) == 3}
+
+
+def _cache_save(path, signature, items, log):
+    """Пишем через временный файл: обрыв не должен оставить огрызок JSON."""
+    import json
+    import os
+
+    if not path:
+        return
+    payload = {"signature": signature, "items": {k: list(v) for k, v in items.items()}}
+    tmp = path + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+        os.replace(tmp, path)
+    except OSError as exc:
+        log("  кэш не сохранился (%s) — прогон продолжается" % exc)
+
+
+def canonicalize_and_categorize(raw_names, chunk_size=30, log=None, cache_path=None):
     """segment -> (canon|None, slug, product_name|None). One AI pass (chunked) + one retry.
     canon=None means noise (drop). Never raises."""
     import json
@@ -177,6 +235,7 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
     if not names:
         return out
 
+    canon_model = None
     try:
         from decouple import config
 
@@ -209,6 +268,14 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
     listing = ", ".join("%s (%s)" % (s, ru) for s, ru, _ in cats)
     products_listing = ", ".join(_product_names())
     system = _SYS_CANON_CAT.replace("__PRODUCTS__", products_listing).replace("__LISTING__", listing)
+
+    # MG_CANONCACHE: то, что уже разобрано на прошлых прогонах, заново не спрашиваем.
+    signature = _cache_signature(system, canon_model if client is not None else None)
+    cached = _cache_load(cache_path, signature, _log)
+    if cached:
+        hits = {name: cached[name] for name in names if name in cached}
+        out.update(hits)
+        _log("  из кэша: %d названий из %d" % (len(hits), len(names)))
 
     # MG_AIPING: отказы провайдера считаем и показываем.
     #
@@ -279,9 +346,14 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
                 else:
                     product = None
                 out[names[j]] = (canon if canon else None, slug, product)
+            # Кэш дописываем после КАЖДОЙ пачки, а не в конце прохода: обрыв на
+            # середине не должен стоить того, что уже разобрано и оплачено.
+            _cache_save(cache_path, signature, {**cached, **out}, _log)
 
     all_idx = list(range(len(names)))
-    _ask(all_idx, "canon")
+    todo = [j for j in all_idx if names[j] not in out]
+    if todo:
+        _ask(todo, "canon")
     missing = [j for j in all_idx if names[j] not in out]
     if missing:
         _ask(missing, "retry")
@@ -464,7 +536,16 @@ def rebuild_recipe_links(
     return len(rows)
 
 
-def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print, require_ai=True, chunk_size=30):
+def backfill(
+    force=False,
+    recipe_ids=None,
+    menu_id=None,
+    limit=None,
+    log=print,
+    require_ai=True,
+    chunk_size=30,
+    cache_path=None,
+):
     """Backfill links across recipes. Collects all distinct SEGMENTS, runs one AI
     canonicalization, builds product index once, then per-recipe rebuild."""
     from apps.menu.models import MenuItem
@@ -508,7 +589,11 @@ def backfill(force=False, recipe_ids=None, menu_id=None, limit=None, log=print, 
             timeout=config("AI_CANON_TIMEOUT", default=120.0, cast=float),
         )
     log(">>> AI canonicalization (chunked, slow provider) ...")
-    canon_map = canonicalize_and_categorize(sorted(segments), chunk_size=chunk_size, log=log) if segments else {}
+    canon_map = (
+        canonicalize_and_categorize(sorted(segments), chunk_size=chunk_size, log=log, cache_path=cache_path)
+        if segments
+        else {}
+    )
     log(">>> AI done; building links ...")
     prod_index = _product_index()
     cat_id_by_slug = {s: cid for s, _, cid in _allowed_categories()}
