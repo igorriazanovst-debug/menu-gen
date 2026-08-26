@@ -530,9 +530,18 @@ def rebuild_recipe_links(
                 )
             )
 
-    existing.delete()
-    if rows:
-        RecipeProduct.objects.bulk_create(rows)
+    # MG_LINKATOMIC: снос и запись — одной транзакцией.
+    #
+    # Между delete() и bulk_create() рецепт стоит вообще без связей. На dev это
+    # незаметно, а на проде полная пересборка идёт больше часа, и всё это время
+    # у кого-то может собираться список покупок: попади он в это окно — получит
+    # блюдо без ингредиентов и не поймёт, почему.
+    from django.db import transaction
+
+    with transaction.atomic():
+        existing.delete()
+        if rows:
+            RecipeProduct.objects.bulk_create(rows)
     return len(rows)
 
 
