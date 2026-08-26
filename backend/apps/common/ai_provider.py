@@ -197,7 +197,14 @@ class OpenAIAIClient(BaseAIClient):
 
         if resp.status_code != 200:
             raise AIRequestError(f"OpenAI HTTP {resp.status_code}: {resp.text[:500]}")
-        data = resp.json()
+
+        # Шлюз отдаёт HTML страницы ошибок (502 от балансировщика приходит и с
+        # кодом 200 в теле). Без этой ветки ValueError уходил наверх голым, без
+        # намёка на то, что именно вернулось.
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise AIRequestError(f"OpenAI: тело ответа не JSON: {resp.text[:300]}") from exc
 
         # MG_AIEMPTY: шлюз умеет отдать ошибку с кодом 200 в теле ответа
         # ({"error": {"message": "The operation was aborted", "code": 504}}).

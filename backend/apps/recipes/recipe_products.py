@@ -1,5 +1,6 @@
 # MG_RECIPELINK / MG_RECIPELINK2 — resolve recipe ingredients to rubricator products + categories.
 import re
+import time
 from decimal import Decimal, InvalidOperation
 
 
@@ -228,19 +229,36 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None):
             grp = indices[base : base + chunk_size]
             _log("  %s chunk %d/%d (segments %d)" % (phase, ci, nchunks, len(grp)))
             payload = json.dumps([{"i": j, "name": names[j]} for j in grp], ensure_ascii=False)
-            reason = ""
-            try:
-                raw = client.complete(prompt=payload, system=system, max_tokens=3000, temperature=0.0)
-                data = _parse_json_loose(raw)
-                if not isinstance(data, list):
-                    reason = "ответ не разобрался как список"
-            except Exception as exc:
-                data = None
-                reason = "%s: %s" % (type(exc).__name__, exc)
+
+            # MG_AIRETRY: шлюз срывается на разовых 502/504 и таймаутах — за три
+            # прогона так потерялось три пачки подряд, по 30 названий каждая.
+            # Раньше пачка при сбое просто пропадала: повторный проход подбирал
+            # её только один раз и тем же способом. Пробуем ту же пачку ещё
+            # дважды с паузой — сбои у шлюза короткие, и второй попытки хватает.
+            started = time.monotonic()
+            data, reason = None, ""
+            for attempt in range(1, 4):
+                reason = ""
+                try:
+                    raw = client.complete(prompt=payload, system=system, max_tokens=3000, temperature=0.0)
+                    data = _parse_json_loose(raw)
+                    if not isinstance(data, list):
+                        reason = "ответ не разобрался как список"
+                except Exception as exc:
+                    data = None
+                    reason = "%s: %s" % (type(exc).__name__, exc)
+                if not reason:
+                    break
+                if attempt < 3:
+                    _log("    попытка %d не удалась (%s), повтор через %d с" % (attempt, reason, 5 * attempt))
+                    time.sleep(5 * attempt)
+
             if reason:
                 failures["chunks"] += 1
                 failures["first"] = failures["first"] or reason
+                _log("    пачка потеряна: %s" % reason)
                 continue
+            _log("    ок за %.1f с" % (time.monotonic() - started))
             for d in data:
                 if not isinstance(d, dict) or "i" not in d:
                     continue
