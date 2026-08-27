@@ -134,6 +134,11 @@ class _DiaryScreenState extends State<DiaryScreen> {
                         ));
                   },
                 ),
+                _WeightCard( // MG_MOBWEIGHT
+                  api: context.read<DiaryBloc>().apiClient,
+                  date: DateFormat('yyyy-MM-dd').format(_selected),
+                  memberId: _memberId,
+                ),
                 Expanded(child: _buildBody()),
               ],
             ),
@@ -1181,6 +1186,216 @@ class _WaterCardState extends State<_WaterCard> {
                     },
                     child: const Text('Задать'),
                   ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// MG_MOBWEIGHT: вес за день — рядом с водой, тем же способом.
+//
+// В вебе вес пишется давно (WeightCard), в приложении его не было вовсе:
+// пользователь мог вести дневник питания, но не мог отметить взвешивание, ради
+// которого дневник обычно и заводят. Бэкенд готов: GET/POST /diary/weight/,
+// повторная запись за ту же дату правит замер, а не добавляет вторую точку.
+class _WeightCard extends StatefulWidget {
+  final ApiClient api;
+  final String date;
+  final int? memberId;
+  const _WeightCard({required this.api, required this.date, this.memberId});
+  @override
+  State<_WeightCard> createState() => _WeightCardState();
+}
+
+class _WeightCardState extends State<_WeightCard> {
+  final _ctrl = TextEditingController();
+  List<Map<String, dynamic>> _points = const [];
+  bool _expanded = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _WeightCard old) {
+    super.didUpdateWidget(old);
+    // Сменили день или участника — показывать надо их замер, а не прежний.
+    if (old.date != widget.date || old.memberId != widget.memberId) {
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final params = <String, String>{'days': '90'};
+      if (widget.memberId != null) params['member_id'] = '${widget.memberId}';
+      final r = await widget.api.get('/diary/weight/', params: params);
+      if (!mounted) return;
+      final rows = (r is List ? r : const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      setState(() {
+        _points = rows;
+        _ctrl.text = '${_today()?['weight_kg'] ?? ''}';
+      });
+    } catch (_) {
+      // Замеров может не быть вовсе — это не ошибка, карточка просто пустая.
+      if (mounted) setState(() => _points = const []);
+    }
+  }
+
+  Map<String, dynamic>? _today() {
+    for (final p in _points) {
+      if (p['date'] == widget.date) return p;
+    }
+    return null;
+  }
+
+  /// Насколько изменился вес между первым и последним замером за период.
+  double? _delta() {
+    if (_points.length < 2) return null;
+    final a = double.tryParse('${_points.first['weight_kg']}');
+    final b = double.tryParse('${_points.last['weight_kg']}');
+    if (a == null || b == null) return null;
+    return b - a;
+  }
+
+  Future<void> _save() async {
+    final raw = _ctrl.text.trim().replaceAll(',', '.');
+    final value = double.tryParse(raw);
+    if (value == null || value <= 0 || value > 500) {
+      setState(() => _error = 'Вес должен быть числом от 0 до 500 кг.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      // ApiClient.post не принимает query-параметры, поэтому участник уходит
+      // прямо в путь: бэкенд читает member_id именно из строки запроса.
+      final path = widget.memberId == null
+          ? '/diary/weight/'
+          : '/diary/weight/?member_id=${widget.memberId}';
+      await widget.api.post(path, data: {'date': widget.date, 'weight_kg': raw, 'note': ''});
+      await _load();
+      if (mounted) FocusScope.of(context).unfocus();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Не удалось сохранить вес.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final today = _today();
+    final delta = _delta();
+    final recent = _points.reversed.take(5).toList();
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  const Text('⚖️', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  const Text('Вес', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      today != null ? '${today['weight_kg']} кг' : 'не записан',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: today != null ? null : Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                  if (delta != null)
+                    Text(
+                      '${delta > 0 ? '+' : delta < 0 ? '−' : ''}${delta.abs().toStringAsFixed(1)} кг',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                  const SizedBox(width: 2),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.0 : -0.25,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(Icons.keyboard_arrow_down, size: 20),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 90,
+                        child: TextField(
+                          controller: _ctrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(hintText: 'кг', isDense: true),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: _busy ? null : _save,
+                        child: const Text('Записать'),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'за ${widget.date}',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    ),
+                  if (recent.isNotEmpty) ...[
+                    const Divider(height: 16),
+                    for (final p in recent)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 1),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('${p['date']}',
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                            Text('${p['weight_kg']} кг', style: const TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),
