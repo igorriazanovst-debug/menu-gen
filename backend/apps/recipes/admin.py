@@ -1,6 +1,5 @@
 # MG_RA002_cuisine_admin
 from django.contrib import admin
-from django.utils.translation import gettext_lazy as _
 
 from apps.common.search import AdminSearchMixin  # MG_YOSEARCH/MG_MORPHSEARCH
 
@@ -288,7 +287,8 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
 
             self.message_user(
                 request,
-                "Состав изменён — связи с продуктами пересобираются в фоне. Через минуту обновите страницу, чтобы увидеть результат.",
+                "Состав изменён — связи с продуктами пересобираются в фоне. "
+                "Через минуту обновите страницу, чтобы увидеть результат.",
                 messages.INFO,
             )
 
@@ -334,7 +334,7 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
         "country",
     )
     search_fields = ("title", "legacy_id")
-    raw_id_fields = ("author",)
+    autocomplete_fields = ("author",)
     readonly_fields = ("legacy_id", "created_at", "updated_at")
     actions = ["publish", "unpublish"]
     save_on_top = True
@@ -483,7 +483,7 @@ class RecipeAdmin(AdminSearchMixin, admin.ModelAdmin):
 class RecipeAuthorAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "status", "applied_at", "approved_at")
     list_filter = ("status",)
-    raw_id_fields = ("user",)
+    autocomplete_fields = ("user",)
     actions = ["approve", "reject"]
 
     @admin.action(description="Одобрить заявки")
@@ -508,7 +508,8 @@ class RecipeAuthorAdmin(admin.ModelAdmin):
 class RecipeFavoriteAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "recipe", "is_favorite", "created_at")
     list_filter = ("is_favorite",)
-    raw_id_fields = ("user", "recipe")
+    autocomplete_fields = ("user",)
+    raw_id_fields = ("recipe",)
     search_fields = ("recipe__title", "user__email", "user__name")
 
 

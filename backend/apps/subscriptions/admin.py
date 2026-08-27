@@ -117,14 +117,14 @@ class SubscriptionAdmin(admin.ModelAdmin):
     list_display = ("id", "family", "plan", "status", "started_at", "expires_at", "auto_renew")
     list_filter = ("status", "plan")
     search_fields = ("family__name", "family__owner__email")
-    raw_id_fields = ("family",)
+    autocomplete_fields = ("family",)
 
 
 @admin.register(MenuGenerationCounter)
 class MenuGenerationCounterAdmin(admin.ModelAdmin):
     list_display = ("id", "family", "period_start", "count", "updated_at")
     search_fields = ("family__name", "family__owner__email")
-    raw_id_fields = ("family",)
+    autocomplete_fields = ("family",)
 
 
 class PromoBatchForm(forms.Form):
@@ -230,7 +230,8 @@ class PromoRedemptionAdmin(admin.ModelAdmin):
     list_display = ("id", "promo", "family", "user", "subscription", "redeemed_at", "revoke_mode", "revoked_at")
     list_filter = ("revoke_mode",)
     search_fields = ("promo__code", "family__name", "user__email")
-    raw_id_fields = ("promo", "family", "user", "subscription")
+    autocomplete_fields = ("family", "user")
+    raw_id_fields = ("promo", "subscription")
     readonly_fields = ("redeemed_at", "revoked_at", "revoke_mode")
     actions = ("action_revoke_free", "action_revoke_block")
 

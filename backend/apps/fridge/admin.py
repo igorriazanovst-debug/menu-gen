@@ -92,7 +92,8 @@ class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
     list_display_links = ("name",)
     search_fields = ("name", "barcode", "owner__email", "owner__name", "owner_family__name")
     list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "source", "category")
-    raw_id_fields = ("owner", "owner_family", "category_fk")
+    autocomplete_fields = ("owner", "owner_family")
+    raw_id_fields = ("category_fk",)
     readonly_fields = ("image_preview",)
     actions = ("fetch_images_fill", "fetch_images_overwrite", "clear_images")
 
@@ -184,4 +185,5 @@ class FridgeItemAdmin(AdminSearchMixin, admin.ModelAdmin):
     list_display = ("id", "family", "name", "quantity", "unit", "expiry_date", "is_deleted")
     list_filter = ("is_deleted",)
     search_fields = ("name", "family__name")
-    raw_id_fields = ("family", "product")
+    autocomplete_fields = ("family",)
+    raw_id_fields = ("product",)

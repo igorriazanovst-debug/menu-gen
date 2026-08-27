@@ -14,7 +14,7 @@ from .models import (
 class SpecialistAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "specialist_type", "is_verified", "verified_at")
     list_filter = ("specialist_type", "is_verified")
-    raw_id_fields = ("user",)
+    autocomplete_fields = ("user",)
     actions = ["verify"]
 
     @admin.action(description="Верифицировать специалистов")

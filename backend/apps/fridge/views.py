@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -309,8 +309,24 @@ class ProductSearchView(generics.ListAPIView):
         if qn:
             cond |= Q(aliases__alias_norm__icontains=qn)
         # MG_PRODOWN: только системные + свои продукты.
+        #
+        # MG_OWNFIRST: свои — первыми. Выдача обрезается двадцатью записями, а
+        # каталог по частому слову даёт их с запасом: продукт, заведённый
+        # пользователем («Рыба масляная копчёная»), сортировался по алфавиту
+        # наравне с каталожными и в срез не попадал. На экране «Мои продукты»
+        # он при этом виден — отсюда и жалоба «добавил, а найти не могу».
         return (
-            Product.objects.filter(cond).filter(_visible_products_q(self.request.user)).distinct().order_by("name")[:20]
+            Product.objects.filter(cond)
+            .filter(_visible_products_q(self.request.user))
+            .distinct()
+            .annotate(
+                _own=Case(
+                    When(owner_family__isnull=False, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by("-_own", "name")[:20]
         )
 
 
