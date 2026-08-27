@@ -20,7 +20,15 @@ def category(db):
 
 @pytest.fixture
 def product(db, category):
-    return Product.objects.create(name="Помидоры", category_fk=category)
+    # «Помидоры» тоже засеяны миграцией 0004. Импорт связывает позицию рецепта
+    # по ИМЕНИ продукта, поэтому свой второй экземпляр он бы проигнорировал и
+    # взял посевной — тест падал на сравнении идентификаторов (21 против 1054).
+    # Берём ту же запись, что найдёт импорт, и приводим ей категорию к нашей.
+    obj, _ = Product.objects.get_or_create(name="Помидоры", defaults={"category_fk": category})
+    if obj.category_fk_id != category.id:
+        obj.category_fk = category
+        obj.save(update_fields=["category_fk"])
+    return obj
 
 
 def make_recipe(**kwargs) -> Recipe:
