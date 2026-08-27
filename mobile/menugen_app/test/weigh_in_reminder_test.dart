@@ -8,6 +8,10 @@
 // Сравниваем моменты через isAtSameMomentAs, а не через ==: оператор равенства
 // у DateTime учитывает ещё и признак «это UTC», поэтому 09:00Z и местные 09:00
 // он считает разными значениями, даже когда машина живёт по UTC.
+//
+// Имя вспомогательной функции — латиницей: Dart не пускает не-ASCII в
+// идентификаторы, и весь файл перестаёт компилироваться. В названиях тестов и
+// комментариях кириллица допустима — это строки.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:menugen_app/core/notifications/weigh_in_reminder.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -15,11 +19,11 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 void main() {
   setUpAll(tzdata.initializeTimeZones);
 
-  void ожидаемМомент(DateTime получено, DateTime ожидание) {
+  void expectSameMoment(DateTime actual, DateTime expected) {
     expect(
-      получено.isAtSameMomentAs(ожидание),
+      actual.isAtSameMomentAs(expected),
       isTrue,
-      reason: 'ожидали $ожидание, получили $получено',
+      reason: 'ожидали $expected, получили $actual',
     );
   }
 
@@ -29,7 +33,7 @@ void main() {
 
       final next = WeighInReminder.nextOccurrence(9, 0, now: now);
 
-      ожидаемМомент(next, DateTime(2026, 8, 27, 9, 0));
+      expectSameMoment(next, DateTime(2026, 8, 27, 9, 0));
     });
 
     test('завтра, если время уже прошло', () {
@@ -37,7 +41,7 @@ void main() {
 
       final next = WeighInReminder.nextOccurrence(9, 0, now: now);
 
-      ожидаемМомент(next, DateTime(2026, 8, 28, 9, 0));
+      expectSameMoment(next, DateTime(2026, 8, 28, 9, 0));
     });
 
     test('минута в минуту считается прошедшей', () {
@@ -47,7 +51,7 @@ void main() {
 
       final next = WeighInReminder.nextOccurrence(9, 0, now: now);
 
-      ожидаемМомент(next, DateTime(2026, 8, 28, 9, 0));
+      expectSameMoment(next, DateTime(2026, 8, 28, 9, 0));
     });
 
     test('переход через полночь считается верно', () {
@@ -55,7 +59,7 @@ void main() {
 
       final next = WeighInReminder.nextOccurrence(0, 30, now: now);
 
-      ожидаемМомент(next, DateTime(2026, 8, 28, 0, 30));
+      expectSameMoment(next, DateTime(2026, 8, 28, 0, 30));
     });
 
     test('планируется в UTC', () {
