@@ -100,6 +100,9 @@ class WeighInReminder {
       // требуют отдельного разрешения, а магазин спрашивает, зачем оно
       // приложению. Напоминанию взвеситься минута туда-сюда безразлична.
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      // Момент показа мы уже посчитали сами и передаём в UTC, поэтому его надо
+      // понимать буквально, а не пересчитывать из «времени на стене».
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
