@@ -98,13 +98,21 @@ class TestMG505CheatMealIntegration:
     """MG-505: cheat-meal слот появляется/не появляется по interval."""
 
     def test_cheat_meal_appears_when_interval_reached(self, client, rich_pool):
-        # interval=2, last_cheat=сегодня-3 → cheat должен появиться на день 0
+        # interval=2, last_cheat=начало недели-3 → cheat должен появиться на день 0.
+        #
+        # Отсчёт ведётся от ПОНЕДЕЛЬНИКА, а не от сегодня: генератор (MG_610)
+        # выравнивает start_date на начало недели, и день cheat-meal считается
+        # уже от сдвинутой даты. Раньше тест брал «сегодня-3», и дельта, которую
+        # видит генератор, получалась равной 3 минус номер дня недели — то есть
+        # тест проходил только в понедельник и вторник, а с середины недели
+        # падал. Ошибка была в тесте, поведение генератора не менялось.
         today = datetime.date.today()
+        monday = today - datetime.timedelta(days=today.weekday())
         u = _mk_user_with_profile(
             "cheat-yes@x.local",
             "CheatYes",
             cheat_meal_interval=2,
-            last_cheat_meal_date=today - datetime.timedelta(days=3),
+            last_cheat_meal_date=monday - datetime.timedelta(days=3),
         )
         family, _ = _mk_family(u)
         client.force_authenticate(u)

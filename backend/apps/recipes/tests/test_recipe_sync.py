@@ -11,7 +11,11 @@ from apps.recipes.models import Recipe, RecipeProduct
 
 @pytest.fixture
 def category(db):
-    return ProductCategory.objects.create(slug="vegetables", name_ru="Овощи")
+    # get_or_create, а не create: миграция 0004_seed_categories_and_products
+    # засевает «vegetables» в каждую тестовую базу, и создание второй такой
+    # категории роняло весь файл на unique-ограничении слага.
+    obj, _ = ProductCategory.objects.get_or_create(slug="vegetables", defaults={"name_ru": "Овощи"})
+    return obj
 
 
 @pytest.fixture

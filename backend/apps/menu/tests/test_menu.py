@@ -250,7 +250,7 @@ class TestShoppingList:
         client.get(reverse("menu-shopping-list", args=[menu_id]))
         item = ShoppingItem.objects.filter(shopping_list__menu_id=menu_id).first()
         if item:
-            resp = client.patch(reverse("shopping-item-toggle", args=[menu_id, item.id]))
+            resp = client.patch(reverse("menu-shopping-item-toggle", args=[menu_id, item.id]))
             assert resp.status_code == 200
             item.refresh_from_db()
             assert item.is_purchased is True

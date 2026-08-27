@@ -114,6 +114,10 @@ class TestProductSearch:
         return [p["name"] for p in rows]
 
     def test_продукт_с_ё_находится_без_ё(self, client):
+        # Миграция 0004_seed_categories_and_products засевает «Свёклу» в каждую
+        # тестовую базу. Своя такая же давала вторую строку, и строгое
+        # сравнение падало — хотя проверяем мы здесь не засев, а замену ё на е.
+        Product.objects.filter(name__icontains="свёкла").delete()
         Product.objects.create(name="Свёкла")
 
         assert self._names(client, "свекла") == ["Свёкла"]

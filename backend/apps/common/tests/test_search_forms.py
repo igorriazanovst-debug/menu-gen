@@ -133,6 +133,10 @@ class TestRecipeSearchForms:
 @pytest.mark.django_db
 class TestProductSearchForms:
     def test_продукт_находится_в_другой_форме(self, client):
+        # Засев каталога держит «Яйца куриные», и запрос «яйца» находил обе
+        # записи. Проверяем здесь поиск по другой грамматической форме, а не
+        # содержимое справочника, — поэтому посевные совпадения убираем.
+        Product.objects.filter(name__icontains="яйц").delete()
         Product.objects.create(name="Яйцо куриное")
 
         resp = client.get(reverse("product-search"), {"q": "яйца"})

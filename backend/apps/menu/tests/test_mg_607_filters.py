@@ -180,14 +180,27 @@ class TestExcludeAllergensOverride:
     def test_override_with_empty_list_disables_allergy_filter(self, setup_family, client):
         """exclude_allergens=[] — полностью выключает фильтр по аллергиям."""
         user, _ = setup_family
-        Recipe.objects.filter(country="Россия", food_group="protein").delete()
-        for i in range(3):
-            _mk_recipe(
-                f"milk-soup-{i}",
-                "Россия",
-                "protein",
-                ingredients=[{"name": "молоко цельное", "quantity": "1", "unit": "стакан"}],
-            )
+        # Весь российский пул — молочный, во всех пищевых группах.
+        #
+        # Раньше тест удалял белковые рецепты, заводил три молочных и требовал,
+        # чтобы хотя бы один попал в меню. Но попадёт ли — решал генератор: на
+        # однодневном меню он мог не занять белковую роль вовсе, и в выдаче
+        # оставались одни овощи с фруктами. Тест краснел примерно раз из пяти
+        # на одной и той же команде, ничего не сообщая про сам фильтр.
+        #
+        # Молоко во всех группах убирает лотерею: какую бы роль генератор ни
+        # занял, российский рецепт будет молочным. А зубы у проверки такие: с
+        # работающим фильтром молочные рецепты обходятся стороной, и генератор
+        # добирает из Италии с Японией — тогда ни одного «milk-» в меню нет.
+        Recipe.objects.filter(country="Россия").delete()
+        for group in ("protein", "grain", "vegetable", "fruit", "dairy"):
+            for i in range(5):
+                _mk_recipe(
+                    f"milk-{group}-{i}",
+                    "Россия",
+                    group,
+                    ingredients=[{"name": "молоко цельное", "quantity": "1", "unit": "стакан"}],
+                )
         client.force_authenticate(user)
         resp = client.post(
             reverse("menu-generate"),
@@ -196,7 +209,7 @@ class TestExcludeAllergensOverride:
         )
         assert resp.status_code == 201, resp.data
         titles = [it["recipe"]["title"] for it in resp.data["items"]]
-        assert any(t.startswith("milk-soup") for t in titles), titles
+        assert any(t.startswith("milk-") for t in titles), titles
 
     def test_override_replaces_profile_allergens(self, setup_family, client):
         """exclude_allergens=['рыба'] — заменяет 'молоко': молочный допущен, рыбный исключён."""
@@ -255,14 +268,17 @@ class TestExcludeDislikedOverride:
     def test_override_empty_disables_disliked_filter(self, setup_family, client):
         """exclude_disliked=[] — выключает фильтр disliked."""
         user, _ = setup_family
-        Recipe.objects.filter(country="Россия", food_group="vegetable").delete()
-        for i in range(3):
-            _mk_recipe(
-                f"onion-{i}",
-                "Россия",
-                "vegetable",
-                ingredients=[{"name": "лук репчатый", "quantity": "1", "unit": "шт"}],
-            )
+        # Весь российский пул — луковый, во всех группах. Подробнее о том,
+        # почему так, — в комментарии к тесту аллергий выше.
+        Recipe.objects.filter(country="Россия").delete()
+        for group in ("protein", "grain", "vegetable", "fruit", "dairy"):
+            for i in range(5):
+                _mk_recipe(
+                    f"onion-{group}-{i}",
+                    "Россия",
+                    group,
+                    ingredients=[{"name": "лук репчатый", "quantity": "1", "unit": "шт"}],
+                )
         client.force_authenticate(user)
         resp = client.post(
             reverse("menu-generate"),

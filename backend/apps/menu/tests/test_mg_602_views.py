@@ -295,12 +295,14 @@ class TestMenuDelete:
         assert not Menu.objects.filter(id=menu_id).exists()
         assert DeletedMenu.objects.filter(family=fam).count() == 1
 
-    def test_delete_no_family_403_premium_gate(self, client, db):
-        # MG-606.C: нет семьи → 403 от Premium gate.
+    def test_delete_no_family_404(self, client, db):
+        # Раньше здесь ждали 403 от Premium gate. Удаление своих меню открыли
+        # бесплатным семьям (freemium), гейт с ручки сняли — и человеку без
+        # семьи отвечает уже сам вид: 404, потому что удалять нечего.
         u = _mk_user(email="dnf@x.com", name="DNF")
         client.force_authenticate(u)
         resp = client.delete(reverse("menu-delete", args=[999]))
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     def test_delete_menu_not_found(self, client, setup):
         user, _, _ = setup
@@ -331,12 +333,13 @@ class TestMenuDelete:
 # ╚═════════════════════════════════════════════════════════════════════════╝
 @pytest.mark.django_db
 class TestDeletedAndRestore:
-    def test_quarantine_list_no_family_403_premium_gate(self, client, db):
-        # MG-606.C: нет семьи → 403 от Premium gate.
+    def test_quarantine_list_no_family_404(self, client, db):
+        # Карантин своих меню тоже открыт бесплатным семьям — см. комментарий
+        # у test_delete_no_family_404.
         u = _mk_user(email="qnf@x.com", name="QNF")
         client.force_authenticate(u)
         resp = client.get(reverse("menu-quarantine"))
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     def test_quarantine_list_success(self, client, setup):
         user, _, _ = setup
@@ -347,12 +350,13 @@ class TestDeletedAndRestore:
         assert resp.status_code == 200
         assert len(resp.data) == 1
 
-    def test_restore_no_family_403_premium_gate(self, client, db):
-        # MG-606.C: нет семьи → 403 от Premium gate.
+    def test_restore_no_family_404(self, client, db):
+        # Восстановление своих меню тоже открыто бесплатным семьям — см.
+        # комментарий у test_delete_no_family_404.
         u = _mk_user(email="rnf@x.com", name="RNF")
         client.force_authenticate(u)
         resp = client.post(reverse("menu-restore", args=[999]))
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     def test_restore_deleted_not_found(self, client, setup):
         user, _, _ = setup
@@ -475,7 +479,11 @@ class TestMenuItemSwap:
         resp = client.patch(reverse("menu-item-swap", args=[menu_id, item_id]), {"recipe_id": 99999}, format="json")
         assert resp.status_code == 404
 
-    def test_swap_different_food_group_400(self, client, db):
+    def test_swap_different_food_group_warns(self, client, db):
+        # Раньше замена на другую пищевую группу отклонялась с 400. MG_SWAPFREE
+        # сделал это предупреждением: рецепт виден в разделе «Рецепты», и отказ
+        # при замене люди читали как поломку. Проверяем, что замена проходит и
+        # что о смене группы всё-таки сказано.
         u = _mk_user(email="fg@x.com", name="FG")
         fam, member = _mk_family(u)
         recipe_a = _mk_recipe(title="Овощи", food_group="vegetable")
@@ -488,7 +496,8 @@ class TestMenuItemSwap:
         resp = client.patch(
             reverse("menu-item-swap", args=[menu.id, item.id]), {"recipe_id": recipe_b.id}, format="json"
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        assert resp.data["food_group_warning"] is True
 
     def test_swap_calorie_min_warning(self, client, db):
         u = _mk_user(email="cm@x.com", name="CM")
@@ -639,13 +648,13 @@ class TestShopping:
         # MG-606.C: нет семьи → 403 от Premium gate.
         u = _mk_user(email="tnf@x.com", name="TNF")
         client.force_authenticate(u)
-        resp = client.patch(reverse("shopping-item-toggle", args=[1, 1]))
+        resp = client.patch(reverse("menu-shopping-item-toggle", args=[1, 1]))
         assert resp.status_code == 403
 
     def test_toggle_item_not_found(self, client, setup):
         user, _, _ = setup
         client.force_authenticate(user)
-        resp = client.patch(reverse("shopping-item-toggle", args=[99999, 99999]))
+        resp = client.patch(reverse("menu-shopping-item-toggle", args=[99999, 99999]))
         assert resp.status_code == 404
 
     def test_toggle_item_success_on_off(self, client, setup):
@@ -657,11 +666,11 @@ class TestShopping:
         assert resp.data["items"], "shopping list пустой"
         item_id = resp.data["items"][0]["id"]
         # toggle ON
-        r1 = client.patch(reverse("shopping-item-toggle", args=[menu_id, item_id]))
+        r1 = client.patch(reverse("menu-shopping-item-toggle", args=[menu_id, item_id]))
         assert r1.status_code == 200
         assert r1.data["is_purchased"] is True
         # toggle OFF
-        r2 = client.patch(reverse("shopping-item-toggle", args=[menu_id, item_id]))
+        r2 = client.patch(reverse("menu-shopping-item-toggle", args=[menu_id, item_id]))
         assert r2.status_code == 200
         assert r2.data["is_purchased"] is False
 
