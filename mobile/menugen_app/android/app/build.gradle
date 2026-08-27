@@ -59,6 +59,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // MG_WEIGHREMIND: flutter_local_notifications планирует показ через
+        // java.time, а он появился только в API 26. Без десугаринга сборка
+        // падает на minSdk 21 — это требование самого плагина, не наша прихоть.
+        coreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -122,4 +126,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // MG_WEIGHREMIND: см. coreLibraryDesugaringEnabled выше.
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.3"
 }

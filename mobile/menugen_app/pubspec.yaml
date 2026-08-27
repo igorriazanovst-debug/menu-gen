@@ -47,6 +47,10 @@ dependencies:
   mobile_scanner: ^5.2.3
   image_picker: ^1.1.2
   permission_handler: ^11.3.1
+  # MG_WEIGHREMIND: местные уведомления (ежедневное напоминание взвеситься).
+  # timezone нужен самому плагину: он планирует показ по TZDateTime.
+  flutter_local_notifications: ^17.2.3
+  timezone: ^0.9.4
   shimmer: ^3.0.0
   flutter_svg: ^2.0.10+1
   intl: ^0.19.0

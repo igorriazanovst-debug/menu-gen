@@ -5,6 +5,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // MG_CACHE
 
+import 'core/notifications/weigh_in_reminder.dart'; // MG_WEIGHREMIND
+
 import 'core/api/api_client.dart';
 // OFFLINE: тип интерфейса
 import 'core/update/update_service.dart'; // MG_SELFUPDATE
@@ -78,6 +80,11 @@ void main() async {
 
   // MG_CACHE: lightweight offline cache for shopping lists/details.
   final shoppingCache = ShoppingCache(prefs);
+
+  // MG_WEIGHREMIND: местное напоминание взвеситься. Перепланируем при каждом
+  // запуске: после перезагрузки телефона Android снимает отложенные показы, и
+  // без этого напоминание молча пропало бы.
+  await WeighInReminder(prefs: prefs).init();
 
   // MG_SKIN: cubit выбранного скина (персист + синк в аккаунт).
   final themeCubit = ThemeCubit(prefs: prefs, apiClient: apiClient);

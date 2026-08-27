@@ -9,6 +9,15 @@
          Разрешение действует только для сборки с сайта: магазинную собираем
          без апдейтера (см. android_release.yml). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- MG_WEIGHREMIND: ежедневное напоминание взвеситься.
+         POST_NOTIFICATIONS — с Android 13 без него уведомления не показываются
+         вовсе, причём молча. RECEIVE_BOOT_COMPLETED — чтобы напоминание пережило
+         перезагрузку: система снимает отложенные показы, и плагин ставит их
+         заново по своему приёмнику. Разрешение на точные будильники намеренно
+         НЕ берём: оно требует объяснения магазину, а напоминанию взвеситься
+         минута туда-сюда безразлична. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- MG_TGLINK: без этого блока подтверждение телефона упиралось в «не удалось
          открыть мессенджер».
 

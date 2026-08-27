@@ -16,6 +16,7 @@ import '../../features/legal/screens/legal_document_screen.dart'; // MG_LEGAL
 import '../../features/legal/screens/legal_documents_screen.dart'; // MG_LEGAL
 import '../../features/fridge/screens/fridge_item_detail_screen.dart';
 import '../../features/menu/screens/menu_screen.dart';
+import '../../features/profile/screens/notifications_screen.dart'; // MG_WEIGHREMIND
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/kbju_calculator_screen.dart'; // MG_207_V_route
 import '../../features/recipes/screens/recipe_detail_screen.dart';
@@ -68,6 +69,11 @@ class AppRouter {
           builder: (_, __) => PhoneRegisterScreen(apiClient: apiClient),
         ),
         GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),
+        // MG_WEIGHREMIND: настройка ежедневного напоминания взвеситься.
+        GoRoute(
+          path: '/notifications',
+          builder: (_, __) => const NotificationsScreen(),
+        ),
         // MG_LEGAL: список документов и просмотр одного из них. Данные из списка
         // передаются через extra, при прямом переходе экран грузит их сам.
         GoRoute(

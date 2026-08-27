@@ -474,7 +474,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   leading: const Icon(Icons.notifications_outlined),
                   title: const Text('Уведомления'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {},
+                  onTap: () => context.push('/notifications'), // MG_WEIGHREMIND
                 ),
                 // MG_LEGAL: оферта, политика обработки ПД, реквизиты.
                 ListTile(
