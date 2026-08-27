@@ -170,9 +170,7 @@ class TestWeight:
     def test_последний_замер_попадает_в_профиль(self, client_family):
         _, user, _ = client_family
 
-        api(user).post(
-            reverse("diary-weight"), {"date": str(timezone.localdate()), "weight_kg": "78.0"}, format="json"
-        )
+        api(user).post(reverse("diary-weight"), {"date": str(timezone.localdate()), "weight_kg": "78.0"}, format="json")
 
         user.profile.refresh_from_db()
         assert user.profile.weight_kg == Decimal("78.0")

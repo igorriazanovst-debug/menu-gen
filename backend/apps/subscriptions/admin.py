@@ -6,16 +6,8 @@ from django.shortcuts import render
 from django.urls import path
 from django.utils import timezone
 
-from .models import (
-    MenuGenerationCounter,
-    PlanOffer,
-    PromoCode,
-    PromoRedemption,
-    Subscription,
-    SubscriptionPlan,
-)
+from .models import MenuGenerationCounter, PlanOffer, PromoCode, PromoRedemption, Subscription, SubscriptionPlan
 from .promo import generate_unique_codes, revoke_code, revoke_redemption
-
 
 # MG_PLANFORM: возможности тарифа — галочками, а не JSON руками.
 #

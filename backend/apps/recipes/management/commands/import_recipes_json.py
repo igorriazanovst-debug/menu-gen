@@ -231,9 +231,7 @@ class Command(BaseCommand):
                 stats["failed"] += 1
 
         self.stdout.write(
-            "\n"
-            + "=" * 60
-            + f"\nИтог [{mode}]:\n"
+            "\n" + "=" * 60 + f"\nИтог [{mode}]:\n"
             f"  Создано рецептов:   {stats['created']}\n"
             f"  Обновлено:          {stats['updated']}\n"
             f"  Пропущено (есть):   {stats['skipped']}\n"

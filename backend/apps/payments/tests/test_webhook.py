@@ -40,9 +40,7 @@ def setup(db, settings):
         code="premium",
         defaults={"name": "Premium", "price": Decimal("499.00"), "period": "month", "is_active": True},
     )
-    offer = PlanOffer.objects.create(
-        plan=plan, code="premium_month", title="Месяц", months=1, price=Decimal("499.00")
-    )
+    offer = PlanOffer.objects.create(plan=plan, code="premium_month", title="Месяц", months=1, price=Decimal("499.00"))
     return user, family, plan, offer
 
 
@@ -89,8 +87,6 @@ def test_webhook_unknown_payment_is_not_an_error(client, setup):
 
 @pytest.mark.django_db
 def test_webhook_broken_body(client, setup):
-    resp = client.post(
-        reverse("payment-webhook-yookassa"), data=b"{not json", content_type="application/json"
-    )
+    resp = client.post(reverse("payment-webhook-yookassa"), data=b"{not json", content_type="application/json")
 
     assert resp.status_code == 400

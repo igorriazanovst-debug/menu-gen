@@ -249,7 +249,8 @@ class _IngredientsWidget(forms.Widget):
 
         return (
             "<tr>"
-            '<td style="padding:2px;"><input type="text" name="{n}_name" value="{nm}" style="width:100%;" class="mg-ing-name" list="mg-ing-options" autocomplete="off"></td>'
+            '<td style="padding:2px;"><input type="text" name="{n}_name" value="{nm}" style="width:100%;" '
+            'class="mg-ing-name" list="mg-ing-options" autocomplete="off"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_quantity" value="{q}" style="width:100%;"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_unit" value="{u}" style="width:100%;"></td>'
             '<td style="padding:2px;"><input type="text" name="{n}_grams" value="{g}" style="width:100%;"></td>'

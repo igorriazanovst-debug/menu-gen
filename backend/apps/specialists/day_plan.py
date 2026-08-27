@@ -95,8 +95,7 @@ def day_plan(family, day=None) -> dict:
         meals.setdefault(row["slot"], []).append(row)
 
     stock = {
-        (fi.product_id or fi.name.strip().lower())
-        for fi in FridgeItem.objects.filter(family=family, is_deleted=False)
+        (fi.product_id or fi.name.strip().lower()) for fi in FridgeItem.objects.filter(family=family, is_deleted=False)
     }
     missing = _missing_products(dishes.values(), stock)
 
@@ -124,9 +123,7 @@ def _missing_products(dishes, stock) -> list[dict]:
 
     seen = {}
     for link in (
-        RecipeProduct.objects.filter(recipe_id__in=recipe_ids)
-        .select_related("product", "recipe")
-        .order_by("name_raw")
+        RecipeProduct.objects.filter(recipe_id__in=recipe_ids).select_related("product", "recipe").order_by("name_raw")
     ):
         key = link.product_id or (link.name_canonical or link.name_raw).strip().lower()
         if not key or key in stock or key in seen:

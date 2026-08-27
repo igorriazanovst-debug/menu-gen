@@ -117,9 +117,7 @@ def _check_amount(payment: Payment, remote: dict) -> None:
 
 
 def mark_cancelled(payment_id: str) -> None:
-    Payment.objects.filter(payment_id=payment_id, status=Payment.Status.PENDING).update(
-        status=Payment.Status.CANCELLED
-    )
+    Payment.objects.filter(payment_id=payment_id, status=Payment.Status.PENDING).update(status=Payment.Status.CANCELLED)
 
 
 def mark_refunded(payment_id: str) -> None:

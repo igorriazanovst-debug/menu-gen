@@ -27,9 +27,7 @@ from apps.users.models import User
 
 @pytest.fixture
 def dairy(db):
-    cat, _ = ProductCategory.objects.get_or_create(
-        slug="dairy", defaults={"name_ru": "Молочные продукты"}
-    )
+    cat, _ = ProductCategory.objects.get_or_create(slug="dairy", defaults={"name_ru": "Молочные продукты"})
     cat.shelf_life_days = 5
     cat.save(update_fields=["shelf_life_days"])
     return cat
@@ -106,9 +104,7 @@ class TestTransfer:
         sl, item = purchased(fam, category_fk=dairy)
         mine = str(date.today() + timedelta(days=2))
 
-        api(head).post(
-            reverse("shopping-add-to-fridge", args=[sl.id]), {"expiry": {str(item.id): mine}}, format="json"
-        )
+        api(head).post(reverse("shopping-add-to-fridge", args=[sl.id]), {"expiry": {str(item.id): mine}}, format="json")
 
         assert str(FridgeItem.objects.get(family=fam).expiry_date) == mine
 
@@ -117,9 +113,7 @@ class TestTransfer:
         fam, head = family
         sl, item = purchased(fam, category_fk=dairy)
 
-        api(head).post(
-            reverse("shopping-add-to-fridge", args=[sl.id]), {"expiry": {str(item.id): None}}, format="json"
-        )
+        api(head).post(reverse("shopping-add-to-fridge", args=[sl.id]), {"expiry": {str(item.id): None}}, format="json")
 
         assert FridgeItem.objects.get(family=fam).expiry_date is None
 

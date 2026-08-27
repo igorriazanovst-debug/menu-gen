@@ -166,9 +166,7 @@ class TestFridgeForClient:
         family, _, _ = client_family
         cook_user, _ = cook
 
-        r = api(cook_user).post(
-            reverse("fridge-list"), {"name": "Треска", "quantity": 1, "unit": "кг"}, format="json"
-        )
+        r = api(cook_user).post(reverse("fridge-list"), {"name": "Треска", "quantity": 1, "unit": "кг"}, format="json")
 
         assert r.status_code == 201, r.data
         assert FridgeItem.objects.get(family=family).name == "Треска"
@@ -213,9 +211,7 @@ class TestExpiryOnTransfer:
         sl, _ = self._list_with_purchase(family)
         when = str(date.today() + timedelta(days=5))
 
-        api(cook_user).post(
-            reverse("shopping-add-to-fridge", args=[sl.id]), {"expiry_date": when}, format="json"
-        )
+        api(cook_user).post(reverse("shopping-add-to-fridge", args=[sl.id]), {"expiry_date": when}, format="json")
 
         assert str(FridgeItem.objects.get(family=family).expiry_date) == when
 

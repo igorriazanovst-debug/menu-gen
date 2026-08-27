@@ -73,11 +73,7 @@ def specialist_for_code(code_str: str):
     code_str = (code_str or "").strip().upper()
     if not code_str:
         return None
-    link = (
-        SpecialistInviteCode.objects.filter(promo__code=code_str)
-        .select_related("specialist__user", "promo")
-        .first()
-    )
+    link = SpecialistInviteCode.objects.filter(promo__code=code_str).select_related("specialist__user", "promo").first()
     return link.specialist if link else None
 
 

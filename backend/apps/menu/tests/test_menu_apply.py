@@ -24,10 +24,7 @@ from apps.users.models import User
 
 @pytest.fixture
 def recipes(db):
-    return [
-        Recipe.objects.create(title=f"Блюдо {i}", is_published=True)
-        for i in range(4)
-    ]
+    return [Recipe.objects.create(title=f"Блюдо {i}", is_published=True) for i in range(4)]
 
 
 def make_client_family(tag="client"):

@@ -15,11 +15,11 @@ from .journal import log_action
 from .models import Recommendation, Specialist, SpecialistAssignment
 from .serializers import (
     ClientFamilySerializer,
-    MySpecialistSerializer,
-    SpecialistInviteCodeSerializer,
     ClientMenuListSerializer,
+    MySpecialistSerializer,
     RecommendationSerializer,
     RecommendationWriteSerializer,
+    SpecialistInviteCodeSerializer,
     SpecialistProfileSerializer,
     SpecialistVerifySerializer,
 )
@@ -495,9 +495,7 @@ class CabinetClientWeightView(APIView):
                 {
                     "member_id": m.id,
                     "member_name": getattr(m.user, "name", "") or "",
-                    "points": [
-                        {"date": str(r.date), "weight_kg": float(r.weight_kg), "note": r.note} for r in rows
-                    ],
+                    "points": [{"date": str(r.date), "weight_kg": float(r.weight_kg), "note": r.note} for r in rows],
                 }
             )
         return Response({"days": days, "members": out})
@@ -538,11 +536,7 @@ class CabinetClientTargetsHistoryView(APIView):
             profile = getattr(m.user, "profile", None)
             if profile is None:
                 continue
-            rows = (
-                ProfileTargetAudit.objects.filter(profile=profile)
-                .select_related("by_user")
-                .order_by("-at")[:limit]
-            )
+            rows = ProfileTargetAudit.objects.filter(profile=profile).select_related("by_user").order_by("-at")[:limit]
             out.append(
                 {
                     "member_id": m.id,

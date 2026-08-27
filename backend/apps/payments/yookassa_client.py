@@ -28,8 +28,7 @@ def _configure():
     secret_key = config("YOOKASSA_SECRET_KEY", default="")
     if not shop_id or not secret_key:
         raise PaymentsNotConfigured(
-            "Не заданы YOOKASSA_SHOP_ID / YOOKASSA_SECRET_KEY. "
-            "Для тестового режима поставьте PAYMENTS_STUB=True."
+            "Не заданы YOOKASSA_SHOP_ID / YOOKASSA_SECRET_KEY. " "Для тестового режима поставьте PAYMENTS_STUB=True."
         )
     yookassa.Configuration.account_id = shop_id
     yookassa.Configuration.secret_key = secret_key

@@ -80,9 +80,7 @@ class TestClientList:
 
     def test_админ_не_видит_все_семьи(self, db):
         """Даже staff с профилем специалиста видит только своих клиентов."""
-        admin = User.objects.create_user(
-            email="admin@example.com", password="pass12345", name="Админ", is_staff=True
-        )
+        admin = User.objects.create_user(email="admin@example.com", password="pass12345", name="Админ", is_staff=True)
         Specialist.objects.create(user=admin, specialist_type=Specialist.Type.DIETITIAN, is_verified=True)
         make_family("someone")  # есть семья, но назначения админу нет
 

@@ -449,9 +449,7 @@ class MenuGenerator:
         только одна. Поэтому добор не «дописывается» в приём вслепую, а ищет
         свободную роль.
         """
-        return {
-            (it["member"].id, it["day_offset"], it.get("meal_slot"), it.get("component_role")) for it in items
-        }
+        return {(it["member"].id, it["day_offset"], it.get("meal_slot"), it.get("component_role")) for it in items}
 
     @staticmethod
     def _free_topup_slot(slots, occupied: set, member_id: int, day: int, role: str):

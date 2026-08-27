@@ -124,9 +124,7 @@ class TestSave:
     def test_лимит_записывается_числом(self):
         p = plan(code="free", features={})
 
-        f = SubscriptionPlanForm(
-            data=form_data(code="free", menu_generations_per_month="4"), instance=p
-        )
+        f = SubscriptionPlanForm(data=form_data(code="free", menu_generations_per_month="4"), instance=p)
         assert f.is_valid(), f.errors
         f.save()
 

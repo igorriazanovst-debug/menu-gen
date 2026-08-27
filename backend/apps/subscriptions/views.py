@@ -17,7 +17,6 @@ from .serializers import (
     SubscriptionSerializer,
 )
 
-
 log = logging.getLogger(__name__)
 
 

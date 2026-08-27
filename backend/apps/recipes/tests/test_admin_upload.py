@@ -73,9 +73,7 @@ class TestAdminUpload:
         assert r.status_code in (302, 403)
 
     def test_чужой_тип_файла_отклоняется_с_объяснением(self, staff_client, media_root):
-        r = staff_client.post(
-            url(), {"file": png("virus.exe", "application/x-msdownload"), "media_type": "image"}
-        )
+        r = staff_client.post(url(), {"file": png("virus.exe", "application/x-msdownload"), "media_type": "image"})
 
         assert r.status_code == 400
         assert "JPEG" in r.json()["detail"]
@@ -95,9 +93,7 @@ class TestApiStillWorks:
     """Веб-клиент грузит фото тем же путём, что и раньше."""
 
     def test_api_принимает_сессию(self, staff_client, media_root):
-        r = staff_client.post(
-            "/api/v1/recipes/upload-media/", {"file": png(), "media_type": "image"}
-        )
+        r = staff_client.post("/api/v1/recipes/upload-media/", {"file": png(), "media_type": "image"})
 
         assert r.status_code == 200, r.content
 

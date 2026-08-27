@@ -1,13 +1,6 @@
 from django.urls import path
 
-from .views import (
-    PaymentHistoryView,
-    PaymentStatusView,
-    YookassaWebhookView,
-    stub_cancel,
-    stub_checkout,
-    stub_confirm,
-)
+from .views import PaymentHistoryView, PaymentStatusView, YookassaWebhookView, stub_cancel, stub_checkout, stub_confirm
 
 urlpatterns = [
     path("history/", PaymentHistoryView.as_view(), name="payment-history"),

@@ -11,8 +11,13 @@ from rest_framework.views import APIView
 from apps.menu.models import Menu
 
 from .models import PurchaseHistoryEntry, ShoppingList, ShoppingListAccess, ShoppingListItem
-from .permissions import access_level, get_user_family, is_family_head  # noqa: F401
-from .permissions import resolve_write_family, specialist_shopping_families  # MG_COOK
+from .permissions import (  # noqa: F401; MG_COOK
+    access_level,
+    get_user_family,
+    is_family_head,
+    resolve_write_family,
+    specialist_shopping_families,
+)
 from .serializers import PendingSharedListSerializer  # MG_SHAREACCEPT
 from .serializers import (
     CreateListSerializer,

@@ -31,9 +31,7 @@ def setup(db):
         code="premium",
         defaults={"name": "Premium", "price": Decimal("499.00"), "period": "month", "is_active": True},
     )
-    offer = PlanOffer.objects.create(
-        plan=plan, code="premium_month", title="Месяц", months=1, price=Decimal("499.00")
-    )
+    offer = PlanOffer.objects.create(plan=plan, code="premium_month", title="Месяц", months=1, price=Decimal("499.00"))
     return user, family, plan, offer
 
 

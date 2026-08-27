@@ -203,9 +203,7 @@ class TestWebhook:
 
     def test_посторонний_адрес_отвергается(self, setup, settings):
         settings.PAYMENTS_WEBHOOK_CHECK_IP = True
-        resp = APIClient().post(
-            self.url(), self.body("pay-x"), format="json", REMOTE_ADDR="203.0.113.7"
-        )
+        resp = APIClient().post(self.url(), self.body("pay-x"), format="json", REMOTE_ADDR="203.0.113.7")
 
         assert resp.status_code == 403
 
@@ -216,9 +214,7 @@ class TestWebhook:
         make_payment(family, month, "pay-ok")
 
         with patch("apps.payments.activation.fetch_remote_payment", return_value=remote()):
-            resp = APIClient().post(
-                self.url(), self.body("pay-ok"), format="json", REMOTE_ADDR="185.71.76.5"
-            )
+            resp = APIClient().post(self.url(), self.body("pay-ok"), format="json", REMOTE_ADDR="185.71.76.5")
 
         assert resp.status_code == 200
         assert Subscription.objects.filter(family=family).exists()

@@ -252,9 +252,7 @@ class RecipeDetailSerializer(
 
     def get_gallery(self, obj):
         """Дополнительные фото блюда — видны всем, в заданном порядке."""
-        return RecipeGalleryImageSerializer(
-            obj.gallery_images.all(), many=True, context=self.context
-        ).data
+        return RecipeGalleryImageSerializer(obj.gallery_images.all(), many=True, context=self.context).data
 
     def get_made_photos(self, obj):
         """Фото приготовления ТЕКУЩЕГО пользователя (если авторизован)."""

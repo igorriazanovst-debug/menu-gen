@@ -4,13 +4,7 @@ from apps.family.models import Family, FamilyMember
 from apps.menu.models import Menu
 
 from .access import permissions_for, role_of
-from .models import (
-    Recommendation,
-    Specialist,
-    SpecialistActionLog,
-    SpecialistAssignment,
-    SpecialistInviteCode,
-)
+from .models import Recommendation, Specialist, SpecialistActionLog, SpecialistAssignment, SpecialistInviteCode
 
 
 class SpecialistProfileSerializer(serializers.ModelSerializer):
@@ -66,9 +60,7 @@ class RecommendationSerializer(serializers.ModelSerializer):
     member_name = serializers.CharField(source="member.user.name", read_only=True, default=None)
     # MG_TRAINER: клиенту нужно видеть, от кого рекомендация — у него может быть
     # и тренер, и диетолог сразу.
-    specialist_name = serializers.CharField(
-        source="assignment.specialist.user.name", read_only=True, default=None
-    )
+    specialist_name = serializers.CharField(source="assignment.specialist.user.name", read_only=True, default=None)
     specialist_type = serializers.CharField(source="assignment.specialist_type", read_only=True, default=None)
 
     class Meta:

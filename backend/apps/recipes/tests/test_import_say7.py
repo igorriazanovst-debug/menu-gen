@@ -20,7 +20,6 @@ from unittest.mock import patch
 import pytest
 from django.core.management import call_command
 
-from apps.recipes.models import Recipe
 from apps.recipes.management.commands.import_say7_recipes import (
     cook_time_for,
     cooking_method_for,
@@ -29,6 +28,7 @@ from apps.recipes.management.commands.import_say7_recipes import (
     normalize_units,
     portion_grams,
 )
+from apps.recipes.models import Recipe
 
 ROW = {
     "site_id": 4242,

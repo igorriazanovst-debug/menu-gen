@@ -26,9 +26,7 @@ def people(db):
     user.phone = "+79990000001"
     user.avatar_url = "https://example.com/ava.jpg"
     user.save()
-    staff = User.objects.create_user(
-        email="admin@example.com", name="Админ", password="pass12345", is_staff=True
-    )
+    staff = User.objects.create_user(email="admin@example.com", name="Админ", password="pass12345", is_staff=True)
     return user, staff
 
 

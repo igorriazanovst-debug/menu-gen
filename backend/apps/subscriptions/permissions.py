@@ -122,9 +122,9 @@ def _client_family(request):
         return a.family if a else None
 
     active = list(
-        SpecialistAssignment.objects.filter(
-            specialist=spec, status=SpecialistAssignment.Status.ACTIVE
-        ).select_related("family")[:2]
+        SpecialistAssignment.objects.filter(specialist=spec, status=SpecialistAssignment.Status.ACTIVE).select_related(
+            "family"
+        )[:2]
     )
     # Один клиент — очевидно; несколько — пусть вьюха спросит family_id.
     return active[0].family if len(active) == 1 else None
