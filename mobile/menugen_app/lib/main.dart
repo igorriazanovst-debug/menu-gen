@@ -113,6 +113,12 @@ void main() async {
   ));
 }
 
+// MG_ACCDEL: сообщение об отменённом удалении показывается уже после того, как
+// экран входа сменился на главный, — своего ScaffoldMessenger у него в этот
+// момент нет. Ключ на уровне MaterialApp переживает смену маршрута.
+final GlobalKey<ScaffoldMessengerState> _messengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 class MenuGenApp extends StatelessWidget {
   final TokenStorage tokenStorage;
   final AppDatabase db;
@@ -177,6 +183,16 @@ class MenuGenApp extends StatelessWidget {
         listener: (context, authState) {
           if (authState is AuthAuthenticated) {
             context.read<ThemeCubit>().loadFromProfile(authState.user);
+            // MG_ACCDEL: вход отменил удаление — сказать об этом обязательно,
+            // иначе человек останется в уверенности, что аккаунта больше нет.
+            if (authState.deletionCancelled) {
+              _messengerKey.currentState?.showSnackBar(
+                const SnackBar(
+                  content: Text('Удаление аккаунта отменено — все данные на месте.'),
+                  duration: Duration(seconds: 6),
+                ),
+              );
+            }
           }
         },
         child: BlocBuilder<AuthBloc, AuthState>(
@@ -185,6 +201,7 @@ class MenuGenApp extends StatelessWidget {
           return BlocBuilder<ThemeCubit, AppSkin>(
             builder: (context, skin) => MaterialApp.router(
               title: 'MenuGen',
+              scaffoldMessengerKey: _messengerKey, // MG_ACCDEL
               theme: AppTheme.forSkin(skin), // MG_SKIN
               routerConfig: router,
               debugShowCheckedModeBanner: false,

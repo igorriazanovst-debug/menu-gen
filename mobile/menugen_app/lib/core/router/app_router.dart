@@ -16,6 +16,7 @@ import '../../features/legal/screens/legal_document_screen.dart'; // MG_LEGAL
 import '../../features/legal/screens/legal_documents_screen.dart'; // MG_LEGAL
 import '../../features/fridge/screens/fridge_item_detail_screen.dart';
 import '../../features/menu/screens/menu_screen.dart';
+import '../../features/profile/screens/delete_account_screen.dart'; // MG_ACCDEL
 import '../../features/profile/screens/notifications_screen.dart'; // MG_WEIGHREMIND
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/kbju_calculator_screen.dart'; // MG_207_V_route
@@ -73,6 +74,12 @@ class AppRouter {
         GoRoute(
           path: '/notifications',
           builder: (_, __) => const NotificationsScreen(),
+        ),
+        // MG_ACCDEL: удаление аккаунта. Требование Google Play — путь должен
+        // быть внутри приложения, а не только на сайте.
+        GoRoute(
+          path: '/delete-account',
+          builder: (_, __) => DeleteAccountScreen(apiClient: apiClient),
         ),
         // MG_LEGAL: список документов и просмотр одного из них. Данные из списка
         // передаются через extra, при прямом переходе экран грузит их сам.

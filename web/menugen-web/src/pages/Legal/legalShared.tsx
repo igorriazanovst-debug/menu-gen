@@ -42,6 +42,9 @@ export const LegalShell: React.FC<{
         <Link to="/offer" className="hover:text-tomato">Оферта</Link>
         {/* MG_PRIVACY */}
         <Link to="/privacy" className="hover:text-tomato">Политика обработки ПД</Link>
+        {/* MG_ACCDEL: адрес должен быть находимым без входа — по нему ходит и
+            модерация Google Play, и человек, потерявший доступ к аккаунту. */}
+        <Link to="/delete-account" className="hover:text-tomato">Удаление аккаунта</Link>
         <Link to="/" className="hover:text-tomato">На главную</Link>
       </div>
     </div>

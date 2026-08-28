@@ -54,6 +54,18 @@ export const authApi = {
       { email },
     ),
 
+  // MG_ACCDEL: удаление аккаунта без входа (публичная страница /delete-account).
+  // Ответ на запрос одинаков для существующего и несуществующего адреса —
+  // иначе форма стала бы проверкой «есть ли такой аккаунт».
+  requestAccountDeletion: (email: string) =>
+    client.post<{ detail: string; confirm_link?: string }>('/auth/account-deletion/request/', { email }),
+
+  confirmAccountDeletion: (token: string) =>
+    client.post<{ detail: string; grace_days: number; purge_after: string }>(
+      '/auth/account-deletion/confirm/',
+      { token },
+    ),
+
   logout: (refresh: string) =>
     client.post('/auth/logout/', { refresh }),
 

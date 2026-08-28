@@ -28,6 +28,8 @@ import { ConstructorPage }    from './pages/Constructor/ConstructorPage'; // MG_
 import { RequisitesPage }     from './pages/Legal/RequisitesPage'; // MG_LEGAL
 import { OfferPage }          from './pages/Legal/OfferPage'; // MG_LEGAL
 import { PrivacyPage }        from './pages/Legal/PrivacyPage'; // MG_PRIVACY
+import { DeleteAccountPage }        from './pages/Legal/DeleteAccountPage'; // MG_ACCDEL
+import { DeleteAccountConfirmPage } from './pages/Legal/DeleteAccountConfirmPage'; // MG_ACCDEL
 import { SpecialistDashboardPage } from './pages/specialist/SpecialistDashboardPage';
 import { MySpecialistsPage }       from './pages/Specialists/MySpecialistsPage'; // MG_SPECINVITE
 import { SpecialistRegisterPage }  from './pages/specialist/SpecialistRegisterPage';
@@ -85,6 +87,11 @@ const AppRoutes: React.FC = () => {
       <Route path="/requisites" element={<RequisitesPage />} />
       <Route path="/offer" element={<OfferPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />{/* MG_PRIVACY */}
+      {/* MG_ACCDEL: удаление аккаунта без входа — этого адреса требует Google Play.
+          Публичный маршрут намеренно: человек, который не может войти, должен
+          суметь удалиться. */}
+      <Route path="/delete-account" element={<DeleteAccountPage />} />
+      <Route path="/delete-account/confirm" element={<DeleteAccountConfirmPage />} />
       <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
         <Route index element={<HomeRedirect />} />
         <Route path="dashboard"     element={<PremiumRoute><DashboardPage /></PremiumRoute>} />

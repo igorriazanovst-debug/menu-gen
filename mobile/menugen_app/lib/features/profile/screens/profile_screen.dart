@@ -491,6 +491,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: () =>
                       context.read<AuthBloc>().add(const AuthLogoutRequested()),
                 ),
+                // MG_ACCDEL: ниже выхода и без выделения цветом — путь должен
+                // существовать (этого требует Google Play), но не соседствовать
+                // с обычными настройками так, чтобы в него попадали промахом.
+                ListTile(
+                  leading: const Icon(Icons.delete_forever_outlined,
+                      color: Colors.grey),
+                  title: const Text('Удалить аккаунт',
+                      style: TextStyle(color: Colors.grey)),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () => context.push('/delete-account'),
+                ),
               ],
             ),
           );

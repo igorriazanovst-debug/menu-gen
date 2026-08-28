@@ -23,6 +23,11 @@ const PUBLIC_AUTH_PATHS = [
   '/auth/email/register/',
   '/auth/email/verify/',
   '/auth/email/resend/',
+  // MG_ACCDEL: публичная форма удаления аккаунта — Google Play требует, чтобы
+  // она работала без входа. Протухший Bearer из localStorage не должен
+  // превращать её в 401 у человека, который как раз и не может войти.
+  '/auth/account-deletion/request/',
+  '/auth/account-deletion/confirm/',
 ];
 
 export const isPublicAuthPath = (url?: string): boolean => {

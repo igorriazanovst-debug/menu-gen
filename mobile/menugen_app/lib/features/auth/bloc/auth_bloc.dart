@@ -44,8 +44,12 @@ abstract class AuthState extends Equatable {
 class AuthLoading extends AuthState { const AuthLoading(); }
 class AuthAuthenticated extends AuthState {
   final Map<String, dynamic> user;
-  const AuthAuthenticated(this.user);
-  @override List<Object?> get props => [user];
+  // MG_ACCDEL: этот вход отменил запрошенное удаление аккаунта. Молчать здесь
+  // нельзя: человек попросил удалиться, а вход его вернул — если не сказать, он
+  // будет считать аккаунт удалённым, а тот останется жить.
+  final bool deletionCancelled;
+  const AuthAuthenticated(this.user, {this.deletionCancelled = false});
+  @override List<Object?> get props => [user, deletionCancelled];
 }
 class AuthUnauthenticated extends AuthState { const AuthUnauthenticated(); }
 // MG_EMAILVERIFY_MOBILE: аккаунт создан, письмо ушло, входа ещё нет.
@@ -111,7 +115,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final me = await apiClient.get('/users/me/');
       final meMap = Map<String, dynamic>.from(_data(me) as Map);
       premiumGate?.bootstrap(meMap);
-      emit(AuthAuthenticated(meMap));
+      emit(AuthAuthenticated(meMap,
+          deletionCancelled: data['deletion_cancelled'] == true)); // MG_ACCDEL
     } catch (err) {
       // MG_EMAILVERIFY_MOBILE: «подтвердите e-mail» — не ошибка ввода, а
       // состояние аккаунта, и лечится оно тем же письмом, что и после
