@@ -23,7 +23,16 @@ plugins {
     // сборка падала на checkDebugAarMetadata. AGP 8.7.3 требует Gradle 8.9
     // (см. gradle/wrapper/gradle-wrapper.properties).
     id "com.android.application" version "8.7.3" apply false
-    id "org.jetbrains.kotlin.android" version "1.9.25" apply false
+    // MG_16KB: Kotlin 2.1.0 вместо 1.9.25.
+    //
+    // mobile_scanner 6.0.11 тянет CameraX 1.5.0, а тот — kotlin-stdlib 2.1.0.
+    // Компилятор 1.9 читает метаданные только до 2.0 и падал на самом плагине:
+    // «Class 'kotlin.Unit' was compiled with an incompatible version of Kotlin»
+    // в :mobile_scanner:compileReleaseKotlin.
+    //
+    // Своего Kotlin-кода в проекте пять строк (MainActivity), поэтому подъём
+    // затрагивает только сборку чужих плагинов.
+    id "org.jetbrains.kotlin.android" version "2.1.0" apply false
 }
 
 include ":app"
