@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
@@ -6,9 +7,21 @@
     <!-- MG_SELFUPDATE: передать скачанное обновление системному установщику.
          Само приложение установить его не может — тихая установка доступна
          только системным приложениям, — но обязано иметь право попросить.
-         Разрешение действует только для сборки с сайта: магазинную собираем
-         без апдейтера (см. android_release.yml). -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+
+         MG_STOREPERM: разрешение вырезается из магазинной сборки.
+
+         Раньше здесь стояло, что магазинную мы «собираем без апдейтера», и это
+         было верно только про КОД: флаг SELF_UPDATE в AAB не передаётся. А сам
+         манифест общий, поэтому разрешение уезжало и в магазин. RuStore смотрит
+         список разрешений, а не код, и отклонил 1.0.2 именно за него.
+
+         Теперь узел удаляется при сборке: значение подставляется из
+         manifestPlaceholders (см. build.gradle) — «merge» для сборки с сайта,
+         «remove» для магазинной. Проверку, что в AAB разрешения нет, а в APK
+         оно есть, делает android_release.yml до выкладки артефактов. -->
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="${menugenSelfUpdateNode}"/>
     <!-- MG_WEIGHREMIND: ежедневное напоминание взвеситься.
          POST_NOTIFICATIONS — с Android 13 без него уведомления не показываются
          вовсе, причём молча. RECEIVE_BOOT_COMPLETED — чтобы напоминание пережило

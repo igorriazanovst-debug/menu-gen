@@ -137,6 +137,12 @@ jobs:
           MENUGEN_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           # MG_SELFUPDATE: без флага самообновления — это сборка для магазина.
+          #
+          # MG_STOREPERM: и без разрешения REQUEST_INSTALL_PACKAGES. Раньше флаг
+          # убирал только КОД апдейтера, а разрешение оставалось в манифесте —
+          # за него RuStore и отклонил 1.0.2. Свойство идёт окружением, потому
+          # что flutter build не пробрасывает -P в Gradle.
+          export ORG_GRADLE_PROJECT_menugenStoreBuild=true
           ARGS="--release --dart-define=API_BASE_URL=$API_BASE_URL --build-number=${{ github.run_number }}"
           if [ -n "${{ github.event.inputs.build_name }}" ]; then
             ARGS="$ARGS --build-name=${{ github.event.inputs.build_name }}"
@@ -155,6 +161,38 @@ jobs:
           if echo "$OWNER" | grep -qi "CN=Android Debug"; then
             echo "::error::APK подписан отладочным ключом — магазин такую сборку не примет."
             exit 1
+          fi
+
+      # MG_STOREPERM: проверка идёт ДО выкладки артефактов, потому что цена
+      # ошибки — не красная сборка, а отказ модерации и потерянные дни. Ровно
+      # так и вышло с 1.0.2: разрешение уехало в магазин незамеченным.
+      #
+      # Проверяются обе стороны. Лишнее разрешение в AAB — отказ магазина.
+      # Пропавшее из APK — молча сломанное самообновление на сайте: приложение
+      # скачает файл и упрётся в установщик, и заметит это уже пользователь.
+      - name: Проверить разрешение на установку пакетов
+        run: |
+          PERM=android.permission.REQUEST_INSTALL_PACKAGES
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          APK=build/app/outputs/flutter-apk/app-release.apk
+
+          if [ -f "$AAB" ]; then
+            # Манифест внутри aab лежит в protobuf, но имена разрешений хранятся
+            # в нём строками — grep по бинарному потоку их находит.
+            if unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq "$PERM"; then
+              echo "::error::В AAB осталось $PERM — магазин отклонит сборку."
+              exit 1
+            fi
+            echo "AAB: разрешения нет, как и требуется."
+          fi
+
+          if [ -f "$APK" ]; then
+            BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+            if ! "$BUILD_TOOLS/aapt2" dump permissions "$APK" | grep -q "$PERM"; then
+              echo "::error::В APK нет $PERM — самообновление с сайта работать не будет."
+              exit 1
+            fi
+            echo "APK: разрешение на месте, самообновление работоспособно."
           fi
 
       - name: Переименовать артефакты
