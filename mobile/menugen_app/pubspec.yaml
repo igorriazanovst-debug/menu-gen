@@ -46,9 +46,10 @@ dependencies:
   flutter_cache_manager: ^3.3.1 # офлайн-кэш фото рецептов (кастомный менеджер)
   # MG_16KB: 6.0.11 — потолок для Flutter 3.27.4 (7.x требует 3.29+).
   # Приносит ML Kit 17.3.0 и CameraX 1.5.0 вместо 17.2.0 и 1.3.3: их
-  # библиотеки выровнены под 16 КБ, а прежние шли по 4 КБ. minSdk остаётся 21,
-  # то есть круг поддерживаемых устройств не сужается. Наш код сканера менять
-  # не пришлось: onDetect, detectionSpeed и barcodes.rawValue на месте.
+  # библиотеки выровнены под 16 КБ, а прежние шли по 4 КБ. Наш код сканера
+  # менять не пришлось: onDetect, detectionSpeed и barcodes.rawValue на месте.
+  # Цена — minSdk: CameraX 1.5.0 требует 23, поэтому Android 5.x отпадает
+  # (подробности в android/app/build.gradle, defaultConfig).
   mobile_scanner: ^6.0.11
   image_picker: ^1.1.2
   permission_handler: ^11.3.1

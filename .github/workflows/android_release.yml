@@ -203,14 +203,22 @@ jobs:
       # разрешение.
       #
       # Что показал первый прогон (сборка 9): движок Flutter выровнен —
-      # libflutter.so и libapp.so идут с 0x10000. Не выровнены три чужие
+      # libflutter.so и libapp.so идут с 0x10000. Не были выровнены три чужие
       # библиотеки, по 0x1000: libbarhopper_v3 (сканер ML Kit),
       # libimage_processing_util_jni (CameraX) и libsqlite3. Все три приходят
-      # готовыми внутри пакетов, поэтому чинятся обновлением пакетов, а не
-      # версией Flutter и не нашим NDK.
+      # готовыми внутри пакетов, поэтому вылечились обновлением пакетов, а не
+      # версией Flutter и не нашим NDK (см. pubspec.yaml, метки MG_16KB).
       #
       # Выравнивание — свойство библиотек, которыми собран движок и плагины, и
       # от targetSdk не зависит: мерить можно на нынешней сборке.
+      #
+      # Считаем ТОЛЬКО 64-разрядные ABI. Требование Google Play дословно:
+      # «all apps targeting Android 15 (API level 35) and higher must support
+      # 16 KB memory page sizes on 64-bit devices»
+      # (developer.android.com/guide/practices/page-sizes). Страниц по 16 КБ на
+      # 32-разрядных ядрах не бывает вовсе, поэтому armeabi-v7a и x86 в проверку
+      # не входят — иначе она вечно горела бы на том, чего чинить не нужно.
+      # Их выравнивание всё равно печатаем, но отдельной строкой и без вывода.
       - name: Проверить выравнивание нативных библиотек (16 КБ)
         if: ${{ github.event.inputs.artifact != 'apk' }}
         run: |
@@ -218,26 +226,41 @@ jobs:
           if [ ! -f "$AAB" ]; then echo "AAB не собирался — пропускаем."; exit 0; fi
           work=$(mktemp -d)
           unzip -q -o "$AAB" 'base/lib/*' -d "$work"
-          total=0; bad=0
+          total=0; bad=0; total32=0; bad32=0
           for so in $(find "$work" -name '*.so' | sort); do
-            total=$((total + 1))
+            rel=${so#$work/}
+            case "$rel" in
+              */arm64-v8a/*|*/x86_64/*) bits=64 ;;
+              *) bits=32 ;;
+            esac
             aligns=$(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF }' | sort -u | tr '\n' ' ')
             ok=1
             for a in $aligns; do
               if [ $((a)) -lt 16384 ]; then ok=0; fi
             done
-            if [ "$ok" -eq 1 ]; then
-              echo "  ok   ${so#$work/}  ($aligns)"
+            if [ "$bits" = 64 ]; then
+              total=$((total + 1))
+              if [ "$ok" -eq 1 ]; then
+                echo "  ok   $rel  ($aligns)"
+              else
+                echo "  МАЛО $rel  ($aligns)"
+                bad=$((bad + 1))
+              fi
             else
-              echo "  МАЛО ${so#$work/}  ($aligns)"
-              bad=$((bad + 1))
+              total32=$((total32 + 1))
+              [ "$ok" -eq 1 ] || bad32=$((bad32 + 1))
+              echo "  --   $rel  ($aligns)  32 бита, требование не распространяется"
             fi
           done
-          echo "Библиотек: $total, не выровнено под 16 КБ: $bad"
+          echo "64-разрядных библиотек: $total, не выровнено под 16 КБ: $bad"
+          echo "32-разрядных библиотек: $total32 (из них по 4 КБ: $bad32) — вне требования"
           if [ "$bad" -gt 0 ]; then
-            echo "::warning::$bad из $total библиотек не выровнены под 16 КБ — Google Play с targetSdk 35 такую сборку не примет. Лечится обновлением пакетов, которые приносят эти библиотеки готовыми (проверено: движок Flutter уже выровнен, дело не в нём)."
+            # Пока предупреждение, а не падение: targetSdk у нас 34, и запрет
+            # Google Play на такие сборки начинается с 35. В тот день, когда
+            # targetSdk поднимут до 35, заменить эту строку на `exit 1`.
+            echo "::warning::$bad из $total 64-разрядных библиотек не выровнены под 16 КБ — Google Play с targetSdk 35 такую сборку не примет. Лечится обновлением пакетов, которые приносят эти библиотеки готовыми (проверено: движок Flutter уже выровнен, дело не в нём)."
           else
-            echo "Все библиотеки готовы к 16 КБ — targetSdk 35 с этой стороны не блокирован."
+            echo "Все 64-разрядные библиотеки готовы к 16 КБ — targetSdk 35 с этой стороны не блокирован."
           fi
 
       - name: Переименовать артефакты
