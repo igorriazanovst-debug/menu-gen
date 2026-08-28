@@ -112,8 +112,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
         // MG_WEIGHREMIND: flutter_local_notifications планирует показ через
-        // java.time, а он появился только в API 26. Без десугаринга сборка
-        // падает на minSdk 21 — это требование самого плагина, не наша прихоть.
+        // java.time, а он появился только в API 26. Наш minSdk ниже (23), поэтому
+        // без десугаринга сборка падает — это требование самого плагина, не наша
+        // прихоть.
         coreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
@@ -127,7 +128,19 @@ android {
         applicationId = "ru.menugen.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdk = 21
+        //
+        // MG_16KB: 23, а не 21 — приложение больше не ставится на Android 5.0 и 5.1.
+        //
+        // CameraX 1.5.0 приходит транзитивно с mobile_scanner 6.0.11 и объявляет
+        // minSdk 23; слияние манифестов падало с «uses-sdk:minSdkVersion 21 cannot
+        // be smaller than version 23». Обойти это можно только tools:overrideLibrary,
+        // а он, по прямому предупреждению AGP, ведёт к падениям в рантайме — то
+        // есть камера ломалась бы уже у пользователя.
+        //
+        // Решение принято осознанно: Android 5.x сегодня — доли процента устройств,
+        // и планка всё равно поднимается дальше (mobile_scanner 7 требует Flutter
+        // 3.29+). Ради 16 КБ, без которых Google Play не примет targetSdk 35.
+        minSdk = 23
         targetSdk = 34
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
