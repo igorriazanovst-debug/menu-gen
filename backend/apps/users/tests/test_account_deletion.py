@@ -337,6 +337,28 @@ def test_command_is_dry_run_without_apply():
 
 
 @pytest.mark.django_db
+def test_scheduled_task_purges_and_spares():
+    """Задача beat, в отличие от команды, удаляет сразу — но только просроченных."""
+    from apps.users.tasks import purge_deleted_accounts
+
+    overdue = _user("proshel-srok@example.invalid")
+    request_deletion(overdue)
+    User.objects.filter(id=overdue.id).update(deletion_requested_at=timezone.now() - timedelta(days=GRACE_DAYS + 1))
+
+    fresh = _user("tolko-chto@example.invalid")
+    request_deletion(fresh)
+
+    untouched = _user("ne-udalyaetsya@example.invalid")
+
+    totals = purge_deleted_accounts()
+
+    assert totals["purged"] == 1
+    assert not User.objects.filter(id=overdue.id).exists()
+    assert User.objects.filter(id=fresh.id).exists()
+    assert User.objects.filter(id=untouched.id).exists()
+
+
+@pytest.mark.django_db
 def test_command_spares_accounts_still_within_grace():
     from io import StringIO
 

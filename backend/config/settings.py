@@ -368,6 +368,18 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.menu.tasks.purge_expired_menus",
         "schedule": crontab(hour=3, minute=15),
     },
+    # MG_ACCDEL: стирание аккаунтов, чья 30-дневная отсрочка истекла.
+    #
+    # Без этой строки удаление остаётся половинчатым: аккаунт заморожен
+    # навсегда, данные лежат, а адрес занят — уникальный e-mail не даст
+    # зарегистрироваться заново. Форма Data safety при этом обещает удаление
+    # через 30 дней, то есть обещание было бы неправдой.
+    #
+    # 3:40, а не 3:15: не наступать на очистку карантина меню.
+    "purge-deleted-accounts": {
+        "task": "apps.users.tasks.purge_deleted_accounts",
+        "schedule": crontab(hour=3, minute=40),
+    },
 }
 
 # drf-spectacular enum overrides
