@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
@@ -15,13 +14,12 @@
          манифест общий, поэтому разрешение уезжало и в магазин. RuStore смотрит
          список разрешений, а не код, и отклонил 1.0.2 именно за него.
 
-         Теперь узел удаляется при сборке: значение подставляется из
-         manifestPlaceholders (см. build.gradle) — «merge» для сборки с сайта,
-         «remove» для магазинной. Проверку, что в AAB разрешения нет, а в APK
-         оно есть, делает android_release.yml до выкладки артефактов. -->
-    <uses-permission
-        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
-        tools:node="${menugenSelfUpdateNode}"/>
+         Строку удаляет build.gradle, когда сборку просят быть магазинной, —
+         см. там же, почему не плейсхолдером и не флавором. Держать её ОДНОЙ
+         строкой обязательно: удаление построчное, и разбитый на несколько
+         строк элемент оно пропустит. Проверку, что в AAB разрешения нет, а в
+         APK оно есть, делает android_release.yml до выкладки артефактов. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- MG_WEIGHREMIND: ежедневное напоминание взвеситься.
          POST_NOTIFICATIONS — с Android 13 без него уведомления не показываются
          вовсе, причём молча. RECEIVE_BOOT_COMPLETED — чтобы напоминание пережило

@@ -56,6 +56,46 @@ android {
     // AGP подберёт совместимую сам (пин 33.0.1 конфликтовал с compileSdk 35).
     ndkVersion = flutter.ndkVersion
 
+    // MG_STOREPERM: магазинная сборка идёт без REQUEST_INSTALL_PACKAGES.
+    //
+    // Разрешение нужно только сборке с сайта — она умеет обновлять себя и
+    // обязана иметь право попросить установщик. Магазинам такое право не
+    // нравится: RuStore отклонил за него 1.0.2.
+    //
+    // Почему так, а не иначе:
+    //
+    //   * не флавором — APK и AAB идут из одного release-варианта и различаются
+    //     только форматом; отдельное измерение сборки потребовало бы --flavor от
+    //     каждого локального запуска и от отладочной сборки в CI;
+    //   * не плейсхолдером в tools:node — пробовали, AGP подстановку в атрибуты
+    //     tools: не делает и падает с «No enum constant
+    //     NodeOperationType.${...}» прямо на слиянии манифеста;
+    //   * не вторым манифестом в репозитории — два почти одинаковых файла
+    //     разъедутся, и заметит это опять модерация.
+    //
+    // Поэтому магазинный манифест ВЫВОДИТСЯ из основного: строка с разрешением
+    // выбрасывается, остальное берётся как есть. Разъезжаться нечему.
+    //
+    // Свойство передаётся окружением, потому что flutter build не пробрасывает
+    // -P в Gradle:  ORG_GRADLE_PROJECT_menugenStoreBuild=true flutter build appbundle
+    if (project.hasProperty("menugenStoreBuild")) {
+        def source = file("src/main/AndroidManifest.xml")
+        def stripped = source.readLines().findAll { !it.contains("REQUEST_INSTALL_PACKAGES") }
+        // Молча собрать манифест с разрешением — ровно тот случай, ради которого
+        // всё это и делается. Лучше не собраться совсем.
+        if (stripped.size() == source.readLines().size()) {
+            throw new GradleException(
+                "MG_STOREPERM: в AndroidManifest.xml не найдена строка с REQUEST_INSTALL_PACKAGES. " +
+                "Если элемент разбили на несколько строк — верните его в одну."
+            )
+        }
+        def generated = new File(project.buildDir, "menugen/store/AndroidManifest.xml")
+        generated.parentFile.mkdirs()
+        generated.text = stripped.join("\n") + "\n"
+        sourceSets.main.manifest.srcFile generated
+        println "MG_STOREPERM: магазинный манифест без REQUEST_INSTALL_PACKAGES — ${generated}"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -84,23 +124,7 @@ android {
         // отладочная сборка могла назваться иначе (см. buildTypes.debug).
         resValue "string", "app_name", "MenuGen"
 
-        // MG_STOREPERM: убрать REQUEST_INSTALL_PACKAGES из магазинной сборки.
-        //
-        // Разрешение нужно только сборке с сайта — она умеет обновлять себя и
-        // обязана иметь право попросить установщик. Магазинам такое право не
-        // нравится: RuStore отклонил 1.0.2 именно за него.
-        //
-        // Флавор тут был бы избыточен: APK и AAB собираются из одного и того же
-        // release-варианта, различаются только форматом, и заводить ради этого
-        // отдельное измерение сборки значит требовать --flavor от каждого
-        // локального запуска. Вместо этого узел манифеста помечается remove,
-        // когда сборку просят быть магазинной.
-        //
-        // Свойство передаётся окружением, потому что flutter build не пробрасывает
-        // -P в Gradle:  ORG_GRADLE_PROJECT_menugenStoreBuild=true flutter build appbundle
-        manifestPlaceholders = [
-            menugenSelfUpdateNode: project.hasProperty("menugenStoreBuild") ? "remove" : "merge"
-        ]
+        // MG_STOREPERM: см. ниже, в sourceSets.
     }
 
     signingConfigs {
