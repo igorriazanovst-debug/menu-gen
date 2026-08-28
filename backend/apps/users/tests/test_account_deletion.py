@@ -171,6 +171,26 @@ def test_disabled_account_still_cannot_log_in():
 
 
 @pytest.mark.django_db
+def test_other_members_keep_working_while_head_is_frozen():
+    """Заморозка главы не должна выключать семью остальным.
+
+    Владение передаётся только при стирании, поэтому все 30 дней отсрочки
+    семьёй владеет замороженный аккаунт. Проверяем, что это ломает ровно то,
+    что должно (действия главы), и ничего сверх.
+    """
+    head = _user("zamorozhennyy-glava@example.invalid")
+    family = _family(head)
+    member = _user("uchastnik@example.invalid")
+    FamilyMember.objects.create(family=family, user=member)
+
+    request_deletion(head)
+
+    client = _auth(member)
+    assert client.get(reverse("users-me")).status_code == 200
+    assert client.get(reverse("family-detail")).status_code == 200
+
+
+@pytest.mark.django_db
 def test_cancel_returns_false_when_nothing_to_cancel():
     assert cancel_deletion(_user("nichego@example.invalid")) is False
 
