@@ -195,6 +195,45 @@ jobs:
             echo "APK: разрешение на месте, самообновление работоспособно."
           fi
 
+      # MG_16KB: готовность к 16-килобайтным страницам памяти.
+      #
+      # Google Play требует их поддержки от приложений с targetSdk 35+. У нас
+      # пока 34, поэтому шаг ПОКА не валит сборку — он отвечает на вопрос,
+      # можно ли поднимать targetSdk текущей версией Flutter или сначала нужно
+      # поднимать сам Flutter. Когда перейдём на 35, отсутствие выравнивания
+      # должно ронять сборку так же, как лишнее разрешение.
+      #
+      # Выравнивание — свойство библиотек, которыми собран движок и плагины, и
+      # от targetSdk не зависит: мерить можно на нынешней сборке.
+      - name: Проверить выравнивание нативных библиотек (16 КБ)
+        if: ${{ github.event.inputs.artifact != 'apk' }}
+        run: |
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          if [ ! -f "$AAB" ]; then echo "AAB не собирался — пропускаем."; exit 0; fi
+          work=$(mktemp -d)
+          unzip -q -o "$AAB" 'base/lib/*' -d "$work"
+          total=0; bad=0
+          for so in $(find "$work" -name '*.so' | sort); do
+            total=$((total + 1))
+            aligns=$(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF }' | sort -u | tr '\n' ' ')
+            ok=1
+            for a in $aligns; do
+              if [ $((a)) -lt 16384 ]; then ok=0; fi
+            done
+            if [ "$ok" -eq 1 ]; then
+              echo "  ok   ${so#$work/}  ($aligns)"
+            else
+              echo "  МАЛО ${so#$work/}  ($aligns)"
+              bad=$((bad + 1))
+            fi
+          done
+          echo "Библиотек: $total, не выровнено под 16 КБ: $bad"
+          if [ "$bad" -gt 0 ]; then
+            echo "::warning::$bad из $total библиотек не выровнены под 16 КБ. Для Google Play с targetSdk 35 понадобится поднять Flutter."
+          else
+            echo "Все библиотеки готовы к 16 КБ — targetSdk 35 с этой стороны не блокирован."
+          fi
+
       - name: Переименовать артефакты
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
