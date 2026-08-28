@@ -19,7 +19,12 @@ class Payment(models.Model):
     offer = models.ForeignKey(
         "subscriptions.PlanOffer", on_delete=models.SET_NULL, null=True, blank=True, related_name="payments"
     )
-    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="payments")
+    # MG_ACCDEL: SET_NULL, а не CASCADE. Платёж — бухгалтерская запись о
+    # состоявшейся сделке, её сверяют с ЮKassa; удаление аккаунта не должно её
+    # стирать. Личных данных в строке нет: сумма, дата и идентификатор платежа
+    # у провайдера. Раньше стояло CASCADE — уход последнего участника семьи унёс
+    # бы вместе с ней всю историю оплат.
+    family = models.ForeignKey(Family, on_delete=models.SET_NULL, null=True, blank=True, related_name="payments")
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=10, default="RUB")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)

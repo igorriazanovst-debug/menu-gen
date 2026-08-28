@@ -55,6 +55,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     # has no usable password; the family head can later add e-mail/phone to turn
     # it into a normal account.
     is_managed = models.BooleanField(default=False)
+    # MG_ACCDEL: когда пользователь попросил удалить аккаунт. NULL — не просил.
+    # Пока отметка стоит, is_active=False: аккаунт заморожен, и единственное,
+    # что он умеет, — вход, который удаление отменяет. Стирание — по расписанию
+    # (см. account_deletion.py и команду purge_deleted_accounts).
+    deletion_requested_at = models.DateTimeField(null=True, blank=True, db_index=True)
     allergies = models.JSONField(default=list, blank=True)
     disliked_products = models.JSONField(default=list, blank=True)
     # MG_SKIN: оформление UI

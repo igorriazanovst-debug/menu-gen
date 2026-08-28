@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from apps.users.deletion_views import PublicDeletionConfirmView, PublicDeletionRequestView  # MG_ACCDEL
 from apps.users.phone_views import (  # MG_PHONEVERIFY
     MaxWebhookView,
     PhoneRegisterView,
@@ -17,6 +18,18 @@ urlpatterns = [
     path("login/", LoginView.as_view(), name="auth-login"),
     path("refresh/", TokenRefreshView.as_view(), name="auth-refresh"),
     path("logout/", LogoutView.as_view(), name="auth-logout"),
+    # MG_ACCDEL: удаление без входа в приложение — Google Play требует
+    # публичный веб-адрес, доступный без авторизации. Подтверждение письмом.
+    path(
+        "account-deletion/request/",
+        PublicDeletionRequestView.as_view(),
+        name="auth-account-deletion-request",
+    ),
+    path(
+        "account-deletion/confirm/",
+        PublicDeletionConfirmView.as_view(),
+        name="auth-account-deletion-confirm",
+    ),
     # MG_PHONEVERIFY: регистрация/подтверждение телефона через мессенджер
     path("phone/start/", PhoneStartView.as_view(), name="auth-phone-start"),
     path("phone/status/", PhoneStatusView.as_view(), name="auth-phone-status"),

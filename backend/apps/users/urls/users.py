@@ -1,5 +1,6 @@
 from django.urls import path
 
+from apps.users.deletion_views import AccountDeleteView  # MG_ACCDEL
 from apps.users.views import (
     AllergenListView,
     CalculatorApplyView,
@@ -21,5 +22,9 @@ urlpatterns = [
     path("me/calculator/apply/", CalculatorApplyView.as_view(), name="users-me-calc-apply"),
     # MG_EMAILVERIFY: добавить/сменить e-mail в профиле (с подтверждением)
     path("me/email/", SetEmailView.as_view(), name="users-me-set-email"),
+    # MG_ACCDEL: удаление аккаунта из приложения (GET — что будет удалено).
+    # Раньше «me/» — иначе путь съел бы префикс: RetrieveUpdateAPIView на
+    # "me/" ничего не ловит лишнего, но порядок здесь и так значим.
+    path("me/delete/", AccountDeleteView.as_view(), name="users-me-delete"),
     path("me/", UserMeView.as_view(), name="users-me"),
 ]

@@ -89,7 +89,16 @@ class LoginView(APIView):
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
+        # MG_ACCDEL: вход — это и есть отмена удаления. Отдельной ручки нет
+        # намеренно: замороженному аккаунту нечем ей воспользоваться (JWT ему
+        # не выдаётся, пока он заморожен), а человек, передумавший удаляться,
+        # делает ровно то, что и так собирался, — входит.
+        from .account_deletion import cancel_deletion
+
+        cancelled = cancel_deletion(user)
         tokens = TokenPairSerializer.get_tokens(user)
+        if cancelled:
+            tokens["deletion_cancelled"] = True
         return Response(tokens)
 
 

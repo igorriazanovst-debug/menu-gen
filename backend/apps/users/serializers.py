@@ -80,7 +80,18 @@ class LoginSerializer(serializers.Serializer):
             else:
                 user = None
 
-        if not user or not user.is_active:
+        # MG_ACCDEL: замороженный аккаунт всё-таки пускаем — и этим вход
+        # отменяет удаление (см. LoginView). Иначе отменить было бы нечем:
+        # ModelBackend не аутентифицирует is_active=False, и человек, передумав
+        # в течение отсрочки, упирался бы в «неверные учётные данные» с верным
+        # паролем. Дальше по коду важно, что отмена — единственное, что
+        # замороженный аккаунт умеет: JWT ему без размораживания не работает.
+        if user is None and email:
+            candidate = User.objects.filter(email__iexact=email, deletion_requested_at__isnull=False).first()
+            if candidate and candidate.check_password(password):
+                user = candidate
+
+        if not user or (not user.is_active and user.deletion_requested_at is None):
             raise serializers.ValidationError("Неверные учётные данные.")
 
         attrs["user"] = user
