@@ -141,7 +141,21 @@ android {
         // и планка всё равно поднимается дальше (mobile_scanner 7 требует Flutter
         // 3.29+). Ради 16 КБ, без которых Google Play не примет targetSdk 35.
         minSdk = 23
-        targetSdk = 34
+        // MG_SDK36: 36, потому что иначе Google Play не примет загрузку.
+        //
+        // С 31 августа 2026 новые приложения и обновления обязаны быть собраны
+        // под Android 16 (API 36). Это проверка на приёме бандла, а не
+        // замечание модератора: сборка с targetSdk 34 просто не загрузится.
+        //
+        // Что это включает (проверено по behavior-changes-16, а не по памяти):
+        //
+        //   * принудительный edge-to-edge, и отключить его больше нечем —
+        //     windowOptOutEdgeToEdgeEnforcement на Android 16 не работает;
+        //   * предиктивный «назад» по умолчанию, onBackPressed больше не
+        //     вызывается (см. enableOnBackInvokedCallback в манифесте);
+        //   * на экранах от 600dp игнорируются ограничения ориентации и
+        //     размера — нас не касается, мы их не задаём.
+        targetSdk = 36
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
 

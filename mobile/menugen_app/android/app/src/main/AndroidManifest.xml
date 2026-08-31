@@ -68,9 +68,21 @@
          MG_DEVBUILD: сама строка задаётся в build.gradle (resValue), чтобы
          отладочная сборка называлась «MenuGen dev» и её было видно в лаунчере
          рядом с магазинной. -->
+    <!-- MG_SDK36: предиктивный «назад».
+
+         С targetSdk 36 система больше не вызывает onBackPressed, а движок
+         Flutter опирается на него, пока ему явно не разрешат новый механизм.
+         Без этого флага кнопка «назад» перестала бы двигать навигацию внутри
+         приложения — молча и на всех экранах сразу.
+
+         Флаг ставится в true, а не в false: false — это временное отключение
+         нового поведения, и он перестанет работать в следующих версиях
+         Android. Своих перехватов «назад» в приложении нет (ни WillPopScope,
+         ни PopScope), так что переносить нечего. -->
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config">
         <activity

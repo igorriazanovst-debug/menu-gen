@@ -70,18 +70,31 @@ class MainShell extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              child: BottomNavigationBar(
-                currentIndex: currentIdx,
-                onTap: (i) => navigationShell.goBranch(
-                  tabs[i].branch,
-                  initialLocation: tabs[i].branch == navigationShell.currentIndex,
+              // MG_SDK36: отступ снизу под системную панель навигации.
+              //
+              // С targetSdk 36 приложение рисует под системными панелями всегда,
+              // и отключить это нечем. Без отступа жестовая полоса легла бы
+              // прямо на кнопки вкладок: нижний ряд — самая нажимаемая часть
+              // приложения, и попадать по нему стало бы нельзя.
+              //
+              // SafeArea внутри Container, а не снаружи: фон и скругление
+              // должны уходить под панель (иначе под меню появится полоса
+              // чужого цвета), а кнопки — оставаться над ней.
+              child: SafeArea(
+                top: false,
+                child: BottomNavigationBar(
+                  currentIndex: currentIdx,
+                  onTap: (i) => navigationShell.goBranch(
+                    tabs[i].branch,
+                    initialLocation: tabs[i].branch == navigationShell.currentIndex,
+                  ),
+                  elevation: 0,
+                  backgroundColor: Colors.transparent,
+                  items: tabs.map((t) => BottomNavigationBarItem(
+                    icon: Icon(t.icon),
+                    label: t.label,
+                  )).toList(),
                 ),
-                elevation: 0,
-                backgroundColor: Colors.transparent,
-                items: tabs.map((t) => BottomNavigationBarItem(
-                  icon: Icon(t.icon),
-                  label: t.label,
-                )).toList(),
               ),
             ),
           ),
