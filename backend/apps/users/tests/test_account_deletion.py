@@ -171,6 +171,34 @@ def test_disabled_account_still_cannot_log_in():
 
 
 @pytest.mark.django_db
+def test_preview_warns_about_paid_subscription():
+    """Оплаченный период сгорает без возврата (оферта, п. 18.5) — надо сказать заранее."""
+    from apps.subscriptions.models import Subscription, SubscriptionPlan
+
+    user = _user("s-podpiskoy@example.invalid")
+    family = _family(user, name="Семья Подписчиковых")
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        code="premium", defaults={"name": "Premium", "price": Decimal("500")}
+    )
+    until = timezone.now() + timedelta(days=20)
+    Subscription.objects.create(
+        family=family,
+        plan=plan,
+        status=Subscription.Status.ACTIVE,
+        started_at=timezone.now(),
+        expires_at=until,
+    )
+
+    data = _auth(user).get(reverse("users-me-delete")).data
+    assert data["subscription_paid_until"] is not None
+
+    # Без подписки поля быть не должно — иначе экран пугал бы на пустом месте.
+    bez = _user("bez-podpiski@example.invalid")
+    _family(bez, name="Семья Безподписочных")
+    assert _auth(bez).get(reverse("users-me-delete")).data["subscription_paid_until"] is None
+
+
+@pytest.mark.django_db
 def test_other_members_keep_working_while_head_is_frozen():
     """Заморозка главы не должна выключать семью остальным.
 

@@ -33,6 +33,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   bool _familyWillBeDeleted = false;
   List<String> _familiesToDelete = const [];
   List<String> _newOwners = const [];
+  DateTime? _paidUntil;
 
   @override
   void initState() {
@@ -55,6 +56,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         _familyWillBeDeleted = r['family_data_will_be_deleted'] == true;
         _familiesToDelete = List<String>.from(r['families_to_delete'] ?? const []);
         _newOwners = List<String>.from(r['new_owners'] ?? const []);
+        _paidUntil = r['subscription_paid_until'] != null
+            ? DateTime.tryParse(r['subscription_paid_until'] as String)?.toLocal()
+            : null;
         _loading = false;
       });
     } catch (_) {
@@ -176,6 +180,19 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     text: 'Семья и её данные сохранятся — они перейдут к '
                         '${_newOwners.join(', ')}.',
                   ),
+
+                if (_paidUntil != null) ...[
+                  const SizedBox(height: 16),
+                  _Note(
+                    icon: Icons.workspace_premium_outlined,
+                    color: Colors.red,
+                    text: 'У вас оплачена подписка до '
+                        '${_paidUntil!.day.toString().padLeft(2, '0')}.'
+                        '${_paidUntil!.month.toString().padLeft(2, '0')}.'
+                        '${_paidUntil!.year}. Оплаченный период сгорит, деньги '
+                        'за него не возвращаются.',
+                  ),
+                ],
 
                 const SizedBox(height: 16),
                 _Note(

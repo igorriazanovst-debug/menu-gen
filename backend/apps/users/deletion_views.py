@@ -8,6 +8,7 @@
     позволяла бы удалить чужой аккаунт, зная только e-mail.
 """
 
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -36,12 +37,47 @@ def _consequences(user) -> dict:
             heir_names.append(heir.name or str(heir) if heir else "")
         else:
             families_lost.append(family.name or "Моя семья")
+    # MG_ACCDEL: оплаченная подписка сгорает без возврата — так написано в
+    # оферте (п. 18.5: прекращение использования не основание для возврата за
+    # уже оплаченный период). Молчать об этом на экране подтверждения нельзя:
+    # человек удаляет аккаунт, не зная, что вместе с ним теряет оплаченное, и
+    # узнаёт об этом уже необратимо.
+    paid_until = None
+    family = _family_of(user)
+    if family is not None:
+        from apps.subscriptions.models import Subscription
+        from apps.subscriptions.permissions import PREMIUM_ACTIVE_STATUSES, PREMIUM_PLAN_CODE
+
+        sub = (
+            Subscription.objects.filter(
+                family=family,
+                plan__code=PREMIUM_PLAN_CODE,
+                status__in=PREMIUM_ACTIVE_STATUSES,
+                expires_at__gt=timezone.now(),
+            )
+            .order_by("-expires_at")
+            .first()
+        )
+        paid_until = sub.expires_at if sub else None
+
     return {
         "grace_days": GRACE_DAYS,
         "family_data_will_be_deleted": bool(families_lost),
         "families_to_delete": families_lost,
         "new_owners": heir_names,
+        "subscription_paid_until": paid_until,
     }
+
+
+def _family_of(user):
+    """Семья пользователя: своя или та, в которой он состоит."""
+    from apps.family.models import Family, FamilyMember
+
+    own = Family.objects.filter(owner=user).first()
+    if own:
+        return own
+    membership = FamilyMember.objects.select_related("family").filter(user=user).first()
+    return membership.family if membership else None
 
 
 class AccountDeleteView(APIView):
