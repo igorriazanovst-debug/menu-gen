@@ -28,6 +28,9 @@ const _publicAuthPaths = {
   '/auth/email/register/',
   '/auth/email/verify/',
   '/auth/email/resend/',
+  // MG_PWDRESET: забыл пароль. Та же причина, что и у остальных: человек без
+  // пароля войти не может, а протухший токен на устройстве вполне может лежать.
+  '/auth/password-reset/request/',
 };
 const _publicAuthPrefixes = {'/auth/phone/'};
 

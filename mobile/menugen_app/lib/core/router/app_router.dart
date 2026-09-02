@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/bloc/auth_bloc.dart';
+import '../../features/auth/screens/forgot_password_screen.dart'; // MG_PWDRESET
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/phone_register_screen.dart'; // MG_PHONEVERIFY
 import '../../features/auth/screens/register_screen.dart'; // MG_REG
@@ -36,7 +37,7 @@ const _premiumOnlyPaths = {'/fridge'};
 ///
 /// MG_LEGAL: юридические документы сюда намеренно НЕ входят — они живут в
 /// закрытой части, в разделе профиля.
-const _guestPaths = {'/login', '/register', '/register/phone'};
+const _guestPaths = {'/login', '/register', '/register/phone', '/forgot-password'};
 
 /// Куда перенаправить пользователя, или null — если можно остаться.
 ///
@@ -68,6 +69,12 @@ class AppRouter {
         GoRoute(
           path: '/register/phone',
           builder: (_, __) => PhoneRegisterScreen(apiClient: apiClient),
+        ),
+        // MG_PWDRESET: забыл пароль. Гостевой путь — человек без пароля войти
+        // не может, и редирект на /login был бы замкнутым кругом.
+        GoRoute(
+          path: '/forgot-password',
+          builder: (_, __) => ForgotPasswordScreen(apiClient: apiClient),
         ),
         GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),
         // MG_WEIGHREMIND: настройка ежедневного напоминания взвеситься.

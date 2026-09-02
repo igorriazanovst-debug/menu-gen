@@ -9,6 +9,7 @@ import { login, loginPhone, clearError } from '../../store/slices/authSlice';
 import { authApi } from '../../api/auth';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { PhoneInput, DEFAULT_PHONE_CODE } from '../../components/ui/PhoneInput'; // MG_PHONECODE
 
 const schema = z.object({
   email: z.string().email('Введите корректный email'),
@@ -25,7 +26,8 @@ export const LoginPage: React.FC = () => {
   const { loading, error, user } = useAppSelector((s) => s.auth);
 
   const [mode, setMode] = useState<LoginMode>('email');
-  const [phone, setPhone] = useState('');
+  // MG_PHONECODE: поле не пустое, а с уже подставленным кодом страны.
+  const [phone, setPhone] = useState(DEFAULT_PHONE_CODE);
   const [phonePassword, setPhonePassword] = useState('');
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
@@ -134,16 +136,18 @@ export const LoginPage: React.FC = () => {
               <Button type="submit" loading={loading} className="w-full mt-2">
                 Войти
               </Button>
+              {/* MG_PWDRESET: восстановление только по e-mail — письмо слать
+                  больше некуда. У входа по телефону этой ссылки нет намеренно. */}
+              <p className="text-sm text-center">
+                <Link to="/forgot-password" className="text-muted hover:text-tomato hover:underline">
+                  Забыли пароль?
+                </Link>
+              </p>
             </form>
           ) : (
             <form onSubmit={onSubmitPhone} className="space-y-4">
-              <Input
-                label="Телефон"
-                type="tel"
-                placeholder="+7 900 000-00-00"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
+              {/* MG_PHONECODE: код страны выбирается, а не набирается вручную */}
+              <PhoneInput value={phone} onChange={setPhone} />
               <Input
                 label="Пароль"
                 type="password"

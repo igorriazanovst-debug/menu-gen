@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.users.deletion_views import PublicDeletionConfirmView, PublicDeletionRequestView  # MG_ACCDEL
+from apps.users.password_views import PasswordResetConfirmView, PasswordResetRequestView  # MG_PWDRESET
 from apps.users.phone_views import (  # MG_PHONEVERIFY
     MaxWebhookView,
     PhoneRegisterView,
@@ -18,6 +19,18 @@ urlpatterns = [
     path("login/", LoginView.as_view(), name="auth-login"),
     path("refresh/", TokenRefreshView.as_view(), name="auth-refresh"),
     path("logout/", LogoutView.as_view(), name="auth-logout"),
+    # MG_PWDRESET: забыл пароль. Обе ручки публичные — человек без пароля
+    # войти не может, и требовать от него авторизации было бы замкнутым кругом.
+    path(
+        "password-reset/request/",
+        PasswordResetRequestView.as_view(),
+        name="auth-password-reset-request",
+    ),
+    path(
+        "password-reset/confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="auth-password-reset-confirm",
+    ),
     # MG_ACCDEL: удаление без входа в приложение — Google Play требует
     # публичный веб-адрес, доступный без авторизации. Подтверждение письмом.
     path(

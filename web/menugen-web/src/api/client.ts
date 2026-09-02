@@ -28,6 +28,11 @@ const PUBLIC_AUTH_PATHS = [
   // превращать её в 401 у человека, который как раз и не может войти.
   '/auth/account-deletion/request/',
   '/auth/account-deletion/confirm/',
+  // MG_PWDRESET: забыл пароль. Та же причина, что и у формы удаления: человек
+  // без пароля войти не может, а старый Bearer в localStorage вполне может
+  // лежать и портить ему запрос.
+  '/auth/password-reset/request/',
+  '/auth/password-reset/confirm/',
 ];
 
 export const isPublicAuthPath = (url?: string): boolean => {

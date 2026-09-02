@@ -12,6 +12,8 @@ import { LoginPage }         from './pages/Auth/LoginPage';
 import { RegisterPage }      from './pages/Auth/RegisterPage';
 import { PhoneRegisterPage } from './pages/Auth/PhoneRegisterPage'; // MG_PHONEVERIFY
 import { VerifyEmailPage }   from './pages/Auth/VerifyEmailPage'; // MG_EMAILVERIFY
+import { ForgotPasswordPage } from './pages/Auth/ForgotPasswordPage'; // MG_PWDRESET
+import { ResetPasswordPage }  from './pages/Auth/ResetPasswordPage'; // MG_PWDRESET
 import { PayReturnPage } from './pages/Payments/PayReturnPage';
 import { DashboardPage }     from './pages/Dashboard/DashboardPage';
 import { RecipesPage }       from './pages/Recipes/RecipesPage';
@@ -80,6 +82,10 @@ const AppRoutes: React.FC = () => {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/register/phone" element={<PhoneRegisterPage />} />{/* MG_PHONEVERIFY */}
       <Route path="/verify-email" element={<VerifyEmailPage />} />{/* MG_EMAILVERIFY */}
+      {/* MG_PWDRESET: восстановление пароля. Публичные маршруты намеренно —
+          человек, забывший пароль, войти не может по определению. */}
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       {/* MG_PAYRELIABLE: возврат с оплаты для мобильного — публичная страница:
           оплата началась в приложении, в браузере сессии может не быть. */}
       <Route path="/pay/return" element={<PayReturnPage />} />

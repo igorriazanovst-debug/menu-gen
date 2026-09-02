@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/phone_field.dart'; // MG_PHONECODE
 import '../bloc/auth_bloc.dart';
 
 /// Пауза между опросами статуса. Тот же интервал, что в вебе.
@@ -33,7 +34,8 @@ class PhoneRegisterScreen extends StatefulWidget {
 }
 
 class _PhoneRegisterScreenState extends State<PhoneRegisterScreen> {
-  final _phone = TextEditingController();
+  // MG_PHONECODE: поле не пустое, а с уже подставленным кодом страны.
+  final _phone = TextEditingController(text: defaultPhoneCode);
   final _name = TextEditingController();
   final _pass = TextEditingController();
   final _pass2 = TextEditingController();
@@ -233,14 +235,11 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen> {
   }
 
   List<Widget> _phoneStep() => [
-        TextField(
+        // MG_PHONECODE: код страны выбирается, а не набирается вручную
+        PhoneField(
           controller: _phone,
-          keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(
-            labelText: 'Номер телефона',
-            hintText: '+7 900 000-00-00',
-            prefixIcon: Icon(Icons.phone_outlined),
-          ),
+          label: 'Номер телефона',
+          helperText: 'Номер, привязанный к вашему мессенджеру',
         ),
         const SizedBox(height: 16),
         const Text('Где подтвердить номер', style: TextStyle(fontSize: 13, color: Colors.grey)),
