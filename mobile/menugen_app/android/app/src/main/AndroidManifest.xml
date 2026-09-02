@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
@@ -29,6 +30,38 @@
          минута туда-сюда безразлична. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- MG_MEDIAPERM: доступ к чужим фото, видео и музыке приложению не нужен.
+
+         Google Play не принял сборку: «Все разработчики, запрашивающие доступ
+         к разрешениям для фото и видео, должны сообщить нам об основных
+         функциях своего приложения». Заполнять эту декларацию было бы неправдой
+         — разрешения нам не нужны вовсе.
+
+         Откуда они взялись: их объявляет в своём манифесте пакет open_filex, и
+         при слиянии манифестов они приезжают к нам. Мы этим пакетом делаем
+         ровно одно — отдаём скачанный APK системному установщику
+         (update_service.dart). Файл лежит в кэше приложения, а для путей внутри
+         своего каталога сам плагин разрешений не спрашивает: см. его
+         pathRequiresPermission(). То есть разрешения объявлены и никогда не
+         используются.
+
+         Прикрепление фото блюда («Я приготовил») тут ни при чём: image_picker
+         не объявляет ни одного разрешения — он получает файл через системный
+         выбор, по content-ссылке, и права на чужие файлы ему не нужны.
+
+         tools:node="remove" — единственный способ убрать чужое объявление:
+         строку в чужом пакете не удалить, а наш манифест указывает
+         слиянию выбросить этот узел. Разрешения убираются в ОБЕИХ сборках, и
+         в магазинной, и в сайтовой: раз ими никто не пользуется, разводить
+         сборки незачем.
+
+         Что это НЕ ломает (проверено по исходникам пакетов, а не по памяти):
+         выбор фото из галереи и съёмку камерой — они идут через image_picker;
+         самообновление с сайта — путь к APK внутри каталога приложения. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove"/>
     <!-- MG_TGLINK: без этого блока подтверждение телефона упиралось в «не удалось
          открыть мессенджер».
 
