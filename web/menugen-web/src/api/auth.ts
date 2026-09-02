@@ -66,10 +66,14 @@ export const authApi = {
       { token },
     ),
 
-  // MG_PWDRESET: забыл пароль. Ответ на запрос одинаков для существующего и
-  // несуществующего адреса — иначе форма стала бы проверкой «есть ли аккаунт».
-  requestPasswordReset: (email: string) =>
-    client.post<{ detail: string; reset_link?: string }>('/auth/password-reset/request/', { email }),
+  // MG_PWDRESET: забыл пароль. Куда придёт ссылка, решает не пользователь, а
+  // то, чем он подтверждал владение: адрес — письмом, номер — сообщением в
+  // мессенджер, где он делился контактом при регистрации.
+  //
+  // Ответ одинаков для существующего и несуществующего адреса (номера) —
+  // иначе форма стала бы проверкой «есть ли такой аккаунт».
+  requestPasswordReset: (target: { email?: string; phone?: string }) =>
+    client.post<{ detail: string; reset_link?: string }>('/auth/password-reset/request/', target),
 
   confirmPasswordReset: (token: string, password: string, password2: string) =>
     client.post<{ detail: string }>('/auth/password-reset/confirm/', { token, password, password2 }),

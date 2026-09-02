@@ -136,8 +136,6 @@ export const LoginPage: React.FC = () => {
               <Button type="submit" loading={loading} className="w-full mt-2">
                 Войти
               </Button>
-              {/* MG_PWDRESET: восстановление только по e-mail — письмо слать
-                  больше некуда. У входа по телефону этой ссылки нет намеренно. */}
               <p className="text-sm text-center">
                 <Link to="/forgot-password" className="text-muted hover:text-tomato hover:underline">
                   Забыли пароль?
@@ -157,6 +155,17 @@ export const LoginPage: React.FC = () => {
               <Button type="submit" loading={loading} className="w-full mt-2">
                 Войти
               </Button>
+              {/* MG_PWDRESET: телефонному аккаунту ссылка уходит в мессенджер,
+                  где он подтверждал номер, — поэтому вкладку открываем сразу
+                  нужную, чтобы человек не искал её сам. */}
+              <p className="text-sm text-center">
+                <Link
+                  to="/forgot-password?mode=phone"
+                  className="text-muted hover:text-tomato hover:underline"
+                >
+                  Забыли пароль?
+                </Link>
+              </p>
             </form>
           )}
           <p className="text-sm text-muted text-center mt-5">

@@ -1,4 +1,4 @@
-"""MG_PWDRESET: восстановление пароля по ссылке из письма.
+"""MG_PWDRESET: восстановление пароля по ссылке.
 
 Проверяется то, что ломается молча и дорого:
 
@@ -8,11 +8,15 @@
   (иначе это готовый способ перебирать, кто у нас зарегистрирован);
 * старый пароль перестаёт пускать, новый пускает;
 * непроверенный e-mail становится проверенным — иначе человек сменил бы пароль
-  и всё равно упёрся в «подтвердите e-mail».
+  и всё равно упёрся в «подтвердите e-mail»;
+* телефонный аккаунт получает ссылку в мессенджер, где подтверждал номер, —
+  письмо ему слать некуда, e-mail у него может не быть вовсе.
 
 Адреса выдуманные: в тестовой базе есть посевной каталог продуктов (миграция
 fridge 0004), но не пользователи — пересекаться не с чем.
 """
+
+from datetime import timedelta
 
 import pytest
 from django.urls import reverse
@@ -170,3 +174,178 @@ def test_reset_does_not_cancel_pending_deletion():
     assert _confirm(client, make_token(user)).status_code == 200
     user.refresh_from_db()
     assert user.deletion_requested_at is not None
+
+
+# ── MG_PWDRESET: восстановление для телефонных аккаунтов ────────────────────
+#
+# У аккаунта, заведённого по телефону, e-mail может не быть вовсе — письмо
+# слать некуда. Ссылка уходит в тот мессенджер, где человек делился контактом
+# при регистрации: это доказательство владения номером у нас уже есть, и
+# заводить ради сброса новое не нужно.
+
+PHONE = "+79995550011"
+
+
+def _phone_user(phone=PHONE, chat_id="chat-777", provider="telegram", status=None):
+    """Пользователь с телефоном и подтверждённой заявкой, как после регистрации."""
+    from apps.users.models import PhoneVerification
+
+    user = User.objects.create_user(email=None, name="Телефонный", password=OLD_PASSWORD, phone=phone)
+    PhoneVerification.objects.create(
+        phone=phone,
+        provider=provider,
+        token=f"tok-{phone}-{chat_id}",
+        status=status or PhoneVerification.Status.CONSUMED,
+        chat_id=chat_id,
+        expires_at=timezone.now() + timedelta(minutes=30),
+    )
+    return user
+
+
+@pytest.mark.django_db
+def test_messenger_target_finds_the_chat_of_the_number():
+    from apps.users.password_reset import messenger_target
+
+    _phone_user()
+    pv = messenger_target(PHONE)
+    assert pv is not None
+    assert pv.chat_id == "chat-777"
+    assert pv.provider == "telegram"
+
+
+@pytest.mark.django_db
+def test_messenger_target_takes_the_freshest_chat():
+    """Номер подтверждали повторно — писать надо в последний диалог."""
+    from apps.users.models import PhoneVerification
+    from apps.users.password_reset import messenger_target
+
+    _phone_user(chat_id="staryi-chat")
+    PhoneVerification.objects.create(
+        phone=PHONE,
+        provider="max",
+        token="tok-svezhii",
+        status=PhoneVerification.Status.VERIFIED,
+        chat_id="svezhii-chat",
+        expires_at=timezone.now() + timedelta(minutes=30),
+    )
+    pv = messenger_target(PHONE)
+    assert pv.chat_id == "svezhii-chat"
+    assert pv.provider == "max"
+
+
+@pytest.mark.django_db
+def test_messenger_target_ignores_unconfirmed_and_chatless():
+    """Заявка без чата или недоведённая до конца адресом быть не может."""
+    from apps.users.models import PhoneVerification
+    from apps.users.password_reset import messenger_target
+
+    PhoneVerification.objects.create(
+        phone=PHONE,
+        provider="telegram",
+        token="tok-pending",
+        status=PhoneVerification.Status.PENDING,
+        chat_id="chat-pending",
+        expires_at=timezone.now() + timedelta(minutes=30),
+    )
+    PhoneVerification.objects.create(
+        phone=PHONE,
+        provider="telegram",
+        token="tok-bez-chata",
+        status=PhoneVerification.Status.CONSUMED,
+        chat_id="",
+        expires_at=timezone.now() + timedelta(minutes=30),
+    )
+    assert messenger_target(PHONE) is None
+
+
+@pytest.mark.django_db
+def test_request_by_phone_sends_link_to_messenger(monkeypatch):
+    sent = []
+
+    class _Provider:
+        enabled = True
+
+        def send_message(self, chat_id, text):
+            sent.append((chat_id, text))
+
+    monkeypatch.setattr("apps.users.messengers.get_provider", lambda name: _Provider())
+
+    user = _phone_user()
+    client = APIClient()
+    resp = client.post(reverse("auth-password-reset-request"), {"phone": "8 999 555-00-11"}, format="json")
+    assert resp.status_code == 200
+    assert len(sent) == 1
+    chat_id, text = sent[0]
+    assert chat_id == "chat-777"
+    # В сообщении должна быть рабочая ссылка на смену пароля.
+    assert "/reset-password?token=" in text
+    token = text.split("token=")[1].split()[0]
+    assert read_token(token).id == user.id
+
+
+@pytest.mark.django_db
+def test_request_by_phone_answers_the_same_for_unknown_number(monkeypatch):
+    sent = []
+
+    class _Provider:
+        enabled = True
+
+        def send_message(self, chat_id, text):
+            sent.append(chat_id)
+
+    monkeypatch.setattr("apps.users.messengers.get_provider", lambda name: _Provider())
+
+    _phone_user()
+    client = APIClient()
+    url = reverse("auth-password-reset-request")
+    known = client.post(url, {"phone": PHONE}, format="json")
+    unknown = client.post(url, {"phone": "+79995559999"}, format="json")
+    assert known.status_code == 200 and unknown.status_code == 200
+    assert known.data["detail"] == unknown.data["detail"]
+    assert sent == ["chat-777"]  # второму писать было некуда
+
+
+@pytest.mark.django_db
+def test_request_by_phone_survives_dead_messenger(monkeypatch):
+    """Бота заблокировали — ответ прежний, 500 не отдаём."""
+
+    class _Provider:
+        enabled = True
+
+        def send_message(self, chat_id, text):
+            raise RuntimeError("bot was blocked by the user")
+
+    monkeypatch.setattr("apps.users.messengers.get_provider", lambda name: _Provider())
+
+    _phone_user()
+    client = APIClient()
+    resp = client.post(reverse("auth-password-reset-request"), {"phone": PHONE}, format="json")
+    assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+def test_phone_account_logs_in_with_new_password(monkeypatch):
+    """Весь путь целиком: ссылка из мессенджера меняет пароль, вход работает."""
+    sent = []
+
+    class _Provider:
+        enabled = True
+
+        def send_message(self, chat_id, text):
+            sent.append(text)
+
+    monkeypatch.setattr("apps.users.messengers.get_provider", lambda name: _Provider())
+
+    _phone_user()
+    client = APIClient()
+    client.post(reverse("auth-password-reset-request"), {"phone": PHONE}, format="json")
+    token = sent[0].split("token=")[1].split()[0]
+
+    assert _confirm(client, token).status_code == 200
+
+    url = reverse("auth-login")
+    bad = client.post(url, {"phone": PHONE, "password": OLD_PASSWORD}, format="json")
+    assert bad.status_code == 400
+    good = client.post(url, {"phone": PHONE, "password": NEW_PASSWORD}, format="json")
+    assert good.status_code == 200
+    assert "access" in good.data

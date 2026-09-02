@@ -1,22 +1,35 @@
-// MG_PWDRESET: «забыли пароль» — запрос письма со ссылкой.
+// MG_PWDRESET: «забыли пароль» — запрос ссылки на смену.
 //
-// Экран только просит письмо. Новый пароль задаётся на странице сайта, куда
-// ведёт ссылка из письма, — как и подтверждение удаления аккаунта. Так сделано
-// не из лени: чтобы задать пароль в приложении, пришлось бы просить человека
-// перенести из письма длинный токен руками, а ссылка открывается пальцем.
+// Два способа, потому что аккаунты бывают двух видов. Зарегистрированному по
+// e-mail ссылка уходит письмом. Зарегистрированному по телефону письмо слать
+// некуда — адреса у него может не быть вовсе, — поэтому ссылка уходит в тот
+// мессенджер, где он подтверждал номер при регистрации. Отдельного
+// доказательства владения для этого не понадобилось: диалог с ботом, в котором
+// человек делился контактом, и есть доказательство.
 //
-// Ответ сервера одинаков для существующего и несуществующего адреса, поэтому и
-// экран показывает одно и то же: иначе форма стала бы способом проверять, кто у
-// нас зарегистрирован.
+// Экран только просит ссылку. Новый пароль задаётся на странице сайта, как и
+// подтверждение удаления аккаунта. Так сделано не из лени: чтобы задать пароль
+// в приложении, пришлось бы просить человека перенести из письма длинный токен
+// руками, а ссылка открывается пальцем.
+//
+// Ответ сервера одинаков для существующего и несуществующего адреса (номера),
+// поэтому и экран показывает одно и то же: иначе форма стала бы способом
+// проверять, кто у нас зарегистрирован.
 import 'package:flutter/material.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/phone_field.dart'; // MG_PHONECODE
 
 class ForgotPasswordScreen extends StatefulWidget {
   final ApiClient apiClient;
-  const ForgotPasswordScreen({super.key, required this.apiClient});
+
+  /// С экрана входа приходим уже в нужной вкладке: тот, кто вводил телефон,
+  /// ищет восстановление по телефону, а не по адресу.
+  final bool byPhone;
+
+  const ForgotPasswordScreen({super.key, required this.apiClient, this.byPhone = false});
 
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
@@ -24,6 +37,8 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _email = TextEditingController();
+  final _phone = TextEditingController(text: defaultPhoneCode);
+  late bool _byPhone = widget.byPhone;
   bool _sending = false;
   bool _sent = false;
   String? _error;
@@ -31,12 +46,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   void dispose() {
     _email.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     final email = _email.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
+    final phone = _phone.text.trim();
+    if (_byPhone) {
+      if (phone.replaceAll(RegExp(r'\D'), '').length < 10) {
+        setState(() => _error = 'Введите номер, на который зарегистрирован аккаунт.');
+        return;
+      }
+    } else if (email.isEmpty || !email.contains('@')) {
       setState(() => _error = 'Введите адрес, на который зарегистрирован аккаунт.');
       return;
     }
@@ -45,7 +67,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _error = null;
     });
     try {
-      await widget.apiClient.post('/auth/password-reset/request/', data: {'email': email});
+      await widget.apiClient.post('/auth/password-reset/request/',
+          data: _byPhone ? {'phone': phone} : {'email': email});
       if (!mounted) return;
       setState(() => _sent = true);
     } catch (e) {
@@ -55,7 +78,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       // связи, иначе человек будет ждать письмо, которого никто не отправлял.
       setState(() => _error = e is ApiException && e.isNetwork
           ? 'Нет связи с сервером. Проверьте интернет и попробуйте снова.'
-          : 'Не удалось отправить письмо. Попробуйте позже.');
+          : 'Не удалось отправить ссылку. Попробуйте позже.');
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -77,22 +100,41 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget _formBlock(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Укажите адрес, на который зарегистрирован аккаунт. Пришлём письмо '
-            'со ссылкой — по ней можно будет задать новый пароль.',
-            style: TextStyle(fontSize: 15),
+          Text(
+            _byPhone
+                ? 'Укажите номер, на который зарегистрирован аккаунт. Пришлём ссылку '
+                    'в мессенджер, где вы подтверждали номер.'
+                : 'Укажите адрес, на который зарегистрирован аккаунт. Пришлём письмо '
+                    'со ссылкой — по ней можно будет задать новый пароль.',
+            style: const TextStyle(fontSize: 15),
           ),
           const SizedBox(height: 24),
-          TextField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: 'Email',
-              prefixIcon: Icon(Icons.email_outlined),
-            ),
-            onSubmitted: (_) => _submit(),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('E-mail')),
+              ButtonSegment(value: true, label: Text('Телефон')),
+            ],
+            selected: {_byPhone},
+            onSelectionChanged: (s) => setState(() {
+              _byPhone = s.first;
+              _error = null;
+            }),
           ),
+          const SizedBox(height: 24),
+          if (_byPhone)
+            // MG_PHONECODE: код страны выбирается, а не набирается вручную
+            PhoneField(controller: _phone)
+          else
+            TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: TextStyle(color: context.cs.error, fontSize: 13)),
@@ -114,22 +156,30 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget _sentBlock(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(Icons.mark_email_read_outlined, size: 56, color: context.cs.primary),
+          Icon(_byPhone ? Icons.forum_outlined : Icons.mark_email_read_outlined,
+              size: 56, color: context.cs.primary),
           const SizedBox(height: 16),
-          const Text('Письмо отправлено',
+          Text(_byPhone ? 'Ссылка отправлена' : 'Письмо отправлено',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 12),
           Text(
-            'Если аккаунт с адресом ${_email.text.trim()} существует, мы отправили на него '
-            'ссылку для смены пароля. Ссылка действует 2 часа.',
+            _byPhone
+                ? 'Если аккаунт с номером ${_phone.text.trim()} существует, мы отправили ссылку '
+                    'для смены пароля в мессенджер, где вы подтверждали номер. '
+                    'Ссылка действует 2 часа.'
+                : 'Если аккаунт с адресом ${_email.text.trim()} существует, мы отправили на него '
+                    'ссылку для смены пароля. Ссылка действует 2 часа.',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 15),
           ),
           const SizedBox(height: 12),
           Text(
-            'Письма нет? Проверьте папку «Спам» и убедитесь, что адрес тот же, '
-            'с которым вы регистрировались.',
+            _byPhone
+                ? 'Сообщения нет? Проверьте, что бот не заблокирован, и что номер тот же, '
+                    'с которым вы регистрировались.'
+                : 'Письма нет? Проверьте папку «Спам» и убедитесь, что адрес тот же, '
+                    'с которым вы регистрировались.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, color: context.cs.outline),
           ),
@@ -140,7 +190,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
           TextButton(
             onPressed: () => setState(() => _sent = false),
-            child: const Text('Ввести другой адрес'),
+            child: Text(_byPhone ? 'Ввести другой номер' : 'Ввести другой адрес'),
           ),
         ],
       );

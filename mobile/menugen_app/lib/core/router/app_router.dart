@@ -44,10 +44,14 @@ const _guestPaths = {'/login', '/register', '/register/phone', '/forgot-password
 /// Вынесено из замыкания роутера, чтобы правило доступа можно было проверить
 /// тестом, не поднимая всё дерево экранов.
 String? authRedirect({required bool isLoggedIn, required String location, bool premiumLocked = false}) {
-  final isGuestPath = _guestPaths.contains(location);
+  // Хвост запроса отрезаем: /forgot-password?mode=phone — тот же гостевой путь.
+  // matchedLocation его и так не содержит, но правило не должно зависеть от
+  // того, что именно ему передали.
+  final path = location.split('?').first;
+  final isGuestPath = _guestPaths.contains(path);
   if (!isLoggedIn && !isGuestPath) return '/login';
   if (isLoggedIn && isGuestPath) return '/menu';
-  if (premiumLocked && _premiumOnlyPaths.any(location.startsWith)) return '/paywall';
+  if (premiumLocked && _premiumOnlyPaths.any(path.startsWith)) return '/paywall';
   return null;
 }
 
@@ -74,7 +78,12 @@ class AppRouter {
         // не может, и редирект на /login был бы замкнутым кругом.
         GoRoute(
           path: '/forgot-password',
-          builder: (_, __) => ForgotPasswordScreen(apiClient: apiClient),
+          // ?mode=phone — пришли с телефонной вкладки входа; открываем сразу её,
+          // чтобы человек не искал нужный способ сам.
+          builder: (_, state) => ForgotPasswordScreen(
+            apiClient: apiClient,
+            byPhone: state.uri.queryParameters['mode'] == 'phone',
+          ),
         ),
         GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),
         // MG_WEIGHREMIND: настройка ежедневного напоминания взвеситься.

@@ -155,14 +155,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               }),
               const SizedBox(height: 12),
-              // MG_PWDRESET: восстановление только по e-mail — письмо слать
-              // больше некуда. При входе по телефону ссылку не показываем,
-              // иначе она обещала бы то, чего сделать нельзя.
-              if (!_byPhone)
-                TextButton(
-                  onPressed: () => context.push('/forgot-password'),
-                  child: const Text('Забыли пароль?'),
-                ),
+              // MG_PWDRESET: у телефонного аккаунта ссылка уходит в мессенджер,
+              // где он подтверждал номер, — поэтому вкладку открываем сразу
+              // нужную, чтобы человек не искал её сам.
+              TextButton(
+                onPressed: () => context.push(
+                    _byPhone ? '/forgot-password?mode=phone' : '/forgot-password'),
+                child: const Text('Забыли пароль?'),
+              ),
               TextButton(
                 onPressed: () => context.push('/register'),
                 child: const Text('Нет аккаунта? Зарегистрироваться'),

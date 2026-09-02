@@ -1,4 +1,10 @@
-"""MG_PWDRESET: восстановление пароля по ссылке из письма.
+"""MG_PWDRESET: восстановление пароля по ссылке.
+
+Каналов доставки два, и выбирает не пользователь, а то, чем он подтверждал
+владение: у кого есть e-mail — письмом, у зарегистрировавшихся по телефону —
+сообщением в тот мессенджер, где они делились контактом. Придумывать
+телефонным аккаунтам отдельный способ не пришлось: доказательство владения
+номером у нас уже есть, и это тот самый диалог с ботом.
 
 Устроено так же, как подтверждение e-mail (email_verify.py): подписанный токен
 без отдельной модели, ссылка ведёт на страницу сайта, страница дёргает API.
@@ -96,4 +102,73 @@ def send_reset_email(user) -> str:
             log.error("send_reset_email failed for %s: %s", user.email, e)
     else:
         log.info("EMAIL not configured — reset link for %s: %s", user.email, link)
+    return link
+
+
+def messenger_target(phone: str):
+    """Где мы можем написать владельцу этого номера: (провайдер, чат) или None.
+
+    Берём заявку на подтверждение номера, в которой человек уже делился
+    контактом: именно она доказала, что номер его, и именно её чат — тот самый
+    диалог с ботом. Ничего нового заводить не нужно, chat_id и провайдер
+    хранятся там с самой регистрации.
+
+    Годятся и verified, и consumed: заявка становится consumed сразу после
+    завершения регистрации, то есть у зарегистрированного человека она как раз
+    в этом состоянии. Свежая — на случай, если номер подтверждали повторно
+    (например, сменив мессенджер): писать надо в последний известный диалог.
+    """
+    from apps.users.models import PhoneVerification
+
+    from .phone_verify import normalize_phone
+
+    norm = normalize_phone(phone)
+    if not norm:
+        return None
+    return (
+        PhoneVerification.objects.filter(
+            phone=norm,
+            status__in=(PhoneVerification.Status.VERIFIED, PhoneVerification.Status.CONSUMED),
+            chat_id__isnull=False,
+        )
+        .exclude(chat_id="")
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def send_reset_via_messenger(user) -> str | None:
+    """Отправляет ссылку в мессенджер, где подтверждался номер.
+
+    Возвращает ссылку, если было куда и через что писать, иначе None. Отправку
+    не считаем обязанной удаться: бота могли заблокировать, а провайдер — быть
+    выключенным на этом стенде. Ошибку логируем и молчим, потому что наружу
+    ответ обязан быть одинаковым для всех номеров (см. PasswordResetRequestView).
+    """
+    from .messengers import get_provider
+
+    pv = messenger_target(user.phone or "")
+    if pv is None:
+        return None
+
+    try:
+        provider = get_provider(pv.provider)
+    except ValueError:  # провайдер из старой записи, которого больше нет в коде
+        log.error("send_reset_via_messenger: неизвестный провайдер %r", pv.provider)
+        return None
+    if not provider.enabled:
+        log.info("send_reset_via_messenger: провайдер %s выключен", pv.provider)
+        return None
+
+    link = build_reset_link(user)
+    text = (
+        "Кто-то запросил смену пароля в MenuGen для этого номера.\n\n"
+        f"Чтобы задать новый пароль, откройте ссылку:\n{link}\n\n"
+        "Ссылка действует 2 часа и срабатывает один раз. "
+        "Если вы этого не просили — просто не открывайте её, пароль останется прежним."
+    )
+    try:
+        provider.send_message(pv.chat_id, text)
+    except Exception as e:  # не роняем ответ из-за мессенджера
+        log.error("send_reset_via_messenger failed for %s: %s", pv.provider, e)
     return link
