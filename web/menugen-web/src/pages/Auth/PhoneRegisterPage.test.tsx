@@ -55,7 +55,9 @@ describe('PhoneRegisterPage — step 1', () => {
     mockAuthApi.phoneStatus.mockResolvedValue({ data: { status: 'pending' } } as any);
 
     renderPage();
-    await userEvent.type(screen.getByLabelText('Телефон'), '+79123456789');
+    // MG_PHONECODE: код страны стоит в отдельном списке (+7 по умолчанию),
+    // в поле набирается только остальная часть номера.
+    await userEvent.type(screen.getByLabelText('Телефон'), '9123456789');
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     await waitFor(() => expect(mockAuthApi.phoneStart).toHaveBeenCalledWith('+79123456789', 'telegram'));
@@ -67,7 +69,9 @@ describe('PhoneRegisterPage — step 1', () => {
   it('shows conflict when phone already registered', async () => {
     mockAuthApi.phoneStart.mockRejectedValueOnce({ response: { data: { code: 'phone_taken' } } });
     renderPage();
-    await userEvent.type(screen.getByLabelText('Телефон'), '+79123456789');
+    // MG_PHONECODE: код страны стоит в отдельном списке (+7 по умолчанию),
+    // в поле набирается только остальная часть номера.
+    await userEvent.type(screen.getByLabelText('Телефон'), '9123456789');
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
     await waitFor(() => expect(screen.getByText(/уже есть/i)).toBeInTheDocument());
   });

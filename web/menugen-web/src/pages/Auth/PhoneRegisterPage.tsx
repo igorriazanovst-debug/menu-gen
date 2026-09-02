@@ -10,6 +10,7 @@ import { phoneRegister, clearError } from '../../store/slices/authSlice';
 import { authApi, type MessengerProvider, type PhoneStartResult, type PhoneStatus } from '../../api/auth';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { PhoneInput, DEFAULT_PHONE_CODE } from '../../components/ui/PhoneInput'; // MG_PHONECODE
 
 type Step = 'phone' | 'confirm' | 'finish';
 
@@ -21,7 +22,8 @@ export const PhoneRegisterPage: React.FC = () => {
   const { loading, error, user } = useAppSelector((s) => s.auth);
 
   const [step, setStep] = useState<Step>('phone');
-  const [phone, setPhone] = useState('');
+  // MG_PHONECODE: поле не пустое, а с уже подставленным кодом страны.
+  const [phone, setPhone] = useState(DEFAULT_PHONE_CODE);
   const [provider, setProvider] = useState<MessengerProvider>('telegram');
   const [session, setSession] = useState<PhoneStartResult | null>(null);
   const [localErr, setLocalErr] = useState<string | null>(null);
@@ -133,12 +135,10 @@ export const PhoneRegisterPage: React.FC = () => {
                 </div>
               )}
               <form onSubmit={onStart} className="space-y-4">
-                <Input
-                  label="Телефон"
-                  type="tel"
-                  placeholder="+7 900 000-00-00"
+                {/* MG_PHONECODE: код страны выбирается, а не набирается вручную */}
+                <PhoneInput
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={setPhone}
                   hint="Номер, привязанный к вашему мессенджеру"
                 />
                 <div>

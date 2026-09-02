@@ -7,6 +7,7 @@ import '../../../core/api/api_client.dart'; // MG_EMAILVERIFY_MOBILE
 import '../../../core/config/app_config.dart'; // MG_LOGINFIX
 import '../../../core/deeplink/verified_notice_cubit.dart'; // MG_VERIFYDEEPLINK
 import '../../../core/theme/app_theme.dart'; // MG_SKIN
+import '../../../core/widgets/phone_field.dart'; // MG_PHONECODE
 import '../bloc/auth_bloc.dart';
 import '../widgets/verify_email_panel.dart'; // MG_EMAILVERIFY_MOBILE
 
@@ -19,7 +20,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
-  final _phone = TextEditingController();
+  // MG_PHONECODE: поле не пустое, а с уже подставленным кодом страны.
+  final _phone = TextEditingController(text: defaultPhoneCode);
   final _pass = TextEditingController();
   bool _obscure = true;
   // MG_PHONEVERIFY: вход по e-mail или по телефону — как на вебе.
@@ -104,12 +106,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 24),
               if (_byPhone)
-                TextField(controller: _phone,
-                  decoration: const InputDecoration(
-                      labelText: 'Телефон',
-                      hintText: '+7 900 000-00-00',
-                      prefixIcon: Icon(Icons.phone_outlined)),
-                  keyboardType: TextInputType.phone)
+                // MG_PHONECODE: код страны выбирается, а не набирается вручную
+                PhoneField(controller: _phone)
               else
                 TextField(controller: _email,
                   decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
@@ -157,6 +155,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               }),
               const SizedBox(height: 12),
+              // MG_PWDRESET: у телефонного аккаунта ссылка уходит в мессенджер,
+              // где он подтверждал номер, — поэтому вкладку открываем сразу
+              // нужную, чтобы человек не искал её сам.
+              TextButton(
+                onPressed: () => context.push(
+                    _byPhone ? '/forgot-password?mode=phone' : '/forgot-password'),
+                child: const Text('Забыли пароль?'),
+              ),
               TextButton(
                 onPressed: () => context.push('/register'),
                 child: const Text('Нет аккаунта? Зарегистрироваться'),
