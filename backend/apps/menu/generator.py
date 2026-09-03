@@ -73,6 +73,45 @@ MEAL_COMPONENTS: Dict[str, Tuple[str, ...]] = {
     "snack2": ("snack",),
 }
 
+
+# MG_SUITABLE: роли, у которых есть ВЫБОР приёма. Только для них фильтр по
+# suitable_for что-то решает.
+#
+# suitable_for отвечает на вопрос «когда это едят», и по нему же отсеиваются
+# кандидаты при подборе. Для роли, встречающейся в нескольких приёмах, это
+# осмысленно: основное блюдо с пометкой «ужин» не надо ставить в обед, потому
+# что у него есть куда пойти. Но роль «десерт» существует только в обеде, и
+# пометка, где обеда нет, не выбирает между слотами — она вычёркивает рецепт
+# целиком, потому что другого слота у него нет.
+#
+# Чем это обошлось (замер на проде, chat-83): импорт say7 помечал десерты как
+# ["snack"], а выпечку как ["breakfast", "snack"] — вполне разумно на вид,
+# десерт и правда сойдёт за перекус. Но перекус берёт блюда с dish_type='snack',
+# а не десерты. В итоге из 45 десертов генератор доставал 5, из 35 выпечек — 2,
+# остальные шли только по запасному пути, когда достижимые израсходованы. В
+# отчёте mg_analyze_s1_repeats это читалось как «пять рецептов в 20 прогонах из
+# 20» и как нехватка пула — хотя пул был.
+#
+# Чинить решили здесь, а не разметкой 630 рецептов: то же поле читает фильтр
+# «приём пищи» в каталоге (apps/recipes/filters.py), и дописав туда «обед», мы
+# высыпали бы человеку в выдачу по обеду четыреста наименований выпечки и двести
+# десертов. Разметка отвечает на свой вопрос правильно — неправильно было
+# спрашивать её там, где выбора нет.
+#
+# Набор ВЫВОДИТСЯ из MEAL_COMPONENTS, а не выписан руками: список, переписанный
+# рядом, разошёлся бы с раскладкой приёмов ровно так же, как разошлась разметка
+# импорта, и заметили бы это опять по повторяемости меню.
+def _roles_with_meal_choice() -> frozenset:
+    meals_by_role: Dict[str, set] = {}
+    for meal_slot, roles in MEAL_COMPONENTS.items():
+        db_meal_type = MEAL_TYPE_DB[meal_slot]
+        for role in roles:
+            meals_by_role.setdefault(role, set()).add(db_meal_type)
+    return frozenset(role for role, meals in meals_by_role.items() if len(meals) > 1)
+
+
+ROLES_WITH_MEAL_CHOICE = _roles_with_meal_choice()
+
 # RB001_V_step4: обязательные роли — при пустом пуле поднимаем EmptyRolePoolError.
 # Остальные роли опциональны: нет рецепта → пропускаем (continue), без ошибки.
 REQUIRED_ROLES: Dict[str, Tuple[str, ...]] = {
@@ -601,9 +640,13 @@ class MenuGenerator:
                 return False
             if not self._recipe_passes_hard(r, hard_exclude):
                 return False
-            sf = getattr(r, "suitable_for", None)
-            if sf and meal_type not in sf:
-                return False
+            # MG_SUITABLE: спрашиваем разметку только там, где у роли есть выбор
+            # приёма. У десерта, выпечки и супа слот один — пометка не выбирала
+            # бы между слотами, а вычёркивала рецепт целиком.
+            if role in ROLES_WITH_MEAL_CHOICE:
+                sf = getattr(r, "suitable_for", None)
+                if sf and meal_type not in sf:
+                    return False
             return True
 
         candidates = [r for r in primary if _ok(r)]
@@ -1114,9 +1157,12 @@ class MenuGenerator:
                 continue
             if not self._recipe_passes_hard(r, hard_exclude):
                 continue
-            sf = getattr(r, "suitable_for", None)
-            if sf and meal_type not in sf:
-                continue
+            # MG_SUITABLE: см. ROLES_WITH_MEAL_CHOICE — у роли с единственным
+            # слотом разметка не выбирает, а только вычёркивает.
+            if role in ROLES_WITH_MEAL_CHOICE:
+                sf = getattr(r, "suitable_for", None)
+                if sf and meal_type not in sf:
+                    continue
             cands.append(r)
         if not cands:
             cands = [r for r in primary if r.id not in used and self._recipe_passes_hard(r, hard_exclude)]
