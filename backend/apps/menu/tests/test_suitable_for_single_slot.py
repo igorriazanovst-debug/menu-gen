@@ -113,3 +113,36 @@ def test_main_marked_dinner_is_not_taken_for_lunch():
     dinner_only = _recipe("Ужинное проверочное", "main", ["dinner"])
     lunch_ok = _recipe("Обеденное проверочное", "main", ["lunch"])
     assert _pick(_generator(), "main", "lunch", [dinner_only, lunch_ok]) == lunch_ok
+
+
+# ── MG_SWEETROLE: запрет на сахар в основных приёмах и десертный слот ────────
+#
+# Второй отсев, найденный тем же прогоном. Запрет has_added_sugar в основных
+# приёмах писался, когда десертной роли в обеде не было; после её появления в
+# слот десерта проходили только НЕсладкие десерты. На dev таких оказалось три из
+# 39 — и ровно они стояли в 20 меню из 20.
+
+
+@pytest.mark.django_db
+def test_sugary_dessert_is_taken_at_lunch():
+    """Десерт с сахаром больше не проигрывает несладкому просто из-за сахара."""
+    sugary = _recipe("Сладкий проверочный", "dessert", ["snack"], has_added_sugar=True)
+    assert _pick(_generator(), "dessert", "lunch", [sugary]) == sugary
+
+
+@pytest.mark.django_db
+def test_sugary_dessert_competes_with_sugar_free_one():
+    """Раньше несладкий вытеснял сладкий подчистую — теперь оба в кандидатах."""
+    sugary = _recipe("Сладкий проверочный", "dessert", ["snack"], has_added_sugar=True)
+    plain = _recipe("Несладкий проверочный", "dessert", ["snack"], has_added_sugar=False)
+    picks = {_pick(_generator(), "dessert", "lunch", [sugary, plain]).id for _ in range(40)}
+    assert picks == {sugary.id, plain.id}
+
+
+@pytest.mark.django_db
+def test_sugary_main_is_still_rejected_at_lunch():
+    """Послабление касается только сладких ролей: основное блюдо правило держит."""
+    sugary = _recipe("Сладкое основное", "main", ["lunch"], has_added_sugar=True)
+    plain = _recipe("Обычное основное", "main", ["lunch"], has_added_sugar=False)
+    picks = {_pick(_generator(), "main", "lunch", [sugary, plain]).id for _ in range(40)}
+    assert picks == {plain.id}

@@ -150,6 +150,25 @@ SWEET_PER_DAY_LIMIT = 1  # ≤ 1 сладкого перекуса в день
 DESSERT_MAX_PER_DAY = 1  # MG_611_V_generator: ≤ 1 десерта+выпечки в день на члена семьи
 MAIN_MEAL_TYPES = ("breakfast", "lunch", "dinner")  # сладкое запрещено
 
+# MG_SWEETROLE: роли, где сладость — не порок, а определение.
+#
+# Запрет на has_added_sugar в основных приёмах писался, когда десертной роли в
+# обеде ещё не было. Роль добавили позже (RB001_V_step4), и правило стало
+# отрицать само себя: слот десерта живёт в обеде, обед — основной приём, значит
+# в десертный слот проходят только десерты БЕЗ добавленного сахара.
+#
+# Чем это обошлось (замер на dev, chat-83): из 39 десертов таких оказалось три —
+# и ровно они стояли в 20 меню из 20. Остальные тридцать шесть получали слот
+# только на четвёртый-пятый день, когда несладкие уже израсходованы; в отчёте
+# mg_analyze_s1_repeats это выглядело как «три вечных десерта» и длинный хвост
+# по 1–6 прогонов из 20. У выпечки то же самое, мягче: 7 несладких из 19.
+#
+# Сахара в дне от этого больше не станет: DESSERT_MAX_PER_DAY уже держит десерт
+# и выпечку вместе на одной штуке в сутки, а SWEET_PER_DAY_LIMIT продолжает
+# работать для перекусов. Снимается не ограничение количества, а требование,
+# чтобы сладкое блюдо было несладким.
+SWEET_ROLES = frozenset({"dessert", "bakery"})
+
 TIER_FEATURES = {
     "free": {"country": True},
     "lite": {"country": True, "disliked": True},
@@ -720,8 +739,9 @@ class MenuGenerator:
 
         # MG_502_503_V_generator: исключение сахара
         # MG_505_V_pick_bypass: в cheat-meal сахар разрешён
-        # 1) основные приёмы: has_added_sugar=True вообще запрещено
-        if not is_cheat and meal_type in MAIN_MEAL_TYPES:
+        # 1) основные приёмы: has_added_sugar=True вообще запрещено —
+        #    кроме ролей, которые сами по себе сладкие (см. SWEET_ROLES).
+        if not is_cheat and meal_type in MAIN_MEAL_TYPES and role not in SWEET_ROLES:
             no_sugar = [r for r in candidates if not getattr(r, "has_added_sugar", False)]
             if no_sugar:
                 candidates = no_sugar
