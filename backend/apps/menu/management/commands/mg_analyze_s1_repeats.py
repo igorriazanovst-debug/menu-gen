@@ -199,7 +199,15 @@ class Command(BaseCommand):
         very_high = sum(1 for c in repeat_counter.values() if c >= runs * 0.8)
         self.stdout.write(f"Рецептов в ≥50% прогонов: {high_repeat}  (≥80%: {very_high})")
 
-        if very_high > 0 or (avg_distinct < days * 2):
+        # MG_SWEETROLE: условие про avg_distinct считается ТОЛЬКО для полного
+        # прогона. Порог days*2 подобран для меню целиком (около семи блюд в
+        # день); при --role в выборке остаются слоты одной роли, и у десерта их
+        # ровно семь на неделю — то есть avg_distinct=7 при пороге 14, и тревога
+        # горела бы всегда, даже когда повторяемости нет вовсе. Так и вышло
+        # (chat-83): отчёт по десертам показал «в ≥50% прогонов: 0» и тут же
+        # «ПРОБЛЕМА», что прямо противоречит само себе.
+        thin_menu = (not filter_role) and (avg_distinct < days * 2)
+        if very_high > 0 or thin_menu:
             self.stdout.write("⚠  ПРОБЛЕМА: высокая повторяемость обнаружена.")
         else:
             self.stdout.write("✓  Повторяемость в норме.")
