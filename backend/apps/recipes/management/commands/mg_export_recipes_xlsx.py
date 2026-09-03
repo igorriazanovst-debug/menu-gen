@@ -24,7 +24,13 @@ MG_UNUSABLE: та же выгрузка умеет отбирать негодн
 работа, и список нужен как раз чтобы этого не делать.
 
     python manage.py mg_export_recipes_xlsx --unpublished --missing-portion
+    python manage.py mg_export_recipes_xlsx --unpublished --missing-portion --no-photo
     python manage.py mg_export_recipes_xlsx --unpublished --missing-portion --dish soup
+
+--no-photo отделяет безнадёжных от поправимых: рецепт без веса порции, но с
+фотографией, ещё можно довести руками (проставить вес — и он годен). Тот же
+рецепт без фотографии требует и съёмки, и ручной правки, то есть двойной
+работы на каждую строку.
 """
 
 import csv
@@ -108,6 +114,8 @@ class Command(BaseCommand):
             help="Только без веса порции или без калорий на порцию (негодные к публикации).",
         )
         parser.add_argument("--dish", default="", help="Ограничить типом блюда (soup, snack, dessert, ...).")
+        parser.add_argument("--no-photo", action="store_true", help="Только без фотографии.")
+        parser.add_argument("--with-photo", action="store_true", help="Только с фотографией.")
 
     def out_path(self, opts):
         from django.conf import settings
@@ -139,6 +147,12 @@ class Command(BaseCommand):
             qs = qs.filter(dish_type=opts["dish"])
         if opts["missing_portion"]:
             qs = qs.filter(Q(portion_g__isnull=True) | Q(kcal__isnull=True))
+        # Пустая строка и NULL — оба означают «фото нет»: часть импортов пишет
+        # одно, часть другое, и проверка по одному из них молча теряет половину.
+        if opts["no_photo"]:
+            qs = qs.filter(Q(image_url__isnull=True) | Q(image_url=""))
+        if opts["with_photo"]:
+            qs = qs.exclude(Q(image_url__isnull=True) | Q(image_url=""))
         return qs
 
     def rows(self, opts):

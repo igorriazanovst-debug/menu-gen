@@ -169,3 +169,40 @@ class TestОтборНегодных:
         путь = tmp_path / "out.csv"
         call_command("mg_export_recipes_xlsx", "--csv", "--out", str(путь))
         assert читать_csv(путь)[0] == ["ID", "Название", "Шаги", "Состав", "Ссылка"]
+
+    def test_только_без_фото(self, db, tmp_path):
+        без_фото = _recipe("Без фото", is_published=False, portion_g=None, image_url="")
+        _recipe("С фото", is_published=False, portion_g=None, image_url="https://x/y.jpg")
+        путь = tmp_path / "out.csv"
+
+        call_command(
+            "mg_export_recipes_xlsx",
+            "--csv",
+            "--unpublished",
+            "--missing-portion",
+            "--no-photo",
+            "--out",
+            str(путь),
+        )
+
+        строки = читать_csv(путь)
+        assert {row[0] for row in строки[1:]} == {str(без_фото.id)}
+
+    def test_пустая_строка_и_null_считаются_одинаково(self, db, tmp_path):
+        """Часть импортов пишет NULL, часть — пустую строку; терять нельзя ни тех, ни других."""
+        пусто = _recipe("Пустая строка", is_published=False, portion_g=None, image_url="")
+        нуль = _recipe("NULL", is_published=False, portion_g=None, image_url=None)
+        путь = tmp_path / "out.csv"
+
+        call_command(
+            "mg_export_recipes_xlsx",
+            "--csv",
+            "--unpublished",
+            "--missing-portion",
+            "--no-photo",
+            "--out",
+            str(путь),
+        )
+
+        строки = читать_csv(путь)
+        assert {row[0] for row in строки[1:]} == {str(пусто.id), str(нуль.id)}
