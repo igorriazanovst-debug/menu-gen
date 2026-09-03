@@ -120,6 +120,11 @@ class Command(BaseCommand):
             help="Исключить типы блюд через запятую, напр. soup или soup,salad.",
         )
         parser.add_argument("--no-photo", action="store_true", help="Только без фотографии.")
+        parser.add_argument(
+            "--diagnostics",
+            action="store_true",
+            help="Добавить колонки: тип блюда, порций, вес порции, ккал. Полезно, когда список рабочий.",
+        )
         parser.add_argument("--with-photo", action="store_true", help="Только с фотографией.")
 
     def out_path(self, opts):
@@ -136,8 +141,13 @@ class Command(BaseCommand):
             return "%s/admin/recipes/recipe/%s/change/" % (base, recipe.id)
         return "%s/recipes?id=%s" % (base, recipe.id)
 
+    def with_diagnostics(self, opts):
+        # --missing-portion подразумевает объясняющие колонки: список негодных
+        # без причины по каждой строке — это утверждение без доказательства.
+        return opts["diagnostics"] or opts["missing_portion"]
+
     def headers(self, opts):
-        return HEADERS + DIAG_HEADERS if opts["missing_portion"] else HEADERS
+        return HEADERS + DIAG_HEADERS if self.with_diagnostics(opts) else HEADERS
 
     def queryset(self, opts):
         from django.db.models import Q
@@ -171,7 +181,7 @@ class Command(BaseCommand):
                 ingredients_text(recipe),
                 self.link_for(recipe, opts),
             ]
-            if opts["missing_portion"]:
+            if self.with_diagnostics(opts):
                 row += [
                     recipe.dish_type or "",
                     recipe.servings if recipe.servings else "",

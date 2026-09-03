@@ -247,3 +247,33 @@ class TestУдалениеЧитаетВыгрузку:
 
         assert Recipe.objects.filter(id=рецепт.id).exists(), "сухой прогон не должен удалять"
         assert "В CSV записей с id: 1" in capsys.readouterr().out
+
+
+class TestРабочийСписокДляСъёмки:
+    """Список «что снимать»: неопубликованные без фото, с типом блюда.
+
+    Тип блюда в такой таблице не украшение: снимать надо не подряд, а по ролям,
+    которых не хватает генератору (на 04.09 это девять супов и двадцать шесть
+    перекусов). Без колонки роли список приходится сверять с базой построчно.
+    """
+
+    def test_колонки_добавляются_отдельным_флагом(self, db, tmp_path):
+        _recipe("Без фото", is_published=False, portion_g=250, kcal=300, dish_type="soup", image_url="")
+        путь = tmp_path / "out.csv"
+
+        call_command(
+            "mg_export_recipes_xlsx", "--csv", "--unpublished", "--no-photo", "--diagnostics", "--out", str(путь)
+        )
+
+        строки = читать_csv(путь)
+        assert строки[0][5] == "Тип блюда"
+        assert строки[1][5] == "soup"
+
+    def test_годные_к_публикации_не_отсеиваются(self, db, tmp_path):
+        """Без --missing-portion в список идут и те, у кого с весом всё в порядке."""
+        годный = _recipe("Годный без фото", is_published=False, portion_g=250, kcal=300, image_url="")
+        путь = tmp_path / "out.csv"
+
+        call_command("mg_export_recipes_xlsx", "--csv", "--unpublished", "--no-photo", "--out", str(путь))
+
+        assert {row[0] for row in читать_csv(путь)[1:]} == {str(годный.id)}
