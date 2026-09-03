@@ -206,3 +206,44 @@ class TestОтборНегодных:
 
         строки = читать_csv(путь)
         assert {row[0] for row in строки[1:]} == {str(пусто.id), str(нуль.id)}
+
+    def test_исключение_типа_блюда(self, db, tmp_path):
+        суп = _recipe("Суп", is_published=False, portion_g=None, dish_type="soup", image_url="")
+        десерт = _recipe("Десерт", is_published=False, portion_g=None, dish_type="dessert", image_url="")
+        путь = tmp_path / "out.csv"
+
+        call_command(
+            "mg_export_recipes_xlsx",
+            "--csv",
+            "--unpublished",
+            "--missing-portion",
+            "--no-photo",
+            "--exclude-dish",
+            "soup",
+            "--out",
+            str(путь),
+        )
+
+        строки = читать_csv(путь)
+        ids = {row[0] for row in строки[1:]}
+        assert ids == {str(десерт.id)}
+        assert str(суп.id) not in ids
+
+
+class TestУдалениеЧитаетВыгрузку:
+    """Выгрузка и удаление должны стыковаться без ручной правки файла.
+
+    Команда удаления читала колонку «id» строчными и запятую как разделитель, а
+    выгрузка пишет «ID» и «;». Несовпадение не давало ошибки: команда сообщала
+    «в CSV записей с id: 0» и молча ничего не удаляла.
+    """
+
+    def test_сухой_прогон_видит_строки_выгрузки(self, db, tmp_path, capsys):
+        рецепт = _recipe("На удаление", is_published=False, portion_g=None, image_url="")
+        путь = tmp_path / "out.csv"
+        call_command("mg_export_recipes_xlsx", "--csv", "--unpublished", "--missing-portion", "--out", str(путь))
+
+        call_command("delete_recipes_from_csv", "--file", str(путь))
+
+        assert Recipe.objects.filter(id=рецепт.id).exists(), "сухой прогон не должен удалять"
+        assert "В CSV записей с id: 1" in capsys.readouterr().out

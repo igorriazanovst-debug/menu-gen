@@ -46,16 +46,26 @@ class Command(BaseCommand):
         path = opts["file"]
         ignore_rid = opts["ignore_rid"]
 
+        # MG_UNUSABLE: разделитель определяем по шапке, а не полагаемся на
+        # запятую. Выгрузка mg_export_recipes_xlsx --csv пишет через «;» (так
+        # Excel открывает файл сразу по столбцам), и при чтении запятой вся
+        # строка стала бы одним полем с именем «ID;Название;…» — команда
+        # сообщила бы «в CSV записей с id: 0» и молча ничего не удалила.
         try:
             with open(path, encoding="utf-8-sig", newline="") as f:
-                rows = list(csv.DictReader(f))
+                head = f.readline()
+                f.seek(0)
+                delimiter = ";" if head.count(";") > head.count(",") else ","
+                rows = list(csv.DictReader(f, delimiter=delimiter))
         except Exception as e:
             self.stderr.write(self.style.ERROR(f"Не удалось прочитать CSV {path}: {e}"))
             return
 
         want = {}  # id -> rid (из ссылки), rid может быть None
         for row in rows:
-            rid_str = (row.get("id") or "").strip()
+            # «ID» — так колонка называется в выгрузке для редактора; «id» —
+            # в списках, собранных руками. Читаем оба написания.
+            rid_str = (row.get("id") or row.get("ID") or "").strip()
             if not rid_str.isdigit():
                 continue
             link = row.get("Ссылка") or row.get("ссылка") or row.get("url") or ""

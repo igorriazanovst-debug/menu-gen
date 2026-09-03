@@ -114,6 +114,11 @@ class Command(BaseCommand):
             help="Только без веса порции или без калорий на порцию (негодные к публикации).",
         )
         parser.add_argument("--dish", default="", help="Ограничить типом блюда (soup, snack, dessert, ...).")
+        parser.add_argument(
+            "--exclude-dish",
+            default="",
+            help="Исключить типы блюд через запятую, напр. soup или soup,salad.",
+        )
         parser.add_argument("--no-photo", action="store_true", help="Только без фотографии.")
         parser.add_argument("--with-photo", action="store_true", help="Только с фотографией.")
 
@@ -145,6 +150,8 @@ class Command(BaseCommand):
             qs = qs.filter(is_published=False)
         if opts["dish"]:
             qs = qs.filter(dish_type=opts["dish"])
+        if opts["exclude_dish"]:
+            qs = qs.exclude(dish_type__in=[d.strip() for d in opts["exclude_dish"].split(",") if d.strip()])
         if opts["missing_portion"]:
             qs = qs.filter(Q(portion_g__isnull=True) | Q(kcal__isnull=True))
         # Пустая строка и NULL — оба означают «фото нет»: часть импортов пишет
