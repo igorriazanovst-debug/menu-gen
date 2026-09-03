@@ -16,6 +16,15 @@
     python manage.py mg_export_recipes_xlsx --out /app/media/say7.xlsx
     python manage.py mg_export_recipes_xlsx --legacy-prefix tg: --link app
     python manage.py mg_export_recipes_xlsx --csv        # если openpyxl нет
+
+MG_UNUSABLE: та же выгрузка умеет отбирать негодные к публикации — те, у
+которых нет веса порции или калорий на порцию. Такой рецепт можно снять и
+опубликовать, но генератор меню его никогда не возьмёт: без веса порции он не
+проходит ни коридор калорий, ни «Тарелку». Фотографировать их — выброшенная
+работа, и список нужен как раз чтобы этого не делать.
+
+    python manage.py mg_export_recipes_xlsx --unpublished --missing-portion
+    python manage.py mg_export_recipes_xlsx --unpublished --missing-portion --dish soup
 """
 
 import csv
@@ -26,6 +35,10 @@ from django.core.management.base import BaseCommand, CommandError
 from apps.recipes.models import Recipe
 
 HEADERS = ["ID", "Название", "Шаги", "Состав", "Ссылка"]
+
+# MG_UNUSABLE: колонки, объясняющие, ПОЧЕМУ рецепт негоден. Без них таблица
+# says «вот эти плохие» и не даёт проверить утверждение.
+DIAG_HEADERS = ["Тип блюда", "Порций", "Вес порции", "Ккал/порция", "Ккал/100 г", "Фото"]
 
 
 def steps_text(recipe):
@@ -88,6 +101,13 @@ class Command(BaseCommand):
         )
         parser.add_argument("--base-url", default="https://menugen.ru", help="Адрес сайта без завершающего слэша.")
         parser.add_argument("--csv", action="store_true", help="Писать CSV вместо xlsx (без openpyxl).")
+        parser.add_argument("--unpublished", action="store_true", help="Только неопубликованные.")
+        parser.add_argument(
+            "--missing-portion",
+            action="store_true",
+            help="Только без веса порции или без калорий на порцию (негодные к публикации).",
+        )
+        parser.add_argument("--dish", default="", help="Ограничить типом блюда (soup, snack, dessert, ...).")
 
     def out_path(self, opts):
         from django.conf import settings
@@ -103,19 +123,43 @@ class Command(BaseCommand):
             return "%s/admin/recipes/recipe/%s/change/" % (base, recipe.id)
         return "%s/recipes?id=%s" % (base, recipe.id)
 
-    def rows(self, opts):
+    def headers(self, opts):
+        return HEADERS + DIAG_HEADERS if opts["missing_portion"] else HEADERS
+
+    def queryset(self, opts):
+        from django.db.models import Q
+
         qs = Recipe.objects.all().order_by("id")
         prefix = opts["legacy_prefix"]
         if prefix:
             qs = qs.filter(legacy_id__startswith=prefix)
-        for recipe in qs.iterator():
-            yield [
+        if opts["unpublished"]:
+            qs = qs.filter(is_published=False)
+        if opts["dish"]:
+            qs = qs.filter(dish_type=opts["dish"])
+        if opts["missing_portion"]:
+            qs = qs.filter(Q(portion_g__isnull=True) | Q(kcal__isnull=True))
+        return qs
+
+    def rows(self, opts):
+        for recipe in self.queryset(opts).iterator():
+            row = [
                 recipe.id,
                 recipe.title or "",
                 steps_text(recipe),
                 ingredients_text(recipe),
                 self.link_for(recipe, opts),
             ]
+            if opts["missing_portion"]:
+                row += [
+                    recipe.dish_type or "",
+                    recipe.servings if recipe.servings else "",
+                    recipe.portion_g if recipe.portion_g else "",
+                    recipe.kcal if recipe.kcal is not None else "",
+                    recipe.kcal_per_100g if recipe.kcal_per_100g is not None else "",
+                    "есть" if (recipe.image_url or "").strip() else "нет",
+                ]
+            yield row
 
     def handle(self, *args, **opts):
         path = self.out_path(opts)
@@ -129,11 +173,21 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Записано строк: %d" % n))
         self.stdout.write("Файл: %s" % path)
 
+        # MG_UNUSABLE: разбивка по типам блюд — по ней видно, какие роли
+        # опустеют после удаления, ещё до того как что-то удалено.
+        if opts["missing_portion"]:
+            from collections import Counter
+
+            by_dish = Counter(self.queryset(opts).values_list("dish_type", flat=True))
+            self.stdout.write("\nПо типам блюд:")
+            for dish, count in by_dish.most_common():
+                self.stdout.write("    %-16s %4d" % (dish or "(не задан)", count))
+
     def write_csv(self, path, opts):
         # utf-8-sig: без BOM Excel открывает кириллицу кракозябрами.
         with open(path, "w", encoding="utf-8-sig", newline="") as fh:
             writer = csv.writer(fh, delimiter=";")
-            writer.writerow(HEADERS)
+            writer.writerow(self.headers(opts))
             n = 0
             for row in self.rows(opts):
                 writer.writerow(row)
@@ -154,7 +208,7 @@ class Command(BaseCommand):
         wb = Workbook()
         ws = wb.active
         ws.title = "Рецепты"
-        ws.append(HEADERS)
+        ws.append(self.headers(opts))
         for cell in ws[1]:
             cell.font = Font(bold=True)
         ws.freeze_panes = "A2"
