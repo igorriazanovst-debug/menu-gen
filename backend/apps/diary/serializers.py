@@ -55,7 +55,8 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
         member = self.context["member"]
         if not validated_data.get("nutrition") and validated_data.get("recipe"):
             validated_data["nutrition"] = validated_data["recipe"].nutrition or {}
-        return DiaryEntry.objects.create(member=member, **validated_data)
+        # MG_OWNDIARY: владелец — человек, членство — пометка «за каким столом».
+        return DiaryEntry.objects.create(user=member.user, member=member, **validated_data)
 
 
 # MG_605D_V_serializers: вложенная структура план/факт.
@@ -103,13 +104,15 @@ class WaterLogSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         member = self.context["member"]
+        # MG_OWNDIARY: день у человека один, за сколькими бы столами он ни сидел.
         obj, _ = WaterLog.objects.get_or_create(
-            member=member,
+            user=member.user,
             date=validated_data["date"],
-            defaults={"water_ml": 0},
+            defaults={"water_ml": 0, "member": member},
         )
         obj.water_ml = validated_data["water_ml"]
-        obj.save(update_fields=["water_ml"])
+        obj.member = member
+        obj.save(update_fields=["water_ml", "member"])
         return obj
 
 
@@ -128,12 +131,14 @@ class WeightLogSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         member = self.context["member"]
+        # MG_OWNDIARY: замер принадлежит человеку; членство — где он записан.
         obj, _ = WeightLog.objects.update_or_create(
-            member=member,
+            user=member.user,
             date=validated_data["date"],
             defaults={
                 "weight_kg": validated_data["weight_kg"],
                 "note": validated_data.get("note", ""),
+                "member": member,
             },
         )
         return obj

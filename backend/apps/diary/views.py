@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -60,6 +61,22 @@ def _resolve_target_member(request, current_member):
     return target
 
 
+def _scope(queryset, current, target):
+    """MG_OWNDIARY: чьи записи показывать.
+
+    Свои — все, включая сделанные в другой семье: дневник, вода и вес
+    принадлежат человеку, а не столу, за которым он в тот день сидел.
+
+    Чужие — только то, что записано за ЭТИМ столом. Глава семьи смотрит дневник
+    участника, чтобы понимать, как тот питается в их общей жизни; вся история
+    человека, включая другую семью, его не касается. То же и для специалиста:
+    он приставлен к семье.
+    """
+    if target.user_id == current.user_id:
+        return queryset.filter(user_id=current.user_id)
+    return queryset.filter(user_id=target.user_id, member__family_id=current.family_id)
+
+
 class DiaryRangePagination(PageNumberPagination):
     """DIARY_MULTIDAY: дневник грузится диапазоном дат (многодневная лента),
     поэтому клиент может запросить большой page_size одним запросом."""
@@ -94,7 +111,7 @@ class DiaryListCreateView(generics.ListCreateAPIView):
         if not current:
             return DiaryEntry.objects.none()
         target = self._target_member()
-        qs = DiaryEntry.objects.filter(member=target).select_related("recipe").order_by("date", "meal_type")
+        qs = _scope(DiaryEntry.objects, current, target).select_related("recipe").order_by("date", "meal_type")
         # DIARY_MULTIDAY: одиночная дата (?date=) ИЛИ диапазон (?from=&to=).
         day = self.request.query_params.get("date")
         if day:
@@ -177,16 +194,21 @@ class DiaryEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
         if not current:
             return DiaryEntry.objects.none()
         # HEAD видит все записи своей семьи; MEMBER — только свои.
+        # MG_OWNDIARY: «свои» — по человеку, поэтому запись, сделанная в другой
+        # семье, остаётся доступной её автору и после перехода.
+        own = Q(user_id=current.user_id)
         if current.role == FamilyMember.Role.HEAD:
-            return DiaryEntry.objects.filter(member__family=current.family)
-        return DiaryEntry.objects.filter(member=current)
+            return DiaryEntry.objects.filter(own | Q(member__family_id=current.family_id))
+        return DiaryEntry.objects.filter(own)
 
     def patch(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
         # MG-605.C: редактировать `member` запрещено
+        # MG_OWNDIARY: и владельца тоже — запись нельзя переписать на другого.
         request.data.pop("member", None)
+        request.data.pop("user", None)
         return super().update(request, *args, **kwargs)
 
 
@@ -227,7 +249,7 @@ class DiaryStatsView(APIView):
         date_from = request.query_params.get("from", str(date.today()))
         date_to = request.query_params.get("to", str(date.today()))
 
-        entries = DiaryEntry.objects.filter(member=target, date__gte=date_from, date__lte=date_to)
+        entries = _scope(DiaryEntry.objects, current, target).filter(date__gte=date_from, date__lte=date_to)
 
         stats: dict = {}
         for entry in entries:
@@ -338,6 +360,7 @@ class DiaryImportFromMenuView(APIView):
                 entry, was_created = DiaryEntry.objects.get_or_create(
                     planned_menu_item=mi,
                     defaults={
+                        "user": target.user,  # MG_OWNDIARY
                         "member": target,
                         "date": entry_date,
                         "meal_type": mi.meal_type,
@@ -378,7 +401,8 @@ class WaterLogView(APIView):
         if not member:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
         day = request.query_params.get("date", str(date.today()))
-        obj, _ = WaterLog.objects.get_or_create(member=member, date=day, defaults={"water_ml": 0})
+        # MG_OWNDIARY: день у человека один, за сколькими бы столами он ни сидел.
+        obj, _ = WaterLog.objects.get_or_create(user=member.user, date=day, defaults={"water_ml": 0, "member": member})
         return Response(WaterLogSerializer(obj).data)
 
     @extend_schema(request=WaterLogSerializer, responses={200: WaterLogSerializer})
@@ -418,7 +442,7 @@ class WeightLogView(APIView):
         except (TypeError, ValueError):
             days = 90
         start = date.today() - timedelta(days=days - 1)
-        rows = WeightLog.objects.filter(member=target, date__gte=start).order_by("date")
+        rows = _scope(WeightLog.objects, member, target).filter(date__gte=start).order_by("date")
         return Response(WeightLogSerializer(rows, many=True).data)
 
     @extend_schema(request=WeightLogSerializer, responses={200: WeightLogSerializer})
@@ -430,7 +454,7 @@ class WeightLogView(APIView):
         serializer = WeightLogSerializer(data=request.data, context={"member": target})
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
-        _sync_profile_weight(target)
+        _sync_profile_weight(target)  # MG_OWNDIARY: считает по человеку, см. ниже
         return Response(WeightLogSerializer(obj).data)
 
 
@@ -445,7 +469,8 @@ def _sync_profile_weight(member):
     profile = getattr(getattr(member, "user", None), "profile", None)
     if profile is None:
         return
-    latest = WeightLog.objects.filter(member=member).order_by("-date").first()
+    # MG_OWNDIARY: самый свежий замер человека, в какой бы семье он ни сделан.
+    latest = WeightLog.objects.filter(user_id=member.user_id).order_by("-date").first()
     if latest is None or profile.weight_kg == latest.weight_kg:
         return
     profile.weight_kg = latest.weight_kg
@@ -492,13 +517,14 @@ class DiaryCopyView(APIView):
         target_date = body.validated_data["target_date"]
 
         # Only entries owned by the target member can be copied.
-        sources = list(DiaryEntry.objects.filter(pk__in=entry_ids, member=target).select_related("recipe"))
+        sources = list(_scope(DiaryEntry.objects, current, target).filter(pk__in=entry_ids).select_related("recipe"))
 
         created = []
         with transaction.atomic():
             for src in sources:
                 created.append(
                     DiaryEntry.objects.create(
+                        user=target.user,  # MG_OWNDIARY
                         member=target,
                         date=target_date,
                         meal_type=src.meal_type,
