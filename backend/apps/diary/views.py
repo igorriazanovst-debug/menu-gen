@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
+from apps.family.selection import current_membership  # MG_ONEFAMILY
 
 # MG_605D_V_views: импорт MenuItem для import-from-menu
 from apps.menu.models import Menu, MenuItem
@@ -27,7 +28,8 @@ from .serializers import (
 
 
 def _get_member(user):
-    return FamilyMember.objects.filter(user=user).select_related("family").first()
+    # MG_ONEFAMILY: правило выбора членства — одно на весь проект, см. family/selection.py.
+    return current_membership(user)
 
 
 def _resolve_target_member(request, current_member):

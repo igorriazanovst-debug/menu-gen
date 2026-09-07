@@ -11,15 +11,13 @@
 
 from django.db.models import Q
 
-from apps.family.models import FamilyMember
+from apps.family.selection import current_family  # MG_ONEFAMILY
 
 
 def family_of(user):
     """Семья пользователя. None — если он ни в одной не состоит."""
-    if not user or not getattr(user, "is_authenticated", False):
-        return None
-    membership = FamilyMember.objects.select_related("family").filter(user=user).first()
-    return membership.family if membership else None
+    # MG_ONEFAMILY: правило выбора семьи — одно на весь проект, см. family/selection.py.
+    return current_family(user)
 
 
 # Записи, которые не показываются в списках выбора продукта (дневник, покупки,

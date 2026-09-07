@@ -11,7 +11,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.family.models import FamilyMember
+from apps.family.selection import current_family  # MG_ONEFAMILY
 
 from .activation import ActivationError, activate_payment, mark_cancelled, mark_refunded
 from .models import Payment
@@ -21,8 +21,8 @@ log = logging.getLogger(__name__)
 
 
 def _get_family(user):
-    m = FamilyMember.objects.filter(user=user).select_related("family").first()
-    return m.family if m else None
+    # MG_ONEFAMILY: правило выбора семьи — одно на весь проект, см. family/selection.py.
+    return current_family(user)
 
 
 class PaymentHistoryView(generics.ListAPIView):

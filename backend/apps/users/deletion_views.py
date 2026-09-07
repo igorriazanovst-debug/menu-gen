@@ -70,14 +70,16 @@ def _consequences(user) -> dict:
 
 
 def _family_of(user):
-    """Семья пользователя: своя или та, в которой он состоит."""
-    from apps.family.models import Family, FamilyMember
+    """Семья пользователя: та, в которой он сейчас работает.
 
-    own = Family.objects.filter(owner=user).first()
-    if own:
-        return own
-    membership = FamilyMember.objects.select_related("family").filter(user=user).first()
-    return membership.family if membership else None
+    MG_ONEFAMILY: правило выбора семьи — одно на весь проект, см.
+    family/selection.py. Здесь оно раньше было перевёрнуто (сначала владение),
+    и экран «что будет удалено» мог показывать не ту семью, которую человек
+    видит в приложении.
+    """
+    from apps.family.selection import current_family
+
+    return current_family(user)
 
 
 class AccountDeleteView(APIView):

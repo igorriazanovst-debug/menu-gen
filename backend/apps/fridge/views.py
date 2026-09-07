@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.search import search_q  # MG_YOSEARCH/MG_MORPHSEARCH
-from apps.family.models import FamilyMember
+from apps.family.selection import current_family  # MG_ONEFAMILY
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
 from .models import FridgeItem, Product, ProductCategory
@@ -29,8 +29,8 @@ from .visibility import visible_products_q
 
 
 def _get_family(user):
-    membership = FamilyMember.objects.select_related("family").filter(user=user).first()
-    return membership.family if membership else None
+    # MG_ONEFAMILY: правило выбора семьи — одно на весь проект, см. family/selection.py.
+    return current_family(user)
 
 
 def _family_for(request):

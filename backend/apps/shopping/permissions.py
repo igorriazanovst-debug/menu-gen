@@ -1,16 +1,19 @@
 # MG_SHOP001_permissions
 from apps.family.models import Family, FamilyMember
+from apps.family.selection import current_family  # MG_ONEFAMILY
 
 from .models import ShoppingListAccess
 
 
 def get_user_family(user):
-    """Family where user is owner or member. None if absent."""
-    fam = Family.objects.filter(owner=user).first()
-    if fam:
-        return fam
-    fm = FamilyMember.objects.filter(user=user).select_related("family").first()
-    return fm.family if fm else None
+    """Семья пользователя или None.
+
+    MG_ONEFAMILY: правило выбора семьи — одно на весь проект, см.
+    family/selection.py. Здесь оно раньше было перевёрнуто (сначала владение,
+    потом членство), из-за чего списки покупок могли смотреть в одну семью, а
+    холодильник и меню — в другую.
+    """
+    return current_family(user)
 
 
 def is_family_head(user, family):

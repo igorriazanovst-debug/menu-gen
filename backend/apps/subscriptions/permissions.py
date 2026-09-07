@@ -17,7 +17,7 @@
 from django.utils import timezone
 from rest_framework import permissions
 
-from apps.family.models import FamilyMember
+from apps.family.selection import current_family  # MG_ONEFAMILY
 
 from .models import Subscription
 
@@ -57,11 +57,14 @@ def has_ever_had_premium(family) -> bool:
 
 
 def get_user_family(user):
-    """Возвращает Family пользователя (через FamilyMember) или None."""
-    if not user or not user.is_authenticated:
-        return None
-    membership = FamilyMember.objects.select_related("family").filter(user=user).first()
-    return membership.family if membership else None
+    """Возвращает Family пользователя или None.
+
+    MG_ONEFAMILY: правило выбора семьи — одно на весь проект, см.
+    family/selection.py. Здесь добавился запасной путь «владелец без членства»,
+    которого раньше не было: премиум и квота теперь считаются по той же семье,
+    что показывает экран «Семья».
+    """
+    return current_family(user)
 
 
 class IsFamilyPremium(permissions.BasePermission):

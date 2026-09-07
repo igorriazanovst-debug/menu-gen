@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import Family, FamilyMember
+from apps.family.selection import current_family  # MG_ONEFAMILY
 from apps.fridge.models import FridgeItem
 from apps.recipes.models import Recipe
 from apps.subscriptions.models import Subscription
@@ -36,8 +37,8 @@ from .serializers import (
 
 
 def _get_family(user):
-    membership = FamilyMember.objects.select_related("family").filter(user=user).first()
-    return membership.family if membership else None
+    # MG_ONEFAMILY: правило выбора семьи — одно на весь проект, см. family/selection.py.
+    return current_family(user)
 
 
 def _get_plan_code(family) -> str:

@@ -4,7 +4,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Family, FamilyMember
+from .models import FamilyMember
+from .selection import current_family  # MG_ONEFAMILY
 from .serializers import AttachAccountSerializer  # MG_MANAGEDMEMBER
 from .serializers import CreateManagedMemberSerializer  # MG_MANAGEDMEMBER
 from .serializers import FamilyMemberSerializer, FamilyMemberUpdateSerializer, FamilySerializer, InviteMemberSerializer
@@ -13,10 +14,8 @@ User = get_user_model()
 
 
 def _get_user_family(user):
-    membership = FamilyMember.objects.select_related("family").filter(user=user).first()
-    if membership:
-        return membership.family
-    return Family.objects.filter(owner=user).first()
+    # MG_ONEFAMILY: правило выбора семьи — одно на весь проект, см. selection.py.
+    return current_family(user)
 
 
 class FamilyDetailView(APIView):
