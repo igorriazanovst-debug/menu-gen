@@ -5,8 +5,8 @@ import { Button } from '../ui/Button';
 import { Spinner } from '../ui/Spinner';
 import { diaryApi } from '../../api/diary';
 import { getErrorMessage } from '../../utils/api';
-import { MEAL_LABELS } from '../../types';
-import type { DiaryEntry, MealType } from '../../types';
+import { MEAL_SLOT_LABELS, MEAL_SLOT_ORDER } from '../../types';
+import type { DiaryEntry, MealSlot } from '../../types';
 import { addDaysIso, todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 
 interface Props {
@@ -15,7 +15,11 @@ interface Props {
   onClose: () => void;
 }
 
-const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+// MG_MEALSLOT: печать идёт в том же порядке, что и экран дневника —
+// по ходу дня и с двумя перекусами раздельно.
+const MEAL_ORDER: MealSlot[] = MEAL_SLOT_ORDER;
+const slotOf = (e: { meal_slot?: string; meal_type: string }): MealSlot =>
+  (e.meal_slot ?? (e.meal_type === 'snack' ? 'snack1' : e.meal_type)) as MealSlot;
 const today = todayIso; // ISO_DATE_V1
 
 const num = (e: DiaryEntry, key: 'calories' | 'proteins' | 'fats' | 'carbs'): number => {
@@ -60,8 +64,8 @@ export const PrintDiaryModal: React.FC<Props> = ({ date, memberId, onClose }) =>
 
   const buildHtml = (days: { date: string; entries: DiaryEntry[] }[]): string => {
     const blocks = days.map((day) => {
-      const ordered = MEAL_ORDER.flatMap((mt) => day.entries.filter((e) => e.meal_type === mt));
-      const rest = day.entries.filter((e) => !MEAL_ORDER.includes(e.meal_type));
+      const ordered = MEAL_ORDER.flatMap((slot) => day.entries.filter((e) => slotOf(e) === slot));
+      const rest = day.entries.filter((e) => !MEAL_ORDER.includes(slotOf(e)));
       const rows = [...ordered, ...rest];
       const tot = rows.reduce(
         (a, e) => ({
@@ -82,7 +86,7 @@ export const PrintDiaryModal: React.FC<Props> = ({ date, memberId, onClose }) =>
             </tr></thead>
             <tbody>
               ${rows.map((e) => `<tr>
-                <td>${esc(MEAL_LABELS[e.meal_type] ?? e.meal_type)}</td>
+                <td>${esc(MEAL_SLOT_LABELS[slotOf(e)] ?? e.meal_type)}</td>
                 <td>${esc(e.recipe_title ?? e.custom_name ?? '—')}</td>
                 <td class="num">${e.quantity}</td>
                 <td class="num">${Math.round(num(e, 'calories'))}</td>

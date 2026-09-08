@@ -9,8 +9,8 @@ import { recipesApi } from '../../api/recipes';
 import { fridgeApi } from '../../api/fridge';
 import { getErrorMessage } from '../../utils/api';
 import { packageGrams } from '../../utils/packageSize'; // MG_DIARYSCAN
-import { MEAL_LABELS } from '../../types';
-import type { MealType, Recipe, Product, ProductCategory, BarcodeLookupResult } from '../../types';
+import { MEAL_SLOT_LABELS, MEAL_SLOT_ORDER } from '../../types';
+import type { MealSlot, Recipe, Product, ProductCategory, BarcodeLookupResult } from '../../types';
 
 interface Props {
   date: string;
@@ -22,7 +22,8 @@ interface Props {
 type Mode = 'recipe' | 'product' | 'manual';
 type Totals = { calories: number; proteins: number; fats: number; carbs: number };
 
-const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+// MG_MEALSLOT: выбираем место в дне, а не род еды — перекусов два.
+const MEALS: MealSlot[] = MEAL_SLOT_ORDER;
 
 // Прочитать число из string | number | {value} | null.
 const toNum = (v: unknown): number => {
@@ -53,7 +54,7 @@ const totalsToNutrition = (t: Totals) => {
 
 export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, onAdded }) => {
   const [mode, setMode] = useState<Mode>('recipe');
-  const [mealType, setMealType] = useState<MealType>('breakfast');
+  const [mealSlot, setMealSlot] = useState<MealSlot>('breakfast');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -294,7 +295,7 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
         }
 
         await diaryApi.create({
-          date, meal_type: mealType,
+          date, meal_slot: mealSlot,
           custom_name: `${name.trim()}, ${round0(grams)} г`,
           quantity: 1, is_eaten: true,
           nutrition: totalsToNutrition(manualTotals()),
@@ -305,7 +306,7 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
         if (amount <= 0) { setError('Укажите количество'); setSaving(false); return; }
         const suffix = recipeUnit === 'grams' ? `${round0(amount)} г` : `${amount} порц.`;
         await diaryApi.create({
-          date, meal_type: mealType,
+          date, meal_slot: mealSlot,
           custom_name: `${selectedRecipe.title}, ${suffix}`,
           quantity: 1, is_eaten: true,
           nutrition: totalsToNutrition(recipeTotals()),
@@ -315,7 +316,7 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
         const grams = num(productGrams);
         if (grams <= 0) { setError('Укажите граммовку'); setSaving(false); return; }
         await diaryApi.create({
-          date, meal_type: mealType,
+          date, meal_slot: mealSlot,
           custom_name: `${selectedProduct.name}, ${round0(grams)} г`,
           quantity: 1, is_eaten: true,
           nutrition: totalsToNutrition(productTotals()),
@@ -361,11 +362,11 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
         <label className="block text-xs text-gray-500 mb-1">Приём пищи</label>
         <div className="flex flex-wrap gap-2 mb-4">
           {MEALS.map((m) => (
-            <button key={m} type="button" onClick={() => setMealType(m)}
+            <button key={m} type="button" onClick={() => setMealSlot(m)}
               className={`px-3 py-1.5 rounded-xl text-sm transition ${
-                mealType === m ? 'bg-tomato text-white' : 'bg-rice text-chocolate'
+                mealSlot === m ? 'bg-tomato text-white' : 'bg-rice text-chocolate'
               }`}>
-              {MEAL_LABELS[m]}
+              {MEAL_SLOT_LABELS[m]}
             </button>
           ))}
         </div>

@@ -178,6 +178,23 @@ export type ComponentRole =
 export type MealSlot =
   | 'breakfast' | 'lunch' | 'dinner' | 'snack1' | 'snack2';
 
+// MG_MEALSLOT: точное место приёма в дне. Перекусов два — при пяти приёмах они
+// в разное время и с разной едой, и в одной куче читаются плохо.
+export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
+  breakfast: 'Завтрак',
+  snack1: 'Перекус 1',
+  lunch: 'Обед',
+  snack2: 'Перекус 2',
+  dinner: 'Ужин',
+};
+// Порядок — по ходу дня, а не по важности: дневник читают сверху вниз, как день.
+export const MEAL_SLOT_ORDER: MealSlot[] = ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner'];
+// При трёх приёмах перекусов в раскладке нет — показывать пустыми незачем.
+export const MEAL_SLOTS_BY_PLAN: Record<'3' | '5', MealSlot[]> = {
+  '3': ['breakfast', 'lunch', 'dinner'],
+  '5': MEAL_SLOT_ORDER,
+};
+
 export const COMPONENT_ROLE_LABELS: Record<ComponentRole, string> = {
   protein:   'Белок',
   grain:     'Крупа/гарнир',
@@ -435,6 +452,7 @@ export interface DiaryEntry {
   id: number;
   date: string;
   meal_type: MealType;
+  meal_slot?: MealSlot; // MG_MEALSLOT: точное место приёма в дне
   recipe?: number | null;
   recipe_title?: string | null;
   custom_name?: string;

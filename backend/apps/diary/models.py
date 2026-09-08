@@ -58,6 +58,48 @@ class DiaryEntry(OwnedByPerson):
         DINNER = "dinner", "Ужин"
         SNACK = "snack", "Перекус"
 
+    class MealSlot(models.TextChoices):
+        """MG_MEALSLOT: точное место приёма в дне.
+
+        `meal_type` отвечает на вопрос «какого рода эта еда» — по нему подбираются
+        рецепты и считается запрет на сладкое. Перекус там один, и это правильно:
+        для подбора первый и второй перекус ничем не отличаются.
+
+        Человеку же в дневнике нужно другое: при пяти приёмах в день перекусов
+        два, они в разное время и с разной едой, и сваленные в одну кучу читаются
+        плохо. Раскладка дня — отдельный вопрос от рода еды, поэтому и поле
+        отдельное. Ровно так же устроен `MenuItem.meal_slot`, откуда слот и
+        приходит при заполнении дневника из меню.
+
+        Разъехаться эти два поля не могут: `save()` выводит одно из другого (см.
+        ниже). Дважды в этом проекте разметка расходилась с раскладкой, и оба
+        раза это стоило недостижимых рецептов — повторять не будем.
+        """
+
+        BREAKFAST = "breakfast", "Завтрак"
+        LUNCH = "lunch", "Обед"
+        DINNER = "dinner", "Ужин"
+        SNACK1 = "snack1", "Перекус 1"
+        SNACK2 = "snack2", "Перекус 2"
+
+    # Слот → род еды. Единственный источник правды о связи этих двух полей.
+    SLOT_TO_MEAL_TYPE = {
+        "breakfast": "breakfast",
+        "lunch": "lunch",
+        "dinner": "dinner",
+        "snack1": "snack",
+        "snack2": "snack",
+    }
+    # Род еды → слот по умолчанию, когда слот не задан (старые записи, старые
+    # клиенты). Перекус попадает в первый: какой он был на самом деле, не знает
+    # никто, а первый — единственная догадка, которую человек увидит и поправит.
+    MEAL_TYPE_TO_SLOT = {
+        "breakfast": "breakfast",
+        "lunch": "lunch",
+        "dinner": "dinner",
+        "snack": "snack1",
+    }
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="diary_entries")
     member = models.ForeignKey(
         FamilyMember,
@@ -68,6 +110,8 @@ class DiaryEntry(OwnedByPerson):
     )
     date = models.DateField()
     meal_type = models.CharField(max_length=20, choices=MealType.choices)
+    # MG_MEALSLOT: см. MealSlot выше. Пустым не остаётся — заполняется в save().
+    meal_slot = models.CharField(max_length=20, choices=MealSlot.choices, blank=True, default="")
     recipe = models.ForeignKey(Recipe, on_delete=models.SET_NULL, null=True, blank=True)
     custom_name = models.CharField(max_length=255, blank=True)
     nutrition = models.JSONField(default=dict)
@@ -93,8 +137,32 @@ class DiaryEntry(OwnedByPerson):
             models.Index(fields=["date", "meal_type"]),
         ]
 
+    def save(self, *args, **kwargs):
+        """MG_MEALSLOT: держим слот и род еды согласованными.
+
+        Задали слот — род еды выводится из него. Задали только род (старый
+        клиент, старый код) — слот получает значение по умолчанию. Разъехаться
+        они не могут, и проверять это в каждой ручке не нужно.
+        """
+        if self.meal_slot:
+            derived = self.SLOT_TO_MEAL_TYPE.get(self.meal_slot)
+            if derived and derived != self.meal_type:
+                self.meal_type = derived
+                self._add_update_field(kwargs, "meal_type")
+        elif self.meal_type:
+            self.meal_slot = self.MEAL_TYPE_TO_SLOT.get(self.meal_type, "")
+            self._add_update_field(kwargs, "meal_slot")
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    def _add_update_field(kwargs, name):
+        """Поле, поправленное в save(), должно попасть в update_fields."""
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and name not in update_fields:
+            kwargs["update_fields"] = list(update_fields) + [name]
+
     def __str__(self):
-        return f"Diary({self.user}, {self.date}, {self.meal_type})"
+        return f"Diary({self.user}, {self.date}, {self.meal_slot or self.meal_type})"
 
 
 class WaterLog(OwnedByPerson):

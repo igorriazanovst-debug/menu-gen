@@ -1,7 +1,7 @@
 // DIARY_V2
 import client from './client';
 import type {
-  DiaryEntry, DiaryDayStats, DiaryWaterLog, MealType,
+  DiaryEntry, DiaryDayStats, DiaryWaterLog, MealType, MealSlot,
 } from '../types';
 
 import type { ImportResponse } from '../utils/importOutcome';
@@ -25,7 +25,10 @@ export interface DiaryListParams {
 }
 export interface DiaryCreatePayload {
   date: string;
-  meal_type: MealType;
+  // MG_MEALSLOT: слота достаточно — род еды сервер выведет из него сам.
+  // meal_type оставлен необязательным: им пользуются старые вызовы.
+  meal_slot?: MealSlot;
+  meal_type?: MealType;
   recipe?: number;
   custom_name?: string;
   nutrition?: Record<string, { value: string; unit: string }>;

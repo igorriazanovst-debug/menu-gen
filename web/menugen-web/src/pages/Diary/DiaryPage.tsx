@@ -10,12 +10,13 @@ import { ImportMenuModal } from '../../components/diary/ImportMenuModal';
 import { CopyFromDayModal } from '../../components/diary/CopyFromDayModal'; // DIARY_COPY_V3
 import { PrintDiaryModal } from '../../components/diary/PrintDiaryModal'; // DIARY_HIER_PRINT_V5
 import { getErrorMessage } from '../../utils/api';
-import { MEAL_LABELS } from '../../types';
+import { MEAL_SLOT_LABELS, MEAL_SLOT_ORDER, MEAL_SLOTS_BY_PLAN } from '../../types';
+import { useAppSelector } from '../../hooks/useAppDispatch';
 import { WeightCard } from './WeightCard'; // MG_TRAINER
 import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 import { dayTotalsHint } from '../../utils/dayTotalsHint'; // DIARY_TOTALS_V1
 import { allEaten, toMark } from '../../utils/markEaten'; // DIARY_EATALL_V1
-import type { DiaryEntry, DiaryDayStats, FamilyMember, MealType } from '../../types';
+import type { DiaryEntry, DiaryDayStats, FamilyMember, MealSlot } from '../../types';
 
 const today = todayIso; // ISO_DATE_V1: локальный календарь, а не UTC
 const WATER_GOAL_ML = 2000;
@@ -76,6 +77,7 @@ export const DiaryPage: React.FC = () => {
   // DIARY_HIER_PRINT_V5 / DIARY_MULTIDAY: per-(date|meal) open state, ключ "<дата>|<meal>".
   const [openMeals, setOpenMeals] = useState<Set<string>>(new Set());
   const [customWater, setCustomWater] = useState('');
+  const authUserId = useAppSelector((s) => s.auth.user?.id);
 
   // Family (for member switcher; HEAD only).
   useEffect(() => {
@@ -174,11 +176,28 @@ export const DiaryPage: React.FC = () => {
   // DIARY_COPY_V3: plan = is_planned OR legacy planned_menu_item.
   const isPlan = (e: DiaryEntry) => e.is_planned === true || e.planned_menu_item != null;
 
-  // DIARY_HIER_PRINT_V5: записи выбранного дня сгруппированы по типу приёма.
-  const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
-  const mealGroups = MEAL_ORDER
-    .map((mt) => ({ mt, items: entries.filter((e) => e.meal_type === mt) }))
-    .filter((g) => g.items.length > 0);
+  // MG_MEALSLOT: день раскладывается по слотам, а не по роду еды — иначе оба
+  // перекуса слипаются в один и читать их невозможно.
+  //
+  // Слот у записи есть всегда: сервер проставляет его сам, а старым записям его
+  // проставила миграция. Запасной путь по meal_type оставлен на случай ответа
+  // из офлайн-кэша, снятого до обновления.
+  const slotOf = (e: DiaryEntry): MealSlot =>
+    (e.meal_slot ?? (e.meal_type === 'snack' ? 'snack1' : e.meal_type)) as MealSlot;
+
+  // Сколько приёмов у человека — столько разделов и показываем, даже пустыми:
+  // в пустой раздел видно, что туда ещё ничего не записано, и понятно, куда
+  // класть. Плюс любой слот, где записи есть, — на случай смены раскладки.
+  const viewedMember = members.find((m) =>
+    memberId ? m.id === memberId : m.user_id === authUserId);
+  const mealPlan = viewedMember?.profile?.meal_plan_type === '5' ? '5' : '3';
+  const slotsWithEntries = new Set(entries.map(slotOf));
+  const visibleSlots = MEAL_SLOT_ORDER.filter(
+    (slot) => MEAL_SLOTS_BY_PLAN[mealPlan].includes(slot) || slotsWithEntries.has(slot));
+  const mealGroups = visibleSlots.map((slot) => ({
+    slot,
+    items: entries.filter((e) => slotOf(e) === slot),
+  }));
   // DIARY_HIER_PRINT_V5: read a nutrition field that may be flat (number) or {value,unit}.
   const nutriVal = (e: DiaryEntry, key: 'calories' | 'proteins' | 'fats' | 'carbs'): number => {
     const raw = (e.nutrition as Record<string, unknown> | undefined)?.[key];
@@ -192,6 +211,14 @@ export const DiaryPage: React.FC = () => {
   };
   const mealKcal = (items: DiaryEntry[]) =>
     Math.round(items.reduce((sum, e) => sum + nutriVal(e, 'calories'), 0));
+  // Итог приёма считаем из тех же записей, что показаны на экране: добавили
+  // запись — список перезагрузился, и сумма пересчиталась сама. Отдельный
+  // запрос за суммой означал бы, что она может разойтись с тем, что видно.
+  const mealMacros = (items: DiaryEntry[]) => ({
+    proteins: Math.round(items.reduce((s, e) => s + nutriVal(e, 'proteins'), 0)),
+    fats: Math.round(items.reduce((s, e) => s + nutriVal(e, 'fats'), 0)),
+    carbs: Math.round(items.reduce((s, e) => s + nutriVal(e, 'carbs'), 0)),
+  });
 
   const Entry: React.FC<{ e: DiaryEntry; canCheck: boolean }> = ({ e, canCheck }) => (
     <Card className="p-4">
@@ -205,7 +232,7 @@ export const DiaryPage: React.FC = () => {
           )}
           <div className="min-w-0">
             <span className="text-xs text-gray-400 uppercase tracking-wide">
-              {MEAL_LABELS[e.meal_type] ?? e.meal_type}
+              {MEAL_SLOT_LABELS[slotOf(e)] ?? e.meal_type}
             </span>
             <p className="font-medium text-chocolate mt-0.5 truncate">
               {e.recipe_title ?? e.custom_name ?? 'Без названия'}
@@ -321,20 +348,22 @@ export const DiaryPage: React.FC = () => {
       ) : (
         <div className="space-y-3">
           {mealGroups.map((g) => (
-            <details key={g.mt} open={openMeals.has(g.mt)}
+            <details key={g.slot} open={openMeals.has(g.slot)}
               onToggle={(ev) => {
                 const isOpen = (ev.target as HTMLDetailsElement).open;
                 setOpenMeals((prev) => {
                   const n = new Set(prev);
-                  if (isOpen) n.add(g.mt); else n.delete(g.mt);
+                  if (isOpen) n.add(g.slot); else n.delete(g.slot);
                   return n;
                 });
               }}
               className="rounded-2xl border border-border bg-surface overflow-hidden">
               <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between">
                 <span className="font-semibold text-chocolate">
-                  {MEAL_LABELS[g.mt] ?? g.mt}
-                  <span className="text-gray-400 font-normal"> · {g.items.length}</span>
+                  {MEAL_SLOT_LABELS[g.slot]}
+                  <span className="text-gray-400 font-normal">
+                    {g.items.length > 0 ? ` · ${g.items.length}` : ' · пусто'}
+                  </span>
                 </span>
                 <span className="flex items-center gap-3">
                   {/* DIARY_EATALL_V1: отметить весь приём. Внутри summary, поэтому
@@ -354,11 +383,26 @@ export const DiaryPage: React.FC = () => {
                       {allEaten(g.items) ? 'снять' : 'съедено всё'}
                     </span>
                   )}
-                  <span className="text-sm text-gray-500">{mealKcal(g.items)} ккал</span>
+                  {/* MG_MEALSLOT: итог приёма — калории и Б/Ж/У. Считается из
+                      показанных записей, поэтому после добавления пересчитывается
+                      вместе со списком. */}
+                  <span className="text-right leading-tight">
+                    <span className="block text-sm text-gray-600">{mealKcal(g.items)} ккал</span>
+                    {g.items.length > 0 && (
+                      <span className="block text-[11px] text-gray-400">
+                        Б {mealMacros(g.items).proteins} · Ж {mealMacros(g.items).fats}
+                        {' '}· У {mealMacros(g.items).carbs}
+                      </span>
+                    )}
+                  </span>
                 </span>
               </summary>
               <div className="px-3 pb-3 space-y-2">
-                {g.items.map((e) => <Entry key={e.id} e={e} canCheck={isPlan(e)} />)}
+                {g.items.length === 0 ? (
+                  <p className="text-sm text-gray-400 px-1 py-2">Пока ничего не записано.</p>
+                ) : (
+                  g.items.map((e) => <Entry key={e.id} e={e} canCheck={isPlan(e)} />)
+                )}
               </div>
             </details>
           ))}

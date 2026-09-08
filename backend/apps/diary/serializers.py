@@ -12,6 +12,7 @@ class DiaryEntrySerializer(serializers.ModelSerializer):
             "id",
             "date",
             "meal_type",
+            "meal_slot",  # MG_MEALSLOT: точное место приёма в дне
             "recipe",
             "recipe_title",
             "custom_name",
@@ -33,6 +34,7 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
         fields = (
             "date",
             "meal_type",
+            "meal_slot",  # MG_MEALSLOT: клиент присылает слот, род еды выводится
             "recipe",
             "custom_name",
             "nutrition",
@@ -42,6 +44,18 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
             "is_planned",  # DIARY_COPY_V3
         )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # MG_MEALSLOT: клиенту достаточно прислать слот — род еды выводится из
+        # него. Обязательным meal_type остаться не может: иначе новый экран
+        # дневника был бы обязан дублировать то, что и так известно, а
+        # рассогласование этих двух полей мы как раз и убираем.
+        self.fields["meal_type"].required = False
+
+    def validate_meal_slot(self, value):
+        # Пустой слот допустим — модель выведет его из meal_type.
+        return value or ""
+
     def validate(self, attrs):
         # MG-605.C: на PATCH (partial) валидируем «recipe или custom_name»
         # с учётом instance — иначе любой PATCH без recipe ронял бы запись.
@@ -49,6 +63,13 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
         custom_name = attrs.get("custom_name", getattr(self.instance, "custom_name", ""))
         if not recipe and not custom_name:
             raise serializers.ValidationError("Укажите рецепт или название блюда.")
+
+        # MG_MEALSLOT: одно из двух должно быть — иначе непонятно, куда класть.
+        # На PATCH достаточно того, что уже стоит в записи.
+        meal_type = attrs.get("meal_type", getattr(self.instance, "meal_type", ""))
+        meal_slot = attrs.get("meal_slot", getattr(self.instance, "meal_slot", ""))
+        if not meal_type and not meal_slot:
+            raise serializers.ValidationError("Укажите приём пищи.")
         return attrs
 
     def create(self, validated_data):

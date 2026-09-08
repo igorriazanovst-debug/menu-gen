@@ -364,6 +364,9 @@ class DiaryImportFromMenuView(APIView):
                         "member": target,
                         "date": entry_date,
                         "meal_type": mi.meal_type,
+                        # MG_MEALSLOT: в позиции меню слот уже точный —
+                        # забираем его, иначе оба перекуса слиплись бы в один.
+                        "meal_slot": mi.meal_slot or "",
                         "recipe": mi.recipe,
                         "custom_name": custom_name,
                         "nutrition": nutrition,
@@ -528,6 +531,7 @@ class DiaryCopyView(APIView):
                         member=target,
                         date=target_date,
                         meal_type=src.meal_type,
+                        meal_slot=src.meal_slot,  # MG_MEALSLOT
                         recipe=src.recipe,
                         custom_name=src.custom_name,
                         nutrition=src.nutrition or {},
