@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart'; // MG_CACHE
 import 'core/notifications/weigh_in_reminder.dart'; // MG_WEIGHREMIND
 
 import 'core/api/api_client.dart';
+import 'core/app_restart.dart'; // MG_ACTIVEFAMILY
 // OFFLINE: тип интерфейса
 import 'core/update/update_service.dart'; // MG_SELFUPDATE
 import 'core/api/caching_api_client.dart'; // OFFLINE: кэш-декоратор
@@ -98,7 +99,8 @@ void main() async {
   appLinks.uriLinkStream.listen(verifiedNotice.handleLink);
 
   syncService.start();
-  runApp(MenuGenApp(
+  runApp(AppRestart(
+    child: MenuGenApp(
     verifiedNotice: verifiedNotice, // MG_VERIFYDEEPLINK
     tokenStorage: tokenStorage,
     db: db,
@@ -110,6 +112,8 @@ void main() async {
     offlineToggleQueue: offlineToggleQueue, // MG_T09
     shoppingCache: shoppingCache, // MG_CACHE
     themeCubit: themeCubit, // MG_SKIN
+    httpCache: httpCache, // MG_ACTIVEFAMILY
+    ),
   ));
 }
 
@@ -131,6 +135,7 @@ class MenuGenApp extends StatelessWidget {
   final ShoppingCache shoppingCache; // MG_CACHE
   final ThemeCubit themeCubit; // MG_SKIN
   final VerifiedNoticeCubit verifiedNotice; // MG_VERIFYDEEPLINK
+  final HttpCacheStore httpCache; // MG_ACTIVEFAMILY
 
   const MenuGenApp({
     super.key,
@@ -145,13 +150,16 @@ class MenuGenApp extends StatelessWidget {
     required this.shoppingCache, // MG_CACHE
     required this.themeCubit, // MG_SKIN
     required this.verifiedNotice, // MG_VERIFYDEEPLINK
+    required this.httpCache, // MG_ACTIVEFAMILY
   });
 
   @override
   Widget build(BuildContext context) {
     // MG_SELFUPDATE: сервис обновления есть только в сборке с сайта — в
     // магазинной он не подключается, и виджет-наблюдатель просто молчит.
-    return RepositoryProvider<UpdateService?>.value(
+    return RepositoryProvider<HttpCacheStore>.value( // MG_ACTIVEFAMILY
+      value: httpCache,
+      child: RepositoryProvider<UpdateService?>.value(
       value: kSelfUpdateEnabled ? UpdateService(apiClient) : null,
       child: RepositoryProvider<ShoppingCache>.value( // MG_CACHE
       value: shoppingCache,
@@ -220,6 +228,7 @@ class MenuGenApp extends StatelessWidget {
     ),
     ),
     ), // MG_CACHE + MG_T09: close RepositoryProvider.value
-    ); // MG_SELFUPDATE: close RepositoryProvider<UpdateService?>
+    ), // MG_SELFUPDATE: close RepositoryProvider<UpdateService?>
+    ); // MG_ACTIVEFAMILY: close RepositoryProvider<HttpCacheStore>
   }
 }

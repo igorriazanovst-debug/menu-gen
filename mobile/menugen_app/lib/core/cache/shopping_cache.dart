@@ -19,6 +19,20 @@ class ShoppingCache {
   String _listsKey(bool archived) =>
       archived ? _vListsArchived : _vListsActive;
 
+  /// MG_ACTIVEFAMILY: выбросить всё сохранённое при смене семьи.
+  ///
+  /// Списки покупок принадлежат столу, а ключи кэша про стол ничего не знают:
+  /// без очистки после перехода человек увидел бы список чужой семьи.
+  Future<void> clearAll() async {
+    final keys = prefs
+        .getKeys()
+        .where((k) => k.startsWith('mg_cache_lists_') || k.startsWith('mg_cache_detail_'))
+        .toList();
+    for (final k in keys) {
+      await prefs.remove(k);
+    }
+  }
+
   Future<void> _write(String key, Object data) async {
     final env = {'ts': DateTime.now().millisecondsSinceEpoch, 'data': data};
     await prefs.setString(key, jsonEncode(env));

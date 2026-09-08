@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/family_bloc.dart';
+import '../widgets/family_switcher.dart'; // MG_ACTIVEFAMILY + MG_FAMINVITE
 import '../../../core/widgets/macro_pill.dart';
 import '../../../core/widgets/target_field.dart';
 // MG_204m_V_family = 1
@@ -49,6 +50,8 @@ class FamilyScreen extends StatelessWidget {
               ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  // MG_ACTIVEFAMILY + MG_FAMINVITE: приглашения и выбор стола.
+                  const FamilySwitcher(),
                   Text(
                     family['name'] as String? ?? '',
                     style: const TextStyle(
@@ -144,6 +147,10 @@ class FamilyScreen extends StatelessWidget {
                       ),
                     );
                   }),
+                  // MG_FAMINVITE: позвали, но ещё не ответили. Без этой строки
+                  // приглашение выглядит как «нажал, и ничего не произошло»:
+                  // в участниках человек появляется только после согласия.
+                  ..._pendingInvites(context, family, isActionInProgress),
                 ],
               ),
               if (isActionInProgress)
@@ -158,6 +165,59 @@ class FamilyScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  // MG_FAMINVITE: список приглашённых, ждущих ответа. Пусто — ничего не рисуем.
+  List<Widget> _pendingInvites(
+      BuildContext context, Map<String, dynamic> family, bool disabled) {
+    final raw = family['pending_invites'];
+    if (raw is! List || raw.isEmpty) return const [];
+    final rows = raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return [
+      const SizedBox(height: 16),
+      Text('Приглашены (${rows.length})',
+          style: const TextStyle(fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      ...rows.map((invite) => Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.hourglass_empty, size: 18)),
+              title: Text((invite['name'] as String?) ?? ''),
+              subtitle: Text(
+                (invite['email'] as String?) ?? (invite['phone'] as String?) ?? 'Ждём ответа',
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.close, size: 20, color: Colors.red),
+                tooltip: 'Отозвать приглашение',
+                onPressed: disabled ? null : () => _cancelInvite(context, invite),
+              ),
+            ),
+          )),
+    ];
+  }
+
+  Future<void> _cancelInvite(
+      BuildContext context, Map<String, dynamic> invite) async {
+    final bloc = context.read<FamilyBloc>();
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Отозвать приглашение?'),
+        content: Text('${invite['name'] ?? ''} больше не увидит это приглашение.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Нет')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Отозвать')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await bloc.apiClient.delete('/family/invites/${invite['id']}/');
+      bloc.add(const FamilyLoadRequested());
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Не удалось отозвать: $e')));
+    }
   }
 
   // MG_SHOPMOB002: family-wide currency. Backend gates the change to the
@@ -372,6 +432,15 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
           ),
           const SizedBox(height: 12),
           if (_invite) ...[
+            // MG_FAMINVITE: приглашение — это просьба, а не зачисление. Раньше
+            // человек оказывался в семье молча; теперь он должен согласиться,
+            // и глава семьи обязан это понимать, нажимая кнопку.
+            const Text(
+              'Человек получит приглашение и решит сам. В семье он появится '
+              'только после согласия.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
             SegmentedButton<bool>(
               segments: const [
                 ButtonSegment(value: true, label: Text('По email')),

@@ -37,6 +37,20 @@ class HttpCacheStore {
     }
   }
 
+  /// MG_ACTIVEFAMILY: выбросить всё сохранённое.
+  ///
+  /// Нужно при смене семьи. Ключ кэша — путь запроса, а он у холодильника,
+  /// меню и покупок один и тот же для любой семьи: чья это семья, решает
+  /// сервер по аккаунту. Значит после перехода за другой стол кэш отдал бы
+  /// содержимое прежнего — то есть чужое. Разбирать по одному разделу нельзя:
+  /// однажды забудется, поэтому чистим целиком.
+  Future<void> clearAll() async {
+    final keys = prefs.getKeys().where((k) => k.startsWith(_prefix)).toList();
+    for (final k in keys) {
+      await prefs.remove(k);
+    }
+  }
+
   CachedEntry? read(String key) {
     final s = prefs.getString('$_prefix$key');
     if (s == null) return null;

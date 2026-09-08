@@ -237,6 +237,27 @@ export interface Family {
   // зависеть от того, кто сегодня разбирает пакеты.
   auto_expiry?: boolean;
   members: FamilyMember[]; created_at: string;
+  // MG_FAMINVITE: кого позвали и кто ещё не ответил. Без этого приглашение
+  // выглядит как «нажал, и ничего не произошло»: в участниках человек
+  // появляется только после согласия.
+  pending_invites?: PendingInvite[];
+}
+// MG_FAMINVITE
+export interface PendingInvite {
+  id: number; name: string; email?: string | null; phone?: string | null;
+  created_at: string;
+}
+export interface FamilyInvite {
+  id: number; family_id: number; family_name: string;
+  invited_by_name: string; members_count: number;
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  created_at: string;
+}
+// MG_ACTIVEFAMILY: один из столов, за которыми человек состоит.
+export interface FamilyChoice {
+  id: number; name: string; role: 'head' | 'member';
+  is_active: boolean; is_own: boolean;
+  members_count: number; has_premium: boolean;
 }
 export interface SubscriptionPlan {
   id: number; code: string; name: string; price: string;

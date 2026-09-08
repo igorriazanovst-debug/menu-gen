@@ -1,6 +1,9 @@
 // MG_204_V_api = 1
 import client from './client';
-import type { Family, FamilyMember, UserProfile, TargetField, TargetAuditEntry } from '../types';
+import type {
+  Family, FamilyMember, UserProfile, TargetField, TargetAuditEntry,
+  FamilyChoice, FamilyInvite,
+} from '../types';
 
 export interface FamilyMemberUpdatePayload {
   name?: string;
@@ -16,8 +19,18 @@ export const familyApi = {
   // MG_SHELFLIFE: auto_expiry — подставлять ли сроки при переносе покупок.
   update: (payload: { name?: string; currency?: string; auto_expiry?: boolean }) =>
     client.patch<Family>('/family/', payload),
+  // MG_FAMINVITE: зовём, а не зачисляем — членство появится после согласия.
   invite: (email?: string, phone?: string) =>
-    client.post('/family/invite/', { email, phone }),
+    client.post<FamilyInvite>('/family/invite/', { email, phone }),
+  cancelInvite: (inviteId: number) => client.delete(`/family/invites/${inviteId}/`),
+  // Мои входящие приглашения и ответ на них.
+  myInvites: () => client.get<FamilyInvite[]>('/family/invites/'),
+  respondInvite: (inviteId: number, accept: boolean) =>
+    client.post<FamilyInvite>(`/family/invites/${inviteId}/respond/`, { accept }),
+  // MG_ACTIVEFAMILY: где я состою и переход за другой стол.
+  choices: () => client.get<FamilyChoice[]>('/family/choices/'),
+  switchTo: (familyId: number) =>
+    client.post<FamilyChoice[]>('/family/switch/', { family_id: familyId }),
   // MG_MANAGEDMEMBER: add a member card without inviting an existing user.
   createManagedMember: (payload: {
     name: string;
