@@ -43,6 +43,7 @@ class DiaryMarkManyEatenRequested extends DiaryEvent {
 class DiaryAddManualRequested extends DiaryEvent {
   final String date;
   final MealSlot mealSlot; // MG_MEALSLOT
+  final int? grams; // MG_DIARYGRAMS
   final int? recipeId;
   final String customName;
   final double quantity;
@@ -50,6 +51,7 @@ class DiaryAddManualRequested extends DiaryEvent {
   const DiaryAddManualRequested({
     required this.date,
     required this.mealSlot,
+    this.grams,
     this.recipeId,
     this.customName = '',
     this.quantity = 1.0,
@@ -57,7 +59,7 @@ class DiaryAddManualRequested extends DiaryEvent {
   });
   @override
   List<Object?> get props =>
-      [date, mealSlot, recipeId, customName, quantity, nutrition];
+      [date, mealSlot, grams, recipeId, customName, quantity, nutrition];
 }
 
 class DiaryDeleteRequested extends DiaryEvent {

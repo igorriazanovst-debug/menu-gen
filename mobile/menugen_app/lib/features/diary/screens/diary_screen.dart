@@ -400,6 +400,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
           mealSlot: result.mealSlot, // MG_MEALSLOT
           customName: result.name,
           quantity: result.quantity,
+          grams: result.grams, // MG_DIARYGRAMS
           nutrition: nutrition,
         ));
   }
@@ -1496,6 +1497,8 @@ class _ManualEntry {
   final MealSlot mealSlot; // MG_MEALSLOT
   final String name;
   final double quantity;
+  /// MG_DIARYGRAMS: вес порции, г. null — считали порциями, а не граммами.
+  final int? grams;
   final num? calories;
   final num? proteins;
   final num? fats;
@@ -1504,6 +1507,7 @@ class _ManualEntry {
     required this.mealSlot,
     required this.name,
     required this.quantity,
+    this.grams, // MG_DIARYGRAMS
     this.calories,
     this.proteins,
     this.fats,
@@ -1805,6 +1809,8 @@ class _AddManualDialogState extends State<_AddManualDialog>
           mealSlot: _meal,
           name: '${_recipe!['title']}, $suffix',
           quantity: 1,
+          // Вес знаем только когда считали в граммах; порции — не вес.
+          grams: _recipeGrams ? amount.round() : null,
           calories: t[0].round(),
           proteins: _r1(t[1]),
           fats: _r1(t[2]),
@@ -1828,6 +1834,7 @@ class _AddManualDialogState extends State<_AddManualDialog>
           mealSlot: _meal,
           name: '${_product!['name']}, ${g.round()} г',
           quantity: 1,
+          grams: g.round(), // MG_DIARYGRAMS
           calories: t[0].round(),
           proteins: _r1(t[1]),
           fats: _r1(t[2]),
@@ -1873,6 +1880,7 @@ class _AddManualDialogState extends State<_AddManualDialog>
           mealSlot: _meal,
           name: '${_name.text.trim()}, ${g.round()} г',
           quantity: 1,
+          grams: g.round(), // MG_DIARYGRAMS
           calories: t[0].round(),
           proteins: _r1(t[1]),
           fats: _r1(t[2]),
@@ -2123,6 +2131,10 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
   late MealSlot _meal; // MG_MEALSLOT
   late final TextEditingController _name;
   late final TextEditingController _qty;
+  late final TextEditingController _grams; // MG_DIARYGRAMS
+  /// Вес, с которым запись открыли. По нему считается, во сколько раз изменить
+  /// КБЖУ: съел не сто грамм, а сто пятьдесят — значит всё в полтора раза.
+  int? _gramsAtOpen;
   late final TextEditingController _cal;
   late final TextEditingController _prot;
   late final TextEditingController _fat;
@@ -2136,6 +2148,8 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
     _meal = e.mealSlot;
     _name = TextEditingController(text: e.displayTitle);
     _qty = TextEditingController(text: _fmtNum(e.quantity));
+    _gramsAtOpen = e.grams; // MG_DIARYGRAMS
+    _grams = TextEditingController(text: e.grams == null ? '' : '${e.grams}');
     final n = e.nutrition;
     _cal = TextEditingController(text: _fmtNum(_toNum(n['calories'])));
     _prot = TextEditingController(text: _fmtNum(_toNum(n['proteins'])));
@@ -2152,6 +2166,7 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
   void dispose() {
     _name.dispose();
     _qty.dispose();
+    _grams.dispose();
     _cal.dispose();
     _prot.dispose();
     _fat.dispose();
@@ -2164,6 +2179,34 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
   InputDecoration _dec(String l) =>
       InputDecoration(labelText: l, isDense: true, border: const OutlineInputBorder());
 
+  /// MG_DIARYGRAMS: пересчитать КБЖУ под новый вес.
+  ///
+  /// Делается по кнопке, а не молча при вводе: человек может править и вес, и
+  /// цифры руками, и незаметный пересчёт затирал бы то, что он только что ввёл.
+  /// Считаем от веса, с которым запись открыли, — так двойное нажатие не
+  /// умножает дважды.
+  void _rescaleToWeight() {
+    final from = _gramsAtOpen;
+    final to = _n(_grams)?.toDouble();
+    if (from == null || from <= 0 || to == null || to <= 0) return;
+    final k = to / from;
+    final e = widget.entry;
+    setState(() {
+      _cal.text = _fmtNum((_toNum(e.nutrition['calories']) * k).round());
+      _prot.text = _fmtNum(_round1(_toNum(e.nutrition['proteins']) * k));
+      _fat.text = _fmtNum(_round1(_toNum(e.nutrition['fats']) * k));
+      _carb.text = _fmtNum(_round1(_toNum(e.nutrition['carbs']) * k));
+      // Название вида «Творог, 120 г» тоже про вес — иначе оно начнёт врать.
+      _name.text = _name.text.replaceFirst(
+        RegExp(r',\s*\d+(?:[.,]\d+)?\s*г\s*$'),
+        ', ${to.round()} г',
+      );
+      _error = null;
+    });
+  }
+
+  double _round1(num v) => (v.toDouble() * 10).round() / 10;
+
   void _save() {
     final isRecipe = widget.entry.recipeId != null;
     if (!isRecipe && _name.text.trim().isEmpty) {
@@ -2175,9 +2218,16 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
       setState(() => _error = 'Количество должно быть больше 0');
       return;
     }
+    final grams = _n(_grams)?.toDouble();
+    if (_grams.text.trim().isNotEmpty && (grams == null || grams <= 0)) {
+      setState(() => _error = 'Вес должен быть больше 0');
+      return;
+    }
     final fields = <String, dynamic>{
       'meal_slot': _meal.value, // MG_MEALSLOT
       'quantity': qty,
+      // MG_DIARYGRAMS: пустое поле — вес неизвестен, так и записываем.
+      'grams': grams?.round(),
       'nutrition': {
         'calories': {'value': (_n(_cal) ?? 0).toString(), 'unit': 'ккал'},
         'proteins': {'value': (_n(_prot) ?? 0).toString(), 'unit': 'г'},
@@ -2222,8 +2272,40 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
               TextField(
                 controller: _qty,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: _dec('Количество'),
+                decoration: _dec('Количество порций'),
               ),
+              const SizedBox(height: 12),
+              // MG_DIARYGRAMS: вес порции и пересчёт КБЖУ под него.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _grams,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: _dec('Вес порции (г)'),
+                    ),
+                  ),
+                  if (_gramsAtOpen != null && _gramsAtOpen! > 0) ...[
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: OutlinedButton(
+                        onPressed: _rescaleToWeight,
+                        child: const Text('Пересчитать'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (_gramsAtOpen == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text(
+                    'У этой записи вес не сохранён — впишите его, а КБЖУ поправьте вручную.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
               const SizedBox(height: 12),
               TextField(
                 controller: _cal,

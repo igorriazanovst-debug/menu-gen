@@ -8,6 +8,7 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { AddDiaryEntryModal } from '../../components/diary/AddDiaryEntryModal';
 import { ImportMenuModal } from '../../components/diary/ImportMenuModal';
 import { CopyFromDayModal } from '../../components/diary/CopyFromDayModal'; // DIARY_COPY_V3
+import { EditDiaryEntryModal } from '../../components/diary/EditDiaryEntryModal'; // MG_DIARYEDIT
 import { PrintDiaryModal } from '../../components/diary/PrintDiaryModal'; // DIARY_HIER_PRINT_V5
 import { getErrorMessage } from '../../utils/api';
 import {
@@ -76,6 +77,7 @@ export const DiaryPage: React.FC = () => {
   const [showImport, setShowImport] = useState(false);
   const [showCopy, setShowCopy] = useState(false); // DIARY_COPY_V3
   const [showPrint, setShowPrint] = useState(false); // DIARY_HIER_PRINT_V5
+  const [editing, setEditing] = useState<DiaryEntry | null>(null); // MG_DIARYEDIT
   // DIARY_HIER_PRINT_V5 / DIARY_MULTIDAY: per-(date|meal) open state, ключ "<дата>|<meal>".
   const [openMeals, setOpenMeals] = useState<Set<string>>(new Set());
   const [customWater, setCustomWater] = useState('');
@@ -249,6 +251,9 @@ export const DiaryPage: React.FC = () => {
               {Math.round(nutriVal(e, 'calories'))} ккал
             </span>
           )}
+          {/* MG_DIARYEDIT: правка записи — приём, название, вес, порции, КБЖУ. */}
+          <button onClick={() => setEditing(e)}
+                  className="text-gray-400 hover:text-tomato text-sm" title="Изменить">✎</button>
           <button onClick={() => remove(e)} className="text-gray-400 hover:text-red-600 text-sm" title="Удалить">🗑</button>
         </div>
       </div>
@@ -417,6 +422,11 @@ export const DiaryPage: React.FC = () => {
           ))}
         </div>
       ))}
+
+      {editing && (
+        <EditDiaryEntryModal entry={editing}
+          onClose={() => setEditing(null)} onSaved={load} />
+      )}
 
       {showAdd && (
         <AddDiaryEntryModal date={date} memberId={memberId}

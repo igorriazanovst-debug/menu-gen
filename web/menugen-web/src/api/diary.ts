@@ -33,6 +33,7 @@ export interface DiaryCreatePayload {
   custom_name?: string;
   nutrition?: Record<string, { value: string; unit: string }>;
   quantity?: number;
+  grams?: number | null; // MG_DIARYGRAMS
   is_eaten?: boolean;
 }
 

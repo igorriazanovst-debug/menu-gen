@@ -18,6 +18,7 @@ class DiaryEntrySerializer(serializers.ModelSerializer):
             "custom_name",
             "nutrition",
             "quantity",
+            "grams",  # MG_DIARYGRAMS: сколько съедено, г на порцию
             "planned_menu_item",  # MG_605B_V_serializers
             "is_eaten",  # MG_605B_V_serializers
             "is_planned",  # DIARY_COPY_V3
@@ -39,6 +40,7 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
             "custom_name",
             "nutrition",
             "quantity",
+            "grams",  # MG_DIARYGRAMS
             "planned_menu_item",
             "is_eaten",
             "is_planned",  # DIARY_COPY_V3

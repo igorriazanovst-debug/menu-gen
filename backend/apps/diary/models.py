@@ -116,6 +116,16 @@ class DiaryEntry(OwnedByPerson):
     custom_name = models.CharField(max_length=255, blank=True)
     nutrition = models.JSONField(default=dict)
     quantity = models.DecimalField(max_digits=6, decimal_places=2, default=1)
+    # MG_DIARYGRAMS: сколько съедено, граммов на одну порцию.
+    #
+    # Вес до сих пор нигде не хранился — он вшивался в название («Творог, 120 г»),
+    # и поправить его было нельзя: КБЖУ пересчитать не из чего, а разбирать
+    # название строкой — гадание. Поле необязательное: у старых записей веса нет,
+    # и у тех, что считаются порциями (рецепт «1 порция»), его тоже может не быть.
+    #
+    # Общий вес записи = grams × quantity, как и КБЖУ: nutrition хранится на одну
+    # порцию, а quantity — множитель.
+    grams = models.PositiveIntegerField(null=True, blank=True)
     # MG_605B_V_models: план-факт (OneToOne — один план → один факт)
     planned_menu_item = models.OneToOneField(
         MenuItem,

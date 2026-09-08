@@ -371,6 +371,8 @@ class DiaryImportFromMenuView(APIView):
                         "custom_name": custom_name,
                         "nutrition": nutrition,
                         "quantity": mi.quantity,
+                        # MG_DIARYGRAMS: у позиции-продукта вес известен точно.
+                        "grams": mi.grams,
                         "is_eaten": False,
                         "is_planned": True,  # DIARY_COPY_V3
                     },
@@ -536,6 +538,7 @@ class DiaryCopyView(APIView):
                         custom_name=src.custom_name,
                         nutrition=src.nutrition or {},
                         quantity=src.quantity,
+                        grams=src.grams,  # MG_DIARYGRAMS
                         planned_menu_item=None,
                         is_eaten=False,
                         is_planned=True,

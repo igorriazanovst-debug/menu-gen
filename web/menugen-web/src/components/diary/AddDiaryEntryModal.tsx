@@ -298,6 +298,7 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
           date, meal_slot: mealSlot,
           custom_name: `${name.trim()}, ${round0(grams)} г`,
           quantity: 1, is_eaten: true,
+          grams: round0(grams), // MG_DIARYGRAMS
           nutrition: totalsToNutrition(manualTotals()),
         }, memberId);
       } else if (mode === 'recipe') {
@@ -309,6 +310,8 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
           date, meal_slot: mealSlot,
           custom_name: `${selectedRecipe.title}, ${suffix}`,
           quantity: 1, is_eaten: true,
+          // Вес знаем только когда считали в граммах; порции — не вес.
+          grams: recipeUnit === 'grams' ? round0(amount) : null,
           nutrition: totalsToNutrition(recipeTotals()),
         }, memberId);
       } else {
@@ -319,6 +322,7 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
           date, meal_slot: mealSlot,
           custom_name: `${selectedProduct.name}, ${round0(grams)} г`,
           quantity: 1, is_eaten: true,
+          grams: round0(grams), // MG_DIARYGRAMS
           nutrition: totalsToNutrition(productTotals()),
         }, memberId);
       }

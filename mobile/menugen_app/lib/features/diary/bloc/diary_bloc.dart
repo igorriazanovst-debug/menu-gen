@@ -252,6 +252,7 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
         'date': e.date,
         // MG_MEALSLOT: шлём слот — род еды сервер выведет из него сам.
         'meal_slot': e.mealSlot.value,
+        if (e.grams != null) 'grams': e.grams, // MG_DIARYGRAMS
         'quantity': e.quantity,
         'is_eaten': true, // manual entries are facts by definition
       };

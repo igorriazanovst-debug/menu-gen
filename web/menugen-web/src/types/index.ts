@@ -469,6 +469,9 @@ export interface DiaryEntry {
   custom_name?: string;
   nutrition: DiaryNutrition;
   quantity: number;
+  // MG_DIARYGRAMS: вес порции, г. null — вес неизвестен (старая запись или
+  // порционная: «1 порция супа» весом не меряется).
+  grams?: number | null;
   planned_menu_item?: number | null;
   is_eaten: boolean;
   is_planned?: boolean; // DIARY_COPY_V3

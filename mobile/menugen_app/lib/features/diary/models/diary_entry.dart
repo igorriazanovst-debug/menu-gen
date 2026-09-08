@@ -86,6 +86,9 @@ class DiaryEntry extends Equatable {
   final String customName;
   final Map<String, dynamic> nutrition;
   final double quantity;
+  /// MG_DIARYGRAMS: сколько съедено, граммов на одну порцию. null — вес
+  /// неизвестен: так у старых записей и у порционных («1 порция супа»).
+  final int? grams;
   final int? plannedMenuItemId; // null = manual entry (фактическое)
   final bool isEaten;           // MG-605.B
   final bool isPlannedFlag;     // DIARY_COPY_V3 (explicit plan flag)
@@ -100,6 +103,7 @@ class DiaryEntry extends Equatable {
     required this.customName,
     required this.nutrition,
     required this.quantity,
+    this.grams, // MG_DIARYGRAMS
     required this.plannedMenuItemId,
     required this.isEaten,
     this.isPlannedFlag = false, // DIARY_COPY_V3
@@ -123,6 +127,7 @@ class DiaryEntry extends Equatable {
         customName: customName,
         nutrition: nutrition,
         quantity: quantity,
+        grams: grams,
         plannedMenuItemId: plannedMenuItemId,
         isEaten: isEaten ?? this.isEaten,
         isPlannedFlag: isPlannedFlag,
@@ -149,6 +154,7 @@ class DiaryEntry extends Equatable {
           ? Map<String, dynamic>.from(j['nutrition'] as Map)
           : <String, dynamic>{},
       quantity: q,
+      grams: (j['grams'] as num?)?.toInt(), // MG_DIARYGRAMS
       plannedMenuItemId: (j['planned_menu_item'] as num?)?.toInt(),
       isEaten: (j['is_eaten'] as bool?) ?? false,
       isPlannedFlag: (j['is_planned'] as bool?) ?? false, // DIARY_COPY_V3
@@ -166,6 +172,7 @@ class DiaryEntry extends Equatable {
         customName,
         nutrition,
         quantity,
+        grams,
         plannedMenuItemId,
         isEaten,
       ];
