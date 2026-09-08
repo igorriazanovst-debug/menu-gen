@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.family.models import FamilyMember
+from apps.family.selection import current_membership  # MG_ONEFAMILY
 from apps.menu.models import Menu, MenuItem
 from apps.menu.serializers import MenuDetailSerializer
 
@@ -280,7 +281,7 @@ class AssignmentInviteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        family_membership = FamilyMember.objects.filter(user=request.user).select_related("family").first()
+        family_membership = current_membership(request.user)  # MG_ONEFAMILY
         if not family_membership:
             return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -342,7 +343,7 @@ class AssignmentEndView(APIView):
 
     def post(self, request, assignment_id):
         specialist = _get_specialist(request.user)
-        family_membership = FamilyMember.objects.filter(user=request.user).select_related("family").first()
+        family_membership = current_membership(request.user)  # MG_ONEFAMILY
 
         qs = SpecialistAssignment.objects.filter(id=assignment_id)
         if specialist:
@@ -414,7 +415,7 @@ class MySpecialistsView(APIView):
 
     @extend_schema(responses={200: MySpecialistSerializer(many=True)})
     def get(self, request):
-        membership = FamilyMember.objects.filter(user=request.user).select_related("family").first()
+        membership = current_membership(request.user)  # MG_ONEFAMILY
         if not membership:
             return Response([])
 

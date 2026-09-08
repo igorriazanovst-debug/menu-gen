@@ -5,7 +5,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.family.models import FamilyMember
+from apps.family.selection import current_family  # MG_ONEFAMILY
 
 from .models import PlanOffer, Subscription, SubscriptionPlan
 from .promo import PromoError, redeem
@@ -21,8 +21,15 @@ log = logging.getLogger(__name__)
 
 
 def _get_family(user):
-    m = FamilyMember.objects.filter(user=user).select_related("family").first()
-    return m.family if m else None
+    """MG_ONEFAMILY: правило выбора семьи — одно на весь проект.
+
+    Здесь стояла собственная копия, и она не знала про выбор семьи человеком
+    (MG_ACTIVEFAMILY). Следствие на проде: человек переключился в семью с
+    премиумом, всё приложение показывало премиум, а страница «Подписка» — свой
+    бесплатный тариф. Хуже того, эта же функция выбирает семью при оплате: платёж
+    ушёл бы не в ту семью, за которую человек платит.
+    """
+    return current_family(user)
 
 
 class SubscriptionPlanListView(generics.ListAPIView):
