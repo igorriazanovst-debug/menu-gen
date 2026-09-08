@@ -191,12 +191,12 @@ class _FamilySwitcherState extends State<FamilySwitcher> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('За каким столом вы сейчас',
+            const Text('В какой семье вы сейчас',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
             Text(
-              'Холодильник, меню, список покупок и подписка — общие для выбранной '
-              'семьи. Дневник, вода и вес остаются вашими в любой из них.',
+              'Холодильник, меню, список покупок и подписка — общие для той семьи, '
+              'в которой вы сейчас. Дневник, вода и вес остаются вашими в любой из них.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),

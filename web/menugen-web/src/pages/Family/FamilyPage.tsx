@@ -189,10 +189,10 @@ export const FamilyPage: React.FC = () => {
       {/* MG_ACTIVEFAMILY: переключатель показываем, только когда есть из чего выбирать */}
       {choices.length > 1 && (
         <Card className="p-5">
-          <h2 className="font-semibold text-chocolate mb-1">За каким столом вы сейчас</h2>
+          <h2 className="font-semibold text-chocolate mb-1">В какой семье вы сейчас</h2>
           <p className="text-xs text-gray-500 mb-4">
-            Холодильник, меню, список покупок и подписка — общие для выбранной семьи.
-            Дневник, вода и вес остаются вашими в любой из них.
+            Холодильник, меню, список покупок и подписка — общие для той семьи, в
+            которой вы сейчас. Дневник, вода и вес остаются вашими в любой из них.
           </p>
           <div className="space-y-2">
             {choices.map((c) => (
