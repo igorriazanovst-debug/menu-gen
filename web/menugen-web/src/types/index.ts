@@ -189,6 +189,17 @@ export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
 };
 // Порядок — по ходу дня, а не по важности: дневник читают сверху вниз, как день.
 export const MEAL_SLOT_ORDER: MealSlot[] = ['breakfast', 'snack1', 'lunch', 'snack2', 'dinner'];
+// Цвет приёма. Те же значения, что в приложении (DIARY_COLOR): человек видит
+// один и тот же дневник на телефоне и в браузере, и разные цвета читались бы
+// как разные вещи. Два перекуса намеренно разного цвета — иначе разделение,
+// ради которого всё делалось, пропадает именно там, где оно нужнее всего.
+export const MEAL_SLOT_COLORS: Record<MealSlot, string> = {
+  breakfast: '#FB8C00', // оранжевый
+  snack1: '#8E24AA', // фиолетовый
+  lunch: '#43A047', // зелёный
+  snack2: '#6D4C41', // коричневый
+  dinner: '#3949AB', // синий
+};
 // При трёх приёмах перекусов в раскладке нет — показывать пустыми незачем.
 export const MEAL_SLOTS_BY_PLAN: Record<'3' | '5', MealSlot[]> = {
   '3': ['breakfast', 'lunch', 'dinner'],

@@ -10,7 +10,9 @@ import { ImportMenuModal } from '../../components/diary/ImportMenuModal';
 import { CopyFromDayModal } from '../../components/diary/CopyFromDayModal'; // DIARY_COPY_V3
 import { PrintDiaryModal } from '../../components/diary/PrintDiaryModal'; // DIARY_HIER_PRINT_V5
 import { getErrorMessage } from '../../utils/api';
-import { MEAL_SLOT_LABELS, MEAL_SLOT_ORDER, MEAL_SLOTS_BY_PLAN } from '../../types';
+import {
+  MEAL_SLOT_LABELS, MEAL_SLOT_ORDER, MEAL_SLOTS_BY_PLAN, MEAL_SLOT_COLORS,
+} from '../../types';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { WeightCard } from './WeightCard'; // MG_TRAINER
 import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
@@ -231,7 +233,8 @@ export const DiaryPage: React.FC = () => {
             <span className="text-green-500 text-lg">✓</span>
           )}
           <div className="min-w-0">
-            <span className="text-xs text-gray-400 uppercase tracking-wide">
+            <span className="text-xs uppercase tracking-wide"
+                  style={{ color: MEAL_SLOT_COLORS[slotOf(e)] }}>
               {MEAL_SLOT_LABELS[slotOf(e)] ?? e.meal_type}
             </span>
             <p className="font-medium text-chocolate mt-0.5 truncate">
@@ -349,6 +352,8 @@ export const DiaryPage: React.FC = () => {
         <div className="space-y-3">
           {mealGroups.map((g) => (
             <details key={g.slot} open={openMeals.has(g.slot)}
+              // Цвет приёма — полосой слева, как в приложении.
+              style={{ borderLeft: `4px solid ${MEAL_SLOT_COLORS[g.slot]}` }}
               onToggle={(ev) => {
                 const isOpen = (ev.target as HTMLDetailsElement).open;
                 setOpenMeals((prev) => {
@@ -358,8 +363,11 @@ export const DiaryPage: React.FC = () => {
                 });
               }}
               className="rounded-2xl border border-border bg-surface overflow-hidden">
-              <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between">
-                <span className="font-semibold text-chocolate">
+              <summary
+                className="cursor-pointer select-none px-4 py-3 flex items-center justify-between"
+                style={{ backgroundColor: `${MEAL_SLOT_COLORS[g.slot]}14` }}
+              >
+                <span className="font-semibold" style={{ color: MEAL_SLOT_COLORS[g.slot] }}>
                   {MEAL_SLOT_LABELS[g.slot]}
                   <span className="text-gray-400 font-normal">
                     {g.items.length > 0 ? ` · ${g.items.length}` : ' · пусто'}
@@ -389,9 +397,10 @@ export const DiaryPage: React.FC = () => {
                   <span className="text-right leading-tight">
                     <span className="block text-sm text-gray-600">{mealKcal(g.items)} ккал</span>
                     {g.items.length > 0 && (
-                      <span className="block text-[11px] text-gray-400">
-                        Б {mealMacros(g.items).proteins} · Ж {mealMacros(g.items).fats}
-                        {' '}· У {mealMacros(g.items).carbs}
+                      <span className="block text-[11px] text-gray-500">
+                        Белки {mealMacros(g.items).proteins} г
+                        {' '}· Жиры {mealMacros(g.items).fats} г
+                        {' '}· Углеводы {mealMacros(g.items).carbs} г
                       </span>
                     )}
                   </span>

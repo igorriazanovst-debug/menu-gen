@@ -517,8 +517,10 @@ class _MealTotals {
   bool get isEmpty => calories == 0 && proteins == 0 && fats == 0 && carbs == 0;
 
   String get kcalLabel => '${calories.round()} ккал';
+  // Полными словами, а не буквами: «Б · Ж · У» читается как шифр, особенно тем,
+  // кто открывает дневник впервые.
   String get macrosLabel =>
-      'Б ${proteins.round()} · Ж ${fats.round()} · У ${carbs.round()}';
+      'Белки ${proteins.round()} г · Жиры ${fats.round()} г · Углеводы ${carbs.round()} г';
 }
 
 class _LoadedViewState extends State<_LoadedView> {
