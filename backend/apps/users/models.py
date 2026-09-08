@@ -60,6 +60,24 @@ class User(AbstractBaseUser, PermissionsMixin):
     # что он умеет, — вход, который удаление отменяет. Стирание — по расписанию
     # (см. account_deletion.py и команду purge_deleted_accounts).
     deletion_requested_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    # MG_ACTIVEFAMILY: за каким столом человек работает прямо сейчас.
+    #
+    # Состоять он может в нескольких семьях (своя заводится при регистрации,
+    # плюс те, куда его пригласили), но видит в каждый момент одну: холодильник,
+    # меню, списки покупок и подписка — общие для стола, и показывать их вперемешку
+    # значило бы каждый раз спрашивать «а это в чей холодильник?».
+    #
+    # NULL — выбор не сделан: тогда работает прежнее правило, самое старое
+    # членство (см. family/selection.py). Указатель на семью, из которой человека
+    # уже исключили, тоже равносилен NULL — проверка членства при каждом чтении,
+    # поэтому потерять доступ человек может, а зависнуть в закрытой двери нет.
+    active_family = models.ForeignKey(
+        "family.Family",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
     allergies = models.JSONField(default=list, blank=True)
     disliked_products = models.JSONField(default=list, blank=True)
     # MG_SKIN: оформление UI

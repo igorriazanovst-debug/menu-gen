@@ -80,7 +80,16 @@ class TestFamilyInvite:
         client.force_authenticate(head)
         resp = client.post(reverse("family-invite"), {"email": other.email}, format="json")
         assert resp.status_code == 201
-        assert FamilyMember.objects.filter(family=family, user=other).exists()
+        # MG_FAMINVITE: раньше здесь проверялось, что членство создано сразу —
+        # ровно то поведение, из-за которого человек оказывался за чужим столом,
+        # не узнав об этом. Теперь ручка приглашает, а членство появляется после
+        # согласия (см. test_family_invites.py).
+        from apps.family.models import FamilyInvite
+
+        assert not FamilyMember.objects.filter(family=family, user=other).exists()
+        assert FamilyInvite.objects.filter(
+            family=family, invited_user=other, status=FamilyInvite.Status.PENDING
+        ).exists()
 
     def test_invite_already_member(self, client, head, other):
         family = Family.objects.get(owner=head)

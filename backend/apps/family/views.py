@@ -1,13 +1,19 @@
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import FamilyMember
-from .selection import current_family  # MG_ONEFAMILY
+from .invites import notify_invited  # MG_FAMINVITE
+from .models import FamilyInvite, FamilyMember
+from .selection import current_family, current_membership, memberships  # MG_ONEFAMILY
 from .serializers import AttachAccountSerializer  # MG_MANAGEDMEMBER
 from .serializers import CreateManagedMemberSerializer  # MG_MANAGEDMEMBER
+from .serializers import FamilyChoiceSerializer  # MG_ACTIVEFAMILY
+from .serializers import FamilyInviteRespondSerializer  # MG_FAMINVITE
+from .serializers import FamilyInviteSerializer  # MG_FAMINVITE
+from .serializers import FamilySwitchSerializer  # MG_ACTIVEFAMILY
 from .serializers import FamilyMemberSerializer, FamilyMemberUpdateSerializer, FamilySerializer, InviteMemberSerializer
 
 User = get_user_model()
@@ -40,6 +46,83 @@ class FamilyDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+# ── MG_ACTIVEFAMILY: несколько семей и переключение между ними ───────────────
+#
+# Человек может состоять в нескольких семьях: своя заводится при регистрации,
+# плюс те, куда его пригласили. Работает он в каждый момент в одной — так решено
+# сознательно. Плюс: никогда не возникает вопроса «в чей холодильник положить
+# купленное молоко», всё кладётся туда, за каким столом человек сейчас. Минус:
+# чтобы отметить своё, находясь за родительским столом, надо переключиться.
+#
+# Две ручки: список столов и выбор стола. Больше ничего не требуется — все
+# остальные разделы читают выбор через family/selection.py.
+
+
+def _family_choices(user):
+    """Список семей человека для переключателя, с пометкой активной."""
+    from apps.subscriptions.permissions import has_active_premium
+
+    rows = memberships(user)
+    active = current_membership(user)
+    active_id = active.family_id if active else None
+    out = []
+    for row in rows:
+        family = row.family
+        out.append(
+            {
+                "id": family.id,
+                "name": family.name,
+                "role": row.role,
+                "is_active": family.id == active_id,
+                "is_own": family.owner_id == user.id,
+                "members_count": family.members.count(),
+                "has_premium": has_active_premium(family),
+            }
+        )
+    return out
+
+
+class FamilyChoicesView(APIView):
+    """GET /family/choices/ — где я состою и за каким столом сижу сейчас.
+
+    Список всегда содержит хотя бы свою семью, поэтому пустым не бывает у тех,
+    кто зарегистрировался обычным путём.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(responses={200: FamilyChoiceSerializer(many=True)})
+    def get(self, request):
+        return Response(FamilyChoiceSerializer(_family_choices(request.user), many=True).data)
+
+
+class FamilySwitchView(APIView):
+    """POST /family/switch/ {"family_id": N} — сесть за другой стол.
+
+    Переключить можно только на ту семью, где человек состоит: чужая семья
+    отвечает 404 и не подтверждает даже своё существование.
+
+    Ответ — тот же список, что у GET /family/choices/, уже с новой пометкой
+    активной: клиенту после переключения нужно перерисовать переключатель, и
+    отдельный запрос за этим слать незачем.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(request=FamilySwitchSerializer, responses={200: FamilyChoiceSerializer(many=True)})
+    def post(self, request):
+        serializer = FamilySwitchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        family_id = serializer.validated_data["family_id"]
+
+        if not FamilyMember.objects.filter(user=request.user, family_id=family_id).exists():
+            return Response({"detail": "Семья не найдена."}, status=status.HTTP_404_NOT_FOUND)
+
+        request.user.active_family_id = family_id
+        request.user.save(update_fields=["active_family", "updated_at"])
+        return Response(FamilyChoiceSerializer(_family_choices(request.user), many=True).data)
 
 
 class FamilyInviteView(APIView):
@@ -76,17 +159,135 @@ class FamilyInviteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Проверка лимита по тарифу (free → лимит free-плана)
+        if invitee.id == request.user.id:
+            return Response(
+                {"detail": "Нельзя пригласить самого себя."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Проверка лимита по тарифу (free → лимит free-плана). Здесь она
+        # предупредительная: между приглашением и ответом состав семьи может
+        # поменяться, поэтому при принятии лимит считается заново.
         limit, plan_name = _member_limit_info(family)
-        current_count = family.members.count()
-        if current_count >= limit:
+        if family.members.count() >= limit:
             return Response(
                 {"detail": f"Лимит участников для тарифа «{plan_name}» исчерпан ({limit})."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        member = FamilyMember.objects.create(family=family, user=invitee, role=FamilyMember.Role.MEMBER)
-        return Response(FamilyMemberSerializer(member).data, status=status.HTTP_201_CREATED)
+        # MG_FAMINVITE: приглашаем, а не зачисляем. Членство появится только
+        # после согласия — см. FamilyInviteRespondView.
+        invite, _created = FamilyInvite.objects.get_or_create(
+            family=family,
+            invited_user=invitee,
+            defaults={"invited_by": request.user},
+        )
+        invite.status = FamilyInvite.Status.PENDING
+        invite.invited_by = request.user
+        invite.responded_at = None
+        invite.save(update_fields=["status", "invited_by", "responded_at"])
+
+        notify_invited(invite)
+        return Response(FamilyInviteSerializer(invite).data, status=status.HTTP_201_CREATED)
+
+
+class FamilyInvitesView(APIView):
+    """GET /family/invites/ — приглашения, ждущие моего ответа.
+
+    Отвечает списком (обычно пустым): человека могут звать сразу несколько
+    семей, и выбирать он должен сам, а не получать первую попавшуюся.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(responses={200: FamilyInviteSerializer(many=True)})
+    def get(self, request):
+        rows = (
+            FamilyInvite.objects.filter(invited_user=request.user, status=FamilyInvite.Status.PENDING)
+            .select_related("family", "invited_by")
+            .order_by("-created_at")
+        )
+        return Response(FamilyInviteSerializer(rows, many=True).data)
+
+
+class FamilyInviteRespondView(APIView):
+    """POST /family/invites/<id>/respond/ {"accept": true|false}
+
+    Согласие — единственный способ попасть в чужую семью. При согласии человек
+    сразу садится за этот стол (MG_ACTIVEFAMILY): он только что сказал «да»,
+    показывать ему после этого прежнюю семью было бы странно.
+
+    Отказ ничего не ломает: строка остаётся со статусом «отклонено», глава семьи
+    может позвать снова, и тогда она вернётся в ожидание.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(request=FamilyInviteRespondSerializer, responses={200: FamilyInviteSerializer})
+    def post(self, request, invite_id):
+        body = FamilyInviteRespondSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        accept = body.validated_data["accept"]
+
+        invite = (
+            FamilyInvite.objects.select_related("family")
+            .filter(pk=invite_id, invited_user=request.user, status=FamilyInvite.Status.PENDING)
+            .first()
+        )
+        if invite is None:
+            # Чужое приглашение и уже отвеченное неразличимы снаружи намеренно.
+            return Response({"detail": "Приглашение не найдено."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not accept:
+            invite.status = FamilyInvite.Status.REJECTED
+            invite.responded_at = timezone.now()
+            invite.save(update_fields=["status", "responded_at"])
+            return Response(FamilyInviteSerializer(invite).data)
+
+        family = invite.family
+        # Лимит считаем заново: приглашение могло пролежать, пока семья набралась.
+        limit, plan_name = _member_limit_info(family)
+        if family.members.count() >= limit:
+            return Response(
+                {"detail": f"В семье больше нет свободных мест (тариф «{plan_name}», {limit})."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        FamilyMember.objects.get_or_create(
+            family=family,
+            user=request.user,
+            defaults={"role": FamilyMember.Role.MEMBER},
+        )
+        invite.status = FamilyInvite.Status.ACCEPTED
+        invite.responded_at = timezone.now()
+        invite.save(update_fields=["status", "responded_at"])
+
+        request.user.active_family = family
+        request.user.save(update_fields=["active_family", "updated_at"])
+        return Response(FamilyInviteSerializer(invite).data)
+
+
+class FamilyInviteCancelView(APIView):
+    """DELETE /family/invites/<id>/ — глава семьи передумал звать."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, invite_id):
+        family = _get_user_family(request.user)
+        if not family:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if family.owner_id != request.user.id and request.user.user_type != "admin":
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        invite = FamilyInvite.objects.filter(pk=invite_id, family=family, status=FamilyInvite.Status.PENDING).first()
+        if invite is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        invite.status = FamilyInvite.Status.CANCELLED
+        invite.responded_at = timezone.now()
+        invite.save(update_fields=["status", "responded_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class FamilyCreateManagedMemberView(APIView):
@@ -214,7 +415,15 @@ class FamilyRemoveMemberView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # MG_ACTIVEFAMILY: человек сидел за этим столом — вернём его к своему.
+        # Чтение и без того не доверяет указателю на семью без членства, но
+        # оставлять его висеть незачем: он попадёт в выгрузки и будет сбивать с
+        # толку при разборе.
+        removed_user = member.user
         member.delete()
+        if removed_user.active_family_id == family.id:
+            removed_user.active_family = None
+            removed_user.save(update_fields=["active_family", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

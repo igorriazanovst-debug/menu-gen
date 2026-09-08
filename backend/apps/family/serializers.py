@@ -2,7 +2,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Family, FamilyMember
+from .models import Family, FamilyInvite, FamilyMember
 
 User = get_user_model()
 
@@ -90,13 +90,39 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
 class FamilySerializer(serializers.ModelSerializer):
     members = FamilyMemberSerializer(many=True, read_only=True)
     owner_name = serializers.CharField(source="owner.name", read_only=True)
+    # MG_FAMINVITE: кого позвали и кто ещё не ответил. Без этого приглашение
+    # выглядело бы как «нажал и ничего не произошло»: в списке участников
+    # приглашённый не появляется, пока не согласится.
+    pending_invites = serializers.SerializerMethodField()
 
     class Meta:
         model = Family
         # MG_RUBRIC006_family_fields
         # MG_SHELFLIFE: auto_expiry — семейная настройка подстановки сроков.
-        fields = ("id", "name", "currency", "auto_expiry", "owner_name", "members", "created_at")
-        read_only_fields = ("id", "owner_name", "members", "created_at")
+        fields = (
+            "id",
+            "name",
+            "currency",
+            "auto_expiry",
+            "owner_name",
+            "members",
+            "pending_invites",
+            "created_at",
+        )
+        read_only_fields = ("id", "owner_name", "members", "pending_invites", "created_at")
+
+    def get_pending_invites(self, obj):
+        rows = obj.invites.filter(status=FamilyInvite.Status.PENDING).select_related("invited_user")
+        return [
+            {
+                "id": row.id,
+                "name": row.invited_user.name,
+                "email": row.invited_user.email,
+                "phone": row.invited_user.phone,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ]
 
 
 class InviteMemberSerializer(serializers.Serializer):
@@ -237,3 +263,57 @@ class AttachAccountSerializer(serializers.Serializer):
         attrs["email"] = email
         attrs["phone"] = phone
         return attrs
+
+
+# MG_ACTIVEFAMILY: строка в переключателе семей.
+class FamilyChoiceSerializer(serializers.Serializer):
+    """Одна семья в списке «где я состою».
+
+    Показывается там, где человек выбирает стол, поэтому в строке ровно то, по
+    чему стол узнают: имя, своя ли она, кто он тут, сколько человек за столом и
+    работает ли он в ней прямо сейчас.
+    """
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    role = serializers.CharField()
+    is_active = serializers.BooleanField()
+    is_own = serializers.BooleanField()
+    members_count = serializers.IntegerField()
+    has_premium = serializers.BooleanField()
+
+
+class FamilySwitchSerializer(serializers.Serializer):
+    """Тело POST /family/switch/."""
+
+    family_id = serializers.IntegerField()
+
+
+# MG_FAMINVITE: приглашение глазами приглашённого.
+class FamilyInviteSerializer(serializers.ModelSerializer):
+    family_id = serializers.IntegerField(source="family.id", read_only=True)
+    family_name = serializers.CharField(source="family.name", read_only=True)
+    invited_by_name = serializers.CharField(source="invited_by.name", read_only=True, default="")
+    members_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FamilyInvite
+        fields = (
+            "id",
+            "family_id",
+            "family_name",
+            "invited_by_name",
+            "members_count",
+            "status",
+            "created_at",
+        )
+        read_only_fields = fields
+
+    def get_members_count(self, obj):
+        return obj.family.members.count()
+
+
+class FamilyInviteRespondSerializer(serializers.Serializer):
+    """Тело POST /family/invites/<id>/respond/."""
+
+    accept = serializers.BooleanField()

@@ -45,3 +45,47 @@ class FamilyMember(models.Model):
 
     def __str__(self):
         return f"{self.user} in {self.family} ({self.role})"
+
+
+class FamilyInvite(models.Model):
+    """MG_FAMINVITE: приглашение в семью, на которое можно ответить.
+
+    До этой задачи ручка называлась «пригласить», но приглашения не было: сервер
+    находил аккаунт по почте или телефону и сразу создавал членство. Человек
+    оказывался за чужим столом, не узнав об этом: получал общий холодильник и
+    список покупок, а глава семьи — право видеть и править его профиль и нормы
+    КБЖУ. Согласия не спрашивали, уведомления не слали.
+
+    Устройство списано с `ShoppingListAccess` (apps/shopping/models.py): те же
+    три состояния и та же пара ручек «мои входящие» и «ответить». Отдельная
+    выдумка тут была бы хуже уже работающей.
+
+    Строка на пару «семья + приглашённый» одна: повторное приглашение переводит
+    её обратно в ожидание, а не плодит вторую. История отказов не хранится
+    намеренно — она никому не нужна, а знание «мне уже отказывали трижды» лучше
+    не давать никому.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает ответа"
+        ACCEPTED = "accepted", "Принято"
+        REJECTED = "rejected", "Отклонено"
+        CANCELLED = "cancelled", "Отозвано"
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="invites")
+    invited_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="family_invites")
+    invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "family_invites"
+        unique_together = [("family", "invited_user")]
+        indexes = [
+            models.Index(fields=["invited_user_id", "status"]),
+            models.Index(fields=["family_id", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Invite({self.invited_user} -> {self.family}, {self.status})"

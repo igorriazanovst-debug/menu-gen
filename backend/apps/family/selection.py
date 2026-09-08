@@ -37,8 +37,10 @@
 членства не имеет, — на проде таких нет. Приведено к варианту большинства и к
 варианту самого модуля `family`.
 
-Когда появится T-26 (активная семья), выбор пользователя будет читаться здесь —
-в одном месте, а не в восьми.
+MG_ACTIVEFAMILY (T-26) добавил к правилу первый пункт — выбор самого человека.
+Читается он здесь, в одном месте, поэтому переключение семьи меняет разом всё:
+холодильник, меню, покупки, платежи, премиум, дневник и экран удаления аккаунта.
+Ради этого правило и сводили.
 """
 
 from __future__ import annotations
@@ -50,15 +52,37 @@ def _is_real_user(user) -> bool:
     return bool(user) and bool(getattr(user, "is_authenticated", False))
 
 
+def memberships(user):
+    """Все членства человека, от старого к новому. Пустой список — если их нет."""
+    if not _is_real_user(user):
+        return []
+    return list(FamilyMember.objects.select_related("family").filter(user=user).order_by("id"))
+
+
 def current_membership(user):
     """Членство, от имени которого пользователь сейчас работает, или None.
 
-    Нужно там, где важна не семья, а именно участник: дневник, вода и вес
-    привязаны к членству (см. T-28).
+    Порядок правил:
+
+    1. MG_ACTIVEFAMILY — семья, которую человек выбрал сам. Учитывается только
+       пока он в ней состоит: указатель на семью, из которой его исключили,
+       равносилен пустому. Проверка идёт при каждом чтении, поэтому исключённый
+       человек молча возвращается к своей семье, а не упирается в закрытую дверь
+       с ошибкой на каждом экране.
+    2. Иначе — самое старое членство: выбор не сделан, ведём себя как раньше.
+
+    Возвращает членство, а не семью, потому что кое-где важен именно участник:
+    дневник, вода и вес помечают им место записи (см. T-28).
     """
-    if not _is_real_user(user):
+    rows = memberships(user)
+    if not rows:
         return None
-    return FamilyMember.objects.select_related("family").filter(user=user).order_by("id").first()
+    active_id = getattr(user, "active_family_id", None)
+    if active_id:
+        for row in rows:
+            if row.family_id == active_id:
+                return row
+    return rows[0]
 
 
 def current_family(user):
