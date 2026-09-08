@@ -19,7 +19,6 @@ import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.diary.models import DiaryEntry
 from apps.family.models import Family, FamilyMember
 from apps.users.models import User
 
