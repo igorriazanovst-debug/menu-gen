@@ -19,12 +19,17 @@ on:
         default: 'https://menugen.ru/api/v1'
 
 env:
-  # pubspec.lock не хранится в репозитории (см. .gitignore), поэтому pub на
-  # каждой сборке резолвит свежие версии пакетов. Свежие требуют SDK новее:
-  # на 3.22 сборка падает ещё на `flutter pub get` («Try using the Flutter SDK
-  # version: 3.44.x»). 3.27.4 — версия, на которой зависимости резолвятся и
-  # тесты проходят. Ограничение сверху: flutter_localizations в 3.29+ тянет
-  # intl 0.20, а pubspec закреплён на intl ^0.19.
+  # pubspec.lock ХРАНИТСЯ в репозитории (см. .gitignore) и фиксирует набор
+  # версий пакетов. Раньше здесь было написано обратное — и это была неправда,
+  # из-за которой лок годами никто не обновлял: он отстал и фиксировал не то,
+  # что собиралось (D-10).
+  #
+  # Версия SDK всё равно закреплена: без лока pub подбирал свежие версии, а тем
+  # требуется SDK новее — на 3.22 сборка падала ещё на `flutter pub get` («Try
+  # using the Flutter SDK version: 3.44.x»). 3.27.4 — версия, на которой
+  # зависимости резолвятся и тесты проходят. Ограничение сверху:
+  # flutter_localizations в 3.29+ тянет intl 0.20, а pubspec закреплён на
+  # intl ^0.19.
   FLUTTER_VERSION: '3.27.4'
   DEFAULT_API_BASE_URL: 'https://menugen.ru/api/v1'
 
@@ -49,15 +54,25 @@ jobs:
         run: flutter pub get
         working-directory: mobile/menugen_app
 
-      # D-10 (временный шаг): выложить в лог лок, каким его разрешил pub.
-      # В репозитории лежит устаревший, а пересобрать его можно только там, где
-      # есть Flutter. Снимем отсюда, закоммитим — и шаг уберём, заменив
-      # проверкой на расхождение.
-      - name: D-10 — показать разрешённый pubspec.lock
+      # D-10: лок обязан совпадать с тем, что разрешает pub.
+      #
+      # Лежащий в репозитории лок молча отстал: в нём был mobile_scanner 5.2.3,
+      # когда собирался 6.0.11, и вовсе не было flutter_local_notifications. То
+      # есть он не делал свою работу — фиксировал не то, что собирается, — и
+      # заметить это было негде: `flutter pub get` просто переписывает лок у
+      # себя и идёт дальше.
+      #
+      # Проверка ловит оба случая: и забытое обновление лока после правки
+      # pubspec.yaml, и «поплывшие» версии. Чинится одной командой на машине с
+      # Flutter: flutter pub get, затем закоммитить pubspec.lock.
+      - name: Проверить, что pubspec.lock не разошёлся
         run: |
-          echo "=== pubspec.lock BEGIN ==="
-          cat pubspec.lock
-          echo "=== pubspec.lock END ==="
+          if ! git diff --quiet -- pubspec.lock; then
+            echo "::error::pubspec.lock разошёлся с тем, что разрешает pub. Выполните flutter pub get и закоммитьте лок."
+            git --no-pager diff --stat -- pubspec.lock
+            exit 1
+          fi
+          echo "pubspec.lock актуален."
         working-directory: mobile/menugen_app
 
       - name: Run tests
