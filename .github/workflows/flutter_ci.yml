@@ -49,6 +49,17 @@ jobs:
         run: flutter pub get
         working-directory: mobile/menugen_app
 
+      # D-10 (временный шаг): выложить в лог лок, каким его разрешил pub.
+      # В репозитории лежит устаревший, а пересобрать его можно только там, где
+      # есть Flutter. Снимем отсюда, закоммитим — и шаг уберём, заменив
+      # проверкой на расхождение.
+      - name: D-10 — показать разрешённый pubspec.lock
+        run: |
+          echo "=== pubspec.lock BEGIN ==="
+          cat pubspec.lock
+          echo "=== pubspec.lock END ==="
+        working-directory: mobile/menugen_app
+
       - name: Run tests
         run: flutter test --coverage
         working-directory: mobile/menugen_app
