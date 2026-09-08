@@ -250,7 +250,8 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     try {
       final body = <String, dynamic>{
         'date': e.date,
-        'meal_type': e.mealType.value,
+        // MG_MEALSLOT: шлём слот — род еды сервер выведет из него сам.
+        'meal_slot': e.mealSlot.value,
         'quantity': e.quantity,
         'is_eaten': true, // manual entries are facts by definition
       };

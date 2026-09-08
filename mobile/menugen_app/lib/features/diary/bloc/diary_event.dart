@@ -42,14 +42,14 @@ class DiaryMarkManyEatenRequested extends DiaryEvent {
 /// Add a manual (factual) entry — no plan, immediate fact.
 class DiaryAddManualRequested extends DiaryEvent {
   final String date;
-  final MealType mealType;
+  final MealSlot mealSlot; // MG_MEALSLOT
   final int? recipeId;
   final String customName;
   final double quantity;
   final Map<String, dynamic> nutrition;
   const DiaryAddManualRequested({
     required this.date,
-    required this.mealType,
+    required this.mealSlot,
     this.recipeId,
     this.customName = '',
     this.quantity = 1.0,
@@ -57,7 +57,7 @@ class DiaryAddManualRequested extends DiaryEvent {
   });
   @override
   List<Object?> get props =>
-      [date, mealType, recipeId, customName, quantity, nutrition];
+      [date, mealSlot, recipeId, customName, quantity, nutrition];
 }
 
 class DiaryDeleteRequested extends DiaryEvent {

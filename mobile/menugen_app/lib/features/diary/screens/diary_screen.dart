@@ -28,12 +28,26 @@ class _DiaryScreenState extends State<DiaryScreen> {
   int? _memberId;
   List<Map<String, dynamic>> _members = const []; // DIARY_V2
   bool _isHead = false;
+  // MG_MEALSLOT: три приёма в дне или пять. От этого зависит, показывать ли
+  // разделы перекусов пустыми: в раскладке на три приёма их попросту нет.
+  String _mealPlanType = '3';
 
   @override
   void initState() {
     super.initState();
     _load();
     _loadFamily(); // DIARY_V2
+    _loadMealPlan(); // MG_MEALSLOT
+  }
+
+  Future<void> _loadMealPlan() async {
+    try {
+      final api = context.read<DiaryBloc>().apiClient;
+      final r = await api.get('/users/me/');
+      final profile = (r is Map ? r['profile'] : null);
+      final plan = (profile is Map ? profile['meal_plan_type'] : null) as String?;
+      if (plan != null && mounted) setState(() => _mealPlanType = plan);
+    } catch (_) {/* не критично: покажем три приёма */}
   }
 
   Future<void> _loadFamily() async {
@@ -312,6 +326,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
         if (state is DiaryLoaded) {
           return _LoadedView(
             state: state,
+            mealPlanType: _mealPlanType, // MG_MEALSLOT
             onMarkEaten: (entry, eaten) {
               context
                   .read<DiaryBloc>()
@@ -382,7 +397,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
     }
     context.read<DiaryBloc>().add(DiaryAddManualRequested(
           date: DateFormat('yyyy-MM-dd').format(_selected),
-          mealType: result.mealType,
+          mealSlot: result.mealSlot, // MG_MEALSLOT
           customName: result.name,
           quantity: result.quantity,
           nutrition: nutrition,
@@ -429,8 +444,10 @@ class _LoadedView extends StatefulWidget {
   final void Function(List<int>, bool) onMarkMany; // MG_SKIN: branch / all
   final void Function(DiaryEntry) onDelete;
   final void Function(DiaryEntry) onEdit; // DIARY_EDIT
+  final String mealPlanType; // MG_MEALSLOT: три приёма в дне или пять
   const _LoadedView({
     required this.state,
+    required this.mealPlanType,
     required this.onMarkEaten,
     required this.onMarkMany,
     required this.onDelete,
@@ -441,38 +458,90 @@ class _LoadedView extends StatefulWidget {
   State<_LoadedView> createState() => _LoadedViewState();
 }
 
-// DIARY_COLOR: фиксированный цвет приёма пищи для визуального разделения.
-Color _mealColor(MealType m) {
-  switch (m) {
-    case MealType.breakfast:
+// DIARY_COLOR: фиксированный цвет приёма для визуального разделения.
+//
+// MG_MEALSLOT: цвет берётся по слоту, а не по роду еды — иначе два перекуса
+// выглядели бы одинаково, и разделение, ради которого всё делалось, пропало бы
+// именно там, где оно нужнее всего.
+Color _mealColor(MealSlot s) {
+  switch (s) {
+    case MealSlot.breakfast:
       return const Color(0xFFFB8C00); // оранжевый
-    case MealType.lunch:
-      return const Color(0xFF43A047); // зелёный
-    case MealType.dinner:
-      return const Color(0xFF3949AB); // синий
-    case MealType.snack:
+    case MealSlot.snack1:
       return const Color(0xFF8E24AA); // фиолетовый
+    case MealSlot.lunch:
+      return const Color(0xFF43A047); // зелёный
+    case MealSlot.snack2:
+      return const Color(0xFF6D4C41); // коричневый
+    case MealSlot.dinner:
+      return const Color(0xFF3949AB); // синий
   }
 }
 
+// MG_MEALSLOT: итог приёма — калории и Б/Ж/У.
+//
+// Считается из тех же записей, что показаны на экране: добавили запись — список
+// перезагрузился, и сумма пересчиталась сама. Отдельный запрос за суммой
+// означал бы, что она может разойтись с тем, что видно.
+class _MealTotals {
+  final double calories;
+  final double proteins;
+  final double fats;
+  final double carbs;
+  const _MealTotals(this.calories, this.proteins, this.fats, this.carbs);
+
+  static double _value(Map<String, dynamic> nutrition, String key) {
+    final raw = nutrition[key];
+    if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw.replaceAll(',', '.')) ?? 0;
+    if (raw is Map && raw['value'] != null) {
+      final v = raw['value'];
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v.replaceAll(',', '.')) ?? 0;
+    }
+    return 0;
+  }
+
+  factory _MealTotals.of(Iterable<DiaryEntry> entries) {
+    double cal = 0, prot = 0, fat = 0, carb = 0;
+    for (final e in entries) {
+      final q = e.quantity;
+      cal += _value(e.nutrition, 'calories') * q;
+      prot += _value(e.nutrition, 'proteins') * q;
+      fat += _value(e.nutrition, 'fats') * q;
+      carb += _value(e.nutrition, 'carbs') * q;
+    }
+    return _MealTotals(cal, prot, fat, carb);
+  }
+
+  bool get isEmpty => calories == 0 && proteins == 0 && fats == 0 && carbs == 0;
+
+  String get kcalLabel => '${calories.round()} ккал';
+  String get macrosLabel =>
+      'Б ${proteins.round()} · Ж ${fats.round()} · У ${carbs.round()}';
+}
+
 class _LoadedViewState extends State<_LoadedView> {
-  // DIARY_MULTIDAY: свёрнутые ветки приёмов. Ключ «<дата>|<meal>» —
+  // DIARY_MULTIDAY: свёрнутые ветки приёмов. Ключ «<дата>|<слот>» —
   // сворачивание независимо для каждого дня.
   final Set<String> _collapsed = <String>{};
 
-  static const List<MealType> _mealOrder = [
-    MealType.breakfast,
-    MealType.lunch,
-    MealType.dinner,
-    MealType.snack,
-  ];
+  /// MG_MEALSLOT: какие приёмы показать.
+  ///
+  /// Разделы раскладки человека показываем всегда, даже пустыми: в пустом видно,
+  /// что туда ещё ничего не записано, и понятно, куда класть. Плюс любой слот, в
+  /// котором записи всё-таки есть, — на случай, если раскладку недавно сменили.
+  List<MealSlot> _visibleSlots(List<DiaryEntry> entries) {
+    final planned = MealSlot.forPlan(widget.mealPlanType).toSet();
+    final used = entries.map((e) => e.mealSlot).toSet();
+    return MealSlot.values.where((s) => planned.contains(s) || used.contains(s)).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     // DIARY: показываем РОВНО выбранный день (записи уже отфильтрованы по дате).
     final entries = widget.state.entries;
     final planned = entries.where((e) => e.isPlanned).toList();
-    final manual = entries.where((e) => !e.isPlanned).toList();
 
     return Column(
       children: [
@@ -487,31 +556,8 @@ class _LoadedViewState extends State<_LoadedView> {
             key: const PageStorageKey('diary-entries'),
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
             children: [
-              if (planned.isEmpty && manual.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 32),
-                  child: Center(child: Text('Нет записей')),
-                ),
-              if (planned.isNotEmpty) ..._buildPlanTree(widget.state.date, planned),
-              if (manual.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
-                  child: Row(children: [
-                    Icon(Icons.restaurant, size: 16, color: Colors.grey.shade600),
-                    const SizedBox(width: 6),
-                    Text('Факт (${manual.length})',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 13)),
-                  ]),
-                ),
-                ...manual.map((e) => _EntryTile(
-                      entry: e,
-                      accent: _mealColor(e.mealType), // DIARY_COLOR
-                      onToggleEaten: null, // manual entries are always actual
-                      onDelete: () => widget.onDelete(e),
-                      onEdit: () => widget.onEdit(e),
-                    )),
-              ],
+              if (planned.isNotEmpty) _planMasterRow(planned),
+              ..._buildMealSections(widget.state.date, entries),
               const SizedBox(height: 96),
             ],
           ),
@@ -520,18 +566,15 @@ class _LoadedViewState extends State<_LoadedView> {
     );
   }
 
-  // Дерево плана за выбранный день — мастер-чекбокс дня + ветки приёмов + листья.
-  List<Widget> _buildPlanTree(String dateStr, List<DiaryEntry> planned) {
+  /// Мастер-строка: отметить съеденным весь план дня разом.
+  Widget _planMasterRow(List<DiaryEntry> planned) {
     final total = planned.length;
     final eaten = planned.where((e) => e.isEaten).length;
     final allEaten = total > 0 && eaten == total;
     final noneEaten = eaten == 0;
     final allIds = planned.map((e) => e.id).toList();
 
-    final out = <Widget>[];
-
-    // Мастер-строка: чекнуть/снять весь план дня.
-    out.add(Row(
+    return Row(
       children: [
         Checkbox(
           tristate: true,
@@ -548,41 +591,71 @@ class _LoadedViewState extends State<_LoadedView> {
             style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
         const SizedBox(width: 8),
       ],
-    ));
+    );
+  }
 
-    for (final mt in _mealOrder) {
-      final items = planned.where((e) => e.mealType == mt).toList();
-      if (items.isEmpty) continue;
-      final mEaten = items.where((e) => e.isEaten).length;
-      final mAll = mEaten == items.length;
+  /// MG_MEALSLOT: день по приёмам — заголовок со сводкой и содержимое.
+  ///
+  /// План и факт лежат в одном разделе приёма, а не двумя списками: человек ищет
+  /// «что было на обед», а не «что было запланировано». Отличить их по-прежнему
+  /// просто — у планового блюда есть галочка «съедено».
+  List<Widget> _buildMealSections(String dateStr, List<DiaryEntry> entries) {
+    final out = <Widget>[];
+
+    for (final slot in _visibleSlots(entries)) {
+      final items = entries.where((e) => e.mealSlot == slot).toList();
+      final plannedItems = items.where((e) => e.isPlanned).toList();
+      final mEaten = plannedItems.where((e) => e.isEaten).length;
+      final mAll = plannedItems.isNotEmpty && mEaten == plannedItems.length;
       final mNone = mEaten == 0;
-      final mIds = items.map((e) => e.id).toList();
-      final key = '$dateStr|${mt.value}';
+      final key = '$dateStr|${slot.value}';
       final collapsed = _collapsed.contains(key);
-      final color = _mealColor(mt); // DIARY_COLOR
+      final color = _mealColor(slot); // DIARY_COLOR
+      final totals = _MealTotals.of(items);
 
-      // Заголовок ветки: чекбокс всей ветки + сворачивание (цвет приёма).
       out.add(InkWell(
         onTap: () => setState(() {
           if (!_collapsed.remove(key)) _collapsed.add(key);
         }),
         child: Container(
-          margin: const EdgeInsets.only(left: 6, top: 4),
+          margin: const EdgeInsets.only(top: 6),
+          padding: const EdgeInsets.symmetric(vertical: 2),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
             border: Border(left: BorderSide(color: color, width: 4)),
           ),
           child: Row(
             children: [
-              Checkbox(
-                tristate: true,
-                value: mAll ? true : (mNone ? false : null),
-                onChanged: (_) => widget.onMarkMany(mIds, !mAll),
-              ),
+              // Галочка «весь приём съеден» — только там, где есть план.
+              if (plannedItems.isNotEmpty)
+                Checkbox(
+                  tristate: true,
+                  value: mAll ? true : (mNone ? false : null),
+                  onChanged: (_) =>
+                      widget.onMarkMany(plannedItems.map((e) => e.id).toList(), !mAll),
+                )
+              else
+                const SizedBox(width: 12),
               Expanded(
-                child: Text('${mt.label} ($mEaten/${items.length})',
-                    style: TextStyle(fontWeight: FontWeight.w700, color: color)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      items.isEmpty
+                          ? slot.label
+                          : '${slot.label} (${items.length}'
+                              '${plannedItems.isEmpty ? '' : ', съедено $mEaten/${plannedItems.length}'})',
+                      style: TextStyle(fontWeight: FontWeight.w700, color: color),
+                    ),
+                    // Итог приёма: калории и Б/Ж/У. Пустой приём цифрами не сорим.
+                    if (!totals.isEmpty)
+                      Text(
+                        '${totals.kcalLabel} · ${totals.macrosLabel}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                      ),
+                  ],
+                ),
               ),
               AnimatedRotation(
                 turns: collapsed ? -0.25 : 0.0,
@@ -595,19 +668,30 @@ class _LoadedViewState extends State<_LoadedView> {
         ),
       ));
 
-      if (!collapsed) {
-        for (final e in items) {
-          out.add(Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: _EntryTile(
-              entry: e,
-              accent: color,
-              onToggleEaten: (v) => widget.onMarkEaten(e, v),
-              onDelete: () => widget.onDelete(e),
-              onEdit: () => widget.onEdit(e),
-            ),
-          ));
-        }
+      if (collapsed) continue;
+
+      if (items.isEmpty) {
+        out.add(Padding(
+          padding: const EdgeInsets.fromLTRB(20, 6, 8, 6),
+          child: Text('Пока ничего не записано',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+        ));
+        continue;
+      }
+
+      for (final e in items) {
+        out.add(Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: _EntryTile(
+            entry: e,
+            accent: color,
+            // Отметка «съедено» есть только у планового: добавленное вручную —
+            // это уже факт, отмечать в нём нечего.
+            onToggleEaten: e.isPlanned ? (v) => widget.onMarkEaten(e, v) : null,
+            onDelete: () => widget.onDelete(e),
+            onEdit: () => widget.onEdit(e),
+          ),
+        ));
       }
     }
     return out;
@@ -662,7 +746,7 @@ class _EntryTile extends StatelessWidget {
             title: Text(
               entry.displayTitle.isNotEmpty ? entry.displayTitle : '—',
             ),
-            subtitle: Text(entry.mealType.label),
+            subtitle: Text(entry.mealSlot.label),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1407,7 +1491,7 @@ class _WeightCardState extends State<_WeightCard> {
 
 // DIARY_V2: result of manual-add dialog.
 class _ManualEntry {
-  final MealType mealType;
+  final MealSlot mealSlot; // MG_MEALSLOT
   final String name;
   final double quantity;
   final num? calories;
@@ -1415,7 +1499,7 @@ class _ManualEntry {
   final num? fats;
   final num? carbs;
   const _ManualEntry({
-    required this.mealType,
+    required this.mealSlot,
     required this.name,
     required this.quantity,
     this.calories,
@@ -1446,7 +1530,7 @@ class _AddManualDialog extends StatefulWidget {
 class _AddManualDialogState extends State<_AddManualDialog>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
-  MealType _meal = MealType.breakfast;
+  MealSlot _meal = MealSlot.breakfast; // MG_MEALSLOT
 
   // Вручную
   // MG_MANUALPROD: КБЖУ вводится НА 100 Г, съеденное — в граммах. Так же, как
@@ -1716,7 +1800,7 @@ class _AddManualDialogState extends State<_AddManualDialog>
       Navigator.pop(
         context,
         _ManualEntry(
-          mealType: _meal,
+          mealSlot: _meal,
           name: '${_recipe!['title']}, $suffix',
           quantity: 1,
           calories: t[0].round(),
@@ -1739,7 +1823,7 @@ class _AddManualDialogState extends State<_AddManualDialog>
       Navigator.pop(
         context,
         _ManualEntry(
-          mealType: _meal,
+          mealSlot: _meal,
           name: '${_product!['name']}, ${g.round()} г',
           quantity: 1,
           calories: t[0].round(),
@@ -1784,7 +1868,7 @@ class _AddManualDialogState extends State<_AddManualDialog>
       Navigator.pop(
         context,
         _ManualEntry(
-          mealType: _meal,
+          mealSlot: _meal,
           name: '${_name.text.trim()}, ${g.round()} г',
           quantity: 1,
           calories: t[0].round(),
@@ -1985,12 +2069,15 @@ class _AddManualDialogState extends State<_AddManualDialog>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DropdownButtonFormField<MealType>(
+            // MG_MEALSLOT: выбираем место в дне, а не род еды — перекусов два.
+            DropdownButtonFormField<MealSlot>(
               value: _meal,
               isExpanded: true,
               decoration: _dec('Приём пищи'),
-              items: MealType.values.map((m) => DropdownMenuItem(value: m, child: Text(m.label))).toList(),
-              onChanged: (v) => setState(() => _meal = v ?? MealType.breakfast),
+              items: MealSlot.values
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
+                  .toList(),
+              onChanged: (v) => setState(() => _meal = v ?? MealSlot.breakfast),
             ),
             const SizedBox(height: 8),
             TabBar(
@@ -2031,7 +2118,7 @@ class _EditEntryDialog extends StatefulWidget {
 }
 
 class _EditEntryDialogState extends State<_EditEntryDialog> {
-  late MealType _meal;
+  late MealSlot _meal; // MG_MEALSLOT
   late final TextEditingController _name;
   late final TextEditingController _qty;
   late final TextEditingController _cal;
@@ -2044,7 +2131,7 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
   void initState() {
     super.initState();
     final e = widget.entry;
-    _meal = e.mealType;
+    _meal = e.mealSlot;
     _name = TextEditingController(text: e.displayTitle);
     _qty = TextEditingController(text: _fmtNum(e.quantity));
     final n = e.nutrition;
@@ -2087,7 +2174,7 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
       return;
     }
     final fields = <String, dynamic>{
-      'meal_type': _meal.value,
+      'meal_slot': _meal.value, // MG_MEALSLOT
       'quantity': qty,
       'nutrition': {
         'calories': {'value': (_n(_cal) ?? 0).toString(), 'unit': 'ккал'},
@@ -2113,12 +2200,13 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              DropdownButtonFormField<MealType>(
+              // MG_MEALSLOT: сюда же переносится запись между перекусами.
+              DropdownButtonFormField<MealSlot>(
                 value: _meal,
                 isExpanded: true,
                 decoration: _dec('Приём пищи'),
-                items: MealType.values
-                    .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
+                items: MealSlot.values
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
                     .toList(),
                 onChanged: (v) => setState(() => _meal = v ?? _meal),
               ),
@@ -2309,7 +2397,7 @@ class _CopyFromDayDialogState extends State<_CopyFromDayDialog> {
                         }
                       }),
                       title: Text(title),
-                      subtitle: Text(e.mealType.label),
+                      subtitle: Text(e.mealSlot.label),
                     );
                   },
                 ),

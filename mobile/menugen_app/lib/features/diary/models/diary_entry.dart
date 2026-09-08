@@ -1,6 +1,56 @@
 import 'package:equatable/equatable.dart';
 
 /// Mirror of backend `DiaryEntry.MealType`.
+/// MG_MEALSLOT: точное место приёма в дне.
+///
+/// [MealType] отвечает на вопрос «какого рода эта еда» — по нему сервер
+/// подбирает рецепты, и перекус там один: для подбора первый и второй ничем не
+/// отличаются. Человеку в дневнике нужно другое: при пяти приёмах перекуса два,
+/// они в разное время и с разной едой, и в одной куче читаются плохо.
+///
+/// Порядок значений — по ходу дня: дневник читают сверху вниз, как день.
+enum MealSlot {
+  breakfast('breakfast', 'Завтрак', MealType.breakfast),
+  snack1('snack1', 'Перекус 1', MealType.snack),
+  lunch('lunch', 'Обед', MealType.lunch),
+  snack2('snack2', 'Перекус 2', MealType.snack),
+  dinner('dinner', 'Ужин', MealType.dinner);
+
+  final String value;
+  final String label;
+  final MealType mealType;
+  const MealSlot(this.value, this.label, this.mealType);
+
+  static MealSlot? tryParse(String? raw) {
+    if (raw == null) return null;
+    for (final s in MealSlot.values) {
+      if (s.value == raw) return s;
+    }
+    return null;
+  }
+
+  /// Слот по умолчанию для рода еды. Перекус попадает в первый: какой он был на
+  /// самом деле, не знает никто — до появления слота это нигде не хранилось.
+  static MealSlot fromMealType(MealType type) {
+    switch (type) {
+      case MealType.breakfast:
+        return MealSlot.breakfast;
+      case MealType.lunch:
+        return MealSlot.lunch;
+      case MealType.dinner:
+        return MealSlot.dinner;
+      case MealType.snack:
+        return MealSlot.snack1;
+    }
+  }
+
+  /// Раскладка дня: три приёма или пять.
+  static List<MealSlot> forPlan(String? mealPlanType) =>
+      mealPlanType == '5'
+          ? MealSlot.values
+          : const [MealSlot.breakfast, MealSlot.lunch, MealSlot.dinner];
+}
+
 enum MealType {
   breakfast('breakfast', 'Завтрак'),
   lunch('lunch', 'Обед'),
@@ -30,6 +80,7 @@ class DiaryEntry extends Equatable {
   final int id;
   final String date;            // YYYY-MM-DD
   final MealType mealType;
+  final MealSlot mealSlot; // MG_MEALSLOT
   final int? recipeId;
   final String? recipeTitle;
   final String customName;
@@ -43,6 +94,7 @@ class DiaryEntry extends Equatable {
     required this.id,
     required this.date,
     required this.mealType,
+    required this.mealSlot, // MG_MEALSLOT
     required this.recipeId,
     required this.recipeTitle,
     required this.customName,
@@ -65,6 +117,7 @@ class DiaryEntry extends Equatable {
         id: id,
         date: date,
         mealType: mealType,
+        mealSlot: mealSlot,
         recipeId: recipeId,
         recipeTitle: recipeTitle,
         customName: customName,
@@ -77,6 +130,9 @@ class DiaryEntry extends Equatable {
 
   factory DiaryEntry.fromJson(Map<String, dynamic> j) {
     final mt = MealType.tryParse(j['meal_type'] as String?) ?? MealType.snack;
+    // MG_MEALSLOT: слот приходит с сервера всегда. Запасной путь — на ответ из
+    // офлайн-кэша, снятый до обновления приложения.
+    final slot = MealSlot.tryParse(j['meal_slot'] as String?) ?? MealSlot.fromMealType(mt);
     final qRaw = j['quantity'];
     final q = qRaw is num
         ? qRaw.toDouble()
@@ -85,6 +141,7 @@ class DiaryEntry extends Equatable {
       id: (j['id'] as num).toInt(),
       date: j['date'] as String? ?? '',
       mealType: mt,
+      mealSlot: slot,
       recipeId: (j['recipe'] as num?)?.toInt(),
       recipeTitle: j['recipe_title'] as String?,
       customName: (j['custom_name'] as String?) ?? '',
@@ -103,6 +160,7 @@ class DiaryEntry extends Equatable {
         id,
         date,
         mealType,
+        mealSlot,
         recipeId,
         recipeTitle,
         customName,
