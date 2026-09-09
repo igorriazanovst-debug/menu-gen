@@ -7,7 +7,11 @@ abstract class MenuEvent extends Equatable {
 }
 
 class MenuLoadRequested extends MenuEvent {
-  const MenuLoadRequested();
+  /// MG_MENUEXPIRE: false — актуальные меню (срок ещё не вышел), true — архив.
+  final bool archived;
+  const MenuLoadRequested({this.archived = false});
+  @override
+  List<Object?> get props => [archived];
 }
 
 /// MG_608_V_mobile_event: загрузить детали по конкретному id

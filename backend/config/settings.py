@@ -368,6 +368,15 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.menu.tasks.purge_expired_menus",
         "schedule": crontab(hour=3, minute=15),
     },
+    # MG_MENUEXPIRE: меню, чей календарный срок вышел, уходят в архив.
+    #
+    # 00:20 местного времени (django_celery_beat берёт TIME_ZONE проекта):
+    # сразу после полуночи, чтобы вчерашнее меню не значилось актуальным весь
+    # день. Не 00:05 — там истечение подписок, незачем сходиться в одну минуту.
+    "archive-expired-menus": {
+        "task": "apps.menu.tasks.archive_expired_menus",
+        "schedule": crontab(hour=0, minute=20),
+    },
     # MG_ACCDEL: стирание аккаунтов, чья 30-дневная отсрочка истекла.
     #
     # Без этой строки удаление остаётся половинчатым: аккаунт заморожен

@@ -586,6 +586,10 @@ export const MenuPage: React.FC = () => {
   );
   const [showGenerateForm, setShowGenerateForm] = useState(false);
 
+  // MG_MENUEXPIRE: меню, чей срок вышел, уходят в архив и в обычном списке не
+  // показываются. Архив — не удаление: сюда переключаются и смотрят прошлое.
+  const [archived, setArchived] = useState(false);
+
   // MG_608_V_menupage: карантин
   const [showQuarantine, setShowQuarantine] = useState(false);
   const [quarantine, setQuarantine] = useState<DeletedMenu[]>([]);
@@ -607,7 +611,7 @@ export const MenuPage: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const { data } = await menuApi.list();
+      const { data } = await menuApi.list(archived);
       const d = data as any;
       const list: Menu[] = Array.isArray(d) ? d : (Array.isArray(d?.results) ? d.results : []);
       setMenus(list);
@@ -628,9 +632,10 @@ export const MenuPage: React.FC = () => {
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Не удалось загрузить меню');
     } finally { setLoading(false); }
-  }, [loadDetail]);
+  }, [loadDetail, archived]);
 
-  useEffect(() => { load(); }, []);  // eslint-disable-line
+  // MG_MENUEXPIRE: переключение «актуальные ↔ архив» перечитывает список.
+  useEffect(() => { load(); }, [archived]);  // eslint-disable-line
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Удалить это меню? Его можно будет восстановить из Корзины в течение 24 часов.')) return;
@@ -701,6 +706,30 @@ export const MenuPage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* MG_MENUEXPIRE: актуальные ↔ архив. Показываем всегда: без этой пары
+          кнопок меню с вышедшим сроком выглядело бы пропавшим. */}
+      {!showGenerateForm && (
+        <div className="flex gap-2">
+          {[
+            { key: false, label: 'Актуальные' },
+            { key: true, label: 'Архив' },
+          ].map(tab => (
+            <button
+              key={String(tab.key)}
+              onClick={() => setArchived(tab.key)}
+              className={[
+                'px-3 py-1.5 rounded-xl text-sm font-medium transition border',
+                archived === tab.key
+                  ? 'bg-tomato text-white border-tomato'
+                  : 'bg-surface text-chocolate border-border hover:border-tomato',
+              ].join(' ')}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* MG_608_V_menupage: чипы выбора меню */}
       {menus.length > 1 && !showGenerateForm && (
@@ -809,8 +838,14 @@ export const MenuPage: React.FC = () => {
       {menus.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <div className="text-5xl mb-4">📋</div>
-          <p className="text-lg font-medium">Меню пока нет</p>
-          <p className="text-sm mt-1">Нажмите «Сгенерировать» чтобы составить меню</p>
+          {/* MG_MENUEXPIRE: в архиве «нажмите Сгенерировать» было бы советом
+              не о том — там показывают прошлое, а не заводят новое. */}
+          <p className="text-lg font-medium">{archived ? 'В архиве пусто' : 'Меню пока нет'}</p>
+          <p className="text-sm mt-1">
+            {archived
+              ? 'Сюда попадают меню, у которых закончился срок'
+              : 'Нажмите «Сгенерировать» чтобы составить меню'}
+          </p>
         </div>
       ) : detailLoading ? (
         <div className="flex justify-center py-10">

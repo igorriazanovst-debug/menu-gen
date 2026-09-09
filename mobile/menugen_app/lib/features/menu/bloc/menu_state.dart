@@ -21,12 +21,16 @@ class MenuGenerating extends MenuState {
 /// MG_608_V_mobile_state:
 ///  - `menus`  — полный список меню (краткие — без items), для UI dropdown.
 ///  - `active` — детальное меню (с items), которое сейчас отображается.
+///  - `archived` — MG_MENUEXPIRE: показан архив, а не актуальные меню. Экран
+///    по нему подписывает заголовок: иначе прошлогоднее меню в дропдауне
+///    выглядит как текущее.
 class MenuLoaded extends MenuState {
   final List<Map<String, dynamic>> menus;
   final Map<String, dynamic>? active;
-  const MenuLoaded({required this.menus, this.active});
+  final bool archived;
+  const MenuLoaded({required this.menus, this.active, this.archived = false});
   @override
-  List<Object?> get props => [menus, active];
+  List<Object?> get props => [menus, active, archived];
 }
 
 class MenuGenerated extends MenuState {

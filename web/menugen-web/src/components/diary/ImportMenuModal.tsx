@@ -53,13 +53,27 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
   const [notice, setNotice] = useState(''); // FILL_FROM_MENU_V5: результат импорта
 
   // Load menu list; default to the first (active) menu.
+  //
+  // MG_MENUEXPIRE: берём и архив тоже. Дневник заполняют задним числом — в
+  // понедельник за воскресенье, — а меню той недели к утру понедельника уже
+  // просрочено и в обычном списке его нет. Первым показываем то, которое
+  // накрывает нужный день: обычно именно из него и импортируют.
   useEffect(() => {
     (async () => {
       setLoadingList(true); setError('');
       try {
-        const { data } = await menuApi.list();
-        const d = data as unknown as { results?: Menu[] } | Menu[];
-        const list = Array.isArray(d) ? d : (d.results ?? []);
+        const rows = (r: { data: unknown }): Menu[] => {
+          const d = r.data as { results?: Menu[] } | Menu[];
+          return Array.isArray(d) ? d : (d.results ?? []);
+        };
+        const [actual, archived] = await Promise.all([
+          menuApi.list().then(rows),
+          menuApi.list(true).then(rows).catch(() => [] as Menu[]),
+        ]);
+        const seen = new Set<number>();
+        const list = [...actual, ...archived].filter(m => !seen.has(m.id) && seen.add(m.id));
+        const covers = (m: Menu) => m.start_date <= date && date <= m.end_date;
+        list.sort((a, b) => Number(covers(b)) - Number(covers(a)));
         setMenus(list);
         if (list.length) setMenuId(list[0].id);
         else setError('Нет доступных меню. Сначала сгенерируйте меню.');
@@ -69,7 +83,7 @@ export const ImportMenuModal: React.FC<Props> = ({ date, memberId, onClose, onIm
         setLoadingList(false);
       }
     })();
-  }, []);
+  }, [date]);
 
   // Load detail of selected menu.
   const loadDetail = useCallback(async (id: number) => {

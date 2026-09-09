@@ -40,7 +40,10 @@ export interface GenerateMenuPayload {
 }
 
 export const menuApi = {
-  list: () => client.get<PaginatedResponse<Menu>>('/menu/'),
+  // MG_MENUEXPIRE: по умолчанию — актуальные (срок ещё не вышел),
+  // archived: true — те, чей срок прошёл или кого пометили архивом.
+  list: (archived = false) =>
+    client.get<PaginatedResponse<Menu>>('/menu/', archived ? { params: { archived: 'true' } } : undefined),
 
   get: (id: number) => client.get<Menu>(`/menu/${id}/`),
 

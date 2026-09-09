@@ -1,8 +1,9 @@
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -297,7 +298,31 @@ class MenuGenerateView(APIView):
         )
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter(
+            "archived",
+            bool,
+            description="true — меню, чей срок вышел (архив). По умолчанию — актуальные.",
+        )
+    ]
+)
 class MenuListView(generics.ListAPIView):
+    """MG_MENUEXPIRE: актуальные меню — по умолчанию, архив — по запросу.
+
+    Актуальным считается меню, чей последний день ещё не прошёл. Просроченные
+    отсекаются по дате, а не по статусу: ночная задача `archive_expired_menus`
+    его проставляет, но список не должен зависеть от того, дожил ли beat до
+    утра. Статус и дата расходятся ровно на одну ночь, и человек этого не видит.
+
+    Черновик срока не имеет и в актуальных остаётся всегда.
+
+    Архив (`?archived=true`) — то же зеркально: помеченные архивом и те, чей
+    срок уже вышел. Сюда же попадает меню, восстановленное из карантина
+    задним числом (MenuRestoreView возвращает ему статус active со старыми
+    датами) — иначе оно исчезло бы из обоих списков.
+    """
+
     # Freemium: свои сгенерированные меню доступны и бесплатным семьям.
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = MenuListSerializer
@@ -308,10 +333,17 @@ class MenuListView(generics.ListAPIView):
         family = _get_family(self.request.user)
         if not family:
             return Menu.objects.none()
-        return Menu.objects.filter(
-            family=family,
-            status__in=[Menu.Status.ACTIVE, Menu.Status.DRAFT],
-        ).order_by("-generated_at")
+
+        today = timezone.localdate()
+        mine = Menu.objects.filter(family=family)
+        expired = Q(status=Menu.Status.ACTIVE, end_date__lt=today)
+
+        if self.request.query_params.get("archived") == "true":
+            return mine.filter(Q(status=Menu.Status.ARCHIVED) | expired).order_by("-end_date", "-generated_at")
+
+        return (
+            mine.filter(status__in=[Menu.Status.ACTIVE, Menu.Status.DRAFT]).exclude(expired).order_by("-generated_at")
+        )
 
 
 class MenuDetailView(generics.RetrieveAPIView):
@@ -379,7 +411,13 @@ class DeletedMenuListView(APIView):
 
 
 class MenuRestoreView(APIView):
-    """Восстановление меню из карантина (до истечения 24ч)."""
+    """Восстановление меню из карантина (до истечения 24ч).
+
+    MG_MENUEXPIRE: даты у восстановленного меню прежние, поэтому меню с
+    прошедшим сроком возвращается сразу в архив (`/menu/?archived=true`), а не
+    в список актуальных. Статус тут остаётся active — просроченность считается
+    по дате, см. MenuListView.
+    """
 
     # Freemium: восстановление своих меню доступно и бесплатным семьям.
     permission_classes = [permissions.IsAuthenticated]

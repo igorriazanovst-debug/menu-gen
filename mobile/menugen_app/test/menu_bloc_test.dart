@@ -73,4 +73,70 @@ void main() {
       isA<MenuPremiumLocked>().having((s) => s.isWrite, 'isWrite', true),
     ],
   );
+
+  // ── MG_MENUEXPIRE: архив меню ──────────────────────────────────────────────
+  //
+  // Меню, чей срок вышел, уходит из списка актуальных. Единственный путь к нему
+  // после этого — архив, поэтому проверяется, что блок за ним вообще ходит и
+  // что признак архива доживает до состояния: по нему экран подписывает
+  // заголовок, иначе прошлогоднее меню не отличить от текущего.
+
+  blocTest<MenuBloc, MenuState>(
+    'MG_MENUEXPIRE: архив читается со своего адреса',
+    build: () {
+      when(() => api.get('/menu/?archived=true', params: any(named: 'params')))
+          .thenAnswer((_) async => {'results': [], 'count': 0});
+      return MenuBloc(apiClient: api, db: db);
+    },
+    act: (b) => b.add(const MenuLoadRequested(archived: true)),
+    expect: () => [
+      const MenuLoading(),
+      const MenuLoaded(menus: <Map<String, dynamic>>[], archived: true),
+    ],
+    verify: (_) {
+      verifyNever(() => api.get('/menu/', params: any(named: 'params')));
+    },
+  );
+
+  blocTest<MenuBloc, MenuState>(
+    'MG_MENUEXPIRE: признак архива доживает до состояния с меню',
+    build: () {
+      when(() => api.get('/menu/?archived=true', params: any(named: 'params')))
+          .thenAnswer((_) async => {
+                'results': [
+                  {'id': 7, 'start_date': '2026-01-01', 'end_date': '2026-01-07'}
+                ],
+                'count': 1,
+              });
+      when(() => api.get('/menu/7/', params: any(named: 'params')))
+          .thenAnswer((_) async => {'id': 7, 'items': <dynamic>[]});
+      return MenuBloc(apiClient: api, db: db);
+    },
+    act: (b) => b.add(const MenuLoadRequested(archived: true)),
+    expect: () => [
+      const MenuLoading(),
+      isA<MenuLoaded>()
+          .having((s) => s.archived, 'archived', true)
+          .having((s) => s.active?['id'], 'active.id', 7),
+    ],
+  );
+
+  blocTest<MenuBloc, MenuState>(
+    'MG_MENUEXPIRE: по умолчанию список — актуальный',
+    build: () {
+      when(() => api.get('/menu/', params: any(named: 'params')))
+          .thenAnswer((_) async => {'results': [], 'count': 0});
+      return MenuBloc(apiClient: api, db: db);
+    },
+    act: (b) => b.add(const MenuLoadRequested()),
+    expect: () => [
+      const MenuLoading(),
+      const MenuLoaded(menus: <Map<String, dynamic>>[], archived: false),
+    ],
+    verify: (_) {
+      verifyNever(
+        () => api.get('/menu/?archived=true', params: any(named: 'params')),
+      );
+    },
+  );
 }

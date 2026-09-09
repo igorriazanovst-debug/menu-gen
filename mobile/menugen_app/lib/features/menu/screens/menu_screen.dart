@@ -110,7 +110,9 @@ class _MenuScreenState extends State<MenuScreen> {
                     return Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        _shortRange(m),
+                        // MG_MENUEXPIRE: пометка нужна именно в закрытом виде —
+                        // по одним датам архив от актуального не отличить.
+                        '${state.archived ? 'Архив · ' : ''}${_shortRange(m)}',
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: onBar,
@@ -138,10 +140,31 @@ class _MenuScreenState extends State<MenuScreen> {
                 ),
               );
             }
-            return const Text('Меню');
+            // MG_MENUEXPIRE: в архиве это надо назвать, иначе прошлогоднее
+            // меню в заголовке не отличить от текущего.
+            final inArchive = state is MenuLoaded && state.archived;
+            return Text(inArchive ? 'Архив меню' : 'Меню');
           },
         ),
         actions: [
+          // MG_MENUEXPIRE: меню с вышедшим сроком уходят из списка в архив.
+          // Кнопка — единственный путь туда, поэтому она видна всегда.
+          BlocBuilder<MenuBloc, MenuState>(
+            buildWhen: (a, b) => true,
+            builder: (context, state) {
+              final inArchive = state is MenuLoaded && state.archived;
+              return IconButton(
+                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+                icon: Icon(inArchive ? Icons.history_toggle_off : Icons.history),
+                tooltip: inArchive ? 'К актуальным меню' : 'Архив меню',
+                onPressed: () => context
+                    .read<MenuBloc>()
+                    .add(MenuLoadRequested(archived: !inArchive)),
+              );
+            },
+          ),
           IconButton(
             iconSize: 20,
             padding: EdgeInsets.zero,
@@ -177,14 +200,22 @@ class _MenuScreenState extends State<MenuScreen> {
               );
             },
           ),
-          IconButton(
-            iconSize: 20,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Обновить',
-            onPressed: () =>
-                context.read<MenuBloc>().add(const MenuLoadRequested()),
+          BlocBuilder<MenuBloc, MenuState>(
+            buildWhen: (a, b) => true,
+            builder: (context, state) {
+              // Обновление не должно выкидывать из архива обратно в актуальные.
+              final inArchive = state is MenuLoaded && state.archived;
+              return IconButton(
+                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Обновить',
+                onPressed: () => context
+                    .read<MenuBloc>()
+                    .add(MenuLoadRequested(archived: inArchive)),
+              );
+            },
           ),
         ],
       ),
@@ -239,7 +270,10 @@ class _MenuScreenState extends State<MenuScreen> {
           }
 
           if (menu == null) {
-            return _EmptyView(onGenerate: () => _showGenerateSheet(context));
+            return _EmptyView(
+              onGenerate: () => _showGenerateSheet(context),
+              archived: state is MenuLoaded && state.archived,
+            );
           }
           _activeMenuId = menu['id'] as int?; // MG-402: для замены блюда
 
@@ -544,7 +578,11 @@ class _MenuScreenState extends State<MenuScreen> {
 
 class _EmptyView extends StatelessWidget {
   final VoidCallback onGenerate;
-  const _EmptyView({required this.onGenerate});
+
+  /// MG_MENUEXPIRE: в архиве «нажмите Сгенерировать» — совет не о том: там
+  /// смотрят прошлое, а не заводят новое.
+  final bool archived;
+  const _EmptyView({required this.onGenerate, this.archived = false});
 
   @override
   Widget build(BuildContext context) {
@@ -554,21 +592,32 @@ class _EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.restaurant_menu, size: 80, color: Colors.grey.shade300),
+            Icon(
+              archived ? Icons.history : Icons.restaurant_menu,
+              size: 80,
+              color: Colors.grey.shade300,
+            ),
             const SizedBox(height: 16),
-            Text('Меню пока нет', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              archived ? 'В архиве пусто' : 'Меню пока нет',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 8),
             Text(
-              'Нажмите «Сгенерировать», чтобы составить меню',
+              archived
+                  ? 'Сюда попадают меню, у которых закончился срок'
+                  : 'Нажмите «Сгенерировать», чтобы составить меню',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade600),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.auto_awesome),
-              label: const Text('Сгенерировать'),
-              onPressed: onGenerate,
-            ),
+            if (!archived) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Сгенерировать'),
+                onPressed: onGenerate,
+              ),
+            ],
           ],
         ),
       ),

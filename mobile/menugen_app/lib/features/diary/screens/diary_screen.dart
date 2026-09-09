@@ -919,26 +919,47 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
     return parts.isEmpty ? 'Меню #${m['id']}' : parts.join(' ');
   }
 
+  /// MG_MENUEXPIRE: список меню для импорта — актуальные И архив.
+  ///
+  /// Дневник заполняют задним числом: в понедельник за воскресенье. Меню той
+  /// недели к утру понедельника уже просрочено и в обычном списке его нет, так
+  /// что без архива импортировать было бы неоткуда. Архив не обязателен: не
+  /// отдался — работаем на актуальных.
+  Future<List<Map<String, dynamic>>> _fetchMenus(String path) async {
+    final r = await widget.apiClient.get(path);
+    final list = (r is Map ? r['results'] : r);
+    if (list is! List) return const [];
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
   Future<void> _loadMenus() async {
     try {
-      final r = await widget.apiClient.get('/menu/');
-      final list = (r is Map ? r['results'] : r);
+      final actual = await _fetchMenus('/menu/');
+      List<Map<String, dynamic>> archived = const [];
+      try {
+        archived = await _fetchMenus('/menu/?archived=true');
+      } catch (_) {/* архив не обязателен */}
       if (!mounted) return;
-      if (list is List) {
-        final menus = list
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-        final firstId = menus.isNotEmpty ? menus.first['id'] as int? : null;
-        setState(() {
-          _menus = menus;
-          _menuId = firstId;
-          _loading = false;
-        });
-        if (firstId != null) _loadDetail(firstId);
-      } else {
-        setState(() => _loading = false);
+      final seen = <int>{};
+      final menus = [...actual, ...archived]
+          .where((m) => m['id'] is int && seen.add(m['id'] as int))
+          .toList();
+      // Первым — меню, накрывающее нужный день: обычно из него и импортируют.
+      final day = DateFormat('yyyy-MM-dd').format(widget.initialDate);
+      bool covers(Map<String, dynamic> m) {
+        final a = m['start_date']?.toString() ?? '';
+        final b = m['end_date']?.toString() ?? '';
+        return a.isNotEmpty && b.isNotEmpty && a.compareTo(day) <= 0 && day.compareTo(b) <= 0;
       }
+
+      menus.sort((a, b) => (covers(b) ? 1 : 0) - (covers(a) ? 1 : 0));
+      final firstId = menus.isNotEmpty ? menus.first['id'] as int? : null;
+      setState(() {
+        _menus = menus;
+        _menuId = firstId;
+        _loading = false;
+      });
+      if (firstId != null) _loadDetail(firstId);
     } catch (_) {
       if (!mounted) return;
       setState(() {

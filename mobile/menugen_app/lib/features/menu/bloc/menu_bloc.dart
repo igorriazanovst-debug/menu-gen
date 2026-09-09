@@ -64,16 +64,25 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
     } catch (_) {}
   }
 
+  /// MG_MENUEXPIRE: путь списка. Архив — отдельный адрес, а не флаг в теле:
+  /// кэш GET-ответов ключуется путём, и списки не перетирают друг друга.
+  String _listPath({required bool archived}) =>
+      archived ? '/menu/?archived=true' : '/menu/';
+
   Future<void> _onLoad(MenuLoadRequested e, Emitter<MenuState> emit) async {
     emit(const MenuLoading());
     try {
-      final listResp = await apiClient.get('/menu/');
+      final listResp = await apiClient.get(_listPath(archived: e.archived));
       final list = (listResp is Map ? (listResp['results'] as List? ?? []) : [])
           .whereType<Map>()
           .map((m) => Map<String, dynamic>.from(m))
           .toList();
       if (list.isEmpty) {
-        emit(const MenuLoaded(menus: <Map<String, dynamic>>[], active: null));
+        emit(MenuLoaded(
+          menus: const <Map<String, dynamic>>[],
+          active: null,
+          archived: e.archived,
+        ));
         return;
       }
 
@@ -85,9 +94,11 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
       }
 
       final detail = await apiClient.get('/menu/$pickId/');
-      await _writeLastMenuId(pickId);
+      // Выбор в архиве не запоминаем: иначе при следующем запуске приложение
+      // открылось бы на прошлогоднем меню, которого в актуальных уже нет.
+      if (!e.archived) await _writeLastMenuId(pickId);
       premiumGate?.reportReadSuccess();
-      emit(MenuLoaded(menus: list, active: _asMap(detail)));
+      emit(MenuLoaded(menus: list, active: _asMap(detail), archived: e.archived));
     } catch (err) {
       emit(_toErrorState(err, isWrite: false));
     }
@@ -97,13 +108,15 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
   Future<void> _onDetail(MenuDetailRequested e, Emitter<MenuState> emit) async {
     // Берём текущий список из state, если он есть; иначе перечитываем список.
     List<Map<String, dynamic>> menus = const [];
+    var archived = false;
     final cur = state;
     if (cur is MenuLoaded) {
       menus = cur.menus;
+      archived = cur.archived;
     }
     if (menus.isEmpty) {
       try {
-        final listResp = await apiClient.get('/menu/');
+        final listResp = await apiClient.get(_listPath(archived: archived));
         menus = (listResp is Map ? (listResp['results'] as List? ?? []) : [])
             .whereType<Map>()
             .map((m) => Map<String, dynamic>.from(m))
@@ -116,8 +129,8 @@ class MenuBloc extends Bloc<MenuEvent, MenuState> {
     emit(const MenuLoading());
     try {
       final detail = await apiClient.get('/menu/${e.menuId}/');
-      await _writeLastMenuId(e.menuId);
-      emit(MenuLoaded(menus: menus, active: _asMap(detail)));
+      if (!archived) await _writeLastMenuId(e.menuId);
+      emit(MenuLoaded(menus: menus, active: _asMap(detail), archived: archived));
     } catch (err) {
       emit(_toErrorState(err, isWrite: false));
     }
