@@ -30,12 +30,21 @@ class _DiaryScreenState extends State<DiaryScreen> {
   DateTime _focusedDay = DateTime.now(); // MG_SKIN: страница календаря
   int? _memberId;
   List<Map<String, dynamic>> _members = const []; // DIARY_V2
+
+  /// Члены семьи, кроме себя: свой дневник открывается пунктом «Я».
+  /// Пока свой идентификатор не загрузился, список не режем — иначе
+  /// переключатель на мгновение пропадал бы.
+  List<Map<String, dynamic>> get _others => _meUserId == null
+      ? _members
+      : _members.where((m) => m['user_id'] != _meUserId).toList();
   bool _isHead = false;
   // MG_MEALSLOT: три приёма в дне или пять. От этого зависит, показывать ли
   // разделы перекусов пустыми: в раскладке на три приёма их попросту нет.
   String _mealPlanType = '3';
   // MG_BODYSIZE: пол нужен только для силуэта на диаграмме обхватов.
   String? _gender;
+  // Свой идентификатор — чтобы не показывать себя в списке членов семьи дважды.
+  int? _meUserId;
 
   @override
   void initState() {
@@ -52,10 +61,12 @@ class _DiaryScreenState extends State<DiaryScreen> {
       final profile = (r is Map ? r['profile'] : null);
       final plan = (profile is Map ? profile['meal_plan_type'] : null) as String?;
       final gender = (profile is Map ? profile['gender'] : null) as String?;
-      if (mounted && (plan != null || gender != null)) {
+      final meId = (r is Map ? r['id'] : null) as int?;
+      if (mounted) {
         setState(() {
           if (plan != null) _mealPlanType = plan;
           _gender = gender;
+          _meUserId = meId;
         });
       }
     } catch (_) {/* не критично: покажем три приёма */}
@@ -97,7 +108,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
         ),
         title: const Text('Дневник питания'),
         actions: [
-          if (_isHead && _members.length > 1) // DIARY_V2 member switcher
+          // «Я» в списке уже есть, поэтому себя из членов семьи убираем: своё
+          // имя рядом с «Я» читается как два разных человека.
+          if (_isHead && _others.isNotEmpty) // DIARY_V2 member switcher
             PopupMenuButton<int?>(
               iconSize: 20,
               padding: EdgeInsets.zero,
@@ -110,7 +123,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
               },
               itemBuilder: (_) => [
                 const PopupMenuItem<int?>(value: null, child: Text('Я')),
-                ..._members.map((m) => PopupMenuItem<int?>(
+                ..._others.map((m) => PopupMenuItem<int?>(
                       value: m['id'] as int?,
                       child: Text((m['name'] as String?) ?? '—'),
                     )),
@@ -1585,14 +1598,18 @@ class _WeightCardState extends State<_WeightCard> {
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
                     ),
-                  if (_points.length > 1)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        onPressed: () => _saveChartFlag(!_showChart),
-                        child: Text(_showChart ? 'скрыть график' : 'показать график'),
-                      ),
+                  // Кнопку показываем всегда, даже когда замеров ещё нет:
+                  // иначе про график не узнать — он появлялся бы сам собой на
+                  // третьей неделе, а человек к тому времени уже решил, что
+                  // графика в программе нет. Пустой график объясняет, чего ему
+                  // не хватает.
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => _saveChartFlag(!_showChart),
+                      child: Text(_showChart ? 'скрыть график' : 'показать график'),
                     ),
+                  ),
                   if (_showChart)
                     WeightChart(
                       values: _points

@@ -67,12 +67,14 @@ export const WeightCard: React.FC<{ date: string; memberId?: number }> = ({ date
               {Math.abs(delta).toFixed(1)} кг за период
             </div>
           )}
-          {points.length > 1 && (
-            <button type="button" onClick={() => setShowChart(!showChart)}
-                    className="text-xs text-avocado hover:underline">
-              {showChart ? 'скрыть график' : 'показать график'}
-            </button>
-          )}
+          {/* Кнопку показываем всегда, даже когда замеров ещё нет: иначе про
+              график не узнать — он появлялся бы сам собой на третьей неделе, а
+              человек к тому времени уже решил, что графика в программе нет.
+              Пустой график объясняет, чего ему не хватает. */}
+          <button type="button" onClick={() => setShowChart(!showChart)}
+                  className="text-xs text-avocado hover:underline">
+            {showChart ? 'скрыть график' : 'показать график'}
+          </button>
         </div>
       </div>
       {showChart && <WeightChart points={points} />}

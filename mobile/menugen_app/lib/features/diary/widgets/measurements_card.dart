@@ -271,11 +271,13 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
                           style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                         ),
                       ),
-                      if (_latest != null)
-                        TextButton(
-                          onPressed: () => _saveChartFlag(!_showChart),
-                          child: Text(_showChart ? 'скрыть диаграмму' : 'показать диаграмму'),
-                        ),
+                      // Всегда, а не только при готовых замерах: иначе о
+                      // диаграмме не узнать, пока не запишешь первый обхват, —
+                      // а записывать незачем, пока не знаешь, что она есть.
+                      TextButton(
+                        onPressed: () => _saveChartFlag(!_showChart),
+                        child: Text(_showChart ? 'скрыть диаграмму' : 'показать диаграмму'),
+                      ),
                     ],
                   ),
                   if (_error != null)

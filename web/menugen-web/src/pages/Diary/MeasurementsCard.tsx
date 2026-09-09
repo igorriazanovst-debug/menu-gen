@@ -94,12 +94,13 @@ export const MeasurementsCard: React.FC<{ date: string; memberId?: number }> = (
           <AddedByMark name={latest?.added_by_name} withName className="ml-2" />
         </div>
         <div className="flex items-center gap-3">
-          {latest && (
-            <button type="button" onClick={() => setShowChart(!showChart)}
-                    className="text-xs text-avocado hover:underline">
-              {showChart ? 'скрыть диаграмму' : 'показать диаграмму'}
-            </button>
-          )}
+          {/* Всегда, а не только при готовых замерах: иначе о диаграмме не
+              узнать, пока не запишешь первый обхват, — а записывать незачем,
+              пока не знаешь, что она есть. Пустая диаграмма это объясняет. */}
+          <button type="button" onClick={() => setShowChart(!showChart)}
+                  className="text-xs text-avocado hover:underline">
+            {showChart ? 'скрыть диаграмму' : 'показать диаграмму'}
+          </button>
           <button type="button" onClick={() => setOpen((v) => !v)}
                   className="text-xs text-avocado hover:underline">
             {open ? 'свернуть' : 'записать'}

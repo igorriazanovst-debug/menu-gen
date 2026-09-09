@@ -292,11 +292,13 @@ export const DiaryPage: React.FC = () => {
         <input type="date" value={date}
           onChange={(e) => setDate(e.target.value)}
           className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-tomato/40 focus:border-tomato outline-none" />
-        {isHead && members.length > 1 && (
+        {isHead && members.some((m) => m.user_id !== authUserId) && (
           <select value={memberId ?? ''} onChange={(e) => setMemberId(e.target.value ? Number(e.target.value) : undefined)}
             className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-tomato/40 focus:border-tomato outline-none">
             <option value="">Я</option>
-            {members.map((m) => (
+            {/* Себя в списке не повторяем: «Я» и своё же имя рядом читаются как
+                два разных человека, и глава семьи выбирает наугад. */}
+            {members.filter((m) => m.user_id !== authUserId).map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
