@@ -15,7 +15,7 @@ from apps.family.selection import current_membership  # MG_ONEFAMILY
 # MG_605D_V_views: импорт MenuItem для import-from-menu
 from apps.menu.models import Menu, MenuItem
 
-from .access import author_for, can_add_for  # MG_HEADKEEPS
+from .access import author_for, can_add_for, can_change_row  # MG_HEADKEEPS
 from .models import BodyMeasurement, DiaryEntry, WaterLog, WeightLog
 from .permissions import IsDiaryEntryOwner
 from .serializers import DiaryCopySerializer  # DIARY_COPY_V3
@@ -77,6 +77,37 @@ def _scope(queryset, current, target):
     if target.user_id == current.user_id:
         return queryset.filter(user_id=current.user_id)
     return queryset.filter(user_id=target.user_id, member__family_id=current.family_id)
+
+
+# MG_HEADKEEPS: один текст отказа на все три ручки. Человек должен понять, что
+# делать дальше, а не только что ему нельзя.
+_NO_RIGHTS = (
+    "Менять записи участника можно с его разрешения — он включает это у себя в "
+    "профиле. Свои же записи вы правите всегда."
+)
+
+
+def _delete_day_row(model, current, target, request):
+    """MG_DAYFIX: убрать строку за дату (вода, вес, обхваты).
+
+    У всех трёх на дату одна строка, поэтому адресуем её датой, а не
+    идентификатором: клиент и так знает день, который показывает, а лишний
+    идентификатор в запросе — лишний способ ошибиться.
+
+    Права те же, что на перезапись: своё — всегда, чужое — по разрешению
+    участника или если строку внёс сам обращающийся (см. access.can_change_row).
+    """
+    day = request.query_params.get("date")
+    if not day:
+        return Response({"detail": "Укажите дату."}, status=status.HTTP_400_BAD_REQUEST)
+    row = _scope(model.objects, current, target).filter(date=day).first()
+    if row is None:
+        # Нечего удалять — для клиента это тот же итог, что и успех: строки нет.
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    if not can_change_row(current, target, row):
+        raise PermissionDenied(_NO_RIGHTS)
+    row.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DiaryRangePagination(PageNumberPagination):
@@ -444,10 +475,14 @@ class WaterLogView(APIView):
         member = _get_member(request.user)
         if not member:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
-        # MG_HEADKEEPS: глава семьи может отметить воду за участника.
+        # MG_HEADKEEPS: глава семьи может отметить воду за участника, но если за
+        # этот день значение уже стоит — это правка чужого, и разрешение нужно
+        # то же, что на правку записи дневника. См. access.can_change_row.
         target = _resolve_target_member(request, member)
-        if not can_add_for(member, target):
-            raise PermissionDenied("Вносить записи за участника может только глава семьи.")
+        day = request.data.get("date")
+        existing = WaterLog.objects.filter(user_id=target.user_id, date=day).first() if day else None
+        if not can_change_row(member, target, existing):
+            raise PermissionDenied(_NO_RIGHTS)
         serializer = WaterLogSerializer(
             data=request.data,
             context={"member": target, "author": author_for(member, target)},
@@ -455,6 +490,21 @@ class WaterLogView(APIView):
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
         return Response(WaterLogSerializer(obj).data)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("date", str, description="Дата YYYY-MM-DD"),
+            OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)"),
+        ],
+        responses={204: None},
+    )
+    def delete(self, request):
+        """Убрать отметку о воде за день — ошиблись днём или человеком."""
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        return _delete_day_row(WaterLog, member, target, request)
 
 
 class WeightLogView(APIView):
@@ -495,8 +545,13 @@ class WeightLogView(APIView):
         # MG_HEADKEEPS: запись за участника — только главе семьи, и с пометкой,
         # кто её внёс. Раньше проверки не было вовсе: `_resolve_target_member`
         # пускает главу к чтению, и запись проходила заодно.
-        if not can_add_for(member, target):
-            raise PermissionDenied("Вносить записи за участника может только глава семьи.")
+        #
+        # MG_DAYFIX: если замер за этот день уже есть, POST его перепишет — это
+        # правка чужого, и разрешение нужно то же, что на правку дневника.
+        day = request.data.get("date")
+        existing = WeightLog.objects.filter(user_id=target.user_id, date=day).first() if day else None
+        if not can_change_row(member, target, existing):
+            raise PermissionDenied(_NO_RIGHTS)
         serializer = WeightLogSerializer(
             data=request.data,
             context={"member": target, "author": author_for(member, target)},
@@ -505,6 +560,25 @@ class WeightLogView(APIView):
         obj = serializer.save()
         _sync_profile_weight(target)  # MG_OWNDIARY: считает по человеку, см. ниже
         return Response(WeightLogSerializer(obj).data)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("date", str, description="Дата YYYY-MM-DD"),
+            OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)"),
+        ],
+        responses={204: None},
+    )
+    def delete(self, request):
+        """MG_DAYFIX: убрать замер за день — взвесились в одежде, ошиблись днём."""
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        resp = _delete_day_row(WeightLog, member, target, request)
+        # Профиль держит последний замер: удалили самый свежий — в профиль
+        # должен вернуться предыдущий, иначе расчёты пойдут от стёртого веса.
+        _sync_profile_weight(target)
+        return resp
 
 
 def _sync_profile_weight(member):
@@ -572,8 +646,11 @@ class BodyMeasurementView(APIView):
         if not member:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
         target = _resolve_target_member(request, member)
-        if not can_add_for(member, target):
-            raise PermissionDenied("Вносить записи за участника может только глава семьи.")
+        # MG_DAYFIX: замер за занятый день POST перепишет — это правка чужого.
+        day = request.data.get("date")
+        existing = BodyMeasurement.objects.filter(user_id=target.user_id, date=day).first() if day else None
+        if not can_change_row(member, target, existing):
+            raise PermissionDenied(_NO_RIGHTS)
         serializer = BodyMeasurementSerializer(
             data=request.data,
             context={"member": target, "author": author_for(member, target)},
@@ -581,6 +658,25 @@ class BodyMeasurementView(APIView):
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
         return Response(BodyMeasurementSerializer(obj).data)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("date", str, description="Дата YYYY-MM-DD"),
+            OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)"),
+        ],
+        responses={204: None},
+    )
+    def delete(self, request):
+        """MG_DAYFIX: убрать замер за день целиком.
+
+        Отдельные обхваты стираются пустым полем в POST; эта ручка — про всю
+        строку сразу: записали не тому или не в тот день.
+        """
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        return _delete_day_row(BodyMeasurement, member, target, request)
 
 
 # DIARY_COPY_V3: copy selected entries from any day into target day as PLAN.

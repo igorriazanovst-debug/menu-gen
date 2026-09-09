@@ -122,6 +122,10 @@ export const diaryApi = {
     client.post<DiaryWaterLog>('/diary/water/', { date, water_ml },
       { params: memberId ? { member_id: memberId } : undefined },
     ),
+  // MG_DAYFIX: убрать отметку за день — ошиблись днём или человеком. Строка на
+  // дату одна, поэтому адресуем её датой, а не идентификатором.
+  deleteWater: (date: string, memberId?: number) =>
+    client.delete('/diary/water/', { params: { date, ...(memberId ? { member_id: memberId } : {}) } }),
 
   // MG_TRAINER: вес по датам — история, а не одно число в профиле.
   getWeight: async (days = 90, memberId?: number): Promise<DiaryWeightPoint[]> => {
@@ -134,6 +138,8 @@ export const diaryApi = {
     client.post<DiaryWeightPoint>('/diary/weight/', { date, weight_kg, note },
       { params: memberId ? { member_id: memberId } : undefined },
     ),
+  deleteWeight: (date: string, memberId?: number) => // MG_DAYFIX
+    client.delete('/diary/weight/', { params: { date, ...(memberId ? { member_id: memberId } : {}) } }),
 
   // MG_BODYSIZE: обхваты по датам — рядом с весом и по тем же правилам доступа.
   getMeasurements: async (days = 180, memberId?: number): Promise<DiaryMeasurement[]> => {
@@ -146,6 +152,8 @@ export const diaryApi = {
     client.post<DiaryMeasurement>('/diary/measurements/', payload,
       { params: memberId ? { member_id: memberId } : undefined },
     ),
+  deleteMeasurement: (date: string, memberId?: number) => // MG_DAYFIX
+    client.delete('/diary/measurements/', { params: { date, ...(memberId ? { member_id: memberId } : {}) } }),
 
   // DIARY_COPY_V3: copy selected entries into target day as plan.
   copy: (entryIds: number[], targetDate: string, memberId?: number) =>

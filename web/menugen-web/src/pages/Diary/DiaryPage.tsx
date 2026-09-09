@@ -174,6 +174,15 @@ export const DiaryPage: React.FC = () => {
     catch (err) { setWaterMl(waterMl); alert(getErrorMessage(err)); }
   };
 
+  const clearWater = async () => {
+    if (!window.confirm(`Убрать отметку о воде за ${date}?`)) return;
+    const prev = waterMl;
+    setWaterMl(0);
+    setWaterBy(null);
+    try { await diaryApi.deleteWater(date, memberId); }
+    catch (err) { setWaterMl(prev); alert(getErrorMessage(err)); }
+  };
+
   const setWaterExact = async () => {
     const v = parseInt(customWater, 10);
     if (!Number.isFinite(v) || v < 0) return;
@@ -356,6 +365,15 @@ export const DiaryPage: React.FC = () => {
             <Button key={ml} variant="ghost" onClick={() => addWater(ml)}>+{ml} мл</Button>
           ))}
           <Button variant="ghost" onClick={() => addWater(-250)} disabled={waterMl <= 0}>−250 мл</Button>
+          {/* MG_DAYFIX: убрать отметку за день целиком — ошиблись днём или
+              человеком. Ноль и отсутствие отметки для человека одно и то же,
+              но в базе разное: пустой день не должен выглядеть как «выпил 0». */}
+          {waterMl > 0 && (
+            <button type="button" onClick={clearWater}
+                    className="text-xs text-gray-400 hover:text-red-600">
+              убрать
+            </button>
+          )}
           <div className="flex items-center gap-2 ml-auto">
             <input type="number" value={customWater} min="0"
               onChange={(e) => setCustomWater(e.target.value)}
@@ -367,10 +385,10 @@ export const DiaryPage: React.FC = () => {
       </Card>
 
       {/* MG_TRAINER: вес по датам — без него у тренера пустой график */}
-      <WeightCard date={date} memberId={memberId} />
+      <WeightCard date={date} memberId={memberId} onPickDate={setDate} />
 
       {/* MG_BODYSIZE: обхваты — там же, где вес: их меряют в один заход. */}
-      <MeasurementsCard date={date} memberId={memberId} />
+      <MeasurementsCard date={date} memberId={memberId} onPickDate={setDate} />
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
 

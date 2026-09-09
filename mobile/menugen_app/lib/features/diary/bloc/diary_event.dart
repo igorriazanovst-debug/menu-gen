@@ -105,6 +105,15 @@ class DiaryWaterSetRequested extends DiaryEvent {
   List<Object?> get props => [date, waterMl, memberId];
 }
 
+/// MG_DAYFIX: убрать отметку о воде за день.
+class DiaryWaterClearRequested extends DiaryEvent {
+  final String date;
+  final int? memberId;
+  const DiaryWaterClearRequested({required this.date, this.memberId});
+  @override
+  List<Object?> get props => [date, memberId];
+}
+
 // DIARY_COPY_V3: copy selected entries into a target day as plan.
 class DiaryCopyRequested extends DiaryEvent {
   final List<int> entryIds;

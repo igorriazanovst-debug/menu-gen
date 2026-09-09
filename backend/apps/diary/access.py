@@ -85,6 +85,34 @@ def can_edit_of(current, target):
     return bool(getattr(profile, "head_may_edit_diary", False))
 
 
+def can_change_row(current, target, row):
+    """Может ли `current` переписать или удалить УЖЕ СУЩЕСТВУЮЩУЮ строку.
+
+    Вода, вес и обхваты хранятся по одной строке на дату: повторная запись за
+    тот же день не добавляет вторую точку, а правит первую. Значит, вторая
+    запись за занятый день — это правка чужого, а не добавление, и разрешение
+    для неё нужно то же, что для правки записи дневника.
+
+    Без этой проверки правило разъезжалось: запись дневника глава без согласия
+    поправить не мог, а вес участника — молча перезаписывал, потому что POST
+    выглядел как «добавить».
+
+    Исключение то же, что у дневника: строку, которую внёс сам `current`, он
+    правит и убирает без разрешения — иначе его собственная ошибка осталась бы
+    у человека навсегда.
+
+    `row is None` — строки за эту дату ещё нет, это добавление: см.
+    `can_add_for`.
+    """
+    if row is None:
+        return can_add_for(current, target)
+    if current is None or target is None:
+        return False
+    if getattr(row, "added_by_id", None) and row.added_by_id == current.user_id:
+        return True
+    return can_edit_of(current, target)
+
+
 def author_for(current, target):
     """Что писать в `added_by`: автора, если он не владелец, иначе ничего.
 

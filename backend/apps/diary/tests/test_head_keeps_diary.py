@@ -295,3 +295,131 @@ class TestConsentIsGivenByTheMember:
         # Ручка семьи это поле не принимает: молча игнорирует или отвечает 400 —
         # важно лишь то, что согласие осталось не выданным.
         assert household["adult"].user.profile.head_may_edit_diary is False
+
+
+class TestFixingADay:
+    """MG_DAYFIX: значение за дату можно поправить и убрать.
+
+    Вода, вес и обхваты хранятся по одной строке на дату, поэтому «поправить» —
+    это повторная запись за тот же день, а «убрать» — DELETE с датой. Отдельно
+    проверяется, что повторная запись за ЗАНЯТЫЙ день у чужого человека — уже
+    правка, а не добавление: раньше правило расходилось, и глава без разрешения
+    не мог поправить запись дневника, но молча переписывал чужой вес.
+    """
+
+    def test_own_weight_can_be_corrected(self, client, household):
+        client.force_authenticate(household["adult"].user)
+        url = reverse("diary-weight")
+        client.post(url, {"date": str(TODAY), "weight_kg": "70.0"}, format="json")
+
+        resp = client.post(url, {"date": str(TODAY), "weight_kg": "69.4"}, format="json")
+
+        assert resp.status_code == 200
+        rows = WeightLog.objects.filter(user_id=household["adult"].user_id, date=TODAY)
+        # Вторая точка за тот же день не заводится — замер один.
+        assert rows.count() == 1
+        assert str(rows.first().weight_kg) == "69.4"
+
+    def test_own_weight_can_be_removed(self, client, household):
+        client.force_authenticate(household["adult"].user)
+        client.post(reverse("diary-weight"), {"date": str(TODAY), "weight_kg": "70.0"}, format="json")
+
+        resp = client.delete(reverse("diary-weight") + f"?date={TODAY}")
+
+        assert resp.status_code == 204
+        assert not WeightLog.objects.filter(user_id=household["adult"].user_id, date=TODAY).exists()
+
+    def test_own_water_and_measurements_can_be_removed(self, client, household):
+        client.force_authenticate(household["adult"].user)
+        client.post(reverse("diary-water"), {"date": str(TODAY), "water_ml": 500}, format="json")
+        client.post(reverse("diary-measurements"), {"date": str(TODAY), "waist_cm": "80"}, format="json")
+
+        assert client.delete(reverse("diary-water") + f"?date={TODAY}").status_code == 204
+        assert client.delete(reverse("diary-measurements") + f"?date={TODAY}").status_code == 204
+
+        assert not WaterLog.objects.filter(user_id=household["adult"].user_id, date=TODAY).exists()
+        assert not BodyMeasurement.objects.filter(user_id=household["adult"].user_id, date=TODAY).exists()
+
+    def test_delete_without_date_is_refused(self, client, household):
+        client.force_authenticate(household["adult"].user)
+        assert client.delete(reverse("diary-weight")).status_code == 400
+
+    def test_delete_of_absent_row_is_not_an_error(self, client, household):
+        """Строки нет — для человека итог тот же, что и после удаления."""
+        client.force_authenticate(household["adult"].user)
+        assert client.delete(reverse("diary-weight") + f"?date={TODAY}").status_code == 204
+
+    def test_head_may_add_where_the_day_is_empty(self, client, household):
+        """Пустой день — это добавление, и оно главе разрешено без согласия."""
+        client.force_authenticate(household["head"].user)
+
+        resp = client.post(
+            reverse("diary-weight") + f"?member_id={household['adult'].id}",
+            {"date": str(TODAY), "weight_kg": "62.0"},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert WeightLog.objects.get(user_id=household["adult"].user_id, date=TODAY).added_by_id == (
+            household["head"].user_id
+        )
+
+    def test_head_may_not_overwrite_what_the_member_recorded(self, client, household):
+        """Занятый день — это правка чужого, и без согласия она запрещена.
+
+        Ровно здесь правило и расходилось: запись дневника глава поправить не
+        мог, а вес — переписывал, потому что POST выглядел как «добавить».
+        """
+        client.force_authenticate(household["adult"].user)
+        client.post(reverse("diary-weight"), {"date": str(TODAY), "weight_kg": "70.0"}, format="json")
+
+        client.force_authenticate(household["head"].user)
+        resp = client.post(
+            reverse("diary-weight") + f"?member_id={household['adult'].id}",
+            {"date": str(TODAY), "weight_kg": "55.0"},
+            format="json",
+        )
+
+        assert resp.status_code == 403
+        assert str(WeightLog.objects.get(user_id=household["adult"].user_id, date=TODAY).weight_kg) == "70.0"
+
+    def test_head_may_fix_own_mistake(self, client, household):
+        """Строку, которую внёс сам, глава правит и убирает без разрешения."""
+        client.force_authenticate(household["head"].user)
+        url = reverse("diary-weight") + f"?member_id={household['adult'].id}"
+        client.post(url, {"date": str(TODAY), "weight_kg": "62.0"}, format="json")
+
+        assert client.post(url, {"date": str(TODAY), "weight_kg": "63.0"}, format="json").status_code == 200
+        assert (
+            client.delete(reverse("diary-weight") + f"?date={TODAY}&member_id={household['adult'].id}").status_code
+            == 204
+        )
+
+    def test_head_may_overwrite_with_consent(self, client, household):
+        adult = household["adult"]
+        adult.user.profile.head_may_edit_diary = True
+        adult.user.profile.save(update_fields=["head_may_edit_diary"])
+        client.force_authenticate(adult.user)
+        client.post(reverse("diary-water"), {"date": str(TODAY), "water_ml": 300}, format="json")
+
+        client.force_authenticate(household["head"].user)
+        resp = client.post(
+            reverse("diary-water") + f"?member_id={adult.id}",
+            {"date": str(TODAY), "water_ml": 900},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert WaterLog.objects.get(user_id=adult.user_id, date=TODAY).water_ml == 900
+
+    def test_profile_weight_falls_back_after_delete(self, client, household):
+        """Профиль держит последний замер: стёрли свежий — вернулся прежний."""
+        client.force_authenticate(household["adult"].user)
+        earlier = TODAY - datetime.timedelta(days=3)
+        client.post(reverse("diary-weight"), {"date": str(earlier), "weight_kg": "70.0"}, format="json")
+        client.post(reverse("diary-weight"), {"date": str(TODAY), "weight_kg": "69.0"}, format="json")
+
+        client.delete(reverse("diary-weight") + f"?date={TODAY}")
+
+        household["adult"].user.profile.refresh_from_db()
+        assert str(household["adult"].user.profile.weight_kg) == "70.0"

@@ -55,6 +55,35 @@ void main() {
     });
   });
 
+  group('MG_DAYFIX: отметку за день можно убрать', () {
+    blocTest<DiaryBloc, DiaryState>(
+      'своя вода стирается запросом с датой',
+      build: () {
+        when(() => api.delete('/diary/water/?date=2026-09-09'))
+            .thenAnswer((_) async => null);
+        return DiaryBloc(apiClient: api, db: db);
+      },
+      act: (b) => b.add(const DiaryWaterClearRequested(date: '2026-09-09')),
+      verify: (_) {
+        verify(() => api.delete('/diary/water/?date=2026-09-09')).called(1);
+      },
+    );
+
+    blocTest<DiaryBloc, DiaryState>(
+      'вода участника стирается с member_id',
+      build: () {
+        when(() => api.delete('/diary/water/?date=2026-09-09&member_id=7'))
+            .thenAnswer((_) async => null);
+        return DiaryBloc(apiClient: api, db: db);
+      },
+      act: (b) => b.add(const DiaryWaterClearRequested(date: '2026-09-09', memberId: 7)),
+      verify: (_) {
+        // Своя ручка не дёргается: иначе стёрлась бы собственная отметка.
+        verifyNever(() => api.delete('/diary/water/?date=2026-09-09'));
+      },
+    );
+  });
+
   group('MG_HEADKEEPS: участник доходит до сервера', () {
     blocTest<DiaryBloc, DiaryState>(
       'вода за участника уходит с member_id',

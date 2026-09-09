@@ -44,6 +44,7 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
     on<DiaryUpdateRequested>(_onUpdate); // DIARY_EDIT
     on<DiaryImportFromMenuRequested>(_onImportFromMenu);
     on<DiaryWaterSetRequested>(_onWaterSet); // DIARY_V2
+    on<DiaryWaterClearRequested>(_onWaterClear); // MG_DAYFIX
     on<DiaryCopyRequested>(_onCopy); // DIARY_COPY_V3
   }
 
@@ -371,6 +372,25 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
       }
     } catch (err) {
       if (prev is DiaryLoaded) emit(prev); // revert
+      emit(_toErrorState(err, isWrite: true));
+    }
+  }
+
+  /// MG_DAYFIX: убрать отметку о воде за день. Оптимистично гасим значение и
+  /// корону: если запрос не пройдёт, вернём прежнее состояние целиком.
+  Future<void> _onWaterClear(
+    DiaryWaterClearRequested e,
+    Emitter<DiaryState> emit,
+  ) async {
+    final prev = state;
+    if (prev is DiaryLoaded) {
+      emit(prev.copyWith(waterMl: 0, clearWaterAddedBy: true));
+    }
+    try {
+      final q = e.memberId == null ? '' : '&member_id=${e.memberId}';
+      await apiClient.delete('/diary/water/?date=${e.date}$q');
+    } catch (err) {
+      if (prev is DiaryLoaded) emit(prev);
       emit(_toErrorState(err, isWrite: true));
     }
   }

@@ -8,7 +8,13 @@
 //
 // Пустые поля не отправляются: кто-то меряет только талию, и заставлять его
 // выдумывать шею неправильно. Отправленное пустым (стёрли значение) уходит как
-// null — это способ убрать ошибочный замер.
+// null — это способ убрать один ошибочный обхват; кнопка «убрать» стирает
+// строку за день целиком.
+//
+// MG_DAYFIX: дата — та, что выбрана вверху страницы, одна на весь дневник.
+// Прошлые замеры в списке кликабельны: клик переключает день всей страницы, и
+// дальше замер правится или удаляется как сегодняшний. Пустые поля за день
+// значат «не мерили» — впишите, и замер появится.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -31,7 +37,14 @@ const draftFrom = (row: DiaryMeasurement | null): Draft => {
   return d;
 };
 
-export const MeasurementsCard: React.FC<{ date: string; memberId?: number }> = ({ date, memberId }) => {
+interface Props {
+  date: string;
+  memberId?: number;
+  /** Переключить день всей страницы — по клику на прошлый замер. */
+  onPickDate?: (date: string) => void;
+}
+
+export const MeasurementsCard: React.FC<Props> = ({ date, memberId, onPickDate }) => {
   const [rows, setRows] = useState<DiaryMeasurement[]>([]);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [busy, setBusy] = useState(false);
@@ -61,11 +74,29 @@ export const MeasurementsCard: React.FC<{ date: string; memberId?: number }> = (
 
   const latest = rows.length ? rows[rows.length - 1] : null;
   const previous = rows.length > 1 ? rows[rows.length - 2] : null;
+  // Замер за выбранный день: от него зависит, «Записать» это или «Изменить».
+  const forDate = rows.find((r) => r.date === date) ?? null;
+  const recent = rows.slice(-5).reverse();
 
   const filled = useMemo(
     () => MEASUREMENT_FIELDS.some(({ key }) => draft[key].trim() !== ''),
     [draft],
   );
+
+  const remove = async () => {
+    if (!window.confirm(`Убрать замер обхватов за ${date}?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await diaryApi.deleteMeasurement(date, memberId);
+      setDraft(emptyDraft());
+      await load();
+    } catch (err) {
+      setError(apiErrorMessage(err) ?? 'Не удалось убрать замер.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -101,9 +132,12 @@ export const MeasurementsCard: React.FC<{ date: string; memberId?: number }> = (
                   className="text-xs text-avocado hover:underline">
             {showChart ? 'скрыть диаграмму' : 'показать диаграмму'}
           </button>
+          {/* Подпись зависит от того, есть ли замер за выбранный день: «записать»
+              на пустом дне и «изменить» на занятом — иначе человек не поймёт,
+              заведёт он новый замер или перепишет прежний. */}
           <button type="button" onClick={() => setOpen((v) => !v)}
                   className="text-xs text-avocado hover:underline">
-            {open ? 'свернуть' : 'записать'}
+            {open ? 'свернуть' : forDate ? 'изменить' : 'записать'}
           </button>
         </div>
       </div>
@@ -139,9 +173,43 @@ export const MeasurementsCard: React.FC<{ date: string; memberId?: number }> = (
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={save} disabled={busy || !filled}>Записать</Button>
+            <Button variant="ghost" onClick={save} disabled={busy || !filled}>
+              {forDate ? 'Изменить' : 'Записать'}
+            </Button>
+            {forDate && (
+              <button type="button" onClick={remove} disabled={busy}
+                      className="text-xs text-gray-400 hover:text-red-600">
+                убрать
+              </button>
+            )}
             <span className="text-xs text-gray-400">за {date}</span>
           </div>
+          {!forDate && (
+            <p className="text-xs text-gray-400">
+              За этот день замера нет — впишите хотя бы один обхват.
+            </p>
+          )}
+          {recent.length > 0 && (
+            <div className="pt-2 border-t space-y-1">
+              <p className="text-xs text-gray-400">Прошлые замеры — нажмите, чтобы открыть день:</p>
+              {recent.map((r) => (
+                <button key={r.date} type="button"
+                        onClick={() => onPickDate?.(r.date)}
+                        className={`w-full flex justify-between text-sm text-chocolate rounded-lg px-1 -mx-1 ${
+                          onPickDate ? 'hover:bg-rice cursor-pointer' : 'cursor-default'
+                        } ${r.date === date ? 'bg-rice' : ''}`}>
+                  <span className="text-gray-400">
+                    {r.date}
+                    <AddedByMark name={r.added_by_name} className="ml-1" />
+                  </span>
+                  <span className="truncate ml-2">
+                    {MEASUREMENT_FIELDS.filter(({ key }) => r[key]).map(({ key, label }) =>
+                      `${label} ${r[key]}`).join(' · ') || '—'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

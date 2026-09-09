@@ -86,6 +86,16 @@ class _DiaryScreenState extends State<DiaryScreen> {
     } catch (_) {/* non-fatal */}
   }
 
+  /// MG_DAYFIX: открыть день целиком — календарь, еда, вода, вес и обхваты.
+  /// Дата в дневнике одна на всё: правя вес за одно число, а еду видя за
+  /// другое, человек ошибётся.
+  void _openDay(String iso) {
+    final d = DateTime.tryParse(iso);
+    if (d == null) return;
+    setState(() => _selected = DateTime(d.year, d.month, d.day));
+    _load();
+  }
+
   void _load() {
     context.read<DiaryBloc>().add(
           DiaryLoadRequested(
@@ -171,11 +181,18 @@ class _DiaryScreenState extends State<DiaryScreen> {
                           memberId: _memberId,
                         ));
                   },
+                  onClear: () {
+                    context.read<DiaryBloc>().add(DiaryWaterClearRequested(
+                          date: DateFormat('yyyy-MM-dd').format(_selected),
+                          memberId: _memberId,
+                        ));
+                  },
                 ),
                 _WeightCard( // MG_MOBWEIGHT
                   api: context.read<DiaryBloc>().apiClient,
                   date: DateFormat('yyyy-MM-dd').format(_selected),
                   memberId: _memberId,
+                  onPickDate: _openDay, // MG_DAYFIX
                 ),
                 // MG_BODYSIZE: обхваты — там же, где вес: их меряют в один заход.
                 MeasurementsCard(
@@ -183,6 +200,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
                   date: DateFormat('yyyy-MM-dd').format(_selected),
                   memberId: _memberId,
                   gender: _gender,
+                  onPickDate: _openDay, // MG_DAYFIX
                 ),
                 Expanded(child: _buildBody()),
               ],
@@ -1272,7 +1290,16 @@ class _ImportMenuDialogState extends State<_ImportMenuDialog> {
 class _WaterCard extends StatefulWidget {
   final void Function(int delta) onAdd;
   final void Function(int ml) onSet;
-  const _WaterCard({required this.onAdd, required this.onSet});
+
+  /// MG_DAYFIX: убрать отметку за день целиком. Ноль и отсутствие отметки для
+  /// человека одно и то же, но в базе разное: пустой день не должен выглядеть
+  /// как «выпил 0».
+  final VoidCallback onClear;
+  const _WaterCard({
+    required this.onAdd,
+    required this.onSet,
+    required this.onClear,
+  });
   @override
   State<_WaterCard> createState() => _WaterCardState();
 }
@@ -1377,6 +1404,11 @@ class _WaterCardState extends State<_WaterCard> {
                     },
                     child: const Text('Задать'),
                   ),
+                  if (ml > 0)
+                    TextButton(
+                      onPressed: widget.onClear,
+                      child: const Text('Убрать'),
+                    ),
                 ],
               ),
             ),
@@ -1396,7 +1428,15 @@ class _WeightCard extends StatefulWidget {
   final ApiClient api;
   final String date;
   final int? memberId;
-  const _WeightCard({required this.api, required this.date, this.memberId});
+
+  /// MG_DAYFIX: открыть другой день — по нажатию на прошлый замер.
+  final void Function(String date)? onPickDate;
+  const _WeightCard({
+    required this.api,
+    required this.date,
+    this.memberId,
+    this.onPickDate,
+  });
   @override
   State<_WeightCard> createState() => _WeightCardState();
 }
@@ -1484,6 +1524,25 @@ class _WeightCardState extends State<_WeightCard> {
     final b = double.tryParse('${_points.last['weight_kg']}');
     if (a == null || b == null) return null;
     return b - a;
+  }
+
+  /// MG_DAYFIX: убрать замер за выбранный день — взвесились в одежде,
+  /// ошиблись днём. Строка на дату одна, поэтому адресуем её датой.
+  Future<void> _remove() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final q = widget.memberId == null ? '' : '&member_id=${widget.memberId}';
+      await widget.api.delete('/diary/weight/?date=${widget.date}$q');
+      _ctrl.text = '';
+      await _load();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Не удалось убрать замер.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _save() async {
@@ -1582,8 +1641,13 @@ class _WeightCardState extends State<_WeightCard> {
                       const SizedBox(width: 8),
                       TextButton(
                         onPressed: _busy ? null : _save,
-                        child: const Text('Записать'),
+                        child: Text(today != null ? 'Изменить' : 'Записать'),
                       ),
+                      if (today != null)
+                        TextButton(
+                          onPressed: _busy ? null : _remove,
+                          child: const Text('Убрать'),
+                        ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -1621,8 +1685,16 @@ class _WeightCardState extends State<_WeightCard> {
                   if (recent.isNotEmpty) ...[
                     const Divider(height: 16),
                     for (final p in recent)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 1),
+                      // MG_DAYFIX: нажатие открывает тот день целиком — дальше
+                      // замер правится или убирается как сегодняшний. Свой
+                      // календарь у карточки заводить не стали: он расходился
+                      // бы с днём, за который показана еда.
+                      InkWell(
+                        onTap: widget.onPickDate == null
+                            ? null
+                            : () => widget.onPickDate!('${p['date']}'),
+                        child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -1639,6 +1711,7 @@ class _WeightCardState extends State<_WeightCard> {
                             ),
                             Text('${p['weight_kg']} кг', style: const TextStyle(fontSize: 12)),
                           ],
+                        ),
                         ),
                       ),
                   ],

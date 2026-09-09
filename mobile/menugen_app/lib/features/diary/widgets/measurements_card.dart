@@ -31,12 +31,16 @@ class MeasurementsCard extends StatefulWidget {
 
   /// Пол из профиля — только для силуэта. Не указан — нейтральный контур.
   final String? gender;
+
+  /// MG_DAYFIX: открыть другой день — по нажатию на прошлый замер.
+  final void Function(String date)? onPickDate;
   const MeasurementsCard({
     super.key,
     required this.api,
     required this.date,
     this.memberId,
     this.gender,
+    this.onPickDate,
   });
 
   @override
@@ -122,6 +126,26 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
   }
 
   Map<String, dynamic>? get _latest => _rows.isEmpty ? null : _rows.last;
+
+  /// MG_DAYFIX: замер за выбранный день. Есть — значит «Изменить» и «Убрать»;
+  /// нет — «Записать»: пустой день это не ошибка, а ещё не сделанный замер.
+  Map<String, dynamic>? get _forDate => _forDateOf(widget.date);
+
+  Map<String, dynamic>? _forDateOf(String date) {
+    for (final r in _rows) {
+      if (r['date'] == date) return r;
+    }
+    return null;
+  }
+
+  String _summaryOf(Map<String, dynamic> row) {
+    final parts = <String>[];
+    for (final f in _fields) {
+      final v = row[f.$1];
+      if (v != null) parts.add('${f.$2} $v');
+    }
+    return parts.isEmpty ? '—' : parts.join(' · ');
+  }
   Map<String, dynamic>? get _previous => _rows.length < 2 ? null : _rows[_rows.length - 2];
 
   double? _num(Object? v) => v == null ? null : double.tryParse('$v');
@@ -133,6 +157,27 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
         waist: _num(row?['waist_cm']),
         hips: _num(row?['hips_cm']),
       );
+
+  /// MG_DAYFIX: убрать строку за день целиком. Отдельный обхват стирается
+  /// пустым полем при сохранении — это про другое.
+  Future<void> _remove() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final q = widget.memberId == null ? '' : '&member_id=${widget.memberId}';
+      await widget.api.delete('/diary/measurements/?date=${widget.date}$q');
+      for (final c in _ctrls.values) {
+        c.text = '';
+      }
+      await _load();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Не удалось убрать замер.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _save() async {
     final data = <String, dynamic>{'date': widget.date};
@@ -262,8 +307,13 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
                     children: [
                       TextButton(
                         onPressed: _busy ? null : _save,
-                        child: const Text('Записать'),
+                        child: Text(_forDate != null ? 'Изменить' : 'Записать'),
                       ),
+                      if (_forDate != null)
+                        TextButton(
+                          onPressed: _busy ? null : _remove,
+                          child: const Text('Убрать'),
+                        ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -293,6 +343,45 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                       ),
                     ),
+                  if (_forDate == null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'За этот день замера нет — впишите хотя бы один обхват.',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                    ),
+                  // MG_DAYFIX: прошлые замеры — нажатие открывает тот день,
+                  // и дальше он правится или убирается как сегодняшний.
+                  if (_rows.length > 1) ...[
+                    const Divider(height: 16),
+                    Text('Прошлые замеры — нажмите, чтобы открыть день:',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                    for (final r in _rows.reversed.take(5))
+                      InkWell(
+                        onTap: widget.onPickDate == null
+                            ? null
+                            : () => widget.onPickDate!('${r['date']}'),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 90,
+                                child: Text('${r['date']}',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                              ),
+                              Expanded(
+                                child: Text(_summaryOf(r),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
                   if (_showChart)
                     BodyOutline(
                       sizes: _sizes(_latest),

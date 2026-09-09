@@ -3,6 +3,13 @@
 // Раньше вес жил одним числом в профиле и перезаписывался — динамики не было
 // ни у пользователя, ни у тренера. Здесь запись за выбранную дату: повторная
 // запись за тот же день правит замер, а не добавляет вторую точку.
+//
+// MG_DAYFIX: дата у карточки не своя, а та, что выбрана вверху страницы, —
+// одна на весь дневник. Три отдельных календаря на одной странице путали бы:
+// человек правил бы вес за одно число, а еду видел за другое. Поэтому строка
+// в списке замеров кликабельна: она переключает день всей страницы, и дальше
+// замер правится или удаляется как сегодняшний. Пустое поле за выбранный день
+// значит «замера не было» — впишите, и он появится.
 import React, { useCallback, useEffect, useState } from 'react';
 import { diaryApi, type DiaryWeightPoint } from '../../api/diary';
 import { Card } from '../../components/ui/Card';
@@ -13,7 +20,14 @@ import { WeightChart } from './WeightChart'; // MG_BODYCHART
 import { AddedByMark } from '../../components/diary/AddedByMark'; // MG_HEADKEEPS
 import { useShowChart } from '../../utils/showChart'; // MG_BODYCHART
 
-export const WeightCard: React.FC<{ date: string; memberId?: number }> = ({ date, memberId }) => {
+interface Props {
+  date: string;
+  memberId?: number;
+  /** Переключить день всей страницы — по клику на прошлый замер. */
+  onPickDate?: (date: string) => void;
+}
+
+export const WeightCard: React.FC<Props> = ({ date, memberId, onPickDate }) => {
   const [points, setPoints] = useState<DiaryWeightPoint[]>([]);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,6 +48,25 @@ export const WeightCard: React.FC<{ date: string; memberId?: number }> = ({ date
   useEffect(() => {
     load();
   }, [load]);
+
+  // MG_DAYFIX: замер за выбранный день, если он есть. От него зависит, что
+  // показывать — «Записать» или «Изменить», и давать ли удаление.
+  const forDate = points.find((p) => p.date === date) ?? null;
+
+  const remove = async () => {
+    if (!window.confirm(`Убрать замер веса за ${date}?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await diaryApi.deleteWeight(date, memberId);
+      setValue('');
+      await load();
+    } catch (err) {
+      setError(apiErrorMessage(err) ?? 'Не удалось убрать замер.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const save = async () => {
     if (!value.trim()) return;
@@ -89,22 +122,38 @@ export const WeightCard: React.FC<{ date: string; memberId?: number }> = ({ date
           className="w-28 rounded-xl border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-tomato/40 focus:border-tomato outline-none"
         />
         <Button variant="ghost" onClick={save} disabled={busy || !value.trim()}>
-          Записать
+          {forDate ? 'Изменить' : 'Записать'}
         </Button>
+        {forDate && (
+          <button type="button" onClick={remove} disabled={busy}
+                  className="text-xs text-gray-400 hover:text-red-600">
+            убрать
+          </button>
+        )}
         <span className="text-xs text-gray-400">за {date}</span>
       </div>
+      {!forDate && (
+        <p className="text-xs text-gray-400 mt-1">
+          За этот день замера нет — впишите вес, и он появится.
+        </p>
+      )}
       {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
       {recent.length > 0 && (
         <div className="mt-3 pt-3 border-t space-y-1">
           {recent.map((p) => (
-            <div key={p.date} className="flex justify-between text-sm text-chocolate">
+            <button key={p.date} type="button"
+                    onClick={() => onPickDate?.(p.date)}
+                    className={`w-full flex justify-between text-sm text-chocolate rounded-lg px-1 -mx-1 ${
+                      onPickDate ? 'hover:bg-rice cursor-pointer' : 'cursor-default'
+                    } ${p.date === date ? 'bg-rice' : ''}`}
+                    title={onPickDate ? 'Открыть этот день — можно поправить или убрать' : undefined}>
               <span className="text-gray-400">
                 {p.date}
                 {/* MG_HEADKEEPS: замер внёс не сам человек. */}
                 <AddedByMark name={p.added_by_name} className="ml-1" />
               </span>
               <span>{p.weight_kg} кг</span>
-            </div>
+            </button>
           ))}
         </div>
       )}
