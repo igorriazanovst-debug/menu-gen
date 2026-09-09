@@ -3,6 +3,7 @@ import 'dart:async'; // DIARY_FREEMIUM: debounce поиска в добавле�
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
@@ -15,6 +16,8 @@ import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
 import '../models/diary_stats.dart';
 import '../widgets/diary_stats_card.dart';
+import '../widgets/measurements_card.dart'; // MG_BODYSIZE
+import '../widgets/weight_chart.dart'; // MG_BODYCHART
 
 class DiaryScreen extends StatefulWidget {
   const DiaryScreen({super.key});
@@ -31,6 +34,8 @@ class _DiaryScreenState extends State<DiaryScreen> {
   // MG_MEALSLOT: три приёма в дне или пять. От этого зависит, показывать ли
   // разделы перекусов пустыми: в раскладке на три приёма их попросту нет.
   String _mealPlanType = '3';
+  // MG_BODYSIZE: пол нужен только для силуэта на диаграмме обхватов.
+  String? _gender;
 
   @override
   void initState() {
@@ -46,7 +51,13 @@ class _DiaryScreenState extends State<DiaryScreen> {
       final r = await api.get('/users/me/');
       final profile = (r is Map ? r['profile'] : null);
       final plan = (profile is Map ? profile['meal_plan_type'] : null) as String?;
-      if (plan != null && mounted) setState(() => _mealPlanType = plan);
+      final gender = (profile is Map ? profile['gender'] : null) as String?;
+      if (mounted && (plan != null || gender != null)) {
+        setState(() {
+          if (plan != null) _mealPlanType = plan;
+          _gender = gender;
+        });
+      }
     } catch (_) {/* не критично: покажем три приёма */}
   }
 
@@ -152,6 +163,13 @@ class _DiaryScreenState extends State<DiaryScreen> {
                   api: context.read<DiaryBloc>().apiClient,
                   date: DateFormat('yyyy-MM-dd').format(_selected),
                   memberId: _memberId,
+                ),
+                // MG_BODYSIZE: обхваты — там же, где вес: их меряют в один заход.
+                MeasurementsCard(
+                  api: context.read<DiaryBloc>().apiClient,
+                  date: DateFormat('yyyy-MM-dd').format(_selected),
+                  memberId: _memberId,
+                  gender: _gender,
                 ),
                 Expanded(child: _buildBody()),
               ],
@@ -730,6 +748,8 @@ class _EntryTile extends StatelessWidget {
     final subtitle = [
       entry.mealSlot.label,
       if (entry.grams != null) '${entry.grams} г',
+      // MG_HEADKEEPS: кто внёс, если не сам владелец.
+      if (entry.addedByName != null) 'внёс(ла) ${entry.addedByName}',
     ].join(' · ');
     return Dismissible(
       key: ValueKey('diary-${entry.id}'),
@@ -758,8 +778,22 @@ class _EntryTile extends StatelessWidget {
                     onChanged: (v) => onToggleEaten!(v ?? false),
                   )
                 : const Icon(Icons.check_circle, color: Colors.green),
-            title: Text(
-              entry.displayTitle.isNotEmpty ? entry.displayTitle : '—',
+            title: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    entry.displayTitle.isNotEmpty ? entry.displayTitle : '—',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // MG_HEADKEEPS: запись внёс не сам человек — корона рядом с
+                // названием. Имя уходит в подзаголовок: в строке для него места
+                // нет, а знать «кто» всё равно нужно.
+                if (entry.addedByName != null) ...[
+                  const SizedBox(width: 4),
+                  const Text('👑', style: TextStyle(fontSize: 13)),
+                ],
+              ],
             ),
             subtitle: Text(subtitle),
             trailing: Row(
@@ -1245,6 +1279,8 @@ class _WaterCardState extends State<_WaterCard> {
   Widget build(BuildContext context) {
     final st = context.watch<DiaryBloc>().state;
     final ml = st is DiaryLoaded ? st.waterMl : 0;
+    // MG_HEADKEEPS: текущее значение поставил не сам человек.
+    final addedBy = st is DiaryLoaded ? st.waterAddedBy : null;
     final pct = (_goal == 0) ? 0.0 : (ml / _goal).clamp(0.0, 1.0);
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),
@@ -1262,6 +1298,13 @@ class _WaterCardState extends State<_WaterCard> {
                   const SizedBox(width: 8),
                   const Text('Вода',
                       style: TextStyle(fontWeight: FontWeight.bold)),
+                  if (addedBy != null) ...[
+                    const SizedBox(width: 4),
+                    Tooltip(
+                      message: 'Отметил(а) $addedBy',
+                      child: const Text('👑', style: TextStyle(fontSize: 13)),
+                    ),
+                  ],
                   const SizedBox(width: 10),
                   Expanded(
                     child: ClipRRect(
@@ -1346,16 +1389,37 @@ class _WeightCard extends StatefulWidget {
 }
 
 class _WeightCardState extends State<_WeightCard> {
+  static const _prefKey = 'menugen.showChart.weight';
+
   final _ctrl = TextEditingController();
   List<Map<String, dynamic>> _points = const [];
   bool _expanded = false;
+  // MG_BODYCHART: график по желанию, и выбор помнится: одному нужна динамика
+  // каждый день, другому — только сегодняшнее число.
+  bool _showChart = false;
   bool _busy = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _restoreChartFlag();
     _load();
+  }
+
+  Future<void> _restoreChartFlag() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (mounted) setState(() => _showChart = p.getBool(_prefKey) ?? false);
+    } catch (_) {/* не критично: график просто останется скрытым */}
+  }
+
+  Future<void> _saveChartFlag(bool value) async {
+    setState(() => _showChart = value);
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(_prefKey, value);
+    } catch (_) {/* не критично */}
   }
 
   @override
@@ -1456,6 +1520,11 @@ class _WeightCardState extends State<_WeightCard> {
                   const Text('⚖️', style: TextStyle(fontSize: 16)),
                   const SizedBox(width: 8),
                   const Text('Вес', style: TextStyle(fontWeight: FontWeight.bold)),
+                  // MG_HEADKEEPS: замер за этот день внёс не сам человек.
+                  if (today?['added_by_name'] != null) ...[
+                    const SizedBox(width: 4),
+                    const Text('👑', style: TextStyle(fontSize: 13)),
+                  ],
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -1516,6 +1585,22 @@ class _WeightCardState extends State<_WeightCard> {
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
                     ),
+                  if (_points.length > 1)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () => _saveChartFlag(!_showChart),
+                        child: Text(_showChart ? 'скрыть график' : 'показать график'),
+                      ),
+                    ),
+                  if (_showChart)
+                    WeightChart(
+                      values: _points
+                          .map((p) => double.tryParse('${p['weight_kg']}'))
+                          .whereType<double>()
+                          .toList(),
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   if (recent.isNotEmpty) ...[
                     const Divider(height: 16),
                     for (final p in recent)
@@ -1524,8 +1609,17 @@ class _WeightCardState extends State<_WeightCard> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('${p['date']}',
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                            Row(
+                              children: [
+                                Text('${p['date']}',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                                // MG_HEADKEEPS: этот замер внёс не сам человек.
+                                if (p['added_by_name'] != null) ...[
+                                  const SizedBox(width: 4),
+                                  const Text('👑', style: TextStyle(fontSize: 11)),
+                                ],
+                              ],
+                            ),
                             Text('${p['weight_kg']} кг', style: const TextStyle(fontSize: 12)),
                           ],
                         ),

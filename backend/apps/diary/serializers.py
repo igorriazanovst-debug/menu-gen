@@ -1,9 +1,24 @@
 from rest_framework import serializers
 
-from .models import DiaryEntry, WaterLog, WeightLog
+from .models import BodyMeasurement, DiaryEntry, WaterLog, WeightLog
 
 
-class DiaryEntrySerializer(serializers.ModelSerializer):
+class AddedByMixin(serializers.ModelSerializer):
+    """MG_HEADKEEPS: кто внёс запись, если не сам владелец.
+
+    Клиенту нужно имя, а не идентификатор: он рисует рядом со строкой корону и
+    подпись «внесла Ольга». Пустое поле значит «внёс сам» — так у всех записей,
+    сделанных до этой задачи, и отдельного признака для них не требуется.
+    """
+
+    added_by_name = serializers.CharField(source="added_by.name", read_only=True, default=None)
+
+    def _author(self):
+        # Автора кладёт вид: только он знает, кто пришёл и за кого пишет.
+        return self.context.get("author")
+
+
+class DiaryEntrySerializer(AddedByMixin):
     recipe_title = serializers.CharField(source="recipe.title", read_only=True, default=None)
 
     class Meta:
@@ -22,9 +37,11 @@ class DiaryEntrySerializer(serializers.ModelSerializer):
             "planned_menu_item",  # MG_605B_V_serializers
             "is_eaten",  # MG_605B_V_serializers
             "is_planned",  # DIARY_COPY_V3
+            "added_by",  # MG_HEADKEEPS
+            "added_by_name",
             "created_at",
         )
-        read_only_fields = ("id", "created_at")
+        read_only_fields = ("id", "added_by", "added_by_name", "created_at")
 
 
 class DiaryEntryWriteSerializer(serializers.ModelSerializer):
@@ -79,7 +96,13 @@ class DiaryEntryWriteSerializer(serializers.ModelSerializer):
         if not validated_data.get("nutrition") and validated_data.get("recipe"):
             validated_data["nutrition"] = validated_data["recipe"].nutrition or {}
         # MG_OWNDIARY: владелец — человек, членство — пометка «за каким столом».
-        return DiaryEntry.objects.create(user=member.user, member=member, **validated_data)
+        # MG_HEADKEEPS: автор — если писал не владелец.
+        return DiaryEntry.objects.create(
+            user=member.user,
+            member=member,
+            added_by=self.context.get("author"),
+            **validated_data,
+        )
 
 
 # MG_605D_V_serializers: вложенная структура план/факт.
@@ -119,11 +142,11 @@ class DiaryImportSerializer(serializers.Serializer):
     item_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_empty=True)
 
 
-class WaterLogSerializer(serializers.ModelSerializer):
+class WaterLogSerializer(AddedByMixin):
     class Meta:
         model = WaterLog
-        fields = ("id", "date", "water_ml")
-        read_only_fields = ("id",)
+        fields = ("id", "date", "water_ml", "added_by", "added_by_name")
+        read_only_fields = ("id", "added_by", "added_by_name")
 
     def create(self, validated_data):
         member = self.context["member"]
@@ -135,17 +158,22 @@ class WaterLogSerializer(serializers.ModelSerializer):
         )
         obj.water_ml = validated_data["water_ml"]
         obj.member = member
-        obj.save(update_fields=["water_ml", "member"])
+        # MG_HEADKEEPS: у воды на день одна строка, и правит её то тот, то этот.
+        # Корона показывает, кто поставил ТЕКУЩЕЕ значение, поэтому автор
+        # переписывается при каждой записи — в том числе на None, когда человек
+        # сам поправил то, что за него внесли.
+        obj.added_by = self._author()
+        obj.save(update_fields=["water_ml", "member", "added_by"])
         return obj
 
 
-class WeightLogSerializer(serializers.ModelSerializer):
+class WeightLogSerializer(AddedByMixin):
     """MG_TRAINER: точка замера веса. На дату — одна запись."""
 
     class Meta:
         model = WeightLog
-        fields = ("id", "date", "weight_kg", "note")
-        read_only_fields = ("id",)
+        fields = ("id", "date", "weight_kg", "note", "added_by", "added_by_name")
+        read_only_fields = ("id", "added_by", "added_by_name")
 
     def validate_weight_kg(self, value):
         if value <= 0 or value > 500:
@@ -162,7 +190,76 @@ class WeightLogSerializer(serializers.ModelSerializer):
                 "weight_kg": validated_data["weight_kg"],
                 "note": validated_data.get("note", ""),
                 "member": member,
+                # MG_HEADKEEPS: как и у воды — чьё текущее значение, тот и автор.
+                "added_by": self._author(),
             },
+        )
+        return obj
+
+
+class BodyMeasurementSerializer(AddedByMixin):
+    """MG_BODYSIZE: обхваты за дату. На дату — одна запись, как у веса."""
+
+    class Meta:
+        model = BodyMeasurement
+        fields = (
+            "id",
+            "date",
+            "neck_cm",
+            "chest_cm",
+            "under_bust_cm",
+            "waist_cm",
+            "hips_cm",
+            "note",
+            "added_by",
+            "added_by_name",
+        )
+        read_only_fields = ("id", "added_by", "added_by_name")
+
+    # Границы намеренно широкие: это защита от опечатки (рост вместо талии,
+    # миллиметры вместо сантиметров), а не медицинская норма. Судить о том,
+    # бывает ли талия 55 см, — не дело формы ввода.
+    def _check(self, value, name):
+        if value is None:
+            return value
+        if value <= 0 or value > 300:
+            raise serializers.ValidationError(f"{name} должен быть в пределах 0–300 см.")
+        return value
+
+    def validate_neck_cm(self, v):
+        return self._check(v, "Обхват шеи")
+
+    def validate_chest_cm(self, v):
+        return self._check(v, "Обхват груди")
+
+    def validate_under_bust_cm(self, v):
+        return self._check(v, "Обхват под грудью")
+
+    def validate_waist_cm(self, v):
+        return self._check(v, "Обхват талии")
+
+    def validate_hips_cm(self, v):
+        return self._check(v, "Обхват бёдер")
+
+    def validate(self, attrs):
+        # Пустая со всех сторон запись — не замер, а строка с датой. Проверяем
+        # с учётом уже сохранённого: PATCH одного поля не должен требовать
+        # прислать остальные четыре.
+        values = [attrs.get(f, getattr(self.instance, f, None)) for f in BodyMeasurement.FIELDS]
+        if not any(v is not None for v in values):
+            raise serializers.ValidationError("Укажите хотя бы один обхват.")
+        return attrs
+
+    def create(self, validated_data):
+        member = self.context["member"]
+        date = validated_data.pop("date")
+        # MG_OWNDIARY: замер принадлежит человеку; членство — где он записан.
+        # update_or_create, а не create: перемерился в тот же день — правим
+        # запись, а не заводим вторую (так же устроен вес).
+        obj, _ = BodyMeasurement.objects.update_or_create(
+            user=member.user,
+            date=date,
+            defaults={**validated_data, "member": member, "added_by": self._author()},
         )
         return obj
 

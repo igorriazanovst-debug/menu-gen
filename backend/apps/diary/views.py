@@ -15,10 +15,12 @@ from apps.family.selection import current_membership  # MG_ONEFAMILY
 # MG_605D_V_views: импорт MenuItem для import-from-menu
 from apps.menu.models import Menu, MenuItem
 
-from .models import DiaryEntry, WaterLog, WeightLog
+from .access import author_for, can_add_for  # MG_HEADKEEPS
+from .models import BodyMeasurement, DiaryEntry, WaterLog, WeightLog
 from .permissions import IsDiaryEntryOwner
 from .serializers import DiaryCopySerializer  # DIARY_COPY_V3
 from .serializers import (
+    BodyMeasurementSerializer,
     DiaryEntrySerializer,
     DiaryEntryWriteSerializer,
     DiaryImportSerializer,
@@ -153,8 +155,16 @@ class DiaryListCreateView(generics.ListCreateAPIView):
         member = self.get_member()
         if not member:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
-        # POST всегда создаёт запись для самого пользователя — игнорим ?member_id=
-        serializer = self.get_serializer(data=request.data)
+        # MG_HEADKEEPS: `?member_id=` работает и на запись, а не только на чтение.
+        # Раньше POST молча игнорировал его и писал запись себе — глава семьи,
+        # смотревший дневник участника, получал чужую еду в свой день.
+        target = _resolve_target_member(request, member)
+        if not can_add_for(member, target):
+            raise PermissionDenied("Вносить записи за участника может только глава семьи.")
+        serializer = self.get_serializer(
+            data=request.data,
+            context={**self.get_serializer_context(), "member": target, "author": author_for(member, target)},
+        )
         serializer.is_valid(raise_exception=True)
         entry = serializer.save()
         return Response(DiaryEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
@@ -398,24 +408,50 @@ class WaterLogView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        parameters=[OpenApiParameter("date", str, description="Дата YYYY-MM-DD (default: today)")],
+        parameters=[
+            OpenApiParameter("date", str, description="Дата YYYY-MM-DD (default: today)"),
+            OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)"),
+        ],
         responses={200: WaterLogSerializer},
     )
     def get(self, request):
         member = _get_member(request.user)
         if not member:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
         day = request.query_params.get("date", str(date.today()))
         # MG_OWNDIARY: день у человека один, за сколькими бы столами он ни сидел.
-        obj, _ = WaterLog.objects.get_or_create(user=member.user, date=day, defaults={"water_ml": 0, "member": member})
+        #
+        # Чужую воду не заводим строкой в базе на каждый просмотр: глава открыл
+        # дневник участника — это чтение, а не запись. Своей строке get_or_create
+        # оставлен: она нужна, чтобы клиент сразу получил нулевой день.
+        if target.user_id == member.user_id:
+            obj, _ = WaterLog.objects.get_or_create(
+                user=member.user, date=day, defaults={"water_ml": 0, "member": member}
+            )
+        else:
+            obj = _scope(WaterLog.objects, member, target).filter(date=day).first()
+            if obj is None:
+                return Response({"id": None, "date": day, "water_ml": 0, "added_by": None, "added_by_name": None})
         return Response(WaterLogSerializer(obj).data)
 
-    @extend_schema(request=WaterLogSerializer, responses={200: WaterLogSerializer})
+    @extend_schema(
+        request=WaterLogSerializer,
+        parameters=[OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)")],
+        responses={200: WaterLogSerializer},
+    )
     def post(self, request):
         member = _get_member(request.user)
         if not member:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
-        serializer = WaterLogSerializer(data=request.data, context={"member": member})
+        # MG_HEADKEEPS: глава семьи может отметить воду за участника.
+        target = _resolve_target_member(request, member)
+        if not can_add_for(member, target):
+            raise PermissionDenied("Вносить записи за участника может только глава семьи.")
+        serializer = WaterLogSerializer(
+            data=request.data,
+            context={"member": target, "author": author_for(member, target)},
+        )
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
         return Response(WaterLogSerializer(obj).data)
@@ -456,7 +492,15 @@ class WeightLogView(APIView):
         if not member:
             return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
         target = _resolve_target_member(request, member)
-        serializer = WeightLogSerializer(data=request.data, context={"member": target})
+        # MG_HEADKEEPS: запись за участника — только главе семьи, и с пометкой,
+        # кто её внёс. Раньше проверки не было вовсе: `_resolve_target_member`
+        # пускает главу к чтению, и запись проходила заодно.
+        if not can_add_for(member, target):
+            raise PermissionDenied("Вносить записи за участника может только глава семьи.")
+        serializer = WeightLogSerializer(
+            data=request.data,
+            context={"member": target, "author": author_for(member, target)},
+        )
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
         _sync_profile_weight(target)  # MG_OWNDIARY: считает по человеку, см. ниже
@@ -480,6 +524,63 @@ def _sync_profile_weight(member):
         return
     profile.weight_kg = latest.weight_kg
     profile.save(update_fields=["weight_kg", "updated_at"])
+
+
+class BodyMeasurementView(APIView):
+    """MG_BODYSIZE: GET — замеры обхватов по датам, POST — записать за дату.
+
+    Устроено как вес и по тем же причинам: `?member_id=` читает свой участник
+    всегда, чужой — только глава семьи; запись за участника — тоже только глава,
+    и она помечается тем, кто её внёс (MG_HEADKEEPS).
+
+    Зачем это рядом с весом, а не в профиле: вес на диете неделями стоит, а
+    талия в это время уходит. Без прошлых замеров человек видит только «вес не
+    изменился» и решает, что старается зря.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)"),
+            OpenApiParameter("days", int, description="За сколько последних дней (по умолчанию 180)"),
+        ],
+        responses={200: BodyMeasurementSerializer(many=True)},
+    )
+    def get(self, request):
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        try:
+            days = max(1, min(int(request.query_params.get("days", 180)), 1825))
+        except (TypeError, ValueError):
+            days = 180
+        # Полгода по умолчанию, а не 90 дней как у веса: обхваты меряют раз в
+        # неделю-две, и на трёх месяцах точек вышло бы пять-шесть.
+        start = date.today() - timedelta(days=days - 1)
+        rows = _scope(BodyMeasurement.objects, member, target).filter(date__gte=start).order_by("date")
+        return Response(BodyMeasurementSerializer(rows, many=True).data)
+
+    @extend_schema(
+        request=BodyMeasurementSerializer,
+        parameters=[OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)")],
+        responses={200: BodyMeasurementSerializer},
+    )
+    def post(self, request):
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        if not can_add_for(member, target):
+            raise PermissionDenied("Вносить записи за участника может только глава семьи.")
+        serializer = BodyMeasurementSerializer(
+            data=request.data,
+            context={"member": target, "author": author_for(member, target)},
+        )
+        serializer.is_valid(raise_exception=True)
+        obj = serializer.save()
+        return Response(BodyMeasurementSerializer(obj).data)
 
 
 # DIARY_COPY_V3: copy selected entries from any day into target day as PLAN.

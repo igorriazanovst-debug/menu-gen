@@ -26,6 +26,29 @@ from apps.users.models import User
 # человеке, а из семейных отчётов пропала.
 
 
+# MG_HEADKEEPS: кто внёс запись.
+#
+# Дневник, вода и вес заводились только собой, и поля «кем внесено» не
+# требовалось: владелец и автор — один человек. Теперь глава семьи может внести
+# запись за участника (ребёнок не ведёт дневник сам, у пожилого не всегда
+# получается), и разница становится видимой: строка принадлежит участнику, а
+# внёс её другой.
+#
+# Поле необязательное, и пустое значит «внёс сам владелец» — так у всех
+# записей, сделанных до этой задачи, и переписывать их незачем. SET_NULL, а не
+# CASCADE: глава уйдёт из проекта, а запись участника — его собственная и
+# должна остаться.
+def added_by_field():
+    return models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Кто внёс запись, если не сам владелец (MG_HEADKEEPS).",
+    )
+
+
 class OwnedByPerson(models.Model):
     """MG_OWNDIARY: общая часть трёх таблиц — владелец человек, место записи семья.
 
@@ -137,6 +160,7 @@ class DiaryEntry(OwnedByPerson):
     is_eaten = models.BooleanField(default=False)
     # DIARY_COPY_V3: explicit plan flag, decoupled from planned_menu_item source.
     is_planned = models.BooleanField(default=False)
+    added_by = added_by_field()  # MG_HEADKEEPS
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -186,6 +210,7 @@ class WaterLog(OwnedByPerson):
     )
     date = models.DateField()
     water_ml = models.PositiveSmallIntegerField(default=0)
+    added_by = added_by_field()  # MG_HEADKEEPS
 
     class Meta:
         db_table = "water_logs"
@@ -216,6 +241,7 @@ class WeightLog(OwnedByPerson):
     date = models.DateField()
     weight_kg = models.DecimalField(max_digits=5, decimal_places=1)
     note = models.CharField(max_length=255, blank=True)
+    added_by = added_by_field()  # MG_HEADKEEPS
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -230,3 +256,61 @@ class WeightLog(OwnedByPerson):
 
     def __str__(self):
         return f"Weight({self.member}, {self.date}, {self.weight_kg})"
+
+
+class BodyMeasurement(OwnedByPerson):
+    """MG_BODYSIZE: обхваты тела по датам.
+
+    Зачем отдельная таблица, а не пять полей в профиле. Профиль хранит текущее
+    состояние и перезаписывается — ровно так когда-то хранился вес, и вопрос
+    «что происходит на этом калораже» ответа не имел (см. WeightLog). С
+    обхватами это заметнее, чем с весом: вес на сушке стоит неделями, а талия в
+    это время уходит, и без прошлых замеров человек решает, что усилия впустую.
+
+    Устройство намеренно повторяет WeightLog: владелец — человек, место записи —
+    семья, одна строка на дату (перемерился — правится, а не добавляется
+    вторая), запись переживает уход из семьи.
+
+    Все пять обхватов необязательны: кто-то меряет только талию, и заставлять
+    его выдумывать шею неправильно. Пустая со всех сторон запись смысла не
+    имеет — это проверяет сериализатор, а не база: у базы нет способа сказать
+    об этом человеку по-русски.
+
+    Сантиметры дробные (98.5 — обычный результат замера), максимум 999.9: это
+    заведомо больше любого человеческого обхвата и заведомо меньше опечатки
+    вроде роста в миллиметрах.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="body_measurements")
+    member = models.ForeignKey(
+        FamilyMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="body_measurements",
+    )
+    date = models.DateField()
+    neck_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    chest_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    under_bust_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    waist_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    hips_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    note = models.CharField(max_length=255, blank=True)
+    added_by = added_by_field()  # MG_HEADKEEPS
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Порядок сверху вниз по телу — в нём поля и показываются, и он же задаёт
+    # порядок обходов в коде, чтобы списки нигде не разъезжались.
+    FIELDS = ("neck_cm", "chest_cm", "under_bust_cm", "waist_cm", "hips_cm")
+
+    class Meta:
+        db_table = "body_measurements"
+        unique_together = [("user", "date")]
+        ordering = ["-date"]
+        indexes = [
+            models.Index(fields=["user_id", "-date"]),
+            models.Index(fields=["member_id", "-date"]),
+        ]
+
+    def __str__(self):
+        return f"Body({self.user}, {self.date})"

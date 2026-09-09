@@ -28,6 +28,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  // MG_HEADKEEPS: разрешение главе семьи править мои записи в дневнике.
+  bool _headMayEdit = false;
+  bool _headSaving = false;
   String _mealPlanType = '3';
   List<String> _allergies = const []; // MG_ALLERGEN
   bool _allergenSaving = false;
@@ -99,6 +102,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _me = data;
         _mealPlanType = (profile?['meal_plan_type'] as String?) ?? '3';
+        // MG_HEADKEEPS: разрешение главе семьи править мои записи.
+        _headMayEdit = (profile?['head_may_edit_diary'] as bool?) ?? false;
         _allergies = ((data['allergies'] as List?) ?? const [])
             .map((e) => e.toString())
             .toList();
@@ -109,6 +114,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  // MG_HEADKEEPS: согласие даёт сам человек и только из своего профиля. Через
+  // семейную ручку это поле не проходит: иначе глава выдал бы разрешение себе
+  // сам, а такое согласие ни от чего не защищает.
+  Future<void> _saveHeadMayEdit(bool value) async {
+    final prev = _headMayEdit;
+    setState(() {
+      _headMayEdit = value;
+      _headSaving = true;
+      _error = null;
+    });
+    try {
+      await widget.apiClient.patch(
+        '/users/me/',
+        data: {
+          'profile': {'head_may_edit_diary': value}
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(value
+              ? 'Глава семьи может править ваши записи'
+              : 'Правки главы семьи запрещены'),
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _headMayEdit = prev;
+        _error = e.toString();
+      });
+    } finally {
+      if (mounted) setState(() => _headSaving = false);
     }
   }
 
@@ -403,6 +443,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   color: Colors.red, fontSize: 12),
                             ),
                           ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Кто ведёт мой дневник (MG_HEADKEEPS) ────────────
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Дневник и семья',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Добавлять записи за вас глава семьи может всегда — рядом с '
+                          'такой записью стоит корона и видно, кто её внёс. Эта '
+                          'настройка — про правку и удаление того, что записали вы сами.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            'Разрешить главе семьи править мои записи',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          value: _headMayEdit,
+                          onChanged: _headSaving ? null : _saveHeadMayEdit,
+                        ),
                       ],
                     ),
                   ),

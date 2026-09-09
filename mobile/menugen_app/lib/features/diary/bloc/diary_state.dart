@@ -20,6 +20,10 @@ class DiaryLoaded extends DiaryState {
   final List<DiaryEntry> entries;
   final DiaryDayStats stats;
   final int waterMl; // DIARY_V2
+  /// MG_HEADKEEPS: кто поставил текущее значение воды. Пусто — сам человек.
+  /// У воды на день одна строка, поэтому автор здесь — про значение, а не про
+  /// историю: поправил сам — корона уходит.
+  final String? waterAddedBy;
 
   const DiaryLoaded({
     required this.date,
@@ -27,6 +31,7 @@ class DiaryLoaded extends DiaryState {
     required this.entries,
     required this.stats,
     this.waterMl = 0,
+    this.waterAddedBy,
   });
 
   /// Planned entries (came from menu import, may or may not be eaten yet).
@@ -43,6 +48,10 @@ class DiaryLoaded extends DiaryState {
     List<DiaryEntry>? entries,
     DiaryDayStats? stats,
     int? waterMl,
+    String? waterAddedBy,
+    // Корону надо уметь и снимать: человек поправил воду за собой, и автор
+    // становится пустым. Обычный `?? this.` этого бы не позволил.
+    bool clearWaterAddedBy = false,
   }) {
     return DiaryLoaded(
       date: date ?? this.date,
@@ -50,11 +59,12 @@ class DiaryLoaded extends DiaryState {
       entries: entries ?? this.entries,
       stats: stats ?? this.stats,
       waterMl: waterMl ?? this.waterMl,
+      waterAddedBy: clearWaterAddedBy ? null : (waterAddedBy ?? this.waterAddedBy),
     );
   }
 
   @override
-  List<Object?> get props => [date, memberId, entries, stats, waterMl];
+  List<Object?> get props => [date, memberId, entries, stats, waterMl, waterAddedBy];
 }
 
 /// MG-606: backend denied access with 403 from IsFamilyPremiumOrReadOnly.

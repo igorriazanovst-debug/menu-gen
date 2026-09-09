@@ -12,6 +12,45 @@ export interface DiaryWeightPoint {
   date: string;
   weight_kg: string;
   note: string;
+  added_by?: number | null; // MG_HEADKEEPS
+  added_by_name?: string | null;
+}
+
+// MG_BODYSIZE: обхваты тела за дату. Все пять необязательны — кто-то меряет
+// только талию, и заставлять его выдумывать шею неправильно.
+export interface DiaryMeasurement {
+  id: number;
+  date: string;
+  neck_cm: string | null;
+  chest_cm: string | null;
+  under_bust_cm: string | null;
+  waist_cm: string | null;
+  hips_cm: string | null;
+  note: string;
+  added_by?: number | null; // MG_HEADKEEPS
+  added_by_name?: string | null;
+}
+
+// Поля обхватов сверху вниз по телу: в этом порядке они и показываются, и
+// один список на весь фронт бережёт от разъезда подписей и значений.
+export const MEASUREMENT_FIELDS = [
+  { key: 'neck_cm', label: 'Шея' },
+  { key: 'chest_cm', label: 'Грудь' },
+  { key: 'under_bust_cm', label: 'Под грудью' },
+  { key: 'waist_cm', label: 'Талия' },
+  { key: 'hips_cm', label: 'Бёдра' },
+] as const;
+
+export type MeasurementField = (typeof MEASUREMENT_FIELDS)[number]['key'];
+
+export interface MeasurementPayload {
+  date: string;
+  neck_cm?: string | null;
+  chest_cm?: string | null;
+  under_bust_cm?: string | null;
+  waist_cm?: string | null;
+  hips_cm?: string | null;
+  note?: string;
 }
 
 // DIARY_MULTIDAY: одиночная дата (date) ИЛИ диапазон (from/to). page_size — чтобы
@@ -72,12 +111,17 @@ export const diaryApi = {
     return client.post<ImportResponse>('/diary/import-from-menu/', body, { params });
   },
 
-  getWater: async (date: string): Promise<DiaryWaterLog> => {
-    const { data } = await client.get<DiaryWaterLog>('/diary/water/', { params: { date } });
+  // MG_HEADKEEPS: memberId — вода участника, которую смотрит (и ставит) глава семьи.
+  getWater: async (date: string, memberId?: number): Promise<DiaryWaterLog> => {
+    const params: Record<string, string | number> = { date };
+    if (memberId) params.member_id = memberId;
+    const { data } = await client.get<DiaryWaterLog>('/diary/water/', { params });
     return data;
   },
-  setWater: (date: string, water_ml: number) =>
-    client.post<DiaryWaterLog>('/diary/water/', { date, water_ml }),
+  setWater: (date: string, water_ml: number, memberId?: number) =>
+    client.post<DiaryWaterLog>('/diary/water/', { date, water_ml },
+      { params: memberId ? { member_id: memberId } : undefined },
+    ),
 
   // MG_TRAINER: вес по датам — история, а не одно число в профиле.
   getWeight: async (days = 90, memberId?: number): Promise<DiaryWeightPoint[]> => {
@@ -88,6 +132,18 @@ export const diaryApi = {
   },
   setWeight: (date: string, weight_kg: string, note = '', memberId?: number) =>
     client.post<DiaryWeightPoint>('/diary/weight/', { date, weight_kg, note },
+      { params: memberId ? { member_id: memberId } : undefined },
+    ),
+
+  // MG_BODYSIZE: обхваты по датам — рядом с весом и по тем же правилам доступа.
+  getMeasurements: async (days = 180, memberId?: number): Promise<DiaryMeasurement[]> => {
+    const params: Record<string, number> = { days };
+    if (memberId) params.member_id = memberId;
+    const { data } = await client.get<DiaryMeasurement[]>('/diary/measurements/', { params });
+    return Array.isArray(data) ? data : [];
+  },
+  setMeasurement: (payload: MeasurementPayload, memberId?: number) =>
+    client.post<DiaryMeasurement>('/diary/measurements/', payload,
       { params: memberId ? { member_id: memberId } : undefined },
     ),
 

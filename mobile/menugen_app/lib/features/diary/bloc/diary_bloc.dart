@@ -133,12 +133,14 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
 
       // DIARY_V2: water for the day (best-effort).
       int waterMl = 0;
+      String? waterAddedBy; // MG_HEADKEEPS
       try {
         final wParams = <String, dynamic>{'date': e.date};
         if (e.memberId != null) wParams['member_id'] = e.memberId;
         final wResp = await apiClient.get('/diary/water/', params: wParams);
         if (wResp is Map && wResp['water_ml'] != null) {
           waterMl = (wResp['water_ml'] as num).toInt();
+          waterAddedBy = wResp['added_by_name'] as String?;
         }
       } catch (_) {/* non-fatal */}
 
@@ -149,6 +151,7 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
         entries: entries,
         stats: dayStats,
         waterMl: waterMl,
+        waterAddedBy: waterAddedBy,
       ));
     } catch (err) {
       emit(_toErrorState(err, isWrite: false));
@@ -259,11 +262,13 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
       if (e.recipeId != null) body['recipe'] = e.recipeId;
       if (e.customName.isNotEmpty) body['custom_name'] = e.customName;
       if (e.nutrition.isNotEmpty) body['nutrition'] = e.nutrition;
-      await apiClient.post('/diary/', data: body);
-      add(DiaryLoadRequested(
-        date: e.date,
-        memberId: prev is DiaryLoaded ? prev.memberId : null,
-      ));
+      // MG_HEADKEEPS: пишем тому, чей дневник открыт. Раньше участник в запрос
+      // не попадал, и глава семьи, добавляя еду в чужой дневник, клал её себе:
+      // сервер запись за участника просто не принимал.
+      final memberId = prev is DiaryLoaded ? prev.memberId : null;
+      final path = memberId == null ? '/diary/' : '/diary/?member_id=$memberId';
+      await apiClient.post(path, data: body);
+      add(DiaryLoadRequested(date: e.date, memberId: memberId));
     } catch (err) {
       emit(_toErrorState(err, isWrite: true));
     }
@@ -343,13 +348,27 @@ class DiaryBloc extends Bloc<DiaryEvent, DiaryState> {
   ) async {
     final prev = state;
     if (prev is DiaryLoaded) {
-      emit(prev.copyWith(waterMl: e.waterMl < 0 ? 0 : e.waterMl));
+      // MG_HEADKEEPS: значение ставим сразу, а корону — по ответу сервера: за
+      // себя пишет сам человек, и она должна уйти, за участника — глава, и
+      // она должна появиться.
+      emit(prev.copyWith(waterMl: e.waterMl < 0 ? 0 : e.waterMl, clearWaterAddedBy: true));
     }
     try {
-      await apiClient.post('/diary/water/', data: {
+      // MG_HEADKEEPS: участник был в событии, но до запроса не доходил — глава
+      // отмечал воду за участника, а она ложилась в его собственный день.
+      // Теперь сервер принимает member_id и на запись тоже.
+      final path = e.memberId == null
+          ? '/diary/water/'
+          : '/diary/water/?member_id=${e.memberId}';
+      final resp = await apiClient.post(path, data: {
         'date': e.date,
         'water_ml': e.waterMl < 0 ? 0 : e.waterMl,
       });
+      final author = resp is Map ? resp['added_by_name'] as String? : null;
+      final now = state;
+      if (author != null && now is DiaryLoaded) {
+        emit(now.copyWith(waterAddedBy: author));
+      }
     } catch (err) {
       if (prev is DiaryLoaded) emit(prev); // revert
       emit(_toErrorState(err, isWrite: true));

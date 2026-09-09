@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (  # DIARY_COPY_V3
+    BodyMeasurementView,
     DiaryCopyView,
     DiaryEntryDetailView,
     DiaryImportFromMenuView,
@@ -17,6 +18,8 @@ urlpatterns = [
     path("water/", WaterLogView.as_view(), name="diary-water"),
     # MG_TRAINER: вес по датам — история, а не одно число в профиле.
     path("weight/", WeightLogView.as_view(), name="diary-weight"),
+    # MG_BODYSIZE: обхваты тела по датам — рядом с весом и по тем же правилам.
+    path("measurements/", BodyMeasurementView.as_view(), name="diary-measurements"),
     path("copy/", DiaryCopyView.as_view(), name="diary-copy"),  # DIARY_COPY_V3
     # MG_605D_V_urls
     path("import-from-menu/", DiaryImportFromMenuView.as_view(), name="diary-import-from-menu"),

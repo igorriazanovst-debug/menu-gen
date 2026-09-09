@@ -158,6 +158,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "carb_target_g",
             "fiber_target_g",
             "meal_plan_type",
+            "head_may_edit_diary",  # MG_HEADKEEPS
             "targets_calculated",
             "targets_meta",
         ) + MG504_FIELDS

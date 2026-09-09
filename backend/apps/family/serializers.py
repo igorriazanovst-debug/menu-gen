@@ -140,6 +140,15 @@ class RemoveMemberSerializer(serializers.Serializer):
 
 
 class ProfileUpdateSerializer(serializers.Serializer):
+    """Поля профиля, которые правит глава семьи или специалист.
+
+    MG_HEADKEEPS: `head_may_edit_diary` сюда добавлять нельзя. Это согласие
+    участника на то, чтобы глава правил его записи, и давать его должен он сам —
+    иначе глава разрешил бы себе сам, а согласие, которое можно себе выдать, ни
+    от чего не защищает. Меняется оно только через свой профиль
+    (`PATCH /users/me/`), где ProfileSerializer это поле принимает.
+    """
+
     birth_year = serializers.IntegerField(required=False, allow_null=True)
     gender = serializers.ChoiceField(choices=["male", "female", "other"], required=False, allow_null=True)
     height_cm = serializers.IntegerField(required=False, allow_null=True)

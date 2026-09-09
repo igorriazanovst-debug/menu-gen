@@ -8,7 +8,9 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { AddDiaryEntryModal } from '../../components/diary/AddDiaryEntryModal';
 import { ImportMenuModal } from '../../components/diary/ImportMenuModal';
 import { CopyFromDayModal } from '../../components/diary/CopyFromDayModal'; // DIARY_COPY_V3
-import { EditDiaryEntryModal } from '../../components/diary/EditDiaryEntryModal'; // MG_DIARYEDIT
+import { EditDiaryEntryModal } from '../../components/diary/EditDiaryEntryModal';
+import { AddedByMark } from '../../components/diary/AddedByMark'; // MG_HEADKEEPS
+import { MeasurementsCard } from './MeasurementsCard'; // MG_BODYSIZE
 import { PrintDiaryModal } from '../../components/diary/PrintDiaryModal'; // DIARY_HIER_PRINT_V5
 import { getErrorMessage } from '../../utils/api';
 import {
@@ -19,7 +21,7 @@ import { WeightCard } from './WeightCard'; // MG_TRAINER
 import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 import { dayTotalsHint } from '../../utils/dayTotalsHint'; // DIARY_TOTALS_V1
 import { allEaten, toMark } from '../../utils/markEaten'; // DIARY_EATALL_V1
-import type { DiaryEntry, DiaryDayStats, FamilyMember, MealSlot } from '../../types';
+import type { DiaryEntry, DiaryDayStats, DiaryWaterLog, FamilyMember, MealSlot } from '../../types';
 
 const today = todayIso; // ISO_DATE_V1: локальный календарь, а не UTC
 const WATER_GOAL_ML = 2000;
@@ -69,6 +71,8 @@ export const DiaryPage: React.FC = () => {
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const [stats, setStats] = useState<DiaryDayStats | null>(null);
   const [waterMl, setWaterMl] = useState(0);
+  // MG_HEADKEEPS: кто поставил текущее значение воды. Пусто — сам человек.
+  const [waterBy, setWaterBy] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false); // DIARY_EATALL_V1
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -101,11 +105,13 @@ export const DiaryPage: React.FC = () => {
       const [e, s, w] = await Promise.all([
         diaryApi.list({ date, page_size: 1000, member_id: memberId }),
         diaryApi.stats(date, date, memberId).catch(() => [] as DiaryDayStats[]),
-        diaryApi.getWater(date).catch(() => ({ date, water_ml: 0 })),
+        // MG_HEADKEEPS: вода тоже принадлежит человеку, которого смотрим.
+        diaryApi.getWater(date, memberId).catch(() => ({ date, water_ml: 0 } as DiaryWaterLog)),
       ]);
       setEntries(e);
       setStats(s[0] ?? { date, planned: emptyBucket, actual: emptyBucket, total: emptyBucket });
       setWaterMl(w.water_ml ?? 0);
+      setWaterBy(w.added_by_name ?? null);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -164,7 +170,7 @@ export const DiaryPage: React.FC = () => {
   const addWater = async (ml: number) => {
     const next = Math.max(0, waterMl + ml);
     setWaterMl(next); // optimistic
-    try { await diaryApi.setWater(date, next); }
+    try { const { data } = await diaryApi.setWater(date, next, memberId); setWaterBy(data.added_by_name ?? null); }
     catch (err) { setWaterMl(waterMl); alert(getErrorMessage(err)); }
   };
 
@@ -173,7 +179,7 @@ export const DiaryPage: React.FC = () => {
     if (!Number.isFinite(v) || v < 0) return;
     setCustomWater('');
     setWaterMl(v);
-    try { await diaryApi.setWater(date, v); }
+    try { const { data } = await diaryApi.setWater(date, v, memberId); setWaterBy(data.added_by_name ?? null); }
     catch (err) { setWaterMl(waterMl); alert(getErrorMessage(err)); }
   };
 
@@ -242,6 +248,8 @@ export const DiaryPage: React.FC = () => {
             <p className="font-medium text-chocolate mt-0.5 truncate">
               {e.recipe_title ?? e.custom_name ?? 'Без названия'}
               {e.quantity !== 1 && <span className="text-gray-400"> ×{e.quantity}</span>}
+              {/* MG_HEADKEEPS: запись внёс не сам человек — видно сразу. */}
+              <AddedByMark name={e.added_by_name} className="ml-1 align-middle" />
             </p>
           </div>
         </div>
@@ -295,6 +303,15 @@ export const DiaryPage: React.FC = () => {
         )}
       </div>
 
+      {/* MG_HEADKEEPS: глава смотрит чужой дневник — стоит сказать, что теперь
+          он может в него и писать, и что запись не выдаст себя за чужую. */}
+      {memberId && (
+        <p className="text-xs text-gray-500 -mt-3">
+          Вы смотрите дневник участника. Всё, что вы здесь добавите — еду, воду,
+          вес, обхваты, — будет помечено короной: видно, что запись внесли вы.
+        </p>
+      )}
+
       {/* Stats card (план / факт) — DIARY_CHART: кольцо калорий + макросы */}
       {stats && (
         <Card className="p-4">
@@ -318,7 +335,12 @@ export const DiaryPage: React.FC = () => {
       {/* Water tracker */}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-sm font-semibold text-chocolate">💧 Вода</div>
+          <div className="text-sm font-semibold text-chocolate">
+            💧 Вода
+            {/* MG_HEADKEEPS: у воды на день одно значение — корона показывает,
+                кто поставил текущее. */}
+            <AddedByMark name={waterBy} withName className="ml-2" />
+          </div>
           <div className="text-sm text-gray-500">
             {waterMl} / {WATER_GOAL_ML} мл
           </div>
@@ -344,6 +366,9 @@ export const DiaryPage: React.FC = () => {
 
       {/* MG_TRAINER: вес по датам — без него у тренера пустой график */}
       <WeightCard date={date} memberId={memberId} />
+
+      {/* MG_BODYSIZE: обхваты — там же, где вес: их меряют в один заход. */}
+      <MeasurementsCard date={date} memberId={memberId} />
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
 

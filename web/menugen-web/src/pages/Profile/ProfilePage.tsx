@@ -53,6 +53,10 @@ export const ProfilePage: React.FC = () => {
   const [autoExpiry, setAutoExpiry] = useState(true);
   const [expSaving, setExpSaving] = useState(false);
   const [expMsg, setExpMsg] = useState('');
+  // MG_HEADKEEPS: разрешение главе семьи править мои записи в дневнике.
+  const [headMayEdit, setHeadMayEdit] = useState(!!user?.profile?.head_may_edit_diary);
+  const [headMsg, setHeadMsg] = useState('');
+  const [headSaving, setHeadSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError]     = useState('');
@@ -61,7 +65,9 @@ export const ProfilePage: React.FC = () => {
     setName(user?.name ?? '');
     setMealPlan(user?.profile?.meal_plan_type ?? '3');
     setAllergies(user?.allergies ?? []);
-  }, [user?.id, user?.name, user?.profile?.meal_plan_type, user?.allergies]);
+    setHeadMayEdit(!!user?.profile?.head_may_edit_diary); // MG_HEADKEEPS
+  }, [user?.id, user?.name, user?.profile?.meal_plan_type, user?.allergies,
+      user?.profile?.head_may_edit_diary]);
 
   // MG_RUBRIC007_load: fetch family to read/set its currency.
   useEffect(() => {
@@ -165,6 +171,26 @@ export const ProfilePage: React.FC = () => {
       setAllergenSaving(false);
     }
   }, [allergies, dispatch]);
+
+  // MG_HEADKEEPS: согласие даёт сам человек, поэтому сохраняем сразу и здесь —
+  // в своём профиле. Через семейную ручку это поле не проходит: иначе глава
+  // выдал бы разрешение себе сам, а такое согласие ни от чего не защищает.
+  const saveHeadMayEdit = useCallback(async (next: boolean) => {
+    const prev = headMayEdit;
+    setHeadMayEdit(next);
+    setHeadSaving(true);
+    setHeadMsg('');
+    try {
+      const { data } = await authApi.updateMe({ profile: { head_may_edit_diary: next } });
+      dispatch(setUser(data));
+      setHeadMsg(next ? 'Глава семьи может править ваши записи' : 'Правки главы семьи запрещены');
+    } catch (e) {
+      setHeadMayEdit(prev);
+      setHeadMsg(getErrorMessage(e));
+    } finally {
+      setHeadSaving(false);
+    }
+  }, [headMayEdit, dispatch]);
 
   const reloadMe = useCallback(async () => {
     try {
@@ -286,6 +312,30 @@ export const ProfilePage: React.FC = () => {
             <p className="text-xs text-gray-400 mt-1">Менять настройку может только глава семьи.</p>
           )}
           {expMsg && <p className="text-xs text-gray-500 mt-1">{expMsg}</p>}
+        </div>
+
+        {/* MG_HEADKEEPS: кто ведёт мой дневник. Добавлять записи глава семьи
+            может и без разрешения — они помечены короной, видно, кто внёс.
+            Разрешение здесь — про правку и удаление уже записанного. */}
+        <div className="mt-6 pt-6 border-t border-border">
+          <label className="flex items-start gap-2 text-sm text-chocolate">
+            <input
+              type="checkbox"
+              checked={headMayEdit}
+              disabled={headSaving}
+              onChange={(e) => saveHeadMayEdit(e.target.checked)}
+              className="mt-0.5 accent-tomato"
+            />
+            <span>
+              Разрешить главе семьи править и удалять мои записи
+              <span className="block text-xs text-gray-500">
+                Добавлять записи за вас глава семьи может всегда — рядом с такой
+                записью стоит корона и видно, кто её внёс. Эта галочка — про
+                правку и удаление того, что записали вы сами.
+              </span>
+            </span>
+          </label>
+          {headMsg && <p className="text-xs text-gray-500 mt-1">{headMsg}</p>}
         </div>
       </Card>
 

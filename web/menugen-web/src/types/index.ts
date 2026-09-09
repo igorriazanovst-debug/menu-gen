@@ -23,7 +23,9 @@ export interface UserProfile {
   bedtime_hour?: number | null;
   cheat_meal_interval?: number;
   last_cheat_meal_date?: string | null;
-
+  // MG_HEADKEEPS: разрешение главе семьи править и удалять мои записи.
+  // Добавлять он может и без него — такие записи помечены короной.
+  head_may_edit_diary?: boolean;
 }
 // Freemium: остаток квоты на генерацию меню (limit=null → безлимит/premium).
 export interface MenuQuota {
@@ -475,6 +477,10 @@ export interface DiaryEntry {
   planned_menu_item?: number | null;
   is_eaten: boolean;
   is_planned?: boolean; // DIARY_COPY_V3
+  // MG_HEADKEEPS: кто внёс запись, если не сам владелец. Пусто — внёс сам;
+  // так у всех записей, сделанных до появления этой возможности.
+  added_by?: number | null;
+  added_by_name?: string | null;
   created_at?: string;
 }
 export interface DiaryNutritionBucket {
@@ -486,7 +492,13 @@ export interface DiaryDayStats {
   actual: DiaryNutritionBucket;
   total: DiaryNutritionBucket;
 }
-export interface DiaryWaterLog { id?: number; date: string; water_ml: number; }
+export interface DiaryWaterLog {
+  id?: number | null;
+  date: string;
+  water_ml: number;
+  added_by?: number | null; // MG_HEADKEEPS
+  added_by_name?: string | null;
+}
 
 // MG_SHOP002_web_types — shopping lists v2
 export type ShoppingV2Source = 'empty' | 'menu' | 'fridge' | 'ai_text' | 'csv';

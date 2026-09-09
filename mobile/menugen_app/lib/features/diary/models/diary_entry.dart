@@ -92,6 +92,9 @@ class DiaryEntry extends Equatable {
   final int? plannedMenuItemId; // null = manual entry (фактическое)
   final bool isEaten;           // MG-605.B
   final bool isPlannedFlag;     // DIARY_COPY_V3 (explicit plan flag)
+  /// MG_HEADKEEPS: имя того, кто внёс запись, если это не сам владелец.
+  /// Пусто — внёс сам; так у всех записей, сделанных до этой возможности.
+  final String? addedByName;
 
   const DiaryEntry({
     required this.id,
@@ -107,6 +110,7 @@ class DiaryEntry extends Equatable {
     required this.plannedMenuItemId,
     required this.isEaten,
     this.isPlannedFlag = false, // DIARY_COPY_V3
+    this.addedByName, // MG_HEADKEEPS
   });
 
   /// True if this entry was planned (came from menu import).
@@ -131,6 +135,7 @@ class DiaryEntry extends Equatable {
         plannedMenuItemId: plannedMenuItemId,
         isEaten: isEaten ?? this.isEaten,
         isPlannedFlag: isPlannedFlag,
+        addedByName: addedByName,
       );
 
   factory DiaryEntry.fromJson(Map<String, dynamic> j) {
@@ -158,6 +163,7 @@ class DiaryEntry extends Equatable {
       plannedMenuItemId: (j['planned_menu_item'] as num?)?.toInt(),
       isEaten: (j['is_eaten'] as bool?) ?? false,
       isPlannedFlag: (j['is_planned'] as bool?) ?? false, // DIARY_COPY_V3
+      addedByName: j['added_by_name'] as String?, // MG_HEADKEEPS
     );
   }
 
@@ -175,5 +181,6 @@ class DiaryEntry extends Equatable {
         grams,
         plannedMenuItemId,
         isEaten,
+        addedByName, // MG_HEADKEEPS
       ];
 }
