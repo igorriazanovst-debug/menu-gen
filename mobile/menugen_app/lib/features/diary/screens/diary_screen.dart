@@ -718,7 +718,19 @@ class _EntryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Множитель показываем, только когда он не единица: «×1» у каждой строки —
+    // шум, за которым теряется то, ради чего в дневник и смотрят.
+    final showQty = entry.quantity != 1;
     final qty = '×${entry.quantity.toStringAsFixed(entry.quantity == entry.quantity.roundToDouble() ? 0 : 1)}';
+    // MG_DIARYKCAL: калорийность самой записи. Считается тем же способом, что и
+    // итог приёма (nutrition × quantity), поэтому сумма в заголовке приёма
+    // всегда сходится со строками под ним.
+    final totals = _MealTotals.of([entry]);
+    final kcal = totals.calories > 0 ? '${totals.calories.round()} ккал' : '';
+    final subtitle = [
+      entry.mealSlot.label,
+      if (entry.grams != null) '${entry.grams} г',
+    ].join(' · ');
     return Dismissible(
       key: ValueKey('diary-${entry.id}'),
       direction: DismissDirection.endToStart,
@@ -749,16 +761,31 @@ class _EntryTile extends StatelessWidget {
             title: Text(
               entry.displayTitle.isNotEmpty ? entry.displayTitle : '—',
             ),
-            subtitle: Text(entry.mealSlot.label),
+            subtitle: Text(subtitle),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // MG_NOOVERFLOW: длинное количество не растягивает строку.
+                // MG_NOOVERFLOW: длинные цифры не растягивают строку.
                 Flexible(
-                  child: Text(qty,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.grey.shade600)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (kcal.isNotEmpty)
+                        Text(kcal,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: accent ?? Colors.grey.shade700)),
+                      if (showQty)
+                        Text(qty,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    ],
+                  ),
                 ),
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert, size: 20),
