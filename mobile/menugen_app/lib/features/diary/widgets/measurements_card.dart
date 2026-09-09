@@ -388,6 +388,8 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
                       previous: _previous == null ? null : _sizes(_previous),
                       shape: bodyShapeFromGender(widget.gender),
                       accent: accent,
+                      date: _latest?['date'] as String?, // MG_CHARTAXES
+                      previousDate: _previous?['date'] as String?,
                     ),
                 ],
               ),

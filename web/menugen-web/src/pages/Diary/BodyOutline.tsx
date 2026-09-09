@@ -82,8 +82,25 @@ export const BodyOutline: React.FC<Props> = ({ latest, previous, gender }) => {
     );
   }
 
+  const fmt = (iso: string) => {
+    const [, m, d] = iso.split('-');
+    return `${d}.${m}`;
+  };
+
   return (
-    <div className="pt-2 flex justify-center">
+    <div className="pt-2">
+      {/* MG_CHARTAXES: без подписи картинка молчит о главном — за какое число
+          показаны обхваты и с чем сравнены числа слева. */}
+      <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-gray-500 mb-1">
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 border-t border-dashed" style={{ borderColor: '#E5484D' }} />
+          Обхваты, см · замер {fmt(latest.date)}
+        </span>
+        {previous && (
+          <span className="text-gray-400">слева — изменение с {fmt(previous.date)}</span>
+        )}
+      </div>
+      <div className="flex justify-center">
       <svg viewBox="0 0 200 190" className="w-full max-w-[280px]" role="img"
            aria-label="Контур тела с обхватами">
         <path d={BODY[silhouette]} fill="#F5E7DC" stroke="#D9C3B0" strokeWidth="1.5" />
@@ -113,6 +130,7 @@ export const BodyOutline: React.FC<Props> = ({ latest, previous, gender }) => {
           );
         })}
       </svg>
+      </div>
     </div>
   );
 };

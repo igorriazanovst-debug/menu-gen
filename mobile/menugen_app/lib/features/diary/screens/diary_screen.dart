@@ -1676,9 +1676,14 @@ class _WeightCardState extends State<_WeightCard> {
                   ),
                   if (_showChart)
                     WeightChart(
-                      values: _points
-                          .map((p) => double.tryParse('${p['weight_kg']}'))
-                          .whereType<double>()
+                      // MG_CHARTAXES: графику нужны и даты, а не одни числа —
+                      // иначе под шкалой нечего подписать.
+                      points: _points
+                          .map((p) {
+                            final kg = double.tryParse('${p['weight_kg']}');
+                            return kg == null ? null : WeightPoint('${p['date']}', kg);
+                          })
+                          .whereType<WeightPoint>()
                           .toList(),
                       color: Theme.of(context).colorScheme.primary,
                     ),

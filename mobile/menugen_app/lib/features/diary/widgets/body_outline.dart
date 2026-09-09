@@ -49,13 +49,23 @@ class BodyOutline extends StatelessWidget {
   final BodySizes? previous;
   final BodyShape shape;
   final Color accent;
+
+  /// MG_CHARTAXES: даты замеров — для подписи. Без них картинка молчит о том,
+  /// за какое число показаны обхваты и с чем сравнены числа слева.
+  final String? date;
+  final String? previousDate;
   const BodyOutline({
     super.key,
     required this.sizes,
     required this.shape,
     required this.accent,
     this.previous,
+    this.date,
+    this.previousDate,
   });
+
+  static String _fmt(String iso) =>
+      iso.length >= 10 ? '${iso.substring(8, 10)}.${iso.substring(5, 7)}' : iso;
 
   @override
   Widget build(BuildContext context) {
@@ -68,18 +78,46 @@ class BodyOutline extends StatelessWidget {
         ),
       );
     }
-    return SizedBox(
-      height: 210,
-      width: double.infinity,
-      child: CustomPaint(
-        painter: _OutlinePainter(
-          sizes: sizes,
-          previous: previous,
-          shape: shape,
-          accent: accent,
-          textColor: Theme.of(context).colorScheme.onSurface,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 12, height: 1.5, color: accent),
+                  const SizedBox(width: 6),
+                  Text(
+                    date == null ? 'Обхваты, см' : 'Обхваты, см · замер ${_fmt(date!)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                  ),
+                ],
+              ),
+              if (previous != null && previousDate != null)
+                Text('слева — изменение с ${_fmt(previousDate!)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            ],
+          ),
         ),
-      ),
+        SizedBox(
+          height: 210,
+          width: double.infinity,
+          child: CustomPaint(
+            painter: _OutlinePainter(
+              sizes: sizes,
+              previous: previous,
+              shape: shape,
+              accent: accent,
+              textColor: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
