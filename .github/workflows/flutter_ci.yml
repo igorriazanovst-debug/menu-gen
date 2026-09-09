@@ -41,7 +41,23 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install sqlite3
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev sqlite3
+        # Списки пакетов, которые нам не нужны, отключаем до обновления.
+        #
+        # На образе раннера прописан репозиторий Google Chrome, и 9 сентября он
+        # начал отдавать индекс, не сходящийся с подписью в Release («Hash Sum
+        # mismatch»). apt-get update выходит с кодом 100 — и сборка падала на
+        # установке sqlite3, ни разу не дойдя до Flutter. Своей вины в этом нет
+        # и починить на нашей стороне нельзя, а Chrome для тестов не нужен:
+        # проще не спрашивать про него вовсе.
+        #
+        # Именно удаление списка, а не `|| true` на всю команду: молчаливое
+        # игнорирование ошибок apt однажды скроет настоящую — недоступный
+        # ubuntu-архив, из которого sqlite3 и ставится.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
+                     /etc/apt/sources.list.d/google-chrome*.sources
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev sqlite3
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
