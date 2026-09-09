@@ -3,6 +3,13 @@
 merge_product_into перепривязывает все ссылки на канон, переносит КБЖУ при
 нехватке, записывает имя дубля синонимом и удаляет дубль. Вызывать внутри
 transaction.atomic().
+
+MG_MERGEALL: перепривязать нужно ВСЕ ссылки, а не те, что были во времена
+написания команды. Дубль в конце удаляется, и ссылка, о которой здесь не
+вспомнили, уйдёт вместе с ним: у menu.MenuItem и menu.ConstructedMealItem
+(MG_PRODDISH, продукт как блюдо приёма) стоит CASCADE — из меню молча пропала
+бы позиция. Поэтому список ниже строится из _meta, а не руками; новая ссылка
+на продукт учтётся сама.
 """
 
 
@@ -10,18 +17,33 @@ def has_kbju(p):
     return isinstance(p.nutrition, dict) and len(p.nutrition) > 0
 
 
+# Имена счётчиков, по которым отчитываются команды дедупа. Остальные ссылки
+# считаются под меткой вида «menu.MenuItem» — их немного, и в отчёте видно, что
+# именно переехало.
+_STAT_NAME = {
+    "fridge.FridgeItem": "fridge",
+    "recipes.RecipeProduct": "recipe",
+    "shopping.ShoppingListItem": "shop",
+}
+
+
 def merge_product_into(dup, canon):
     """Слить продукт dup в canon. Возвращает счётчики перенесённых ссылок."""
-    from apps.recipes.models import RecipeProduct
-    from apps.shopping.models import ShoppingListItem
-
     from .aliases import learn_alias
-    from .models import FridgeItem, Product, ProductAlias
+    from .models import Product, ProductAlias
 
     stats = {"fridge": 0, "recipe": 0, "shop": 0, "kbju": 0}
-    stats["fridge"] = FridgeItem.objects.filter(product_id=dup.id).update(product_id=canon.id)
-    stats["recipe"] = RecipeProduct.objects.filter(product_id=dup.id).update(product_id=canon.id)
-    stats["shop"] = ShoppingListItem.objects.filter(product_id=dup.id).update(product_id=canon.id)
+    for rel in Product._meta.related_objects:
+        model = rel.related_model
+        if model is ProductAlias:
+            continue  # у синонимов своё правило: см. ниже, unique alias_norm
+        if rel.many_to_many:
+            continue  # у связи через таблицу нет поля для update(); таких сейчас нет
+        label = "%s.%s" % (model._meta.app_label, model.__name__)
+        field = rel.field.name
+        moved = model.objects.filter(**{"%s_id" % field: dup.id}).update(**{"%s_id" % field: canon.id})
+        key = _STAT_NAME.get(label, label)
+        stats[key] = stats.get(key, 0) + moved
 
     # алиасы дубля -> канон (с учётом unique alias_norm)
     for a in ProductAlias.objects.filter(product_id=dup.id):
