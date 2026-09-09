@@ -12,20 +12,33 @@
 Два случая разведены намеренно.
 
 * **Переименование** — новое имя в каталоге свободно. Просто правится `name`.
-* **Столкновение** — под новым именем продукт уже есть: «Сыр Пармезан» и «Сыр
-  пармезан» лежат рядом. Переименовать тут нельзя: у `Product.name` нет
-  unique-ограничения, и база молча получит две одинаковые строки — это хуже
-  разнобоя в регистре. Такие сливаются через `merge_product_into`: ссылки
-  холодильника, меню, списка покупок и рецептов переезжают на выжившую запись.
-  Синоним при этом не заводится, и правильно: имена различались только
-  регистром, а поиск по синонимам и так регистронезависим. Слияние удаляет
-  запись, поэтому включается отдельным ключом `--merge`, а не заодно с
-  `--apply`.
+* **Столкновение** — под новым именем в каталоге уже есть живой продукт.
+  Переименовать тут нельзя: у `Product.name` нет unique-ограничения, и база
+  молча получит две одинаковые строки — это хуже разнобоя в регистре. Такие
+  сливаются через `merge_product_into`: ссылки холодильника, меню, списка
+  покупок и рецептов переезжают на выжившую запись. Синоним при этом не
+  заводится, и правильно: имена различались только регистром, а поиск по
+  синонимам и так регистронезависим. Слияние удаляет запись, поэтому включается
+  отдельным ключом `--merge`, а не заодно с `--apply`.
 
-Канон при слиянии выбирается по одному правилу: он должен быть единственным и
-общим (`owner_family IS NULL`). Если под новым именем нашлось несколько записей
-или чужая семейная — пара пропускается и печатается в отчёте: разбирать такое
-механически нельзя.
+Что считать столкновением — здесь единственное неочевидное место, и первая
+версия ошиблась в нём на проде. Она считала занятым любое совпадение имени и
+собралась слить четыре сыра в записи из выгрузки OpenFoodFacts: «Сыр пармезан»
+со штрих-кодом, без категории и КБЖУ, с нулём ссылок. А у машинных записей, что
+уехали бы в них, было 9 и 8 связей рецептов, холодильник и три позиции в списке
+покупок — и все они переехали бы на записи, скрытые из подборщиков
+(`visibility.HIDDEN_FROM_PICKERS`): сыры пропали бы из выбора продукта и из
+подбора ингредиентов.
+
+Поэтому имя занимают только записи из ОБЩЕГО каталога и видимые в подборщиках.
+Штрих-кодные (`retail`, `off_bulk`) и догадки модели по коду (`ai`) опознаются
+по коду, а не по названию, в списках их нет — имени они не занимают, и
+одноимённая запись рядом с ними никому не мешает. Продукты семьи — тоже своё
+пространство имён: чужой каталог им не указ. Такие соседи в отчёте показываются
+отдельной строкой, чтобы решение было видно, а не подразумевалось.
+
+Если живых претендентов на имя больше одного — пара пропускается и печатается в
+отчёте: разбирать такое механически нельзя.
 
 По умолчанию — dry-run, полный список без сокращений.
 """
@@ -35,7 +48,22 @@ from django.db import transaction
 
 from apps.fridge.dedup import merge_product_into
 from apps.fridge.models import Product
+from apps.fridge.visibility import HIDDEN_FROM_PICKERS
 from apps.recipes.recipe_products import _sentence_case
+
+
+def _rivals(product, name):
+    """Записи, которые действительно занимают имя. См. шапку файла."""
+    return list(
+        Product.objects.filter(name=name, owner_family__isnull=True)
+        .exclude(id=product.id)
+        .exclude(source__in=HIDDEN_FROM_PICKERS)[:2]
+    )
+
+
+def _same_name(product, name):
+    """Все одноимённые соседи — и те, кто имя занимает, и те, кто нет."""
+    return list(Product.objects.filter(name=name).exclude(id=product.id))
 
 
 def plan(source):
@@ -48,11 +76,12 @@ def plan(source):
     renames, merges, skipped = [], [], []
     for p in rows:
         target = _sentence_case(p.name)
-        others = list(Product.objects.filter(name=target).exclude(id=p.id)[:2])
-        if not others:
-            renames.append((p, target))
-        elif len(others) == 1 and others[0].owner_family_id is None:
-            merges.append((p, others[0]))
+        rivals = _rivals(p, target)
+        twins = [t for t in _same_name(p, target) if t.id not in {r.id for r in rivals}]
+        if not rivals:
+            renames.append((p, target, twins))
+        elif len(rivals) == 1:
+            merges.append((p, rivals[0]))
         else:
             skipped.append((p, target))
     return renames, merges, skipped
@@ -81,8 +110,13 @@ class Command(BaseCommand):
 
         self.stdout.write("")
         self.stdout.write("Переименовать — %d:" % len(renames))
-        for p, target in renames:
+        for p, target, twins in renames:
             self.stdout.write("  %6d  %r -> %r" % (p.id, p.name, target))
+            for t in twins:
+                # Сосед, который имени не занимает. Печатается, чтобы решение
+                # было видно глазами: именно на этом месте команда ошибалась.
+                where = "семья %s" % t.owner_family_id if t.owner_family_id else "source=%s" % t.source
+                self.stdout.write("            рядом уже есть %d %r (%s) — имени не занимает" % (t.id, t.name, where))
 
         self.stdout.write("")
         self.stdout.write("Слить с существующей записью — %d:" % len(merges))
@@ -106,7 +140,7 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
-            for p, target in renames:
+            for p, target, _twins in renames:
                 Product.objects.filter(id=p.id).update(name=target)
             self.stdout.write(self.style.SUCCESS("Переименовано: %d" % len(renames)))
 

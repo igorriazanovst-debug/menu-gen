@@ -22,6 +22,7 @@ from django.core.management import call_command
 from apps.family.models import Family
 from apps.fridge.models import FridgeItem, Product, ProductAlias
 from apps.menu.models import Menu, MenuItem
+from apps.recipes.models import Recipe, RecipeProduct
 from apps.users.models import User
 
 
@@ -149,9 +150,10 @@ class TestCollisions:
         pos.refresh_from_db()
         assert pos.product_id == canon.id
 
-    def test_ambiguous_target_is_skipped(self, db, family):
-        """Под новым именем — продукт чужой семьи. Механически тут не разобрать."""
-        Product.objects.create(name="Сыр выдуманный мягкий", source=Product.Source.MANUAL, owner_family=family)
+    def test_ambiguous_target_is_skipped(self, db):
+        """Живых претендентов на имя двое — механически тут не разобрать."""
+        Product.objects.create(name="Сыр выдуманный мягкий", source=Product.Source.MANUAL)
+        Product.objects.create(name="Сыр выдуманный мягкий", source=Product.Source.IMPORT)
         dup = auto("Сыр Выдуманный Мягкий")
 
         out = run("--apply", "--merge")
@@ -159,3 +161,64 @@ class TestCollisions:
         dup.refresh_from_db()
         assert dup.name == "Сыр Выдуманный Мягкий"
         assert "Пропущено" in out
+
+
+class TestWhoActuallyOwnsTheName:
+    """MG_CANONCASE2: имя занимают не все, кто его носит.
+
+    На этом команда и ошиблась на проде. Она собралась слить четыре сыра в
+    записи из выгрузки OpenFoodFacts: у тех штрих-код, ноль ссылок и ни
+    категории, ни КБЖУ, а у машинных записей — 9 и 8 связей рецептов,
+    холодильник и три позиции в списке покупок. Всё это уехало бы на записи,
+    которых в подборщиках нет вовсе (visibility.HIDDEN_FROM_PICKERS): сыры
+    пропали бы из выбора продукта и из подбора ингредиентов.
+    """
+
+    @pytest.mark.parametrize("hidden", ["off_bulk", "retail", "ai"])
+    def test_barcode_record_does_not_block_the_rename(self, db, hidden):
+        twin = Product.objects.create(
+            name="Сыр выдуманный мягкий", source=hidden, barcode="460000000000%s" % len(hidden)
+        )
+        dup = auto("Сыр Выдуманный Мягкий")
+
+        run("--apply", "--merge")
+
+        dup.refresh_from_db()
+        assert dup.name == "Сыр выдуманный мягкий"
+        # И, главное, обе записи на месте: ссылки никуда не переезжали.
+        assert Product.objects.filter(id=twin.id).exists()
+        assert Product.objects.filter(id=dup.id).exists()
+
+    def test_recipe_links_stay_on_the_catalog_record(self, db):
+        Product.objects.create(name="Сыр выдуманный мягкий", source=Product.Source.OFFBULK, barcode="4600000000001")
+        dup = auto("Сыр Выдуманный Мягкий")
+        recipe = Recipe.objects.create(title="Проверочное блюдо")
+        link = RecipeProduct.objects.create(recipe=recipe, product=dup, name_raw="сыр")
+
+        run("--apply", "--merge")
+
+        link.refresh_from_db()
+        assert link.product_id == dup.id
+
+    def test_family_product_does_not_block_the_rename(self, db, family):
+        """У семьи своё пространство имён: общий каталог ей не указ, и наоборот."""
+        own = Product.objects.create(name="Сыр выдуманный мягкий", source=Product.Source.MANUAL, owner_family=family)
+        dup = auto("Сыр Выдуманный Мягкий")
+
+        run("--apply", "--merge")
+
+        dup.refresh_from_db()
+        own.refresh_from_db()
+        assert dup.name == "Сыр выдуманный мягкий"
+        assert own.name == "Сыр выдуманный мягкий"
+
+    def test_report_names_the_quiet_neighbour(self, db):
+        twin = Product.objects.create(
+            name="Сыр выдуманный мягкий", source=Product.Source.OFFBULK, barcode="4600000000002"
+        )
+        auto("Сыр Выдуманный Мягкий")
+
+        out = run()
+
+        assert "имени не занимает" in out
+        assert str(twin.id) in out
