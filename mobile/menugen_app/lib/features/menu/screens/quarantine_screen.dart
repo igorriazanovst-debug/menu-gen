@@ -161,7 +161,12 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
             ),
         ],
       ),
-      body: _loading
+      // MG_NAVBARINSET: отступ снизу под системную полосу навигации — экран
+      // открывается поверх, нижней панели у него нет. См. подробности в
+      // recipes/screens/recipe_detail_screen.dart.
+      body: SafeArea(
+        top: false,
+        child: _loading
           ? const Center(child: CircularProgressIndicator())
           : (_error != null)
               ? Center(
@@ -263,6 +268,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
                         );
                       },
                     )),
+      ),
     );
   }
 }

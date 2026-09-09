@@ -476,7 +476,13 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                 ),
             ],
           ),
-          body: Column(
+          // MG_NAVBARINSET: отступ снизу под системную полосу навигации —
+          // экран открывается поверх, нижней панели у него нет. Здесь это
+          // особенно заметно: под списком стоит строка добавления товара.
+          // См. подробности в recipes/screens/recipe_detail_screen.dart.
+          body: SafeArea(
+            top: false,
+            child: Column(
             children: [
               Expanded(
                 child: d.items.isEmpty
@@ -730,6 +736,7 @@ class _ShoppingDetailScreenState extends State<ShoppingDetailScreen> {
                       .add(ShoppingAddItemRequested(d.id, payload)),
                 ),
             ],
+          ),
           ),
         );
       },

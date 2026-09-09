@@ -265,7 +265,19 @@ class _DetailBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = context.cs;
     final tokens = context.tokens;
-    return ListView(
+    // MG_NAVBARINSET: последние строки уходили под системную панель навигации.
+    //
+    // С targetSdk 35+ Android рисует приложение во весь экран, включая полосу
+    // навигации, и кладёт поверх неё полупрозрачную подложку. Выключить это
+    // нельзя: windowOptOutEdgeToEdgeEnforcement на Android 16 не работает.
+    // Экран рецепта — отдельный маршрут без нижней панели, поэтому Scaffold
+    // отступ снизу ниоткуда не берёт, и текст под конец страницы оказывался
+    // за этой подложкой — читался как в дымке.
+    //
+    // top: false — сверху отступ уже даёт AppBar, второй сдвинул бы картинку.
+    return SafeArea(
+      top: false,
+      child: ListView(
       padding: EdgeInsets.zero,
       children: [
         // MG_SKIN: hero-изображение на тёплой подложке из темы (замена тёмного
@@ -369,6 +381,7 @@ class _DetailBody extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 

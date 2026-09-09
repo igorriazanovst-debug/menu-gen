@@ -148,7 +148,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Удаление аккаунта')),
-      body: _loading
+      // MG_NAVBARINSET: отступ снизу под системную полосу навигации — экран
+      // открывается поверх, нижней панели у него нет. См. подробности в
+      // recipes/screens/recipe_detail_screen.dart.
+      body: SafeArea(
+        top: false,
+        child: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
@@ -243,6 +248,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 ),
               ],
             ),
+      ),
     );
   }
 }

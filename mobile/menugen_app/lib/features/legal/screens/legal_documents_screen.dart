@@ -54,7 +54,12 @@ class _LegalDocumentsScreenState extends State<LegalDocumentsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Документы')),
-      body: RefreshIndicator(
+      // MG_NAVBARINSET: отступ снизу под системную полосу навигации — экран
+      // открывается поверх, нижней панели у него нет. См. подробности в
+      // recipes/screens/recipe_detail_screen.dart.
+      body: SafeArea(
+        top: false,
+        child: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -90,6 +95,7 @@ class _LegalDocumentsScreenState extends State<LegalDocumentsScreen> {
                 ),
           ],
         ),
+      ),
       ),
     );
   }

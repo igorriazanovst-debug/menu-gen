@@ -73,7 +73,12 @@ class _FridgeHistoryScreenState extends State<FridgeHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('История добавления')),
-      body: _loading
+      // MG_NAVBARINSET: отступ снизу под системную полосу навигации — экран
+      // открывается поверх, нижней панели у него нет. См. подробности в
+      // recipes/screens/recipe_detail_screen.dart.
+      body: SafeArea(
+        top: false,
+        child: _loading
           ? const Center(child: CircularProgressIndicator())
           : _history.isEmpty
               ? const Center(child: Text('История пуста'))
@@ -132,6 +137,7 @@ class _FridgeHistoryScreenState extends State<FridgeHistoryScreen> {
                     },
                   ),
                 ),
+      ),
     );
   }
 }

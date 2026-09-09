@@ -57,7 +57,10 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.doc.title)),
-      body: _buildBody(),
+      // MG_NAVBARINSET: отступ снизу под системную полосу навигации — экран
+      // открывается поверх, нижней панели у него нет. См. подробности в
+      // recipes/screens/recipe_detail_screen.dart.
+      body: SafeArea(top: false, child: _buildBody()),
     );
   }
 

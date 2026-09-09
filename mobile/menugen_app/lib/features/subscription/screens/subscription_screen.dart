@@ -176,7 +176,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loading ? null : _load),
         ],
       ),
-      body: _loading
+      // MG_NAVBARINSET: отступ снизу под системную полосу навигации — экран
+      // открывается поверх, нижней панели у него нет. См. подробности в
+      // recipes/screens/recipe_detail_screen.dart.
+      body: SafeArea(
+        top: false,
+        child: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
@@ -197,6 +202,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with WidgetsBin
                     ],
                   ),
                 ),
+      ),
     );
   }
 

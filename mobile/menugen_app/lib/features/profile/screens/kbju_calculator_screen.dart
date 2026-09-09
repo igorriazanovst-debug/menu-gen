@@ -216,7 +216,12 @@ class _KbjuCalculatorScreenState extends State<KbjuCalculatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Калькулятор КБЖУ')),
-      body: ListView(
+      // MG_NAVBARINSET: отступ снизу под системную полосу навигации — экран
+      // открывается поверх, нижней панели у него нет. См. подробности в
+      // recipes/screens/recipe_detail_screen.dart.
+      body: SafeArea(
+        top: false,
+        child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _disclaimer(),
@@ -264,6 +269,7 @@ class _KbjuCalculatorScreenState extends State<KbjuCalculatorScreen> {
           ],
           const SizedBox(height: 24),
         ],
+      ),
       ),
     );
   }
