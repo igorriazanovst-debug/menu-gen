@@ -64,6 +64,9 @@ def _make_entry(member, day=None, **kwargs):
         custom_name=kwargs.get("custom_name", "Toast"),
         quantity=kwargs.get("quantity", 1),
         nutrition=kwargs.get("nutrition", {"calories": {"value": 200}}),
+        # MG_EATFLAG: факт — то, что отмечено, и ручная запись не исключение.
+        # Здесь запись изображает съеденное, поэтому отмечена.
+        is_eaten=kwargs.get("is_eaten", True),
     )
 
 
@@ -281,7 +284,7 @@ class TestStatsMemberId:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
-        # MG-605.D: вложенная структура; запись без planned_menu_item → actual
+        # MG-605.D: вложенная структура; отмеченная запись без плана → actual
         assert data[0]["actual"]["calories"] == 500.0
 
     def test_member_stats_other_403(self, db):

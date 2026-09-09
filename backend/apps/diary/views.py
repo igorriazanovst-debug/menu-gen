@@ -264,7 +264,7 @@ class DiaryStatsView(APIView):
     """MG-605.D: возвращает за каждый день {date, planned, actual, total}.
 
     - planned: записи с planned_menu_item IS NOT NULL (что было запланировано)
-    - actual:  is_eaten=True ИЛИ planned_menu_item IS NULL
+    - actual:  is_eaten=True (MG_EATFLAG: одно правило на все записи)
                (вручную добавленное всегда учитывается в факте; плановое — только после галочки)
     - total:   синоним actual (для UI прогресс-бара)
     """
@@ -306,8 +306,16 @@ class DiaryStatsView(APIView):
 
             # DIARY_COPY_V3: plan flag = explicit field OR legacy menu link.
             is_planned = bool(getattr(entry, "is_planned", False)) or (entry.planned_menu_item_id is not None)
-            # actual: is_eaten=True ИЛИ запись без плана (manual)
-            is_actual = entry.is_eaten or (not is_planned)
+            # MG_EATFLAG: факт — то, что отмечено. Одно правило на все записи.
+            #
+            # Раньше ручная запись считалась фактом независимо от галочки, и
+            # галочка у неё была бесполезна — интерфейс рисовал вместо неё
+            # неподвижный знак. В приёме из трёх строк снять отметку можно было
+            # только с плановой, и это выглядело поломкой.
+            #
+            # Итоги за прошлые дни от смены правила не поехали: миграция
+            # diary.0014 проставила таким записям is_eaten=True.
+            is_actual = entry.is_eaten
 
             if is_planned:
                 _add_bucket(stats[d]["planned"], nutr)

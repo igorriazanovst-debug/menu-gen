@@ -131,13 +131,22 @@ class TestDiaryStats:
         user, member, recipe = setup
         today = datetime.date.today()
         DiaryEntry.objects.create(
-            member=member, date=today, meal_type="breakfast", recipe=recipe, nutrition=recipe.nutrition, quantity=1
+            member=member,
+            date=today,
+            meal_type="breakfast",
+            recipe=recipe,
+            nutrition=recipe.nutrition,
+            quantity=1,
+            # MG_EATFLAG: факт — то, что отмечено. Раньше ручная запись
+            # считалась съеденной независимо от галочки, и галочка у неё была
+            # бесполезна: интерфейс рисовал вместо неё неподвижный знак.
+            is_eaten=True,
         )
         client.force_authenticate(user)
         resp = client.get(reverse("diary-stats"), {"from": str(today), "to": str(today)})
         assert resp.status_code == 200
         assert len(resp.data) == 1
-        # MG-605.D: вложенная структура; запись без planned_menu_item → actual
+        # MG-605.D: вложенная структура; отмеченная запись без плана → actual
         assert resp.data[0]["actual"]["calories"] == 300.0
         assert resp.data[0]["total"]["calories"] == 300.0
         assert resp.data[0]["planned"]["calories"] == 0.0

@@ -593,7 +593,10 @@ class _LoadedViewState extends State<_LoadedView> {
   Widget build(BuildContext context) {
     // DIARY: показываем РОВНО выбранный день (записи уже отфильтрованы по дате).
     final entries = widget.state.entries;
-    final planned = entries.where((e) => e.isPlanned).toList();
+    // MG_EATFLAG: групповое действие берёт все записи дня, а не только
+    // плановые: отмечать теперь можно каждую, и «съедено всё» обязано жить по
+    // тому же правилу — иначе оно отстаёт от того, что человек видит.
+    final planned = entries;
 
     return Column(
       children: [
@@ -618,7 +621,10 @@ class _LoadedViewState extends State<_LoadedView> {
     );
   }
 
-  /// Мастер-строка: отметить съеденным весь план дня разом.
+  /// Мастер-строка: отметить съеденным весь день разом.
+  ///
+  /// MG_EATFLAG: «весь день», а не «весь план»: галочка теперь есть у каждой
+  /// записи, и отмечать группой только плановые было бы странно.
   Widget _planMasterRow(List<DiaryEntry> planned) {
     final total = planned.length;
     final eaten = planned.where((e) => e.isEaten).length;
@@ -636,7 +642,7 @@ class _LoadedViewState extends State<_LoadedView> {
         const Icon(Icons.event_note, size: 18),
         const SizedBox(width: 6),
         const Expanded(
-          child: Text('План',
+          child: Text('Съедено за день',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         ),
         Text('$eaten/$total',
@@ -649,14 +655,13 @@ class _LoadedViewState extends State<_LoadedView> {
   /// MG_MEALSLOT: день по приёмам — заголовок со сводкой и содержимое.
   ///
   /// План и факт лежат в одном разделе приёма, а не двумя списками: человек ищет
-  /// «что было на обед», а не «что было запланировано». Отличить их по-прежнему
-  /// просто — у планового блюда есть галочка «съедено».
+  /// «что было на обед», а не «что было запланировано».
   List<Widget> _buildMealSections(String dateStr, List<DiaryEntry> entries) {
     final out = <Widget>[];
 
     for (final slot in _visibleSlots(entries)) {
       final items = entries.where((e) => e.mealSlot == slot).toList();
-      final plannedItems = items.where((e) => e.isPlanned).toList();
+      final plannedItems = items; // MG_EATFLAG: отмечаются все записи приёма
       final mEaten = plannedItems.where((e) => e.isEaten).length;
       final mAll = plannedItems.isNotEmpty && mEaten == plannedItems.length;
       final mNone = mEaten == 0;
@@ -739,7 +744,10 @@ class _LoadedViewState extends State<_LoadedView> {
             accent: color,
             // Отметка «съедено» есть только у планового: добавленное вручную —
             // это уже факт, отмечать в нём нечего.
-            onToggleEaten: e.isPlanned ? (v) => widget.onMarkEaten(e, v) : null,
+            // MG_EATFLAG: галочка у каждой записи, а не только у плановой.
+            // Раньше у записи, добавленной руками, стоял неподвижный знак:
+            // факт считался по ней в любом случае, и снимать было нечего.
+            onToggleEaten: (v) => widget.onMarkEaten(e, v),
             onDelete: () => widget.onDelete(e),
             onEdit: () => widget.onEdit(e),
           ),
@@ -803,12 +811,12 @@ class _EntryTile extends StatelessWidget {
             ),
           ),
           child: ListTile(
-            leading: onToggleEaten != null
-                ? Checkbox(
-                    value: entry.isEaten,
-                    onChanged: (v) => onToggleEaten!(v ?? false),
-                  )
-                : const Icon(Icons.check_circle, color: Colors.green),
+            leading: Checkbox(
+              value: entry.isEaten,
+              onChanged: onToggleEaten == null
+                  ? null
+                  : (v) => onToggleEaten!(v ?? false),
+            ),
             title: Row(
               children: [
                 Flexible(

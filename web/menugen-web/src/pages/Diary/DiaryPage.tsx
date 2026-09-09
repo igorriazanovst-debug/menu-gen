@@ -243,12 +243,13 @@ export const DiaryPage: React.FC = () => {
     <Card className="p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          {canCheck ? (
-            <input type="checkbox" checked={e.is_eaten} onChange={() => toggleEaten(e)}
-                   className="w-5 h-5 accent-tomato cursor-pointer" />
-          ) : (
-            <span className="text-green-500 text-lg">✓</span>
-          )}
+          {/* MG_EATFLAG: галочка у каждой записи, а не только у плановой.
+              Раньше у ручной записи стоял неподвижный знак ✓ — факт считался по
+              ней в любом случае, и снять было нечего. В приёме из трёх строк
+              это выглядело так, будто две сломались. */}
+          <input type="checkbox" checked={e.is_eaten} onChange={() => toggleEaten(e)}
+                 title={canCheck ? 'Съедено по плану' : 'Съедено'}
+                 className="w-5 h-5 accent-tomato cursor-pointer" />
           <div className="min-w-0">
             <span className="text-xs uppercase tracking-wide"
                   style={{ color: MEAL_SLOT_COLORS[slotOf(e)] }}>

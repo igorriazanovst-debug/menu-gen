@@ -3,11 +3,18 @@
 Покрывает:
 - структура ответа: {date, planned, actual, total}
 - planned = записи с planned_menu_item IS NOT NULL
-- actual = is_eaten=True ИЛИ planned_menu_item IS NULL
+- actual = is_eaten=True (MG_EATFLAG: одно правило на все записи)
 - запись plan+is_eaten=True → попадает И в planned, И в actual/total
 - запись plan+is_eaten=False → только planned, не actual
-- запись manual (planned_menu_item=None) → всегда actual, не planned
-- запись manual+is_eaten=True → всегда actual
+- запись manual+is_eaten=True → actual, не planned
+- запись manual+is_eaten=False → никуда: человек снял галочку, значит не съел
+
+MG_EATFLAG: прежде ручная запись считалась фактом независимо от галочки, и
+галочка у неё была бесполезна — интерфейс рисовал вместо неё неподвижный знак.
+В приёме из трёх строк снять отметку можно было только с плановой, и это
+выглядело поломкой. Правило стало одним для всех; существующим ручным записям
+миграция diary.0014 проставила is_eaten=True, поэтому итоги за прошлые дни не
+изменились.
 """
 
 from datetime import date, timedelta
@@ -115,7 +122,32 @@ class TestDiaryStatsNewShape:
             assert set(d[bucket].keys()) == {"calories", "proteins", "fats", "carbs"}
 
     def test_manual_entry_counts_in_actual(self, client):
-        """Запись без planned_menu_item — даже без is_eaten — считается actual."""
+        """Ручная запись с галочкой — факт. Без галочки — не факт (см. шапку)."""
+        user = _user("u@x.com")
+        fam, head = _premium_family(user)
+        r = _recipe(kcal=200)
+        DiaryEntry.objects.create(
+            member=head,
+            date=date.today(),
+            meal_type="snack",
+            recipe=r,
+            nutrition=r.nutrition,
+            quantity=1,
+            is_eaten=True,
+        )
+        client.force_authenticate(user)
+        resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
+        d = resp.data[0]
+        assert d["actual"]["calories"] == 200.0
+        assert d["total"]["calories"] == 200.0
+        assert d["planned"]["calories"] == 0.0
+
+    def test_manual_entry_unchecked_is_not_a_fact(self, client):
+        """Снятая галочка у ручной записи теперь значит «не съел».
+
+        Ровно ради этого правило и меняли: раньше галочка у такой записи ничего
+        не меняла, и снять её было нельзя.
+        """
         user = _user("u@x.com")
         fam, head = _premium_family(user)
         r = _recipe(kcal=200)
@@ -131,8 +163,8 @@ class TestDiaryStatsNewShape:
         client.force_authenticate(user)
         resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
         d = resp.data[0]
-        assert d["actual"]["calories"] == 200.0
-        assert d["total"]["calories"] == 200.0
+        assert d["actual"]["calories"] == 0.0
+        assert d["total"]["calories"] == 0.0
         assert d["planned"]["calories"] == 0.0
 
     def test_planned_unchecked_only_in_planned(self, client):
@@ -201,7 +233,7 @@ class TestDiaryStatsNewShape:
         assert d["actual"]["calories"] == 250.0
 
     def test_mixed_day(self, client):
-        """План 300 без галки + manual 100 → planned=300, actual=100, total=100."""
+        """План 300 без галки + отмеченная ручная 100 → planned=300, actual=100."""
         user = _user("u@x.com")
         fam, head = _premium_family(user)
         r_plan = _recipe(kcal=300)
@@ -224,7 +256,7 @@ class TestDiaryStatsNewShape:
             recipe=r_manual,
             nutrition=r_manual.nutrition,
             quantity=1,
-            is_eaten=False,
+            is_eaten=True,  # MG_EATFLAG: факт — то, что отмечено
         )
         client.force_authenticate(user)
         resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
