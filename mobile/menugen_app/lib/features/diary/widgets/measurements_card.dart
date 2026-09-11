@@ -107,7 +107,7 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
           .toList();
       setState(() {
         _rows = rows;
-        final today = _forDate(widget.date);
+        final today = _forDateOf(widget.date);
         for (final f in _fields) {
           _ctrls[f.$1]!.text = '${today?[f.$1] ?? ''}';
         }
@@ -116,13 +116,6 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
       // Пустая история — не ошибка: карточка просто без данных.
       if (mounted) setState(() => _rows = const []);
     }
-  }
-
-  Map<String, dynamic>? _forDate(String date) {
-    for (final r in _rows) {
-      if (r['date'] == date) return r;
-    }
-    return null;
   }
 
   Map<String, dynamic>? get _latest => _rows.isEmpty ? null : _rows.last;
@@ -146,6 +139,7 @@ class _MeasurementsCardState extends State<MeasurementsCard> {
     }
     return parts.isEmpty ? '—' : parts.join(' · ');
   }
+
   Map<String, dynamic>? get _previous => _rows.length < 2 ? null : _rows[_rows.length - 2];
 
   double? _num(Object? v) => v == null ? null : double.tryParse('$v');
