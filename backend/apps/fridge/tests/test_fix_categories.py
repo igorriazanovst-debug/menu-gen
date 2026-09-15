@@ -86,7 +86,7 @@ class TestЧтоРазбирается:
 
         p.refresh_from_db()
         assert p.category_fk.slug == "fish"
-        assert "Записей без рубрики или в «Прочем»: 0" in out
+        assert "Записей к разбору: 0" in out
 
     def test_справочник_штрихкодов_не_разбирается(self, cats):
         other, _fish = cats
@@ -277,3 +277,49 @@ class TestНеполныйРазбор:
 
         assert calls["n"] == 1
         assert "Проход 2" not in out
+
+
+@pytest.mark.django_db
+class TestПересмотр:
+    """MG_CATRECHECK: правило раскладки поменялось — как пересмотреть разложенное.
+
+    Команда смотрит «Прочее», а разложенное ею уже не там. Понадобилось, когда
+    выяснилось, что «Картофель отварной» и «Отварная свекла» стоят в овощах.
+    Пересмотр платный, поэтому рубрики называются поимённо.
+    """
+
+    def test_без_флага_чужая_рубрика_не_трогается(self, cats):
+        _other, fish = cats
+        p = Product.objects.create(name="Плюмбус речной", source=Product.Source.AUTO, category_fk=fish)
+
+        run("--apply", complete=answer({"Плюмбус речной": "vegetables"}))
+
+        p.refresh_from_db()
+        assert p.category_fk.slug == "fish"
+
+    def test_с_флагом_названная_рубрика_пересматривается(self, cats):
+        _other, fish = cats
+        veg, _ = ProductCategory.objects.get_or_create(
+            slug="vegetables", defaults={"name_ru": "Овощи", "is_active": True}
+        )
+        p = Product.objects.create(name="Плюмбус речной", source=Product.Source.AUTO, category_fk=veg)
+
+        run("--apply", "--recheck", "vegetables", complete=answer({"Плюмбус речной": "fish"}))
+
+        p.refresh_from_db()
+        assert p.category_fk.slug == "fish"
+
+    def test_подтверждённая_рубрика_в_плане_не_шумит(self, cats):
+        """Модель часто подтверждает нынешнюю рубрику: показывать надо изменения."""
+        _other, fish = cats
+        p = Product.objects.create(name="Плюмбус речной", source=Product.Source.AUTO, category_fk=fish)
+
+        out = run("--recheck", "fish", complete=answer({"Плюмбус речной": "fish"}))
+
+        assert "Разложить по рубрикам — 0" in out
+        assert str(p.id) not in out
+
+    def test_неизвестная_рубрика_в_флаге_это_ошибка(self, cats):
+        out = run("--recheck", "звездолёты", complete=answer({}))
+
+        assert "Неизвестные рубрики в --recheck: звездолёты" in out

@@ -211,8 +211,17 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
         if rid in linked_ids:
             for rp in links_by_recipe.get(rid, []):
                 name = rp.name_canonical or rp.name_raw
-                qty = rp.grams if rp.grams is not None else rp.quantity
-                _add(name, qty, rp.unit, rp.category_slug, rp.category_fk_id, rp.product_id)
+                # MG_QTYUNIT: единица обязана следовать за числом. Связь хранит
+                # и граммовку, и исходное количество с единицей из рецепта
+                # («2 шт», «10 зубчиков»), а сюда бралось число из одного поля и
+                # единица из другого. На проде это дало «Свекла маленькая —
+                # 960.00 шт» (граммы с единицей «шт»), «Чеснок — 10.00 зубчик»
+                # и «2 яйца вареных — 250.00 шт».
+                if rp.grams is not None:
+                    qty, unit = rp.grams, "г"
+                else:
+                    qty, unit = rp.quantity, rp.unit
+                _add(name, qty, unit, rp.category_slug, rp.category_fk_id, rp.product_id)
         else:
             for ing in mi.recipe.ingredients or []:
                 nm = (ing.get("name") or "").strip()

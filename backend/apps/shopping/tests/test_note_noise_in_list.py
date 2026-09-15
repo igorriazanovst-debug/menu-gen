@@ -183,3 +183,46 @@ class TestРубрикаИзКаталога:
         items = build_items_from_menu(menu, family, subtract_fridge=False)
 
         assert [i["category_slug"] for i in items] == ["fish"]
+
+
+@pytest.mark.django_db
+class TestКоличествоИЕдиница:
+    """MG_QTYUNIT: единица обязана следовать за числом.
+
+    Связь хранит и граммовку, и исходное количество с единицей из рецепта. Число
+    бралось из одного поля, а единица из другого — и на проде вышло «Свекла
+    маленькая — 960.00 шт»: граммы с единицей «шт». Рядом «Чеснок — 10.00
+    зубчик» и «2 яйца вареных — 250.00 шт».
+    """
+
+    def test_граммовка_идёт_с_граммами_а_не_с_единицей_рецепта(self, menu_with_links):
+        family, menu, recipe = menu_with_links
+        RecipeProduct.objects.create(
+            recipe=recipe,
+            name_canonical="Плюмбус мелкий",
+            name_raw="плюмбус",
+            grams=960,
+            quantity="6",
+            unit="шт",
+        )
+
+        items = build_items_from_menu(menu, family, subtract_fridge=False)
+
+        assert items[0]["quantity"] == 960
+        assert items[0]["unit"] == "г"
+
+    def test_без_граммовки_берём_количество_с_его_единицей(self, menu_with_links):
+        family, menu, recipe = menu_with_links
+        RecipeProduct.objects.create(
+            recipe=recipe,
+            name_canonical="Плюмбус штучный",
+            name_raw="плюмбус",
+            grams=None,
+            quantity="6",
+            unit="шт",
+        )
+
+        items = build_items_from_menu(menu, family, subtract_fridge=False)
+
+        assert items[0]["quantity"] == 6
+        assert items[0]["unit"] == "шт"

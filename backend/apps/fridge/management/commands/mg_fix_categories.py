@@ -67,14 +67,27 @@ SYSTEM = (
     # Там же разъехались сахарозаменители: «Подсластитель» и «Эритрит» ушли в
     # sweets, а «Стевия» — в condiments. Это один и тот же товар по назначению.
     "Сахарозаменители (стевия, эритрит, подсластитель) — рубрика sweets.\n"
+    # MG_CATREADY: готовая еда — то, что покупают приготовленным: «Говяжий язык
+    # отварной», «Куриная грудка гриль», «Готовое пюре».
+    "Блюда и полуфабрикаты, которые покупают уже приготовленными (отварной язык, "
+    "грудка гриль, готовое пюре, бульон) — рубрика ready.\n"
     "Список рубрик: __LISTING__"
 )
 
 
-def targets(limit=0):
-    """Записи каталога без рубрики или в «Прочем»."""
+def targets(limit=0, recheck=()):
+    """Записи каталога без рубрики или в «Прочем».
+
+    MG_CATRECHECK: `recheck` добавляет к ним записи из названных рубрик. Нужно,
+    когда правило раскладки поменялось: разложенное командой уже не в «Прочем»,
+    и без этого пересмотреть его нечем. Пересмотр платный, поэтому рубрики
+    называются поимённо, а не «всё подряд».
+    """
+    where = Q(category_fk__slug="other") | Q(category_fk__isnull=True)
+    if recheck:
+        where |= Q(category_fk__slug__in=list(recheck))
     qs = (
-        Product.objects.filter(Q(category_fk__slug="other") | Q(category_fk__isnull=True))
+        Product.objects.filter(where)
         .filter(owner_family__isnull=True)
         .exclude(source__in=HIDDEN_FROM_PICKERS)
         .order_by("id")
@@ -90,6 +103,11 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=0, help="Разобрать не более N записей (0 = все).")
         parser.add_argument("--batch", type=int, default=25, help="Размер пачки для запроса к модели.")
         parser.add_argument("--show", type=int, default=60, help="Сколько строк плана показать.")
+        parser.add_argument(
+            "--recheck",
+            default="",
+            help="MG_CATRECHECK: пересмотреть и записи из этих рубрик, через запятую (напр. vegetables,meat).",
+        )
 
     def _say(self, line):
         """Строка хода: печатаем сразу, иначе в докере она повиснет в буфере."""
@@ -130,8 +148,16 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("Парсер JSON недоступен (_parse_json_loose)."))
             return
 
-        rows = targets(opts["limit"])
-        self.stdout.write("Записей без рубрики или в «Прочем»: %d (пачка=%d)." % (len(rows), batch))
+        recheck = tuple(x.strip() for x in opts["recheck"].split(",") if x.strip())
+        unknown = [x for x in recheck if x not in cat_id_by_slug]
+        if unknown:
+            self.stderr.write(self.style.ERROR("Неизвестные рубрики в --recheck: %s" % ", ".join(unknown)))
+            return
+        if recheck:
+            self.stdout.write("Пересматриваем также рубрики: %s" % ", ".join(recheck))
+
+        rows = targets(opts["limit"], recheck)
+        self.stdout.write("Записей к разбору: %d (пачка=%d)." % (len(rows), batch))
         if not rows:
             return
 
@@ -197,7 +223,10 @@ class Command(BaseCommand):
             sweep(pending, small, "Проход 2 (меньшими пачками)")
             pending = [p for p in rows if p.id not in answered]
 
-        plan = [(p, decided[p.id]) for p in rows if p.id in decided]
+        # При пересмотре модель часто подтверждает нынешнюю рубрику. Такие
+        # записи в плане только мешают читать: показывать надо то, что меняется.
+        now = {p.id: (p.category_fk.slug if p.category_fk_id else "") for p in rows}
+        plan = [(p, decided[p.id]) for p in rows if p.id in decided and decided[p.id] != now.get(p.id)]
         failed = len(pending)
 
         by_slug = Counter(slug for _p, slug in plan)
