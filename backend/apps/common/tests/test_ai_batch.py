@@ -98,3 +98,29 @@ class TestПакетныйКлиент:
             get_batch_ai_client(timeout=300)
 
         assert made.call_args.kwargs["timeout"] == 300
+
+
+class TestПроверкаДоступности:
+    """Клиент и проверка доступности должны ходить одинаково.
+
+    Они разъехались: клиент перевели на пакетный таймаут, а check_ai_available()
+    рядом оставили голой. Команда падала на проверке, не начав работу:
+    «ИИ-провайдер недоступен: Read timed out. (read timeout=30.0)» — при том,
+    что сама работа пошла бы со 120 секундами.
+    """
+
+    def test_проверка_идёт_теми_же_настройками_что_и_работа(self, monkeypatch):
+        from apps.common.ai_provider import batch_ai_settings, check_batch_ai_available
+
+        monkeypatch.setenv("AI_PROVIDER", "openai")
+        monkeypatch.setenv("AI_API_KEY", "test-key")
+        monkeypatch.setenv("AI_TIMEOUT", "30")
+        monkeypatch.setenv("AI_CANON_TIMEOUT", "120")
+        monkeypatch.setenv("AI_CANON_MODEL", "gemini-3.7-flash")
+
+        with mock.patch("apps.common.ai_provider.check_ai_available") as checked:
+            check_batch_ai_available()
+
+        assert checked.call_args.kwargs == batch_ai_settings()
+        assert checked.call_args.kwargs["timeout"] == 120
+        assert checked.call_args.kwargs["model"] == "gemini-3.7-flash"

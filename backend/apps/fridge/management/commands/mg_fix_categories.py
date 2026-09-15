@@ -89,10 +89,10 @@ class Command(BaseCommand):
         system = SYSTEM.replace("__LISTING__", listing)
 
         try:
-            from apps.common.ai_provider import check_ai_available, get_batch_ai_client
+            from apps.common.ai_provider import check_batch_ai_available, get_batch_ai_client
 
             client = get_batch_ai_client()
-            check_ai_available()
+            check_batch_ai_available()
         except Exception as exc:
             self.stderr.write(self.style.ERROR("ИИ-провайдер недоступен: %s" % exc))
             self.stderr.write(self.style.ERROR("Проверить настройки: manage.py mg_ai_ping"))

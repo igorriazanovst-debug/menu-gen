@@ -78,9 +78,9 @@ class Command(BaseCommand):
             # MG_AIPING: фабрика только собирает клиента и ловит пустой ключ.
             # Неверный ключ виден лишь по ответу сервиса — без запроса команда
             # уходила в прогон и ловила 401 на каждой пачке.
-            from apps.common.ai_provider import check_ai_available
+            from apps.common.ai_provider import check_batch_ai_available
 
-            check_ai_available()
+            check_batch_ai_available()
         except Exception as e:
             self.stderr.write(self.style.ERROR(f"ИИ-провайдер недоступен: {e}"))
             self.stderr.write(self.style.ERROR("Проверить настройки: manage.py mg_ai_ping"))

@@ -347,10 +347,28 @@ def get_batch_ai_client(model: Optional[str] = None, timeout: Optional[float] = 
     итог: «Групп со слиянием: 1» означало не «дублей почти нет», а «половину
     данных мы не смотрели».
     """
-    return get_ai_client(
-        model=model or (config("AI_CANON_MODEL", default="").strip() or None),
-        timeout=timeout or config("AI_CANON_TIMEOUT", default=120.0, cast=float),
-    )
+    return get_ai_client(**batch_ai_settings(model, timeout))
+
+
+def batch_ai_settings(model: Optional[str] = None, timeout: Optional[float] = None) -> dict:
+    """Настройки пакетной работы одним словарём — чтобы клиент и проверка
+    доступности не разъезжались.
+
+    Разъехались они ровно так: клиент перевели на пакетный таймаут, а
+    check_ai_available() рядом оставили голой, и она ушла проверять с
+    AI_TIMEOUT. Команда падала на проверке, не начав работу:
+
+        ИИ-провайдер недоступен: Read timed out. (read timeout=30.0)
+    """
+    return {
+        "model": model or (config("AI_CANON_MODEL", default="").strip() or None),
+        "timeout": timeout or config("AI_CANON_TIMEOUT", default=120.0, cast=float),
+    }
+
+
+def check_batch_ai_available(model: Optional[str] = None, timeout: Optional[float] = None) -> None:
+    """check_ai_available() теми же моделью и таймаутом, что и пакетная работа."""
+    check_ai_available(**batch_ai_settings(model, timeout))
 
 
 def complete_with_retry(client, attempts: int = 3, pause: float = 2.0, **kwargs) -> str:
