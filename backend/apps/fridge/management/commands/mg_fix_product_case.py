@@ -67,8 +67,19 @@ def _same_name(product, name):
 
 
 def plan(source):
-    """-> (переименования, слияния, пропуски). Ничего не меняет."""
-    rows = Product.objects.filter(owner_family__isnull=True)
+    """-> (переименования, слияния, пропуски). Ничего не меняет.
+
+    MG_CASESCOPE: записи, скрытые из подборщиков (справочник штрих-кодов —
+    retail и off_bulk, это 32 тысячи упаковок), из разбора исключены целиком.
+    Их регистр не видит никто: ни в холодильнике, ни в дневнике, ни в списке
+    покупок. Раньше они в разбор входили, и `--source all` на проде выглядел
+    зависшим — упаковки написаны как попало, поэтому под переименование
+    попадала почти каждая, а на каждую идут два запроса в базу.
+
+    Это же согласует разбор с тем, как имя считается занятым: `_rivals` те же
+    записи не учитывает, потому что имя они не занимают.
+    """
+    rows = Product.objects.filter(owner_family__isnull=True).exclude(source__in=HIDDEN_FROM_PICKERS)
     if source != "all":
         rows = rows.filter(source=source)
     rows = [p for p in rows.order_by("name") if p.name != _sentence_case(p.name)]
@@ -103,10 +114,12 @@ class Command(BaseCommand):
         source, apply_, merge = opts["source"], opts["apply"], opts["merge"]
         renames, merges, skipped = plan(source)
 
-        total = Product.objects.filter(owner_family__isnull=True)
+        # Счётчик считает по тому же множеству, что и разбор: иначе «всего» и
+        # «переименовать» относились бы к разным наборам записей.
+        total = Product.objects.filter(owner_family__isnull=True).exclude(source__in=HIDDEN_FROM_PICKERS)
         if source != "all":
             total = total.filter(source=source)
-        self.stdout.write("Продуктов source=%s всего: %d" % (source, total.count()))
+        self.stdout.write("Продуктов source=%s в подборщиках: %d" % (source, total.count()))
 
         self.stdout.write("")
         self.stdout.write("Переименовать — %d:" % len(renames))

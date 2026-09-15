@@ -222,3 +222,37 @@ class TestWhoActuallyOwnsTheName:
 
         assert "имени не занимает" in out
         assert str(twin.id) in out
+
+
+class TestОбластьРазбора:
+    """MG_CASESCOPE: справочник штрих-кодов в разбор не входит.
+
+    На проде `--source all` выглядел зависшим: в каталоге 32 тысячи упаковок из
+    справочника, написаны они как попало, поэтому под переименование попадала
+    почти каждая — а на каждую идут два запроса в базу. Смысла в этой работе
+    нет: записи скрыты из всех подборщиков, их регистр не видит никто.
+    """
+
+    def test_запись_из_справочника_не_переименовывается(self, db):
+        pack = Product.objects.create(
+            name="Сыр Выдуманный Плавленый", source=Product.Source.OFFBULK, barcode="4600000000003"
+        )
+
+        run("--apply", "--source", "all")
+
+        pack.refresh_from_db()
+        assert pack.name == "Сыр Выдуманный Плавленый"
+
+    def test_обычная_запись_при_all_переименовывается(self, db):
+        """Исключение справочника не должно отменять саму работу команды."""
+        p = Product.objects.create(name="Сыр Выдуманный Копчёный", source=Product.Source.MANUAL)
+
+        run("--apply", "--source", "all")
+
+        p.refresh_from_db()
+        assert p.name == "Сыр выдуманный копчёный"
+
+    def test_в_отчёте_счётчик_про_подборщики(self, db):
+        out = run("--source", "all")
+
+        assert "в подборщиках" in out
