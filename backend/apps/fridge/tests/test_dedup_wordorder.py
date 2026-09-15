@@ -17,8 +17,11 @@
 import pytest
 from django.core.management import call_command
 
+from apps.family.models import Family
 from apps.fridge.management.commands.dedup_products import wordorder_key
 from apps.fridge.models import Product
+from apps.users.models import User
+from apps.users.views import _bootstrap_user
 
 
 class TestКлюч:
@@ -76,3 +79,58 @@ class TestСлияние:
         assert len(left) == 1
         # Канон — запись с меньшим id при прочих равных.
         assert left[0].id == a.id
+
+
+@pytest.mark.django_db
+class TestГраницыСлияния:
+    """MG_DEDUPSCOPE: что дедупликация трогать не должна.
+
+    На проде с --wordorder она предлагала «курица» → «Курица (филе)» и «Молодой
+    горошек» → «Молодой горошек (консервы овощные стерилизованные: горошек
+    зеленый)». Канон выбирается по наличию КБЖУ, а КБЖУ есть у упаковок из
+    справочника штрих-кодов — и настоящие продукты уезжали на записи, скрытые
+    из всех подборщиков.
+    """
+
+    def test_упаковка_из_справочника_каноном_не_становится(self, db):
+        from apps.fridge.dedup import has_kbju  # noqa: F401  — для читателя: канон выбирается по КБЖУ
+
+        pack = Product.objects.create(
+            name="Плюмбус кварцевый (упаковка 500 г)",
+            source=Product.Source.OFFBULK,
+            barcode="4600000000009",
+            calories_per_100g=100,
+        )
+        real = Product.objects.create(name="Кварцевый плюмбус", source=Product.Source.AUTO)
+        twin = Product.objects.create(name="Плюмбус кварцевый", source=Product.Source.AUTO)
+
+        call_command("dedup_products", "--wordorder", "--apply")
+
+        pack.refresh_from_db()
+        assert pack.name == "Плюмбус кварцевый (упаковка 500 г)"
+        assert Product.objects.filter(id__in=[real.id, twin.id]).count() == 1
+
+    def test_продукт_семьи_не_сливается_с_общим(self, db):
+        owner = User.objects.create_user(email="dedup@example.com", password="pass12345", name="O")
+        _bootstrap_user(owner)
+        family = Family.objects.get(owner=owner)
+        own = Product.objects.create(name="Шмурдяк ягодный", source=Product.Source.MANUAL, owner_family=family)
+        common = Product.objects.create(name="Ягодный шмурдяк", source=Product.Source.AUTO)
+
+        call_command("dedup_products", "--wordorder", "--apply")
+
+        own.refresh_from_db()
+        common.refresh_from_db()
+        assert own.name == "Шмурдяк ягодный"
+        assert common.name == "Ягодный шмурдяк"
+
+    def test_каноном_становится_запись_с_обычным_написанием(self, db):
+        """Имя канона уезжает во все списки покупок, поэтому оно важно."""
+        shouty = Product.objects.create(name="Тунец В Собственном Соку", source=Product.Source.AUTO)
+        plain = Product.objects.create(name="Тунец в собственном соку", source=Product.Source.AUTO)
+
+        call_command("dedup_products", "--wordorder", "--apply")
+
+        left = list(Product.objects.filter(id__in=[shouty.id, plain.id]))
+        assert len(left) == 1
+        assert left[0].name == "Тунец в собственном соку"

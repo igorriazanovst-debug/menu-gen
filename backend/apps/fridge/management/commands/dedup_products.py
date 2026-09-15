@@ -45,11 +45,20 @@ from django.db import transaction
 from apps.fridge.aliases import normalize_alias
 from apps.fridge.dedup import has_kbju, merge_product_into
 from apps.fridge.models import Product, ProductAlias
+from apps.fridge.visibility import HIDDEN_FROM_PICKERS
+from apps.recipes.recipe_products import _sentence_case
 
 
 def _canon_rank(p):
-    """Меньше — лучше канон: с КБЖУ, потом is_seed, потом меньший id."""
-    return (0 if has_kbju(p) else 1, 0 if p.is_seed else 1, p.id)
+    """Меньше — лучше канон: с КБЖУ, потом is_seed, потом написание, потом id.
+
+    MG_DEDUPCASE: написание добавлено третьим ключом, потому что имя канона
+    уезжает во все списки покупок. На проде без него канонами вставали «Тунец В
+    Собственном Соку», «Разрыхлитель Теста» и «масло растительное»: у них
+    оказывалось КБЖУ, и дальше выбор ни на что не смотрел.
+    """
+    proper = p.name == _sentence_case(p.name)
+    return (0 if has_kbju(p) else 1, 0 if p.is_seed else 1, 0 if proper else 1, p.id)
 
 
 def wordorder_key(name):
@@ -86,7 +95,27 @@ class Command(BaseCommand):
         apply = opts["apply"]
         limit = opts["limit"]
 
-        products = list(Product.objects.all().only("id", "name", "is_seed", "nutrition", "calories_per_100g"))
+        # MG_DEDUPSCOPE: сливаем только общий каталог — тот, что видно в
+        # подборщиках. Раньше здесь стоял Product.objects.all(), и на проде это
+        # выглядело так:
+        #
+        #   «курица» ×6 -> «Курица (филе)»
+        #   «Молодой горошек» -> «Молодой горошек (консервы овощные
+        #                         стерилизованные: горошек зеленый)»
+        #
+        # Канон выбирается по наличию КБЖУ, а КБЖУ есть у упаковок из
+        # справочника штрих-кодов (32 тысячи записей, retail и off_bulk). Они
+        # скрыты из всех подборщиков, поэтому слияние переносило настоящие
+        # продукты на то, чего пользователь выбрать не может. Эта же ошибка в
+        # проекте уже описана — в _get_or_create_catalog_product.
+        #
+        # Продукты семей исключены по другой причине: у семьи своё пространство
+        # имён, её «Сыр» и общий «Сыр» — разные записи, и сливать их нельзя.
+        products = list(
+            Product.objects.filter(owner_family__isnull=True)
+            .exclude(source__in=HIDDEN_FROM_PICKERS)
+            .only("id", "name", "is_seed", "nutrition", "calories_per_100g")
+        )
         pmap = {p.id: p for p in products}
         # ВАЖНО: для слияния доверяем ТОЛЬКО выверенным синонимам (manual/merge).
         # Авто-синонимы (source=auto) из канонизации ингредиентов шумные и сливали
@@ -147,7 +176,9 @@ class Command(BaseCommand):
         for dup_id, canon_id in merges.items():
             groups[canon_id].append(dup_id)
 
-        self.stdout.write(f"Продуктов всего: {len(products)}; групп со слиянием: {len(groups)}; дублей: {len(merges)}.")
+        self.stdout.write(
+            f"Продуктов в общем каталоге: {len(products)}; групп со слиянием: {len(groups)}; дублей: {len(merges)}."
+        )
         shown = 0
         for canon_id, dups in groups.items():
             if shown >= limit:
