@@ -74,3 +74,35 @@ class TestDedupProductsAi:
         assert Product.objects.filter(id=g1.id).exists()
         assert Product.objects.filter(id=g2.id).exists()
         assert "DRY-RUN" in out
+
+
+class TestПредупреждениеПроСрез:
+    """MG_DEDUPLIMIT: срез по id рвёт пары, и пустой план читается как «дублей нет».
+
+    На проде --limit 200 не нашёл ни одного дубля среди яиц: «Яйца куриные» (41)
+    и «Яичный белок» (197) в срез попали, а «Белок» (1018) и «Яцо» (2034) — нет.
+
+    Рубрика решается для каждой записи отдельно, и срез там честен. Дубль
+    решается парой — тут срез меняет ответ.
+    """
+
+    def test_срез_сопровождается_предупреждением(self, db):
+        from io import StringIO
+        from unittest import mock
+
+        from django.core.management import call_command
+
+        out, err = StringIO(), StringIO()
+        with (
+            mock.patch(
+                "apps.fridge.management.commands.dedup_products_ai.complete_with_retry",
+                return_value="[]",
+            ),
+            mock.patch("apps.common.ai_provider.get_batch_ai_client"),
+            mock.patch("apps.common.ai_provider.check_ai_available"),
+        ):
+            call_command("dedup_products_ai", "--limit", "5", stdout=out, stderr=err)
+
+        text = err.getvalue()
+        assert "не в этом срезе" in text
+        assert "без --limit" in text
