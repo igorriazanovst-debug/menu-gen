@@ -21,9 +21,15 @@
 (32 тысячи упаковок) скрыт, его рубрики никто не видит, а каждая пачка — платный
 запрос.
 
-Неполный разбор итогом не считается: если часть пачек не доехала, команда
-скажет, сколько названий в плане отсутствует, и с --apply откажется писать.
-Иначе «разложено 40» читалось бы как «остальное и не нуждалось».
+Потерянные пачки не отменяют запись — в отличие от слияния, где то же правило
+остаётся в силе. Строгость отвечает цене ошибки: слияние необратимо, а рубрика
+меняется одним UPDATE, и целью команда берёт только записи из «Прочего» — значит
+недоразобранные сами станут целью следующего запуска. Сколько их, команда
+говорит вслух: «разложено 539» без этого числа читалось бы как «остальное и не
+нуждалось».
+
+Потерянные пачки сперва переспрашиваются меньшими порциями: шлюз рвёт связь тем
+охотнее, чем длиннее ответ.
 
 По умолчанию — DRY-RUN.
 
@@ -129,45 +135,70 @@ class Command(BaseCommand):
         if not rows:
             return
 
-        plan = []  # (product, slug)
-        failed = 0
-        nchunks = (len(rows) + batch - 1) // batch
-        progress = BatchProgress(len(rows), nchunks, self._say)
-        for base in range(0, len(rows), batch):
-            grp = rows[base : base + batch]
-            payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
-            try:
-                raw = complete_with_retry(
-                    client, log=self._say, prompt=payload, system=system, max_tokens=3000, temperature=0.0
-                )
-                data = _parse_json_loose(raw)
-            except Exception as exc:
-                self.stderr.write(self.style.WARNING("  пачка %d: ошибка ИИ: %s" % (base // batch + 1, exc)))
-                failed += 1
-                progress.chunk_done(failed=True)
-                continue
-            if not isinstance(data, list):
-                failed += 1
-                progress.chunk_done(failed=True)
-                continue
-            taken = 0
-            for d in data:
-                if not isinstance(d, dict) or "i" not in d:
-                    continue
-                try:
-                    j = int(d["i"])
-                except (TypeError, ValueError):
-                    continue
-                if not (0 <= j < len(grp)):
-                    continue
-                slug = (d.get("slug") or "").strip()
-                # Рубрика вне списка — ответ модели, а не решение: пропускаем.
-                if slug and slug != "other" and slug in cat_id_by_slug:
-                    plan.append((grp[j], slug))
-                    taken += 1
-            progress.chunk_done(items=taken)
+        decided = {}  # product_id -> slug, когда рубрика найдена
+        # «Ответ получен» и «рубрика найдена» — разные вещи: на «other» модель
+        # ответила, и переспрашивать её во втором проходе значит платить дважды
+        # за один и тот же ответ.
+        answered = set()
 
-        progress.finish()
+        def sweep(items, size, label):
+            """Один проход по списку. Возвращает число потерянных пачек."""
+            lost = 0
+            nchunks = (len(items) + size - 1) // size
+            self._say("%s: записей %d, пачка %d" % (label, len(items), size))
+            progress = BatchProgress(len(items), nchunks, self._say)
+            for base in range(0, len(items), size):
+                grp = items[base : base + size]
+                payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
+                try:
+                    raw = complete_with_retry(
+                        client, log=self._say, prompt=payload, system=system, max_tokens=3000, temperature=0.0
+                    )
+                    data = _parse_json_loose(raw)
+                except Exception as exc:
+                    self.stderr.write(self.style.WARNING("  пачка %d: ошибка ИИ: %s" % (base // size + 1, exc)))
+                    lost += 1
+                    progress.chunk_done(failed=True)
+                    continue
+                if not isinstance(data, list):
+                    lost += 1
+                    progress.chunk_done(failed=True)
+                    continue
+                taken = 0
+                for d in data:
+                    if not isinstance(d, dict) or "i" not in d:
+                        continue
+                    try:
+                        j = int(d["i"])
+                    except (TypeError, ValueError):
+                        continue
+                    if not (0 <= j < len(grp)):
+                        continue
+                    slug = (d.get("slug") or "").strip()
+                    answered.add(grp[j].id)
+                    # Рубрика вне списка — ответ модели, а не решение: пропускаем.
+                    if slug and slug != "other" and slug in cat_id_by_slug:
+                        decided[grp[j].id] = slug
+                        taken += 1
+                progress.chunk_done(items=taken)
+            progress.finish()
+            return lost
+
+        lost = sweep(rows, batch, "Проход 1")
+        pending = [p for p in rows if p.id not in answered]
+
+        # MG_AISWEEP2: второй проход меньшими пачками. Шлюз рвёт соединение тем
+        # охотнее, чем длиннее ответ, — на проде из 24 пачек по 25 названий две
+        # потерялись целиком. Сдаваться на этом рано: та же работа пачками по
+        # десять обычно доходит, а стоит она столько же.
+        if lost and pending:
+            small = max(5, batch // 3)
+            self._say("")
+            sweep(pending, small, "Проход 2 (меньшими пачками)")
+            pending = [p for p in rows if p.id not in answered]
+
+        plan = [(p, decided[p.id]) for p in rows if p.id in decided]
+        failed = len(pending)
 
         by_slug = Counter(slug for _p, slug in plan)
         self.stdout.write("")
@@ -181,22 +212,29 @@ class Command(BaseCommand):
         if len(plan) > show:
             self.stdout.write("   ... скрыто ещё %d" % (len(plan) - show))
 
-        left = len(rows) - len(plan)
+        no_rubric = len(rows) - len(plan) - failed
         self.stdout.write("")
-        self.stdout.write("Остаётся в «Прочем» — %d: модель рубрики не нашла." % left)
+        self.stdout.write("Остаётся в «Прочем» — %d: модель рубрики не нашла." % no_rubric)
 
+        # MG_CATPARTIAL: недоразобранное НЕ отменяет запись — в отличие от
+        # слияния, где то же правило остаётся в силе.
+        #
+        # Строгость должна отвечать цене ошибки. Слияние необратимо: оно
+        # удаляет записи и переносит ссылки, и решать по неполному плану там
+        # нельзя. Простановка рубрики обратима одним UPDATE, и команда вдобавок
+        # идемпотентна — целью она берёт только записи из «Прочего», поэтому
+        # недоразобранные сами станут целью следующего запуска.
+        #
+        # На проде первое правило обошлось так: 14 минут работы и оплаченные
+        # запросы, две потерянные пачки из 24 — и в базу не легло ни одной из
+        # 539 верных рубрик. Отказ стоил дороже, чем частичная запись.
         if failed:
             self.stderr.write(
-                self.style.ERROR(
-                    "Пачек не разобрано: %d из %d — это примерно %d названий, которых в плане выше НЕТ."
-                    % (failed, nchunks, failed * batch)
+                self.style.WARNING(
+                    "Не разобрано записей: %d — их в плане выше НЕТ. "
+                    "Запустите команду ещё раз: целью она возьмёт как раз их." % failed
                 )
             )
-            if apply_:
-                self.stderr.write(
-                    self.style.ERROR("Запись отменена: сначала добейтесь полного разбора, потом --apply.")
-                )
-                return
 
         if not apply_:
             self.stdout.write("")

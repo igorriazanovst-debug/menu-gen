@@ -149,8 +149,8 @@ class TestЧтоНеПишется:
         assert p.category_fk.slug == "other"
         assert "Остаётся в «Прочем» — 1" in out
 
-    def test_при_потерянной_пачке_запись_отменяется(self, cats):
-        """Неполный разбор — не итог. Иначе «разложено 0» читалось бы как «нечего»."""
+    def test_потерянная_пачка_названа_числом(self, cats):
+        """«разложено N» без числа потерь читается как «остальное не нуждалось»."""
         other, _fish = cats
         p = Product.objects.create(name="Плюмбус утраченный", source=Product.Source.AUTO, category_fk=other)
 
@@ -158,8 +158,8 @@ class TestЧтоНеПишется:
 
         p.refresh_from_db()
         assert p.category_fk.slug == "other"
-        assert "Пачек не разобрано: 1 из 1" in out
-        assert "Запись отменена" in out
+        assert "Не разобрано записей: 1" in out
+        assert "Запустите команду ещё раз" in out
 
 
 @pytest.mark.django_db
@@ -202,3 +202,78 @@ class TestРубрикаОрехов:
 
         p.refresh_from_db()
         assert p.category_fk.slug == "sweets"
+
+
+@pytest.mark.django_db
+class TestНеполныйРазбор:
+    """MG_CATPARTIAL: недоразобранное не отменяет уже разобранное.
+
+    Первое правило было строгим: потеряна хоть одна пачка — не пишем ничего.
+    Под слиянием оно верно, там запись необратима. Здесь обошлось так: на проде
+    14 минут работы и оплаченные запросы, две потерянные пачки из 24 — и в базу
+    не легло ни одной из 539 верных рубрик.
+
+    Простановка рубрики обратима одним UPDATE, а команда идемпотентна: целью она
+    берёт только записи из «Прочего», поэтому недоразобранные сами станут целью
+    следующего запуска.
+    """
+
+    def test_разобранное_пишется_даже_когда_часть_потеряна(self, cats):
+        other, _fish = cats
+        good = Product.objects.create(name="Плюмбус ясный", source=Product.Source.AUTO, category_fk=other)
+        lost = Product.objects.create(name="Плюмбус туманный", source=Product.Source.AUTO, category_fk=other)
+
+        calls = {"n": 0}
+
+        def flaky(client, prompt, system, **kw):
+            calls["n"] += 1
+            items = json.loads(prompt)
+            # Первая пачка отвечает, остальные рвутся — и в первом проходе, и во втором.
+            if calls["n"] > 1:
+                raise RuntimeError("SSL: UNEXPECTED_EOF_WHILE_READING")
+            return json.dumps([{"i": it["i"], "slug": "fish"} for it in items])
+
+        out = run("--apply", "--batch", "1", complete=flaky)
+
+        good.refresh_from_db()
+        lost.refresh_from_db()
+        assert good.category_fk.slug == "fish"
+        assert lost.category_fk.slug == "other"
+        assert "Не разобрано записей: 1" in out
+
+    def test_потерянное_переспрашивается_вторым_проходом(self, cats):
+        other, _fish = cats
+        p = Product.objects.create(name="Плюмбус упрямый", source=Product.Source.AUTO, category_fk=other)
+
+        calls = {"n": 0}
+
+        def flaky(client, prompt, system, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("Read timed out. (read timeout=60.0)")
+            items = json.loads(prompt)
+            return json.dumps([{"i": it["i"], "slug": "fish"} for it in items])
+
+        out = run("--apply", complete=flaky)
+
+        p.refresh_from_db()
+        assert p.category_fk.slug == "fish"
+        assert "Проход 2" in out
+        assert "Не разобрано записей" not in out
+
+    def test_ответ_other_вторым_проходом_не_переспрашивается(self, cats):
+        """За один и тот же ответ платить дважды незачем."""
+        other, _fish = cats
+        Product.objects.create(name="Плюмбус безродный", source=Product.Source.AUTO, category_fk=other)
+
+        calls = {"n": 0}
+
+        def counting(client, prompt, system, **kw):
+            calls["n"] += 1
+            items = json.loads(prompt)
+            return json.dumps([{"i": it["i"], "slug": "other"} for it in items])
+
+        out = run(complete=counting)
+
+        assert calls["n"] == 1
+        assert "Проход 2" not in out
