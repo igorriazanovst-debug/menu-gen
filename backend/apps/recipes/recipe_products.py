@@ -3,6 +3,8 @@ import re
 import time
 from decimal import Decimal, InvalidOperation
 
+from apps.recipes.ingredient_noise import clean_ingredient_name, is_ingredient_noise  # MG_NOTENOISE
+
 
 def _norm(s):
     s = (s or "").strip().lower().replace("\u0451", "\u0435")  # ё -> е
@@ -432,6 +434,13 @@ def _is_seedable(canon_disp, cat_id):
         return False
     if re.match(r"^\d+([.,]\d+)?$", _norm(s)):
         return False
+    # MG_NOTENOISE: второй рубеж после ИИ. В промпте сказано «если это не
+    # продукт — canon=null», но модель отсекает не всё: в каталоге осели
+    # «Соль по вкусу», «Масло для обжарки», «Яица - 1 шт. С1». Одной проверки,
+    # которая иногда ошибается, мало там, где ошибка молча оседает в общем
+    # каталоге и потом всплывает у каждого, кто соберёт список из этого меню.
+    if is_ingredient_noise(s) or clean_ingredient_name(s) != s:
+        return False
     return cat_id is not None
 
 
@@ -522,6 +531,13 @@ def rebuild_recipe_links(
             canon, ai_slug, prod_name = canon_map.get(seg, (_cap(seg), "", None))
             if not canon:
                 continue  # noise -> no link
+            # MG_NOTENOISE: примечание рецепта продуктом не считаем. «Зелень по
+            # вкусу» становится «Зеленью» и находит настоящий товар каталога, а
+            # то, от чего после чистки не остаётся ничего («по вкусу», «для
+            # подачи»), связи не получает вовсе.
+            canon = clean_ingredient_name(canon)
+            if not canon:
+                continue
             product_id, canon_disp, slug, cat_id = _resolve_segment(
                 canon, ai_slug, prod_name, prod_index, cat_id_by_slug, ref_index=ref_index
             )

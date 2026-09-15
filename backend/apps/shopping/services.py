@@ -133,6 +133,7 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
     cleanup (ai_clean_item_names). Returns dicts with category_slug /
     category_fk_id / product_id so the import can colour by section."""
     from apps.fridge.aliases import product_ref_index, resolve_ref  # MG_PRODALIAS
+    from apps.recipes.ingredient_noise import clean_ingredient_name  # MG_NOTENOISE
     from apps.recipes.models import RecipeProduct
 
     pidx = product_ref_index()
@@ -152,6 +153,25 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
     agg = {}
 
     def _add(name, qty, unit, slug, cat_id, pid):  # MG_PRODALIAS
+        # MG_NOTENOISE: «Соль по вкусу», «Масло для обжарки», «По вкусу: базилик»
+        # — примечание из рецепта, а не позиция списка. Чистим здесь, в общей
+        # точке: сюда сходятся и готовые связи, и сырые ингредиенты после ИИ.
+        #
+        # Фильтр стоит на сборке списка, а не только на сборке связей, потому
+        # что связи уже накоплены: на проде 94 штуки с такими названиями. Иначе
+        # человек видел бы мусор до тех пор, пока не пройдёт пересборка, а она
+        # идёт больше часа и на прод её не запускают посреди дня.
+        cleaned = clean_ingredient_name(name)
+        if not cleaned:
+            return
+        if cleaned != (name or "").strip():
+            # Название было с примечанием — значит и привязка к товару, и
+            # категория достались от мусорной записи каталога («По вкусу:
+            # базилик» — отдельный товар с своим id). Сбрасываем их и ищем
+            # заново по очищенному названию, иначе позиция так и останется
+            # висеть на мусоре, только под приличным именем.
+            pid, slug, cat_id = None, "", None
+        name = cleaned
         disp = name
         ref = resolve_ref(name, pidx) if name else None
         if ref is not None:

@@ -15,12 +15,28 @@
 ProductAlias) перепривязываются на канон, КБЖУ при необходимости копируется
 в канон, имя дубля записывается синонимом, дубль удаляется.
 
+MG_WORDORDER: флагом --wordorder добавляется третье правило — те же слова в
+другом порядке. «Соевый соус» и «Соус соевый», «Лук репчатый» и «Репчатый лук»,
+«Панировочные сухари» и «Сухари панировочные» — на проде таких пар 38, и обычная
+нормализация их не ловит: она не переставляет слова, а сравнивает строку целиком.
+В списке покупок пара расходится на две позиции, и человек видит один и тот же
+товар дважды.
+
+Правило вынесено под флаг, а не включено всегда, по двум причинам. Оно
+объединяет записи с РАЗНЫМИ названиями, то есть ошибка здесь дороже: сливаются
+не формы одного слова, а две строки каталога, за каждой из которых свои ссылки.
+И оно же может встретить пару, где перестановка меняет смысл, — такую проще
+заметить глазами в dry-run, чем разбирать последствия.
+
 По умолчанию — DRY-RUN (только показывает план). Запись — флагом --apply.
 
     docker compose exec -T backend python manage.py dedup_products            # dry-run
     docker compose exec -T backend python manage.py dedup_products --apply
+    docker compose exec -T backend python manage.py dedup_products --wordorder
+    docker compose exec -T backend python manage.py dedup_products --wordorder --apply
 """
 
+import re
 from collections import defaultdict
 
 from django.core.management.base import BaseCommand
@@ -36,12 +52,35 @@ def _canon_rank(p):
     return (0 if has_kbju(p) else 1, 0 if p.is_seed else 1, p.id)
 
 
+def wordorder_key(name):
+    """MG_WORDORDER: те же слова в любом порядке дают один ключ.
+
+    Берётся уже нормализованное имя, чтобы правило наследовало всё, что делает
+    normalize_alias (регистр, ё, скобки, количество в начале), и добавляло к
+    этому ровно одно — независимость от порядка слов.
+
+    Однословные названия сюда не попадают: для них правило совпадает с обычной
+    нормализацией и ничего нового не даёт, а лишний проход по ним только
+    добавил бы шанс на ошибку.
+    """
+    base = normalize_alias(name)
+    words = sorted(w for w in re.split(r"[\s-]+", base) if w)
+    if len(words) < 2:
+        return None
+    return " ".join(words)
+
+
 class Command(BaseCommand):
     help = "Слить дубли продуктов в канонический (жёсткое слияние). По умолчанию dry-run."
 
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true", help="Выполнить слияние (иначе только показать план).")
         parser.add_argument("--limit", type=int, default=30, help="Сколько примеров слияний показать.")
+        parser.add_argument(
+            "--wordorder",
+            action="store_true",
+            help="MG_WORDORDER: считать дублями и те же слова в другом порядке («Соус соевый» = «Соевый соус»).",
+        )
 
     def handle(self, *args, **opts):
         apply = opts["apply"]
@@ -60,6 +99,16 @@ class Command(BaseCommand):
             by_norm[normalize_alias(p.name)].append(p)
         canon_of_norm = {k: min(g, key=_canon_rank) for k, g in by_norm.items()}
 
+        # MG_WORDORDER: вторая группировка — по набору слов без учёта порядка.
+        canon_of_words = {}
+        if opts["wordorder"]:
+            by_words = defaultdict(list)
+            for p in products:
+                key = wordorder_key(p.name)
+                if key:
+                    by_words[key].append(p)
+            canon_of_words = {k: min(g, key=_canon_rank) for k, g in by_words.items() if len(g) > 1}
+
         # дубль -> канон (один уровень)
         raw_map = {}
         for p in products:
@@ -72,6 +121,10 @@ class Command(BaseCommand):
                 c = canon_of_norm.get(key)
                 if c is not None and c.id != p.id:
                     canon = c
+                elif canon_of_words:
+                    w = canon_of_words.get(wordorder_key(p.name))
+                    if w is not None and w.id != p.id:
+                        canon = w
             if canon is not None and canon.id != p.id:
                 raw_map[p.id] = canon.id
 
