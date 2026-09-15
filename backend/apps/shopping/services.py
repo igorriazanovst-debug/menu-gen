@@ -230,6 +230,8 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
     if subtract_fridge and fridge_rows:  # MG_FRIDGESUB
         _subtract_fridge(agg, fridge_rows)
 
+    _apply_catalog_categories(agg)  # MG_CATLIVE
+
     out = []
     for v in agg.values():
         q = v["quantity"]
@@ -244,6 +246,44 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
             }
         )
     return out
+
+
+def _apply_catalog_categories(agg):
+    """MG_CATLIVE: рубрику позиции берём у товара каталога, а не из связи.
+
+    В связи рецепт→продукт рубрика лежит слепком на момент её сборки. Пока
+    слепок совпадал с каталогом, разницы не было. Но каталог правится: рубрики
+    проставляет редактор и mg_fix_categories, и после правки списки покупок
+    обязаны её показывать. А они показывали старое — `_add` заглядывал в
+    каталог только при пустом слуге, а в связях стоит «other», строка непустая.
+
+    Видно это было так: в каталоге 591 записи проставили рубрики, а «Прочее» в
+    списке осталось тем же списком из 58 строк — «Кальмар», «Кунжут», «Орехи»,
+    «Грецкий орех».
+
+    Правило: осмысленная рубрика товара сильнее любой из связи; если у товара
+    её нет («other» или пусто) — остаётся то, что было в связи. Так правка
+    каталога доходит до списков сразу, а позиции без товара ничего не теряют.
+    """
+    from apps.fridge.models import Product
+
+    pids = {v["product_id"] for v in agg.values() if v.get("product_id")}
+    if not pids:
+        return
+    live = {}
+    for pid, slug, cat_id in Product.objects.filter(id__in=pids).values_list(
+        "id", "category_fk__slug", "category_fk_id"
+    ):
+        live[pid] = (slug or "", cat_id)
+
+    for v in agg.values():
+        found = live.get(v.get("product_id"))
+        if not found:
+            continue
+        slug, cat_id = found
+        if slug and slug != "other":
+            v["category_slug"] = slug
+            v["category_fk_id"] = cat_id
 
 
 def parse_csv(text: str):

@@ -108,3 +108,78 @@ class TestПримечанияВСписке:
         items = build_items_from_menu(menu, family, subtract_fridge=False)
 
         assert _names(items) == {"Плюмбус"}
+
+
+@pytest.mark.django_db
+class TestРубрикаИзКаталога:
+    """MG_CATLIVE: рубрику позиции берём у товара каталога, а не из связи.
+
+    В связи рецепт→продукт рубрика лежит слепком на момент сборки. Каталог при
+    этом правится: рубрики проставляет редактор и mg_fix_categories. После
+    правки списки обязаны показывать новое, а показывали старое.
+
+    Видно это было так: в каталоге проставили 591 рубрику, а «Прочее» в списке
+    осталось тем же списком из 58 строк — «Кальмар», «Кунжут», «Орехи»,
+    «Грецкий орех».
+    """
+
+    def _cats(self):
+        from apps.fridge.models import ProductCategory
+
+        other, _ = ProductCategory.objects.get_or_create(
+            slug="other", defaults={"name_ru": "Прочее", "is_active": True}
+        )
+        fish, _ = ProductCategory.objects.get_or_create(
+            slug="fish", defaults={"name_ru": "Рыба и морепродукты", "is_active": True}
+        )
+        return other, fish
+
+    def test_рубрика_каталога_сильнее_слепка_в_связи(self, menu_with_links):
+        family, menu, recipe = menu_with_links
+        other, fish = self._cats()
+        product = Product.objects.create(name="Плюмбус морской", source=Product.Source.AUTO, category_fk=fish)
+        RecipeProduct.objects.create(
+            recipe=recipe,
+            name_canonical="Плюмбус морской",
+            name_raw="плюмбус",
+            product=product,
+            category_slug="other",
+            category_fk=other,
+        )
+
+        items = build_items_from_menu(menu, family, subtract_fridge=False)
+
+        assert [i["category_slug"] for i in items] == ["fish"]
+
+    def test_у_товара_без_рубрики_остаётся_то_что_в_связи(self, menu_with_links):
+        """«other» у товара — не рубрика, а её отсутствие: слепок связи полезнее."""
+        family, menu, recipe = menu_with_links
+        other, fish = self._cats()
+        product = Product.objects.create(name="Плюмбус донный", source=Product.Source.AUTO, category_fk=other)
+        RecipeProduct.objects.create(
+            recipe=recipe,
+            name_canonical="Плюмбус донный",
+            name_raw="плюмбус",
+            product=product,
+            category_slug="fish",
+            category_fk=fish,
+        )
+
+        items = build_items_from_menu(menu, family, subtract_fridge=False)
+
+        assert [i["category_slug"] for i in items] == ["fish"]
+
+    def test_позиция_без_товара_ничего_не_теряет(self, menu_with_links):
+        family, menu, recipe = menu_with_links
+        _other, fish = self._cats()
+        RecipeProduct.objects.create(
+            recipe=recipe,
+            name_canonical="Плюмбус безродный",
+            name_raw="плюмбус",
+            category_slug="fish",
+            category_fk=fish,
+        )
+
+        items = build_items_from_menu(menu, family, subtract_fridge=False)
+
+        assert [i["category_slug"] for i in items] == ["fish"]
