@@ -3,6 +3,7 @@ import re
 import time
 from decimal import Decimal, InvalidOperation
 
+from apps.common.progress import BatchProgress  # MG_PROGRESS
 from apps.recipes.ingredient_noise import clean_ingredient_name, is_ingredient_noise  # MG_NOTENOISE
 
 
@@ -332,9 +333,11 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None, cache_path=N
             failures["first"] = failures["first"] or "клиент ИИ не собрался (проверьте manage.py mg_ai_ping)"
             return
         nchunks = (len(indices) + chunk_size - 1) // chunk_size
+        # MG_PROGRESS: прогон идёт больше часа, и вопрос «успею ли до вечернего
+        # часа пик» не праздный. Строка хода общая со всеми пачечными командами.
+        progress = BatchProgress(len(indices), nchunks, _log)
         for ci, base in enumerate(range(0, len(indices), chunk_size), 1):
             grp = indices[base : base + chunk_size]
-            _log("  %s chunk %d/%d (segments %d)" % (phase, ci, nchunks, len(grp)))
             payload = json.dumps([{"i": j, "name": names[j]} for j in grp], ensure_ascii=False)
 
             # MG_AIRETRY: шлюз срывается на разовых 502/504 и таймаутах — за три
@@ -342,7 +345,6 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None, cache_path=N
             # Раньше пачка при сбое просто пропадала: повторный проход подбирал
             # её только один раз и тем же способом. Пробуем ту же пачку ещё
             # дважды с паузой — сбои у шлюза короткие, и второй попытки хватает.
-            started = time.monotonic()
             data, reason = None, ""
             for attempt in range(1, 4):
                 reason = ""
@@ -363,9 +365,10 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None, cache_path=N
             if reason:
                 failures["chunks"] += 1
                 failures["first"] = failures["first"] or reason
-                _log("    пачка потеряна: %s" % reason)
+                _log("    причина: %s" % reason)
+                progress.chunk_done(failed=True)
                 continue
-            _log("    ок за %.1f с" % (time.monotonic() - started))
+            taken = 0
             for d in data:
                 if not isinstance(d, dict) or "i" not in d:
                     continue
@@ -386,9 +389,12 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None, cache_path=N
                 else:
                     product = None
                 out[names[j]] = (canon if canon else None, slug, product)
+                taken += 1
+            progress.chunk_done(items=taken)
             # Кэш дописываем после КАЖДОЙ пачки, а не в конце прохода: обрыв на
             # середине не должен стоить того, что уже разобрано и оплачено.
             _cache_save(cache_path, signature, {**cached, **out}, _log)
+        progress.finish()
 
     all_idx = list(range(len(names)))
     todo = [j for j in all_idx if names[j] not in out]

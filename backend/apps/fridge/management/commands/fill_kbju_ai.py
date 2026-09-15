@@ -19,6 +19,7 @@ import json
 from django.core.management.base import BaseCommand
 
 from apps.common.ai_provider import complete_with_retry
+from apps.common.progress import BatchProgress
 from apps.fridge.models import Product
 
 SYSTEM = (
@@ -59,6 +60,11 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=0, help="Обработать не более N продуктов (0 = все).")
         parser.add_argument("--batch", type=int, default=20, help="Размер чанка для одного запроса к AI.")
 
+    def _say(self, line):
+        """Строка хода: печатаем сразу, иначе в докере она повиснет в буфере."""
+        self.stdout.write(line)
+        self.stdout.flush()
+
     def handle(self, *args, **opts):
         apply = opts["apply"]
         limit = opts["limit"]
@@ -96,11 +102,11 @@ class Command(BaseCommand):
         samples = []
         nchunks = (len(targets) + batch - 1) // batch
 
+        # MG_PROGRESS: длинный прогон не должен выглядеть зависшим. Строка
+        # хода общая со всеми пачечными командами — со временем и остатком.
+        progress = BatchProgress(len(targets), nchunks, self._say)
         for base in range(0, len(targets), batch):
             grp = targets[base : base + batch]
-            # живой прогресс: длинный прогон не должен выглядеть зависшим
-            self.stdout.write(f"  чанк {base // batch + 1}/{nchunks} (заполнено: {filled}, не еда: {not_food})…")
-            self.stdout.flush()
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
                 raw = complete_with_retry(client, prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0)
@@ -108,11 +114,14 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stderr.write(self.style.WARNING(f"  чанк {base // batch + 1}: ошибка AI: {e}"))
                 failed += len(grp)
+                progress.chunk_done(failed=True)
                 continue
             if not isinstance(data, list):
                 failed += len(grp)
+                progress.chunk_done(failed=True)
                 continue
 
+            taken = 0
             by_i = {}
             for d in data:
                 if isinstance(d, dict) and "i" in d:
@@ -141,6 +150,10 @@ class Command(BaseCommand):
                 if len(samples) < 20:
                     samples.append(f"  {p.name}: {kcal} ккал / Б{prot} Ж{fat} У{carb}")
                 filled += 1
+                taken += 1
+            progress.chunk_done(items=taken)
+
+        progress.finish()
 
         for s in samples:
             self.stdout.write(s)

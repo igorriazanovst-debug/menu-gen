@@ -24,6 +24,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from apps.common.ai_provider import complete_with_retry
+from apps.common.progress import BatchProgress
 from apps.fridge.aliases import normalize_alias
 from apps.fridge.dedup import has_kbju, merge_product_into
 from apps.fridge.models import Product
@@ -62,6 +63,11 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=0, help="Обработать не более N продуктов (0 = все).")
         parser.add_argument("--batch", type=int, default=20, help="Размер чанка для запроса к AI.")
         parser.add_argument("--show", type=int, default=40, help="Сколько групп показать в плане.")
+
+    def _say(self, line):
+        """Строка хода: печатаем сразу, иначе в докере она повиснет в буфере."""
+        self.stdout.write(line)
+        self.stdout.flush()
 
     def handle(self, *args, **opts):
         apply = opts["apply"]
@@ -107,10 +113,9 @@ class Command(BaseCommand):
         canon_key = {}
         failed_chunks = 0
         nchunks = (len(products) + batch - 1) // batch
+        progress = BatchProgress(len(products), nchunks, self._say)
         for base in range(0, len(products), batch):
             grp = products[base : base + batch]
-            self.stdout.write(f"  AI чанк {base // batch + 1}/{nchunks}…")
-            self.stdout.flush()
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
                 raw = complete_with_retry(client, prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0)
@@ -120,7 +125,9 @@ class Command(BaseCommand):
                 failed_chunks += 1
                 data = None
             if not isinstance(data, list):
+                progress.chunk_done(failed=True)
                 continue
+            taken = 0
             for d in data:
                 if not isinstance(d, dict) or "i" not in d:
                     continue
@@ -134,6 +141,10 @@ class Command(BaseCommand):
                 key = normalize_alias(canon) if isinstance(canon, str) else ""
                 if key:
                     canon_key[grp[j].id] = key
+                    taken += 1
+            progress.chunk_done(items=taken)
+
+        progress.finish()
 
         # группируем по канон-ключу
         pmap = {p.id: p for p in products}

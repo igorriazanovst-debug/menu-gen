@@ -40,6 +40,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from apps.common.ai_provider import complete_with_retry
+from apps.common.progress import BatchProgress
 from apps.fridge.models import Product
 from apps.fridge.visibility import HIDDEN_FROM_PICKERS
 
@@ -84,6 +85,11 @@ class Command(BaseCommand):
         parser.add_argument("--batch", type=int, default=25, help="Размер пачки для запроса к модели.")
         parser.add_argument("--show", type=int, default=60, help="Сколько строк плана показать.")
 
+    def _say(self, line):
+        """Строка хода: печатаем сразу, иначе в докере она повиснет в буфере."""
+        self.stdout.write(line)
+        self.stdout.flush()
+
     def handle(self, *args, **opts):
         from apps.recipes.recipe_products import _allowed_categories
 
@@ -121,10 +127,9 @@ class Command(BaseCommand):
         plan = []  # (product, slug)
         failed = 0
         nchunks = (len(rows) + batch - 1) // batch
+        progress = BatchProgress(len(rows), nchunks, self._say)
         for base in range(0, len(rows), batch):
             grp = rows[base : base + batch]
-            self.stdout.write("  пачка %d/%d…" % (base // batch + 1, nchunks))
-            self.stdout.flush()
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
                 raw = complete_with_retry(client, prompt=payload, system=system, max_tokens=3000, temperature=0.0)
@@ -132,10 +137,13 @@ class Command(BaseCommand):
             except Exception as exc:
                 self.stderr.write(self.style.WARNING("  пачка %d: ошибка ИИ: %s" % (base // batch + 1, exc)))
                 failed += 1
+                progress.chunk_done(failed=True)
                 continue
             if not isinstance(data, list):
                 failed += 1
+                progress.chunk_done(failed=True)
                 continue
+            taken = 0
             for d in data:
                 if not isinstance(d, dict) or "i" not in d:
                     continue
@@ -149,6 +157,10 @@ class Command(BaseCommand):
                 # Рубрика вне списка — ответ модели, а не решение: пропускаем.
                 if slug and slug != "other" and slug in cat_id_by_slug:
                     plan.append((grp[j], slug))
+                    taken += 1
+            progress.chunk_done(items=taken)
+
+        progress.finish()
 
         by_slug = Counter(slug for _p, slug in plan)
         self.stdout.write("")
