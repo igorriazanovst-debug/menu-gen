@@ -117,3 +117,45 @@ class TestИтог:
         p.finish()
 
         assert "пачек потеряно 1" in lines[-1]
+
+
+class TestМолчаниеВоВремяПовторов:
+    """MG_PROGRESS: пауза между попытками растёт, и к третьей это полминуты тишины.
+
+    На dev команда стояла молча на самой первой фазе — проверке провайдера, —
+    и со стороны это было неотличимо от зависания. Ровно то молчание, ради
+    которого указатель хода и заводили, только в начале, а не в середине.
+    """
+
+    def test_повтор_объявляется(self):
+        from apps.common.ai_provider import AIRequestError, complete_with_retry
+
+        lines, write = collect()
+
+        class Flaky:
+            calls = 0
+
+            def complete(self, **kw):
+                Flaky.calls += 1
+                if Flaky.calls == 1:
+                    raise AIRequestError("SSL: UNEXPECTED_EOF_WHILE_READING")
+                return "ок"
+
+        complete_with_retry(Flaky(), attempts=3, pause=0, log=write, prompt="[]")
+
+        assert len(lines) == 1
+        assert "попытка 1 из 3 не удалась" in lines[0]
+        assert "SSL" in lines[0]
+
+    def test_без_повторов_молчим(self):
+        from apps.common.ai_provider import complete_with_retry
+
+        lines, write = collect()
+
+        class Fine:
+            def complete(self, **kw):
+                return "ок"
+
+        complete_with_retry(Fine(), attempts=3, pause=0, log=write, prompt="[]")
+
+        assert lines == []

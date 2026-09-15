@@ -80,7 +80,9 @@ class Command(BaseCommand):
             # уходила в прогон и ловила 401 на каждой пачке.
             from apps.common.ai_provider import check_batch_ai_available
 
-            check_batch_ai_available()
+            self._say("Проверяю провайдера…")
+            check_batch_ai_available(log=self._say)
+            self._say("Провайдер отвечает.")
         except Exception as e:
             self.stderr.write(self.style.ERROR(f"ИИ-провайдер недоступен: {e}"))
             self.stderr.write(self.style.ERROR("Проверить настройки: manage.py mg_ai_ping"))
@@ -109,7 +111,9 @@ class Command(BaseCommand):
             grp = targets[base : base + batch]
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
-                raw = complete_with_retry(client, prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0)
+                raw = complete_with_retry(
+                    client, log=self._say, prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0
+                )
                 data = _parse_json_loose(raw)
             except Exception as e:
                 self.stderr.write(self.style.WARNING(f"  чанк {base // batch + 1}: ошибка AI: {e}"))

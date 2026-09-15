@@ -107,7 +107,12 @@ class Command(BaseCommand):
             from apps.common.ai_provider import check_batch_ai_available, get_batch_ai_client
 
             client = get_batch_ai_client()
-            check_batch_ai_available()
+            # MG_PROGRESS: до этой строки команда молчала, а проверка с тремя
+            # попытками и таймаутом в две минуты может думать долго. Молчание в
+            # начале читается как зависание ровно так же, как молчание в середине.
+            self._say("Проверяю провайдера…")
+            check_batch_ai_available(log=self._say)
+            self._say("Провайдер отвечает.")
         except Exception as exc:
             self.stderr.write(self.style.ERROR("ИИ-провайдер недоступен: %s" % exc))
             self.stderr.write(self.style.ERROR("Проверить настройки: manage.py mg_ai_ping"))
@@ -132,7 +137,9 @@ class Command(BaseCommand):
             grp = rows[base : base + batch]
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
-                raw = complete_with_retry(client, prompt=payload, system=system, max_tokens=3000, temperature=0.0)
+                raw = complete_with_retry(
+                    client, log=self._say, prompt=payload, system=system, max_tokens=3000, temperature=0.0
+                )
                 data = _parse_json_loose(raw)
             except Exception as exc:
                 self.stderr.write(self.style.WARNING("  пачка %d: ошибка ИИ: %s" % (base // batch + 1, exc)))

@@ -122,8 +122,10 @@ class TestПроверкаДоступности:
             check_batch_ai_available()
 
         passed = dict(checked.call_args.kwargs)
-        # attempts — про повторы, не про то, чем ходить: сверяем отдельно.
+        # attempts и log — про повторы и про вывод, а не про то, чем ходить в
+        # модель: сверяем отдельно, иначе проверка ловила бы каждое новое поле.
         assert passed.pop("attempts") == 3
+        passed.pop("log", None)
         assert passed == batch_ai_settings()
         assert passed["timeout"] == 120
         assert passed["model"] == "gemini-3.7-flash"

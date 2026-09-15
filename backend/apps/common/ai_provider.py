@@ -40,7 +40,7 @@ class AIUnavailable(RuntimeError):
     """Провайдер не отвечает — долгий прогон запускать бессмысленно."""
 
 
-def check_ai_available(model=None, timeout=None, attempts=1):
+def check_ai_available(model=None, timeout=None, attempts=1, log=None):
     """Один дешёвый запрос перед длинной работой. Отказ — исключение, не None.
 
     `model` и `timeout` — те же, с которыми пойдёт сама работа. Проверять чем-то
@@ -72,6 +72,7 @@ def check_ai_available(model=None, timeout=None, attempts=1):
         answer = complete_with_retry(
             client,
             attempts=attempts,
+            log=log,
             prompt="Ответь одним словом: столица России?",
             max_tokens=256,
             temperature=0.0,
@@ -381,16 +382,18 @@ def batch_ai_settings(model: Optional[str] = None, timeout: Optional[float] = No
     }
 
 
-def check_batch_ai_available(model: Optional[str] = None, timeout: Optional[float] = None, attempts: int = 3) -> None:
+def check_batch_ai_available(
+    model: Optional[str] = None, timeout: Optional[float] = None, attempts: int = 3, log=None
+) -> None:
     """check_ai_available() теми же моделью и таймаутом, что и пакетная работа.
 
     И с повторами: перед часовым прогоном отступать из-за одного сорвавшегося
     рукопожатия незачем — сама работа такие обрывы переживает.
     """
-    check_ai_available(attempts=attempts, **batch_ai_settings(model, timeout))
+    check_ai_available(attempts=attempts, log=log, **batch_ai_settings(model, timeout))
 
 
-def complete_with_retry(client, attempts: int = 3, pause: float = 2.0, **kwargs) -> str:
+def complete_with_retry(client, attempts: int = 3, pause: float = 2.0, log=None, **kwargs) -> str:
     """complete() с повтором при обрыве связи.
 
     Отказы, что видели на проде, — обрыв TLS и таймаут чтения — держатся
@@ -410,5 +413,12 @@ def complete_with_retry(client, attempts: int = 3, pause: float = 2.0, **kwargs)
         except AIRequestError as exc:
             last = exc
             if attempt < attempts:
+                # MG_PROGRESS: молчание во время повторов читается как зависание.
+                # Пауза растёт, и к третьей попытке это уже полминуты тишины.
+                if log:
+                    log(
+                        "    попытка %d из %d не удалась (%s), повтор через %d с"
+                        % (attempt, attempts, exc, pause * attempt)
+                    )
                 time.sleep(pause * attempt)
     raise last
