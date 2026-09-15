@@ -160,3 +160,45 @@ class TestЧтоНеПишется:
         assert p.category_fk.slug == "other"
         assert "Пачек не разобрано: 1 из 1" in out
         assert "Запись отменена" in out
+
+
+@pytest.mark.django_db
+class TestРубрикаОрехов:
+    """MG_NUTSCAT: орехи не сладости.
+
+    На пробной сотне модель отправила в «Сладости» девять записей подряд —
+    «Орехи», «Миндаль», «Арахис», «Фисташки», «Фундук», «Кедровые орешки».
+    Ошибкой модели это не было: подходящей рубрики в списке не существовало, а
+    в каталоге «Орех грецкий» лежал в «Специях и приправах» — единого правила
+    не было вовсе.
+    """
+
+    def test_рубрика_заведена_миграцией(self, db):
+        cat = ProductCategory.objects.filter(slug="nuts").first()
+        assert cat is not None
+        assert cat.name_ru == "Орехи и сухофрукты"
+        assert cat.is_active
+
+    def test_рубрика_предлагается_модели(self, db):
+        """Строка со списком рубрик собирается из активных — значит nuts в ней."""
+        from apps.recipes.recipe_products import _allowed_categories
+
+        assert "nuts" in {slug for slug, _ru, _cid in _allowed_categories()}
+
+    def test_орех_раскладывается_в_свою_рубрику(self, cats):
+        other, _fish = cats
+        p = Product.objects.create(name="Плюмбусовый орех", source=Product.Source.AUTO, category_fk=other)
+
+        run("--apply", complete=answer({"Плюмбусовый орех": "nuts"}))
+
+        p.refresh_from_db()
+        assert p.category_fk.slug == "nuts"
+
+    def test_миграция_чужие_записи_не_перекладывает(self, db):
+        """Раскладывать существующее — работа команды с dry-run, не миграции."""
+        sweets = ProductCategory.objects.filter(slug="sweets").first()
+        assert sweets is not None
+        p = Product.objects.create(name="Плюмбусовый миндаль", source=Product.Source.AUTO, category_fk=sweets)
+
+        p.refresh_from_db()
+        assert p.category_fk.slug == "sweets"
