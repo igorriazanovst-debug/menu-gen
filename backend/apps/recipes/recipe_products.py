@@ -345,6 +345,7 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None, cache_path=N
             # Раньше пачка при сбое просто пропадала: повторный проход подбирал
             # её только один раз и тем же способом. Пробуем ту же пачку ещё
             # дважды с паузой — сбои у шлюза короткие, и второй попытки хватает.
+            started = time.monotonic()
             data, reason = None, ""
             for attempt in range(1, 4):
                 reason = ""
@@ -368,6 +369,10 @@ def canonicalize_and_categorize(raw_names, chunk_size=30, log=None, cache_path=N
                 _log("    причина: %s" % reason)
                 progress.chunk_done(failed=True)
                 continue
+            # Время ОДНОЙ пачки, отдельно от накопительного в строке хода: при
+            # повторах важно именно оно — по нему видно, что пачка прошла со
+            # второй попытки и сколько это стоило.
+            _log("    ок за %.1f с" % (time.monotonic() - started))
             taken = 0
             for d in data:
                 if not isinstance(d, dict) or "i" not in d:
