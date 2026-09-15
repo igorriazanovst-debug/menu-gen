@@ -121,6 +121,58 @@ class TestПроверкаДоступности:
         with mock.patch("apps.common.ai_provider.check_ai_available") as checked:
             check_batch_ai_available()
 
-        assert checked.call_args.kwargs == batch_ai_settings()
-        assert checked.call_args.kwargs["timeout"] == 120
-        assert checked.call_args.kwargs["model"] == "gemini-3.7-flash"
+        passed = dict(checked.call_args.kwargs)
+        # attempts — про повторы, не про то, чем ходить: сверяем отдельно.
+        assert passed.pop("attempts") == 3
+        assert passed == batch_ai_settings()
+        assert passed["timeout"] == 120
+        assert passed["model"] == "gemini-3.7-flash"
+
+
+class TestПроверкаПовторяется:
+    """MG_AIPROBE: разовый обрыв TLS не означает, что провайдер лежит.
+
+    На dev команда не начиналась вовсе: «ИИ-провайдер недоступен: SSL:
+    UNEXPECTED_EOF_WHILE_READING». Повтор к рабочим пачкам был приделан, а
+    проверка ходила одним запросом — и одна сорвавшаяся попытка отменяла
+    часовую работу, которую сами обрывы не остановили бы.
+    """
+
+    def test_перед_пакетной_работой_проверка_повторяется(self, monkeypatch):
+        from apps.common.ai_provider import check_batch_ai_available
+
+        monkeypatch.setenv("AI_PROVIDER", "openai")
+        monkeypatch.setenv("AI_API_KEY", "test-key")
+        client = FlakyClient(failures=2, answer="Москва")
+
+        with mock.patch("apps.common.ai_provider.get_ai_client", return_value=client):
+            check_batch_ai_available(attempts=3)
+
+        assert client.calls == 3
+
+    def test_в_пользовательском_пути_проверка_одна(self, monkeypatch):
+        """Там ждать нельзя: человек смотрит на экран."""
+        from apps.common.ai_provider import AIUnavailable, check_ai_available
+
+        monkeypatch.setenv("AI_PROVIDER", "openai")
+        monkeypatch.setenv("AI_API_KEY", "test-key")
+        client = FlakyClient(failures=1, answer="Москва")
+
+        with mock.patch("apps.common.ai_provider.get_ai_client", return_value=client):
+            with pytest.raises(AIUnavailable):
+                check_ai_available()
+
+        assert client.calls == 1
+
+    def test_мёртвый_провайдер_всё_равно_признаётся_мёртвым(self, monkeypatch):
+        from apps.common.ai_provider import AIUnavailable, check_batch_ai_available
+
+        monkeypatch.setenv("AI_PROVIDER", "openai")
+        monkeypatch.setenv("AI_API_KEY", "test-key")
+        client = FlakyClient(failures=99)
+
+        with mock.patch("apps.common.ai_provider.get_ai_client", return_value=client):
+            with pytest.raises(AIUnavailable):
+                check_batch_ai_available(attempts=3)
+
+        assert client.calls == 3

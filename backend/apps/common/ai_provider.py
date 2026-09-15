@@ -40,7 +40,7 @@ class AIUnavailable(RuntimeError):
     """Провайдер не отвечает — долгий прогон запускать бессмысленно."""
 
 
-def check_ai_available(model=None, timeout=None):
+def check_ai_available(model=None, timeout=None, attempts=1):
     """Один дешёвый запрос перед длинной работой. Отказ — исключение, не None.
 
     `model` и `timeout` — те же, с которыми пойдёт сама работа. Проверять чем-то
@@ -60,7 +60,22 @@ def check_ai_available(model=None, timeout=None):
         # MG_AIEMPTY: щедрый лимит намеренно. Двадцати токенов хватало обычной
         # модели, но рассуждатель тратит их на размышление и отдаёт пустой текст
         # при HTTP 200 — проверка падала на живом провайдере.
-        answer = client.complete(prompt="Ответь одним словом: столица России?", max_tokens=256, temperature=0.0)
+        #
+        # MG_AIPROBE: `attempts` — потому что разовый обрыв TLS у шлюза не
+        # означает, что провайдер лежит. Работа повторы переживает
+        # (complete_with_retry), а проверка ходила одним запросом — и одна
+        # сорвавшаяся попытка не давала команде начаться вовсе:
+        #
+        #     ИИ-провайдер недоступен: SSL: UNEXPECTED_EOF_WHILE_READING
+        #
+        # По умолчанию одна попытка: в пользовательском пути ждать нельзя.
+        answer = complete_with_retry(
+            client,
+            attempts=attempts,
+            prompt="Ответь одним словом: столица России?",
+            max_tokens=256,
+            temperature=0.0,
+        )
     except Exception as exc:
         raise AIUnavailable("%s: %s" % (type(exc).__name__, exc))
     if not (answer or "").strip():
@@ -366,9 +381,13 @@ def batch_ai_settings(model: Optional[str] = None, timeout: Optional[float] = No
     }
 
 
-def check_batch_ai_available(model: Optional[str] = None, timeout: Optional[float] = None) -> None:
-    """check_ai_available() теми же моделью и таймаутом, что и пакетная работа."""
-    check_ai_available(**batch_ai_settings(model, timeout))
+def check_batch_ai_available(model: Optional[str] = None, timeout: Optional[float] = None, attempts: int = 3) -> None:
+    """check_ai_available() теми же моделью и таймаутом, что и пакетная работа.
+
+    И с повторами: перед часовым прогоном отступать из-за одного сорвавшегося
+    рукопожатия незачем — сама работа такие обрывы переживает.
+    """
+    check_ai_available(attempts=attempts, **batch_ai_settings(model, timeout))
 
 
 def complete_with_retry(client, attempts: int = 3, pause: float = 2.0, **kwargs) -> str:
