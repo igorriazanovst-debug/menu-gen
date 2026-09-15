@@ -241,9 +241,15 @@ class Command(BaseCommand):
         if len(plan) > show:
             self.stdout.write("   ... скрыто ещё %d" % (len(plan) - show))
 
-        no_rubric = len(rows) - len(plan) - failed
+        # Считаем раздельно: «подтвердила нынешнюю» и «рубрики не нашла» — это
+        # разные исходы. С --recheck их смешение врало особенно громко: 153
+        # подтверждённых овоща печатались как «модель рубрики не нашла».
+        confirmed = sum(1 for p in rows if p.id in decided and decided[p.id] == now.get(p.id))
+        no_rubric = sum(1 for p in rows if p.id in answered and p.id not in decided)
         self.stdout.write("")
-        self.stdout.write("Остаётся в «Прочем» — %d: модель рубрики не нашла." % no_rubric)
+        if confirmed:
+            self.stdout.write("Рубрика подтверждена, менять нечего — %d." % confirmed)
+        self.stdout.write("Рубрики не нашлось — %d: остаются как есть." % no_rubric)
 
         # MG_CATPARTIAL: недоразобранное НЕ отменяет запись — в отличие от
         # слияния, где то же правило остаётся в силе.
@@ -258,6 +264,11 @@ class Command(BaseCommand):
         # запросы, две потерянные пачки из 24 — и в базу не легло ни одной из
         # 539 верных рубрик. Отказ стоил дороже, чем частичная запись.
         if failed:
+            # stdout буферизован, stderr — нет, и предупреждение влезало в
+            # середину плана: на проде строка «Не разобрано записей: 16» встала
+            # между «Запеченной тыквой» и «Отварной свеклой». Порядок строк —
+            # часть смысла: читатель решает по списку, а не по россыпи.
+            self.stdout.flush()
             self.stderr.write(
                 self.style.WARNING(
                     "Не разобрано записей: %d — их в плане выше НЕТ. "

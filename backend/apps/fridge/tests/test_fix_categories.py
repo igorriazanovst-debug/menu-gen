@@ -147,7 +147,7 @@ class TestЧтоНеПишется:
 
         p.refresh_from_db()
         assert p.category_fk.slug == "other"
-        assert "Остаётся в «Прочем» — 1" in out
+        assert "Рубрики не нашлось — 1" in out
 
     def test_потерянная_пачка_названа_числом(self, cats):
         """«разложено N» без числа потерь читается как «остальное не нуждалось»."""
@@ -323,3 +323,26 @@ class TestПересмотр:
         out = run("--recheck", "звездолёты", complete=answer({}))
 
         assert "Неизвестные рубрики в --recheck: звездолёты" in out
+
+
+@pytest.mark.django_db
+class TestИтоговыеЧисла:
+    """Исходы разные — и считать их надо раздельно.
+
+    С --recheck смешение врало громко: 153 подтверждённых овоща печатались как
+    «модель рубрики не нашла».
+    """
+
+    def test_подтверждённое_и_ненайденное_считаются_порознь(self, cats):
+        other, fish = cats
+        Product.objects.create(name="Плюмбус речной", source=Product.Source.AUTO, category_fk=fish)
+        Product.objects.create(name="Плюмбус безродный", source=Product.Source.AUTO, category_fk=other)
+
+        out = run("--recheck", "fish", complete=answer({"Плюмбус речной": "fish"}))
+
+        # Числа считаем только по подтверждённому: в «Прочем» лежат ещё и
+        # посевные записи из миграции каталога, и их количество к делу не
+        # относится — важно, что подтверждённое в это число не попало.
+        assert "Рубрика подтверждена, менять нечего — 1." in out
+        assert "Рубрики не нашлось — " in out
+        assert "Рубрики не нашлось — 0" not in out
