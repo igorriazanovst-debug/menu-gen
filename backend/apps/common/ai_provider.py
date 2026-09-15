@@ -326,3 +326,52 @@ def get_ai_client(
         return AnthropicAIClient(api_key=api_key, text_model=text_model)
 
     raise AIConfigError(f"Unknown AI_PROVIDER: {provider!r}")
+
+
+def get_batch_ai_client(model: Optional[str] = None, timeout: Optional[float] = None) -> BaseAIClient:
+    """MG_AIBATCH: клиент для пакетной работы — своя модель и свой таймаут.
+
+    Разница с get_ai_client() не в удобстве, а в том, что пакетный запрос иначе
+    устроен: пачка из двух-трёх десятков названий и до 3000 токенов ответа. В
+    AI_TIMEOUT (30 с, подобранный под разовый запрос в пользовательском пути)
+    сильная модель не укладывается.
+
+    Сборка связей рецепт→продукт это уже учитывала и ходила с AI_CANON_MODEL и
+    AI_CANON_TIMEOUT. А dedup_products_ai и fill_kbju_ai звали get_ai_client()
+    голым — и на проде половина пачек отваливалась:
+
+        Read timed out. (read timeout=30.0)
+        SSL: UNEXPECTED_EOF_WHILE_READING
+
+    Хуже самих отказов было то, что команда при этом печатала правдоподобный
+    итог: «Групп со слиянием: 1» означало не «дублей почти нет», а «половину
+    данных мы не смотрели».
+    """
+    return get_ai_client(
+        model=model or (config("AI_CANON_MODEL", default="").strip() or None),
+        timeout=timeout or config("AI_CANON_TIMEOUT", default=120.0, cast=float),
+    )
+
+
+def complete_with_retry(client, attempts: int = 3, pause: float = 2.0, **kwargs) -> str:
+    """complete() с повтором при обрыве связи.
+
+    Отказы, что видели на проде, — обрыв TLS и таймаут чтения — держатся
+    секунды и проходят сами. Без повтора пачка теряется целиком, а с ней и
+    десятки названий: цена одной неудачной попытки здесь не «медленнее», а
+    «часть каталога осталась неразобранной».
+
+    Повторяем только сетевые отказы (AIRequestError). Ошибку настройки
+    (AIConfigError) повторять бессмысленно — она не пройдёт и на третий раз.
+    """
+    import time
+
+    last = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return client.complete(**kwargs)
+        except AIRequestError as exc:
+            last = exc
+            if attempt < attempts:
+                time.sleep(pause * attempt)
+    raise last

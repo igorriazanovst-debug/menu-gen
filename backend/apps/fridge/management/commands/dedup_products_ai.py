@@ -23,9 +23,11 @@ from collections import defaultdict
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from apps.common.ai_provider import complete_with_retry
 from apps.fridge.aliases import normalize_alias
 from apps.fridge.dedup import has_kbju, merge_product_into
 from apps.fridge.models import Product
+from apps.fridge.visibility import HIDDEN_FROM_PICKERS
 
 SYSTEM = (
     "Тебе дан JSON-массив объектов {i, name} — названия продуктов питания из "
@@ -68,9 +70,11 @@ class Command(BaseCommand):
         show = opts["show"]
 
         try:
-            from apps.common.ai_provider import get_ai_client
+            from apps.common.ai_provider import get_batch_ai_client
 
-            client = get_ai_client()
+            # MG_AIBATCH: пакетный клиент — своя модель и свой таймаут. С
+            # обычным (30 с) на проде отваливалась половина пачек.
+            client = get_batch_ai_client()
             # MG_AIPING: фабрика только собирает клиента и ловит пустой ключ.
             # Неверный ключ виден лишь по ответу сервиса — без запроса команда
             # уходила в прогон и ловила 401 на каждой пачке.
@@ -89,13 +93,19 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("Парсер JSON недоступен (_parse_json_loose)."))
             return
 
-        products = list(Product.objects.all().order_by("id"))
+        # MG_DEDUPSCOPE: разбираем только общий каталог. Product.objects.all()
+        # — это ещё и 32 тысячи упаковок из справочника штрих-кодов: они скрыты
+        # из подборщиков, сливать в них нельзя, а каждая пачка — платный запрос.
+        products = list(
+            Product.objects.filter(owner_family__isnull=True).exclude(source__in=HIDDEN_FROM_PICKERS).order_by("id")
+        )
         if limit > 0:
             products = products[:limit]
         self.stdout.write(f"Продуктов к анализу: {len(products)} (batch={batch}).")
 
         # product_id -> канон-ключ (нормализованный канон от AI)
         canon_key = {}
+        failed_chunks = 0
         nchunks = (len(products) + batch - 1) // batch
         for base in range(0, len(products), batch):
             grp = products[base : base + batch]
@@ -103,10 +113,11 @@ class Command(BaseCommand):
             self.stdout.flush()
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
-                raw = client.complete(prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0)
+                raw = complete_with_retry(client, prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0)
                 data = _parse_json_loose(raw)
             except Exception as e:
                 self.stderr.write(self.style.WARNING(f"  чанк {base // batch + 1}: ошибка AI: {e}"))
+                failed_chunks += 1
                 data = None
             if not isinstance(data, list):
                 continue
@@ -147,6 +158,25 @@ class Command(BaseCommand):
             self.stdout.write(f"  {names} -> «{survivor.name}»")
         if len(merges) > show:
             self.stdout.write(f"  … и ещё {len(merges) - show} групп")
+
+        # MG_AIBATCH: молчать о потерянных пачках нельзя. На проде команда при
+        # пяти отвалившихся чанках из десяти напечатала «Групп со слиянием: 1»,
+        # и это читалось как «дублей почти нет», хотя половина названий до
+        # модели просто не доехала. Неполный разбор — не итог, а полуфабрикат:
+        # слить по нему — значит принять решение, не посмотрев на данные.
+        if failed_chunks:
+            lost = failed_chunks * batch
+            self.stderr.write(
+                self.style.ERROR(
+                    "Пачек не разобрано: %d из %d — это примерно %d названий, "
+                    "которых в плане выше НЕТ." % (failed_chunks, nchunks, lost)
+                )
+            )
+            if apply:
+                self.stderr.write(
+                    self.style.ERROR("Слияние отменено: сначала добейтесь полного разбора, потом --apply.")
+                )
+                return
 
         if not apply:
             self.stdout.write(self.style.WARNING("DRY-RUN — ничего не изменено. Для записи: --apply"))

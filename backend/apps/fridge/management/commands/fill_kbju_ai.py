@@ -18,6 +18,7 @@ import json
 
 from django.core.management.base import BaseCommand
 
+from apps.common.ai_provider import complete_with_retry
 from apps.fridge.models import Product
 
 SYSTEM = (
@@ -64,9 +65,10 @@ class Command(BaseCommand):
         batch = max(1, opts["batch"])
 
         try:
-            from apps.common.ai_provider import get_ai_client
+            from apps.common.ai_provider import get_batch_ai_client
 
-            client = get_ai_client()
+            # MG_AIBATCH: пакетный клиент — своя модель и свой таймаут.
+            client = get_batch_ai_client()
             # MG_AIPING: фабрика только собирает клиента и ловит пустой ключ.
             # Неверный ключ виден лишь по ответу сервиса — без запроса команда
             # уходила в прогон и ловила 401 на каждой пачке.
@@ -101,7 +103,7 @@ class Command(BaseCommand):
             self.stdout.flush()
             payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
             try:
-                raw = client.complete(prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0)
+                raw = complete_with_retry(client, prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0)
                 data = _parse_json_loose(raw)
             except Exception as e:
                 self.stderr.write(self.style.WARNING(f"  чанк {base // batch + 1}: ошибка AI: {e}"))
