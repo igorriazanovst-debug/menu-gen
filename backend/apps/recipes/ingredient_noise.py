@@ -67,6 +67,9 @@ _NUM = r"\d+(?:[.,]\d+)?(?:\s*[-–—]\s*\d+(?:[.,]\d+)?)?"
 
 # «2 зубчика», «4-5 веточек», «1 ст. ложка», «200 мл», «~200 г», «по 90г».
 _QTY_RE = re.compile(r"\b(?:по\s*)?~?\s*%s\s*%s\b\.?" % (_NUM, _MEASURE), re.IGNORECASE)
+# Число в начале названия — всегда количество: «3 яйца вареных», «2 зубчика
+# чеснока». Меры при нём может и не быть, поэтому правило отдельное.
+_LEAD_NUM_RE = re.compile(r"^\s*%s\s+" % _NUM)
 # Мера без числа в начале строки: «– 1 ст. 200 мл орзо» после вырезания чисел.
 _LEAD_JUNK_RE = re.compile(r"^[\s.,:;+*~–—-]+")
 _TAIL_JUNK_RE = re.compile(r"[\s.,:;+*~–—-]+$")
@@ -102,6 +105,7 @@ def clean_ingredient_name(name):
 
     s = _NOTE_RE.sub(" ", s)
     s = _QTY_RE.sub(" ", s)
+    s = _LEAD_NUM_RE.sub("", s)
     s = _EGG_GRADE_RE.sub(" ", s)
     s = re.sub(r"\s+", " ", s)
     s = _LEAD_JUNK_RE.sub("", s)
@@ -122,3 +126,16 @@ def clean_ingredient_name(name):
 def is_ingredient_noise(name):
     """True, если от названия после чистки не остаётся продукта."""
     return not clean_ingredient_name(name)
+
+
+def is_ingredient_fragment(name):
+    """True, если в названии есть примечание или количество.
+
+    Шире, чем is_ingredient_noise: «Масло для обжарки» и «Апельсин ~200 г» —
+    продукты, но записывать их в каталог под такими именами нельзя. Правило
+    отделяет записи, которые надо чистить, от тех, что просто не являются едой.
+    """
+    s = (name or "").strip()
+    if not s:
+        return False
+    return clean_ingredient_name(s) != s

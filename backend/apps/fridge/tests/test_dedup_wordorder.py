@@ -134,3 +134,40 @@ class TestГраницыСлияния:
         left = list(Product.objects.filter(id__in=[shouty.id, plain.id]))
         assert len(left) == 1
         assert left[0].name == "Тунец в собственном соку"
+
+
+class TestСкобки:
+    """MG_DEDUPBRACKET: уточнение в скобках — часть личности товара.
+
+    normalize_alias скобки выбрасывает, поэтому «Курица (филе)» превращалось в
+    «курица», и на проде предлагалось слить «Курицу» в «Курицу (филе)». Филе —
+    не вся курица.
+    """
+
+    def test_скобка_разводит_записи(self):
+        from apps.fridge.management.commands.dedup_products import group_key
+
+        assert group_key("Курица") != group_key("Курица (филе)")
+        assert group_key("Душица") != group_key("Душица (орегано)")
+
+    def test_без_скобок_ключ_прежний(self):
+        from apps.fridge.management.commands.dedup_products import group_key
+
+        assert group_key("Курица") == group_key("курица")
+
+    def test_перестановка_со_скобкой_тоже_разводится(self):
+        assert wordorder_key("Горошек молодой") != wordorder_key("Молодой горошек (консервы)")
+
+
+@pytest.mark.django_db
+class TestСкобкиСлияние:
+    def test_уточнённый_товар_не_поглощает_общий(self, db):
+        whole = Product.objects.create(name="Плюмбус", source=Product.Source.MANUAL)
+        part = Product.objects.create(name="Плюмбус (сердцевина)", source=Product.Source.AUTO, calories_per_100g=90)
+
+        call_command("dedup_products", "--wordorder", "--apply")
+
+        whole.refresh_from_db()
+        part.refresh_from_db()
+        assert whole.name == "Плюмбус"
+        assert part.name == "Плюмбус (сердцевина)"

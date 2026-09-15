@@ -19,6 +19,13 @@
 - `metadata` (по умолчанию) — строка со страницы рецепта, а не еда: «Время
   приготовления N мин», «… кухня», названия разделов и приёмов пищи, одинокие
   прилагательные («Очищенный», «Чёрный»);
+- `noise` (MG_NOTENOISE) — в названии осталось примечание рецепта или
+  количество: «Масло для обжарки», «Зелень укропа 4-5 веточек для подачи»,
+  «Апельсин ~200 г», «3 яйца вареных», «Сливочное масло 72». Продукт в такой
+  строке может и быть, но записывать его в общий каталог под этим именем
+  нельзя. Правило пользуется тем же фильтром, что и сборка связей, — одно
+  правило на оба конца, чтобы чистка и защита не разъезжались. Проценты
+  жирности оно не трогает: «Сливки 10%» и «Творог 5%» это нормальные записи;
 - `dish` — название совпадает с заголовком рецепта. Правило **не** включено по
   умолчанию: совпадение с рецептом не доказывает, что продукта не существует.
   На проверке из десяти находок блюдами оказались четыре («Рататуй», «Голубцы»,
@@ -35,7 +42,7 @@
 
 Остальное командой не трогается: разбирать «Икру» и «Бульон» должен редактор.
 
-В правилах `metadata`, `dish` и `all` запись пропускается, если на неё ссылается
+В правилах `metadata`, `noise`, `dish` и `all` запись пропускается, если на неё ссылается
 хоть что-то, кроме связей рецептов: холодильник, дневник, список покупок,
 синоним из админки. В `orphan` не считается ссылкой вообще ничего — там и
 берутся только записи без единой ссылки.
@@ -58,6 +65,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from apps.fridge.models import Product
+from apps.recipes.ingredient_noise import is_ingredient_fragment
 
 # Связь рецепта с продуктом — не пользовательские данные: её пересоберёт
 # mg_backfill_recipe_products. Всё остальное, что ссылается на продукт, —
@@ -159,11 +167,13 @@ def classify(rules):
         return {"all": rows}, []
 
     titles = dish_titles() if "dish" in rules else set()
-    hit = {"metadata": [], "dish": []}
+    hit = {"metadata": [], "noise": [], "dish": []}
     rest = []
     for p in rows:
         if "metadata" in rules and is_metadata(p.name):
             hit["metadata"].append(p)
+        elif "noise" in rules and is_ingredient_fragment(p.name):
+            hit["noise"].append(p)
         elif "dish" in rules and _norm(p.name) in titles:
             hit["dish"].append(p)
         else:
@@ -179,13 +189,13 @@ class Command(BaseCommand):
         parser.add_argument(
             "--rules",
             default="metadata",
-            help="Через запятую: metadata (по умолчанию), orphan, dish, all.",
+            help="Через запятую: metadata (по умолчанию), noise, orphan, dish, all.",
         )
         parser.add_argument("--limit", type=int, default=40, help="Сколько названий показать на правило.")
 
     def handle(self, *args, **opts):
         rules = {r.strip() for r in opts["rules"].split(",") if r.strip()}
-        unknown = rules - {"metadata", "dish", "orphan", "all"}
+        unknown = rules - {"metadata", "noise", "dish", "orphan", "all"}
         if unknown:
             self.stderr.write("Неизвестные правила: %s" % ", ".join(sorted(unknown)))
             return

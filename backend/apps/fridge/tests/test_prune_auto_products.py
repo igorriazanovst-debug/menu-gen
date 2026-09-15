@@ -247,3 +247,65 @@ class TestOrphanRule:
         run(rules="orphan")
 
         assert Product.objects.filter(pk=stale.pk).exists()
+
+
+@pytest.mark.django_db
+class TestNoiseRule:
+    """MG_NOTENOISE: в каталоге осели названия с примечанием и количеством.
+
+    Примеры взяты с прода: «Масло для обжарки», «Зелень укропа 4-5 веточек для
+    подачи», «Апельсин ~200 г», «3 яйца вареных», «Сливочное масло 72». Продукт
+    в такой строке может и быть, но в общем каталоге под этим именем ему не
+    место — правило пользуется тем же фильтром, что и сборка связей.
+    """
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Масло для обжарки",
+            "Зелень укропа 4-5 веточек для подачи",
+            "Апельсин ~200 г",
+            "3 яйца вареных",
+            "Сливочное масло 72",
+            "Соль по вкусу",
+        ],
+    )
+    def test_мусорное_имя_удаляется(self, auto, name):
+        p = auto(name)
+
+        run(rules="noise")
+
+        assert not Product.objects.filter(id=p.id).exists()
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Сливки 10%",
+            "Творог 5%",
+            "Морковь по-корейски",
+            "Крабовые палочки",
+            "Сыр твёрдый любой",
+        ],
+    )
+    def test_нормальное_имя_остаётся(self, auto, name):
+        p = auto(name)
+
+        run(rules="noise")
+
+        assert Product.objects.filter(id=p.id).exists()
+
+    def test_правило_не_включено_по_умолчанию(self, auto):
+        p = auto("Масло для обжарки")
+
+        run()
+
+        assert Product.objects.filter(id=p.id).exists()
+
+    def test_живую_запись_правило_не_трогает(self, auto, cats):
+        """Ссылка откуда угодно, кроме связи рецепта, означает, что запись нужна."""
+        p = auto("Масло для обжарки")
+        ProductAlias.objects.create(product=p, alias_norm="масло жарочное", source="manual")
+
+        run(rules="noise")
+
+        assert Product.objects.filter(id=p.id).exists()

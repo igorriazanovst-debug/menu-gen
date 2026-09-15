@@ -61,6 +61,31 @@ def _canon_rank(p):
     return (0 if has_kbju(p) else 1, 0 if p.is_seed else 1, 0 if proper else 1, p.id)
 
 
+_BRACKET_RE = re.compile(r"\(([^)]*)\)")
+
+
+def qualifier(name):
+    """MG_DEDUPBRACKET: уточнение в скобках — часть личности товара.
+
+    normalize_alias скобки выбрасывает, и «Курица (филе)» становится «курица».
+    На проде из-за этого предлагалось слить «Курицу» в «Курицу (филе)» — а филе
+    это не вся курица. Рядом того же рода «Душица (орегано)» и «Молодой горошек
+    (консервы овощные стерилизованные: горошек зеленый)».
+
+    Отличить уточнение-синоним («орегано») от уточнения-сужения («филе»)
+    механически нельзя. Поэтому скобка просто разводит записи: пропущенное
+    слияние стоит куда дешевле неверного — его видно глазами в следующем
+    dry-run, а неверное молча переносит ссылки на другой товар.
+    """
+    parts = [normalize_alias(m) for m in _BRACKET_RE.findall(name or "")]
+    return " ".join(sorted(p for p in parts if p))
+
+
+def group_key(name):
+    """Ключ сравнения имён: нормализованное имя плюс содержимое скобок."""
+    return "%s|%s" % (normalize_alias(name), qualifier(name))
+
+
 def wordorder_key(name):
     """MG_WORDORDER: те же слова в любом порядке дают один ключ.
 
@@ -76,7 +101,9 @@ def wordorder_key(name):
     words = sorted(w for w in re.split(r"[\s-]+", base) if w)
     if len(words) < 2:
         return None
-    return " ".join(words)
+    # Уточнение в скобках разводит записи и здесь — по той же причине, что в
+    # group_key: «Курица (филе)» не тот же товар, что «Курица».
+    return "%s|%s" % (" ".join(words), qualifier(name))
 
 
 class Command(BaseCommand):
@@ -122,10 +149,11 @@ class Command(BaseCommand):
         # разные продукты (напр. «Мука пшеничная» -> «Мука») — их не используем.
         alias_index = {a.alias_norm: a.product_id for a in ProductAlias.objects.exclude(source="auto")}
 
-        # группы по нормализованному имени -> выбранный канон группы
+        # Группы по имени -> канон группы. Ключ с учётом скобок
+        # (MG_DEDUPBRACKET): «Курица» и «Курица (филе)» — разные товары.
         by_norm = defaultdict(list)
         for p in products:
-            by_norm[normalize_alias(p.name)].append(p)
+            by_norm[group_key(p.name)].append(p)
         canon_of_norm = {k: min(g, key=_canon_rank) for k, g in by_norm.items()}
 
         # MG_WORDORDER: вторая группировка — по набору слов без учёта порядка.
@@ -141,13 +169,14 @@ class Command(BaseCommand):
         # дубль -> канон (один уровень)
         raw_map = {}
         for p in products:
-            key = normalize_alias(p.name)
+            # Синонимы из админки сверяются по alias_norm, поэтому ключ там
+            # прежний; группировка имён — по ключу со скобками.
             canon = None
-            tgt = alias_index.get(key)
+            tgt = alias_index.get(normalize_alias(p.name))
             if tgt is not None and tgt in pmap and tgt != p.id:
                 canon = pmap[tgt]
             else:
-                c = canon_of_norm.get(key)
+                c = canon_of_norm.get(group_key(p.name))
                 if c is not None and c.id != p.id:
                     canon = c
                 elif canon_of_words:
