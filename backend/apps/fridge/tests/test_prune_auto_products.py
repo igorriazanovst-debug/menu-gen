@@ -164,14 +164,23 @@ class TestUntouchable:
 
         assert Product.objects.filter(pk=mine.pk).exists()
 
-    def test_машинный_продукт_с_категорией_не_трогаем(self, cats):
-        """Категорию назвал канонизатор — этот сегмент он разобрал."""
+    def test_рубрика_от_правила_по_имени_больше_не_защищает(self, cats):
+        """MG_PRUNEWIDE: раньше здесь проверялось обратное, и на то была причина.
+
+        Пока рубрики стояли у немногих, наличие рубрики означало, что сегмент
+        разобрал канонизатор, — и правило по имени такую запись не трогало.
+        Потом рубрики проставили всем подряд отдельным прогоном на 284 записи,
+        и основание исчезло: «Кусочки трески по 90г» получили рубрику «Рыба» не
+        потому, что кто-то признал их продуктом.
+
+        «Чёрный» — обрывок строки в любой рубрике.
+        """
         _other, fruit = cats
-        good = Product.objects.create(name="Чёрный", source=Product.Source.AUTO, category_fk=fruit)
+        junk = Product.objects.create(name="Чёрный", source=Product.Source.AUTO, category_fk=fruit)
 
         run()
 
-        assert Product.objects.filter(pk=good.pk).exists()
+        assert not Product.objects.filter(pk=junk.pk).exists()
 
     def test_связь_рецепта_переживает_удаление(self, auto):
         """Список покупок берёт название и категорию из самой связи."""
@@ -305,6 +314,69 @@ class TestNoiseRule:
         """Ссылка откуда угодно, кроме связи рецепта, означает, что запись нужна."""
         p = auto("Масло для обжарки")
         ProductAlias.objects.create(product=p, alias_norm="масло жарочное", source="manual")
+
+        run(rules="noise")
+
+        assert Product.objects.filter(id=p.id).exists()
+
+
+@pytest.mark.django_db
+class TestОбластьПравил:
+    """MG_PRUNEWIDE: мусор по имени ищется во всех рубриках, а не только в «Прочем».
+
+    Пока рубрик почти ни у кого не было, «Прочее» и было областью мусора. После
+    раскладки рубрик мусор разъехался по разделам и стал команде невидим:
+    «Кусочки трески по 90г» нашлись в «Рыбе» случайно, при разборе связей.
+
+    Правила по названию (metadata, noise) от рубрики не зависят и потому
+    смотрят весь машинный каталог. Правила dish и all судят иначе, и их
+    безопасность держится на узкой области — им «Прочее» и остаётся.
+    """
+
+    @pytest.fixture
+    def in_fish(self, db):
+        fish, _ = ProductCategory.objects.get_or_create(
+            slug="fish", defaults={"name_ru": "Рыба и морепродукты", "is_active": True}
+        )
+
+        def _make(name):
+            return Product.objects.create(name=name, source=Product.Source.AUTO, category_fk=fish)
+
+        return _make
+
+    def test_обрывок_в_обычной_рубрике_удаляется(self, in_fish):
+        p = in_fish("Кусочки плюмбуса по 90г")
+
+        run(rules="noise")
+
+        assert not Product.objects.filter(id=p.id).exists()
+
+    def test_разметка_в_обычной_рубрике_удаляется(self, in_fish):
+        p = in_fish("Время приготовления 40 мин")
+
+        run(rules="metadata")
+
+        assert not Product.objects.filter(id=p.id).exists()
+
+    def test_правило_all_дальше_прочего_не_идёт(self, in_fish):
+        """Оно сносит всё машинное подряд — вот его и держим в узкой области."""
+        p = in_fish("Плюмбус обыкновенный")
+
+        run(rules="all")
+
+        assert Product.objects.filter(id=p.id).exists()
+
+    def test_правило_dish_дальше_прочего_не_идёт(self, in_fish):
+        Recipe.objects.create(title="Плюмбус в духовке")
+        p = in_fish("Плюмбус в духовке")
+
+        run(rules="dish")
+
+        assert Product.objects.filter(id=p.id).exists()
+
+    def test_живую_запись_не_трогаем_и_в_обычной_рубрике(self, in_fish):
+        p = in_fish("Кусочки плюмбуса по 90г")
+        ProductAlias.objects.create(product=p, alias_norm="плюмбусные кусочки", source="manual")
 
         run(rules="noise")
 

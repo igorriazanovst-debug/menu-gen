@@ -62,7 +62,6 @@ import re
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.db.models import Q
 
 from apps.fridge.models import Product
 from apps.recipes.ingredient_noise import is_ingredient_fragment
@@ -146,25 +145,42 @@ def orphans():
     return [p for p in rows if p.id not in used]
 
 
+def _is_other(p):
+    return p.category_fk_id is None or (p.category_fk and p.category_fk.slug == "other")
+
+
 def classify(rules):
-    """-> (к удалению, остаток) среди машинных записей, не тронутых людьми."""
+    """-> (к удалению, остаток) среди машинных записей, не тронутых людьми.
+
+    MG_PRUNEWIDE: у правил разная область, и это не небрежность.
+
+    `metadata` и `noise` судят по НАЗВАНИЮ: «Время приготовления 40 мин» и
+    «Кусочки трески по 90г» не продукты, в какой бы рубрике ни лежали. Раньше
+    оба смотрели только «Прочее» — и это работало, пока рубрик почти ни у кого
+    не было. После раскладки рубрик мусор разъехался по разделам и стал команде
+    невидим: «Кусочки трески по 90г» нашлись в «Рыбе» случайно, при разборе
+    связей.
+
+    `dish` и `all` судят иначе — по совпадению с названием блюда и по «всё
+    машинное подряд», — и их безопасность держится как раз на том, что область
+    узкая. Им «Прочее» и остаётся.
+    """
     if "orphan" in rules:
         return {"orphan": orphans()}, []
 
     rows = list(
-        Product.objects.filter(
-            Q(category_fk__slug="other") | Q(category_fk__isnull=True),
-            source=Product.Source.AUTO,
-            owner_family__isnull=True,
-        ).order_by("id")
+        Product.objects.filter(source=Product.Source.AUTO, owner_family__isnull=True)
+        .select_related("category_fk")
+        .order_by("id")
     )
     if not rows:
         return {}, []
     used = referenced_ids([p.id for p in rows])
     rows = [p for p in rows if p.id not in used]
+    narrow = [p for p in rows if _is_other(p)]
 
     if "all" in rules:
-        return {"all": rows}, []
+        return {"all": narrow}, []
 
     titles = dish_titles() if "dish" in rules else set()
     hit = {"metadata": [], "noise": [], "dish": []}
@@ -174,9 +190,11 @@ def classify(rules):
             hit["metadata"].append(p)
         elif "noise" in rules and is_ingredient_fragment(p.name):
             hit["noise"].append(p)
-        elif "dish" in rules and _norm(p.name) in titles:
+        elif "dish" in rules and _is_other(p) and _norm(p.name) in titles:
             hit["dish"].append(p)
-        else:
+        elif _is_other(p):
+            # «Оставлено редактору» — по-прежнему про «Прочее»: разбирать руками
+            # имеет смысл именно записи без рубрики, а не весь авто-каталог.
             rest.append(p)
     return {k: v for k, v in hit.items() if v}, rest
 
@@ -208,7 +226,9 @@ class Command(BaseCommand):
             self.stdout.write("")
             self.stdout.write("%s — %d:" % (rule, len(group)))
             for p in group[: opts["limit"]]:
-                self.stdout.write("  %s" % p.name)
+                # Рубрику показываем рядом: правила по имени ищут по всему
+                # каталогу, и «в какой рубрике это лежало» — часть решения.
+                self.stdout.write("  %s  [%s]" % (p.name, (p.category_fk and p.category_fk.slug) or "без рубрики"))
             if len(group) > opts["limit"]:
                 self.stdout.write("  … и ещё %d" % (len(group) - opts["limit"]))
         if rest:
