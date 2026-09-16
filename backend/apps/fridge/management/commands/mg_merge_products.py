@@ -31,7 +31,7 @@ from django.db import transaction
 
 from apps.fridge.aliases import learn_alias, normalize_alias
 from apps.fridge.dedup import merge_product_into
-from apps.fridge.models import Product
+from apps.fridge.models import Product, ProductCategory
 from apps.fridge.visibility import HIDDEN_FROM_PICKERS
 from apps.recipes.ingredient_noise import is_ingredient_fragment
 
@@ -53,6 +53,11 @@ class Command(BaseCommand):
             default="",
             help="Переименовать канон после слияния. Для случая, когда годного имени нет ни у одной записи.",
         )
+        parser.add_argument(
+            "--category",
+            default="",
+            help="Поставить канону рубрику (slug). Для записей, попавших не туда: «Маслина» во фруктах.",
+        )
 
     def handle(self, *args, **opts):
         canon_id = opts["canon_id"]
@@ -60,8 +65,8 @@ class Command(BaseCommand):
         # Без дублей команда всё равно осмысленна, если задано новое имя:
         # «Варенья из кедровых шишек» — кривая запись без пары, сливать её не во
         # что, а переименовать надо.
-        if not dup_ids and not (opts["name"] or "").strip():
-            raise CommandError("Нечего делать: укажите номера дублей или --name.")
+        if not dup_ids and not (opts["name"] or "").strip() and not (opts["category"] or "").strip():
+            raise CommandError("Нечего делать: укажите номера дублей, --name или --category.")
         if canon_id in dup_ids:
             raise CommandError("Канон #%d указан и среди дублей: слить запись саму в себя нельзя." % canon_id)
 
@@ -105,6 +110,18 @@ class Command(BaseCommand):
                     % (same[0].name, same[0].id)
                 )
 
+        # MG_MERGECAT: рубрика одной записи правилась только в админке, а
+        # ошибаются они поштучно: «Маслина» лежала во фруктах, «Вареный
+        # картофель» — не в готовой продукции. Держать это рядом с
+        # переименованием естественно: и то, и другое — «почини вот эту запись».
+        new_slug = (opts["category"] or "").strip()
+        new_cat = None
+        if new_slug:
+            new_cat = ProductCategory.objects.filter(slug=new_slug).first()
+            if new_cat is None:
+                known = ", ".join(ProductCategory.objects.order_by("sort_order").values_list("slug", flat=True))
+                raise CommandError("Рубрики «%s» нет. Есть: %s" % (new_slug, known))
+
         def _describe(p):
             rubric = p.category_fk.slug if p.category_fk else "—"
             kbju = "есть" if (isinstance(p.nutrition, dict) and p.nutrition) else "нет"
@@ -115,6 +132,8 @@ class Command(BaseCommand):
             # После описания канона, а не до: иначе строка про новое имя стоит
             # над строкой со старым и читается задом наперёд.
             self.stdout.write("  новое имя: «%s»" % new_name)
+        if new_cat is not None:
+            self.stdout.write("  новая рубрика: %s (%s)" % (new_cat.slug, new_cat.name_ru))
         for p in dups:
             self.stdout.write("  дубль: %s" % _describe(p))
 
@@ -151,6 +170,9 @@ class Command(BaseCommand):
                 canon.name = new_name
                 canon.save(update_fields=["name"])
                 learn_alias(old_name, canon, source="merge")
+            if new_cat is not None:
+                canon.category_fk = new_cat
+                canon.save(update_fields=["category_fk"])
 
         # Переименование без слияния — законный исход, и «Слито записей: 0»
         # читается как «ничего не произошло». Говорим, что именно сделано.
@@ -163,4 +185,6 @@ class Command(BaseCommand):
             )
         if new_name:
             done.append("переименовано в «%s», старое имя оставлено синонимом" % new_name)
+        if new_cat is not None:
+            done.append("рубрика: %s" % new_cat.slug)
         self.stdout.write(self.style.SUCCESS("Готово: " + "; ".join(done) + "."))

@@ -130,6 +130,30 @@ class TestРучноеСлияние:
         assert "переименовано в «Плюмбус кедровый»" in out
         assert "Слито записей: 0" not in out
 
+    def test_рубрика_правится_той_же_командой(self):
+        """MG_MERGECAT: «Маслина» лежала во фруктах, а это консервированные оливки."""
+        from apps.fridge.models import ProductCategory
+
+        fruits, _ = ProductCategory.objects.get_or_create(
+            slug="fruits", defaults={"name_ru": "Фрукты и ягоды", "is_active": True}
+        )
+        veg, _ = ProductCategory.objects.get_or_create(
+            slug="vegetables", defaults={"name_ru": "Овощи", "is_active": True}
+        )
+        p = Product.objects.create(name="Плюмбусина", category_fk=fruits)
+
+        _run(str(p.id), "--name", "Плюмбусы консервированные", "--category", "vegetables", "--apply")
+
+        p.refresh_from_db()
+        assert p.name == "Плюмбусы консервированные"
+        assert p.category_fk_id == veg.id
+
+    def test_несуществующая_рубрика_это_ошибка(self):
+        p = Product.objects.create(name="Плюмбусина")
+
+        with pytest.raises(CommandError, match="нет. Есть:"):
+            _run(str(p.id), "--category", "плюмбусы", "--apply")
+
     def test_без_дублей_и_без_имени_делать_нечего(self):
         p = Product.objects.create(name="Плюмбус")
 
