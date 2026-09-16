@@ -98,6 +98,39 @@ class TestCanonReportsFailures:
 
 
 @pytest.mark.django_db
+class TestПутьКПровайдеруВВыводе:
+    """MG_AIPROXY: через что ушёл запрос — такая же часть конфигурации, как адрес.
+
+    На dev проверка упала с «Read timed out (read timeout=30.0)», и по выводу
+    нельзя было сказать, шла она напрямую или через туннель. А различие как раз
+    и решало: прямым путём не устанавливалось две трети соединений, через
+    туннель — все двадцать из двадцати.
+    """
+
+    def _cfg(self, **values):
+        def fake(key, default=None, **kw):
+            return values.get(key, default)
+
+        return patch("decouple.config", side_effect=fake)
+
+    def test_туннель_назван(self, capsys):
+        with patch("apps.common.ai_provider.get_ai_client") as factory:
+            factory.return_value.complete.return_value = "Москва"
+            with self._cfg(AI_PROXY="socks5h://xray:1080"):
+                call_command("mg_ai_ping")
+
+        assert "socks5h://xray:1080" in capsys.readouterr().out
+
+    def test_прямой_путь_назван_прямым(self, capsys):
+        with patch("apps.common.ai_provider.get_ai_client") as factory:
+            factory.return_value.complete.return_value = "Москва"
+            with self._cfg():
+                call_command("mg_ai_ping")
+
+        assert "напрямую" in capsys.readouterr().out
+
+
+@pytest.mark.django_db
 class TestBothModelsChecked:
     """Модель канонизации ломается отдельно — проверять надо и её.
 

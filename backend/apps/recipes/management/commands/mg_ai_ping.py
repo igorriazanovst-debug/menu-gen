@@ -52,6 +52,11 @@ class Command(BaseCommand):
         self.stdout.write("AI_TEXT_MODEL: %s" % config("AI_TEXT_MODEL", default="(по умолчанию провайдера)"))
         self.stdout.write("AI_BASE_URL:   %s" % config("AI_BASE_URL", default="(по умолчанию провайдера)"))
         self.stdout.write("AI_TIMEOUT:    %s" % config("AI_TIMEOUT", default="30"))
+        # MG_AIPROXY: путь к провайдеру — то же по важности, что и адрес. На dev
+        # проверка падала с «Read timed out», и по выводу нельзя было понять,
+        # ушёл запрос напрямую или через туннель, — а различие как раз и решало:
+        # напрямую не устанавливалось две трети соединений.
+        self.stdout.write("AI_PROXY:      %s" % (config("AI_PROXY", default="").strip() or "нет (напрямую)"))
         # MG_AITIMEOUT: пакетная канонизация живёт на своих настройках. Показываем
         # их рядом: тяжёлая модель в AI_TEXT_MODEL бьёт по пользовательским путям
         # (скан штрих-кода, фото, список покупок), а не только по разовым прогонам.
