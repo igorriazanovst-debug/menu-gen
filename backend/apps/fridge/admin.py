@@ -12,13 +12,57 @@ from .models import FridgeItem, Product, ProductCategory
 
 
 class ProductAdminForm(forms.ModelForm):
+    """MG_ADMINFORM: форма, в которой видно, что заполнять.
+
+    Завести товар руками было нельзя: два десятка полей подряд без подсказок,
+    рубрика — поле для ввода номера (raw_id), и половина полей вообще не про
+    ручное заведение, а про импорт штрих-кодов. На проде это кончилось тем, что
+    «Окорочок куриный» и «Колбаски охотничьи» пришлось заводить скриптом.
+
+    Поэтому: рубрика — выпадающий список и обязательна (товар без рубрики
+    уезжает в «Прочее», и мы это уже разгребали), старое текстовое поле
+    категории из формы убрано — его заполняет импорт, а руками оно только
+    путает, — остальное разложено по разделам, редкое свёрнуто.
+    """
+
     # MG_OFFIMG: загрузка изображения файлом (как у рецептов) — при сохранении
     # кладётся в media и подставляется в image_url.
-    upload_image = forms.ImageField(required=False, label="Загрузить изображение (файл)")
+    upload_image = forms.ImageField(
+        required=False,
+        label="Загрузить изображение (файл)",
+        help_text="Файл ляжет в media, ссылка подставится сама.",
+    )
 
     class Meta:
         model = Product
-        fields = "__all__"
+        exclude = ("category",)  # legacy: текстовая категория, её заполняет импорт OFF
+        help_texts = {
+            "name": "Как человек напишет это в списке покупок: «Окорочок куриный», «Сыр моцарелла».",
+            "default_unit": "г, мл, шт. Пусто — единицу подставит рецепт.",
+            "nutrition": 'На 100 г, ключи: {"proteins": 0, "fats": 0, "carbs": 0}. Пусто — не показываем.',
+            "barcode": "Только для сканера. Руками обычно не нужен.",
+            "owner_family": "Пусто — общий каталог, виден всем. Задана семья — только её участникам.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields.get("category_fk")
+        if field is not None:
+            field.queryset = ProductCategory.objects.filter(is_active=True).order_by("sort_order", "name_ru")
+            field.label = "Рубрика"
+            field.required = True
+            field.help_text = "Раздел в списке покупок. Без неё товар попадёт в «Прочее»."
+
+        # MG_ADMINKBJU: КБЖУ хранится с default=dict, но в форме оказывалось
+        # обязательным — Django считает пустой словарь пустым значением. Из-за
+        # этого товар не сохранялся, пока не откроешь свёрнутый раздел и не
+        # впишешь туда JSON, а сообщение об ошибке пряталось там же.
+        nutrition = self.fields.get("nutrition")
+        if nutrition is not None:
+            nutrition.required = False
+
+    def clean_nutrition(self):
+        return self.cleaned_data.get("nutrition") or {}
 
 
 class HasImageFilter(admin.SimpleListFilter):
@@ -94,8 +138,46 @@ class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
     search_fields = ("name", "barcode", "owner__email", "owner__name", "owner_family__name")
     list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "source", "skip_in_shopping", "category")
     autocomplete_fields = ("owner", "owner_family")
-    raw_id_fields = ("category_fk",)
     readonly_fields = ("image_preview",)
+    # Порядок разделов — по частоте: сверху то, что заполняют всегда, ниже то,
+    # что заполняют раз в год, и оно свёрнуто.
+    fieldsets = (
+        (
+            "Главное",
+            {
+                "fields": ("name", "category_fk", "default_unit", "skip_in_shopping"),
+                "description": "Этого хватает, чтобы завести товар. Остальные разделы можно не открывать.",
+            },
+        ),
+        (
+            "Изображение",
+            {"fields": ("image_preview", "upload_image", "image_url"), "classes": ("collapse",)},
+        ),
+        (
+            "Пищевая ценность",
+            {
+                "fields": ("calories_per_100g", "nutrition"),
+                "classes": ("collapse",),
+                "description": "На список покупок не влияет — только на подсчёт калорий в дневнике.",
+            },
+        ),
+        (
+            "Происхождение и видимость",
+            {
+                "fields": ("source", "is_seed", "barcode", "owner", "owner_family"),
+                "classes": ("collapse",),
+                "description": "Заполняется импортом и сканером. Для товара, заведённого руками, менять нечего.",
+            },
+        ),
+        (
+            "Дополнительно",
+            {
+                "fields": ("subcategory", "popularity", "shelf_life_days", "last_price", "last_price_at"),
+                "classes": ("collapse",),
+                "description": "Срок хранения пуст — берётся у рубрики. Цену проставляет покупка.",
+            },
+        ),
+    )
     actions = ("fetch_images_fill", "fetch_images_overwrite", "clear_images")
 
     def _maybe_delete_local_file(self, image_url):
