@@ -99,6 +99,17 @@ def search_q(model, paths, term: str) -> Q:
     return condition
 
 
+def as_pk(term: str):
+    """Номер записи из запроса: «5095», «#5095». Не номер — None."""
+    s = (term or "").strip().lstrip("#").strip()
+    if not s.isdigit():
+        return None
+    try:
+        return int(s)
+    except ValueError:  # число длиннее, чем влезает в BIGINT
+        return None
+
+
 class AdminSearchMixin:
     """Тот же поиск для списков Django-админки.
 
@@ -110,6 +121,19 @@ class AdminSearchMixin:
         term = (search_term or "").strip()
         if not search_fields or not term:
             return super().get_search_results(request, queryset, search_term)
+
+        # MG_PKSEARCH: номер записи — законный запрос. Номера видны везде: в
+        # списке админки, в выводе команд, в отчётах об ошибках, — а найти по
+        # ним было нельзя: поиск шёл по названию, и «5095» не находило ничего.
+        #
+        # Сначала пробуем номер, и только если записи с таким номером нет —
+        # обычный поиск. Так «100» по-прежнему находит «Молоко 100 г», а не
+        # молча отдаёт пустоту.
+        pk = as_pk(term)
+        if pk is not None:
+            by_pk = queryset.filter(pk=pk)
+            if by_pk.exists():
+                return by_pk, False
 
         # Префиксы Django (^ = @) — отдаём базовой реализации.
         if any(field[0] in ("^", "=", "@") for field in search_fields):
