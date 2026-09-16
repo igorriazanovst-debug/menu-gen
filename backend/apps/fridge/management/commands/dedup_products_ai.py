@@ -21,6 +21,11 @@ MG_DEDUPLIMIT: пробной партией эту команду провер�
 пустой план прочитался как «дублей нет». Поэтому --limit остаётся только для
 оценки стоимости и всегда печатает предупреждение.
 
+MG_DEDUPSURVIVOR: выжившим становится не любой участник группы. Имя выжившего
+переезжает во все ссылки и во все списки покупок, а слияние необратимо, поэтому
+на эту роль есть допуск (can_survive), а не только предпочтение. Группа, в
+которой допущенных нет, целиком пропускается и печатается отдельным списком.
+
     docker compose exec -T backend python manage.py dedup_products_ai
     docker compose exec -T backend python manage.py dedup_products_ai --apply
 """
@@ -35,8 +40,11 @@ from apps.common.ai_provider import complete_with_retry
 from apps.common.progress import BatchProgress
 from apps.fridge.aliases import normalize_alias
 from apps.fridge.dedup import has_kbju, merge_product_into
+from apps.fridge.management.commands.dedup_products import qualifier
 from apps.fridge.models import Product
 from apps.fridge.visibility import HIDDEN_FROM_PICKERS
+from apps.recipes.ingredient_noise import is_ingredient_fragment
+from apps.recipes.recipe_products import _sentence_case
 
 SYSTEM = (
     "Тебе дан JSON-массив объектов {i, name} — названия продуктов питания из "
@@ -51,14 +59,47 @@ SYSTEM = (
 )
 
 
-def _survivor_rank(p, key):
-    """Лучший выживший в группе: сначала курируемый сид-продукт и наличие КБЖУ
-    (чистое имя/категория), и только потом совпадение имени с канон-формой от AI.
-    Иначе выжил бы ugly авто-вариант (напр. «лук зеленый» вместо «Зелёный лук»)."""
+def can_survive(p, key):
+    """MG_DEDUPSURVIVOR: годится ли имя на роль выжившего.
+
+    Имя выжившего уезжает во все ссылки группы и во все списки покупок, а
+    слияние необратимо. Поэтому это не предпочтение, а допуск: не прошедшая
+    запись не выигрывает никогда, даже если в группе она одна такая.
+
+    Два условия.
+
+    Имя не обрывок. is_ingredient_fragment ловит и примечание, и количество:
+    «Масла для жарки», «Яйца – 1 шт. с1». Без этого на проде в плане стояли
+    «Масла для обжарки» -> «Масла для жарки» и «Яйца – 1шт» -> «Яйца – 1 шт.
+    с1» — мусор, переезжающий в мусор, только с чужими ссылками в придачу.
+
+    Имя совпадает с канон-формой от ИИ. Канон — та самая форма, к которой
+    модель сводила группу: именительный падеж, без опечаток. Проверка имени на
+    падеж или на опечатку механически ненадёжна, а это сравнение даёт ровно то
+    же даром. На проде без него выживали «Сушеного молотого имбиря»,
+    «Консервированного горошка», «Лимонный ок» (канон — «Лимонный сок»),
+    «Подсолнечное» (канон — «Подсолнечное масло») и «Черри» (канон — «Томаты
+    черри»): ни одно из них каноном не было, и выбор скатывался к min(id).
+
+    Если в группе такого имени нет — сливать не во что, и группа пропускается
+    целиком. Пропущенное слияние видно в следующем dry-run, неверное — нет.
+    """
+    if is_ingredient_fragment(p.name):
+        return False
+    return normalize_alias(p.name) == key
+
+
+def _survivor_rank(p):
+    """Лучший среди допущенных: сид-продукт, КБЖУ, написание, id.
+
+    Все допущенные уже несут канон-форму имени (см. can_survive), поэтому здесь
+    сравнивается остальное: курируемая запись лучше авто-созданной, запись с
+    КБЖУ лучше пустой, «Зелёный лук» лучше, чем «зеленый лук».
+    """
     return (
         0 if p.is_seed else 1,
         0 if has_kbju(p) else 1,
-        0 if normalize_alias(p.name) == key else 1,
+        0 if p.name == _sentence_case(p.name) else 1,
         p.id,
     )
 
@@ -201,18 +242,28 @@ class Command(BaseCommand):
         failed_chunks = 1 if pending else 0
         failed_items = len(pending)
 
-        # группируем по канон-ключу
+        # Группируем по канон-ключу и уточнению в скобках. MG_DEDUPBRACKET:
+        # скобка разводит записи и здесь, по той же причине, что в
+        # детерминированном дедупе, — «Курица (филе)» не тот же товар, что
+        # «Курица», а модель сводила их к одному канону и предлагала слить
+        # «Куриное филе» в «Курица (филе)».
         pmap = {p.id: p for p in products}
         groups = defaultdict(list)
         for pid, key in canon_key.items():
-            groups[key].append(pmap[pid])
+            p = pmap[pid]
+            groups[(key, qualifier(p.name))].append(p)
 
         # оставляем только реальные группы (>=2 разных продукта)
         merges = []  # (survivor, [dups])
-        for key, members in groups.items():
+        homeless = []  # (канон, участники) — сливать не во что
+        for (key, _q), members in sorted(groups.items()):
             if len(members) < 2:
                 continue
-            survivor = min(members, key=lambda p: _survivor_rank(p, key))
+            fit = [p for p in members if can_survive(p, key)]
+            if not fit:
+                homeless.append((key, members))
+                continue
+            survivor = min(fit, key=_survivor_rank)
             dups = [p for p in members if p.id != survivor.id]
             if dups:
                 merges.append((survivor, dups))
@@ -220,10 +271,25 @@ class Command(BaseCommand):
         total_dups = sum(len(d) for _, d in merges)
         self.stdout.write(f"Групп со слиянием: {len(merges)}; дублей к удалению: {total_dups}.")
         for survivor, dups in merges[:show]:
-            names = ", ".join(f"«{d.name}»" for d in dups)
-            self.stdout.write(f"  {names} -> «{survivor.name}»")
+            # id обязательны: в каталоге встречаются две записи с одинаковым
+            # именем, и без id такая строка читается как «само в себя».
+            names = ", ".join(f"«{d.name}» (#{d.id})" for d in dups)
+            self.stdout.write(f"  {names} -> «{survivor.name}» (#{survivor.id})")
         if len(merges) > show:
             self.stdout.write(f"  … и ещё {len(merges) - show} групп")
+
+        # MG_DEDUPSURVIVOR: о пропущенных молчать нельзя — иначе «групп со
+        # слиянием: N» читается как весь найденный дубляж, а часть его просто
+        # некуда сливать. Эти группы разбираются руками или чистятся
+        # mg_prune_auto_products, и в следующем прогоне вернутся сюда.
+        if homeless:
+            self.stdout.write("")
+            self.stdout.write("Пропущено групп (среди имён нет канон-формы, сливать не во что): %d" % len(homeless))
+            for key, members in homeless[:show]:
+                names = ", ".join(f"«{p.name}» (#{p.id})" for p in members)
+                self.stdout.write(f"  канон «{key}»: {names}")
+            if len(homeless) > show:
+                self.stdout.write(f"  … и ещё {len(homeless) - show} групп")
 
         # MG_AIBATCH: молчать о потерянных пачках нельзя. На проде команда при
         # пяти отвалившихся чанках из десяти напечатала «Групп со слиянием: 1»,

@@ -76,6 +76,121 @@ class TestDedupProductsAi:
         assert "DRY-RUN" in out
 
 
+class TestВыжившийВГруппе:
+    """MG_DEDUPSURVIVOR: имя выжившего уезжает во все ссылки — и навсегда.
+
+    Все случаи ниже взяты из плана, который команда выдала на dev на полном
+    каталоге. Выбор выжившего смотрел на sid/КБЖУ, потом на совпадение с
+    канон-формой и в конце на min(id) — и до канона дело обычно не доходило:
+
+        «Сока лимона» -> «Лимонный ок»          (канон — «Лимонный сок»)
+        «Куриного филе» -> «Курица (филе)»       (филе — не вся курица)
+        «Масл подсолнечное» -> «Подсолнечное»    (канон — «Подсолнечное масло»)
+        «Масла для обжарки» -> «Масла для жарки» (обрывок в обрывок)
+        «Имбирь молотый сушеный» -> «Сушеного молотого имбиря»
+    """
+
+    def _plan(self, monkeypatch, response):
+        _patch_ai(monkeypatch, response)
+        return _run()
+
+    def test_опечатка_в_имени_не_выигрывает(self, clean_db, monkeypatch):
+        """Канон «Лимонный сок» — ни одно из имён им не является: не сливаем."""
+        a = Product.objects.create(name="Сока лимона")
+        b = Product.objects.create(name="Лимонный ок")
+        _patch_ai(
+            monkeypatch,
+            '[{"i":0,"canon":"Лимонный сок"},{"i":1,"canon":"Лимонный сок"}]',
+        )
+        out = _run("--apply")
+
+        assert Product.objects.filter(id=a.id).exists()
+        assert Product.objects.filter(id=b.id).exists()
+        assert "Пропущено групп" in out
+
+    def test_уточнение_в_скобках_не_поглощает_обычную_запись(self, clean_db, monkeypatch):
+        plain = Product.objects.create(name="Куриное филе")
+        bracket = Product.objects.create(name="Курица (филе)")
+        _patch_ai(
+            monkeypatch,
+            '[{"i":0,"canon":"Куриное филе"},{"i":1,"canon":"Куриное филе"}]',
+        )
+        _run("--apply")
+
+        assert Product.objects.filter(id=plain.id).exists()
+        assert Product.objects.filter(id=bracket.id).exists()
+
+    def test_обрывок_имени_выжившим_не_становится(self, clean_db, monkeypatch):
+        """«Подсолнечное» — не канон, канон «Подсолнечное масло». Сливать не во что."""
+        a = Product.objects.create(name="Масл подсолнечное")
+        b = Product.objects.create(name="Подсолнечное")
+        _patch_ai(
+            monkeypatch,
+            '[{"i":0,"canon":"Подсолнечное масло"},{"i":1,"canon":"Подсолнечное масло"}]',
+        )
+        _run("--apply")
+
+        assert Product.objects.filter(id=a.id).exists()
+        assert Product.objects.filter(id=b.id).exists()
+
+    def test_когда_канон_в_группе_есть_слияние_идёт_в_него(self, clean_db, monkeypatch):
+        """Обратная сторона правила: пропускать всё подряд оно не должно."""
+        typo = Product.objects.create(name="Масл подсолнечное")
+        good = Product.objects.create(name="Подсолнечное масло")
+        _patch_ai(
+            monkeypatch,
+            '[{"i":0,"canon":"Подсолнечное масло"},{"i":1,"canon":"Подсолнечное масло"}]',
+        )
+        _run("--apply")
+
+        assert not Product.objects.filter(id=typo.id).exists()
+        assert Product.objects.filter(id=good.id).exists()
+
+    def test_примечание_и_количество_в_имени_выжившим_не_становятся(self, clean_db, monkeypatch):
+        good = Product.objects.create(name="Яйца")
+        junk = Product.objects.create(name="Яйца – 1 шт. с1")
+        _patch_ai(monkeypatch, '[{"i":0,"canon":"Яйца"},{"i":1,"canon":"Яйца"}]')
+        _run("--apply")
+
+        assert Product.objects.filter(id=good.id).exists()
+        assert not Product.objects.filter(id=junk.id).exists()
+
+    def test_мусор_в_мусор_не_сливается(self, clean_db, monkeypatch):
+        a = Product.objects.create(name="Масла для обжарки")
+        b = Product.objects.create(name="Масла для жарки")
+        _patch_ai(
+            monkeypatch,
+            '[{"i":0,"canon":"Растительное масло"},{"i":1,"canon":"Растительное масло"}]',
+        )
+        _run("--apply")
+
+        assert Product.objects.filter(id=a.id).exists()
+        assert Product.objects.filter(id=b.id).exists()
+
+    def test_падежная_форма_уступает_именительной(self, clean_db, monkeypatch):
+        nom = Product.objects.create(name="Имбирь молотый сушеный")
+        gen = Product.objects.create(name="Сушеного молотого имбиря")
+        _patch_ai(
+            monkeypatch,
+            '[{"i":0,"canon":"Имбирь молотый сушеный"},{"i":1,"canon":"Имбирь молотый сушеный"}]',
+        )
+        _run("--apply")
+
+        assert Product.objects.filter(id=nom.id).exists()
+        assert not Product.objects.filter(id=gen.id).exists()
+
+    def test_в_плане_видны_идентификаторы(self, clean_db, monkeypatch):
+        """Две записи с одинаковым именем в плане читаются как «само в себя»."""
+        a = Product.objects.create(name="Филе грудки индейки")
+        b = Product.objects.create(name="Филе грудки индейки")
+        out = self._plan(
+            monkeypatch,
+            '[{"i":0,"canon":"Филе грудки индейки"},{"i":1,"canon":"Филе грудки индейки"}]',
+        )
+
+        assert f"#{a.id}" in out and f"#{b.id}" in out
+
+
 class TestПредупреждениеПроСрез:
     """MG_DEDUPLIMIT: срез по id рвёт пары, и пустой план читается как «дублей нет».
 
