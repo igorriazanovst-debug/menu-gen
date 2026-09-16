@@ -84,14 +84,15 @@ class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
         "image_url",
         "category",
         "source",  # MG_SCANSRC: видно, откуда запись — скан, рецепт или руки
+        "skip_in_shopping",  # MG_NOBUY: вода и прочее, что не покупают
         "shelf_life_days",  # MG_SHELFLIFE
         "calories_per_100g",
         "barcode",
     )
-    list_editable = ("image_url",)
+    list_editable = ("image_url", "skip_in_shopping")
     list_display_links = ("name",)
     search_fields = ("name", "barcode", "owner__email", "owner__name", "owner_family__name")
-    list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "source", "category")
+    list_filter = (HasImageFilter, ProductKindFilter, "is_seed", "source", "skip_in_shopping", "category")
     autocomplete_fields = ("owner", "owner_family")
     raw_id_fields = ("category_fk",)
     readonly_fields = ("image_preview",)

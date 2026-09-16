@@ -118,6 +118,14 @@ class Product(models.Model):
     shelf_life_days = models.PositiveSmallIntegerField(
         null=True, blank=True, help_text="Хранится после покупки, дней. Пусто — как у категории."
     )
+    # MG_NOBUY: есть ингредиенты, которые в рецептах есть, а в магазине не
+    # покупают: вода во всех видах, лёд. В списке они занимают строку и сбивают
+    # счёт — «Вода — 2.5 л» человек вычёркивает каждый раз заново. Признак
+    # ставится редактором у конкретного товара, а не зашит списком имён в коде:
+    # что не покупается, зависит от хозяйства, и правило тут не наше.
+    skip_in_shopping = models.BooleanField(
+        default=False, help_text="Не добавлять в список покупок (вода, лёд и прочее, что не покупают)."
+    )
     # MG_RUBRIC006: last known price per unit (auto-updated on purchase).
     last_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     last_price_at = models.DateTimeField(null=True, blank=True)

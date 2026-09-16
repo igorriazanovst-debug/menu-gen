@@ -248,6 +248,7 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
         _subtract_fridge(agg, fridge_rows)
 
     _apply_catalog_categories(agg)  # MG_CATLIVE
+    _drop_skipped(agg)  # MG_NOBUY
 
     out = []
     for v in agg.values():
@@ -301,6 +302,28 @@ def _apply_catalog_categories(agg):
         if slug and slug != "other":
             v["category_slug"] = slug
             v["category_fk_id"] = cat_id
+
+
+def _drop_skipped(agg):
+    """MG_NOBUY: убрать позиции, которые в магазине не покупают.
+
+    Вода во всех видах, лёд — в рецептах они есть, в списке им делать нечего:
+    занимают строку и сбивают счёт, человек вычёркивает их каждый раз заново.
+
+    Признак стоит у товара каталога, а не списком имён в коде: что не
+    покупается, зависит от хозяйства, и решать это редактору. Позиция, не
+    наведённая ни на какой товар, остаётся — про неё мы ничего не знаем.
+    """
+    from apps.fridge.models import Product
+
+    pids = {v["product_id"] for v in agg.values() if v.get("product_id")}
+    if not pids:
+        return
+    skip = set(Product.objects.filter(id__in=pids, skip_in_shopping=True).values_list("id", flat=True))
+    if not skip:
+        return
+    for key in [k for k, v in agg.items() if v.get("product_id") in skip]:
+        del agg[key]
 
 
 def parse_csv(text: str):
