@@ -1,6 +1,7 @@
 # MG_RECIPELINK / MG_RECIPELINK2 — resolve recipe ingredients to rubricator products + categories.
 import re
 import time
+import unicodedata
 from decimal import Decimal, InvalidOperation
 
 from apps.common.progress import BatchProgress  # MG_PROGRESS
@@ -67,7 +68,11 @@ def _sentence_case(s):
     кавычек ни под один механический признак не подходит, и «Пломбир
     Свитлогорье» правило превращало в «Пломбир свитлогорье».
     """
-    s = (s or "").strip()
+    # MG_COMBINING: «Яйцо» из скачанного рецепта приходило пятью символами —
+    # «и» плюс отдельная кратка U+0306 вместо «й». Выглядит одинаково, а
+    # совпадать перестаёт ни с чем. NFC собирает их обратно; здесь это уместно
+    # потому, что функция отвечает за то, как имя записано.
+    s = unicodedata.normalize("NFC", s or "").strip()
     if not s:
         return s
     words = [w if (_PROPER_NOUN_RE.search(w) or _is_brand(w)) else w.lower() for w in s.split(" ")]

@@ -1,5 +1,6 @@
 # MG_PRODALIAS — alias-aware product resolution (synonyms fold to ONE Product).
 import re
+import unicodedata
 
 # Visually identical latin->cyrillic glyphs (handles "C1" with latin C, etc.).
 _HOMO = str.maketrans({"a": "а", "c": "с", "e": "е", "o": "о", "p": "р", "x": "х", "y": "у", "k": "к", "m": "м"})
@@ -12,8 +13,23 @@ _QUOTED_RE = re.compile(r"[«\"'][^«»\"']*[»\"']")
 
 
 def normalize_alias(name):
-    """Canonical key for matching: lower, ё→е, homoglyphs, drop brand/qty/grade."""
-    s = (name or "").strip().lower().replace("ё", "е")
+    """Canonical key for matching: lower, ё→е, homoglyphs, drop brand/qty/grade.
+
+    MG_COMBINING: перед всем прочим — приведение юникода к составленной форме
+    (NFC). «Яйцо» из скачанного рецепта пришло пятью символами: «Я», «и»,
+    U+0306 (комбинирующая кратка), «ц», «о». Выглядит как «й», но им не
+    является, и такая запись не совпадает ни с чем: не находится поиском, не
+    попадает в группу дедупа, не наводится по имени ингредиента. На проде она
+    жила в каталоге невидимкой (#1803) и давала отдельную строку «Яйцо» в
+    каждом списке покупок — рядом с «Яйца куриные».
+
+    NFC собирает «и»+кратку обратно в «й», и запись становится обычной.
+    Одиночные значки, которым не с чем соединяться, отбрасываем: в ключе
+    сравнения им делать нечего.
+    """
+    s = unicodedata.normalize("NFC", name or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.strip().lower().replace("ё", "е")
     s = s.translate(_HOMO)
     s = _BRACKET_RE.sub(" ", s)
     s = _QUOTED_RE.sub(" ", s)
