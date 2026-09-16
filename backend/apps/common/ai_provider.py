@@ -83,6 +83,27 @@ def check_ai_available(model=None, timeout=None, attempts=1, log=None):
         raise AIUnavailable("провайдер ответил пустым текстом")
 
 
+def _ai_proxies():
+    """MG_AIPROXY: через что ходить к провайдеру. Пусто — напрямую.
+
+    Замер с прода: из двадцати соединений к api.aitunnel.ru тринадцать не
+    установились вовсе (time_connect = 0), а успешные соединялись за 0.2 с и
+    отвечали за 0.35 с. То есть рвётся сеть на пути, а не отвечает медленно
+    модель.
+
+    Туннель в проекте уже есть — через него ходят телеграм и почта, — но для ИИ
+    прокси не задан. Настройка отдельная, а не общая на весь контейнер:
+    HTTPS_PROXY развернул бы через туннель и платежи, и всё прочее исходящее,
+    а это не то, что мы проверяем.
+
+        AI_PROXY=socks5h://xray:1080
+    """
+    url = config("AI_PROXY", default="").strip()
+    if not url:
+        return None
+    return {"http": url, "https": url}
+
+
 def _timeout_pair(timeout):
     """MG_AICONNECT: раздельные сроки на соединение и на чтение ответа.
 
@@ -170,7 +191,13 @@ class YandexAIClient(BaseAIClient):
             "Content-Type": "application/json",
         }
         try:
-            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=_timeout_pair(self._timeout))
+            resp = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=_timeout_pair(self._timeout),
+                proxies=_ai_proxies(),
+            )
         except requests.RequestException as exc:
             raise AIRequestError(f"Yandex AI request failed: {exc}") from exc
 
@@ -230,7 +257,13 @@ class OpenAIAIClient(BaseAIClient):
             "Content-Type": "application/json",
         }
         try:
-            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=_timeout_pair(self._timeout))
+            resp = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=_timeout_pair(self._timeout),
+                proxies=_ai_proxies(),
+            )
         except requests.RequestException as exc:
             raise AIRequestError(f"OpenAI request failed: {exc}") from exc
 

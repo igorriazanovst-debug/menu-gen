@@ -205,3 +205,30 @@ class TestСрокиСоединенияИЧтения:
         from apps.common.ai_provider import _timeout_pair
 
         assert _timeout_pair(None) is None
+
+
+class TestПутьКПровайдеру:
+    """MG_AIPROXY: через что ходить к провайдеру.
+
+    Замер с прода: из двадцати соединений к api.aitunnel.ru тринадцать не
+    установились вовсе (time_connect = 0). Туннель в проекте есть — через него
+    ходят телеграм и почта, — но для ИИ прокси задан не был.
+    """
+
+    def test_без_настройки_идём_напрямую(self, monkeypatch):
+        from apps.common.ai_provider import _ai_proxies
+
+        monkeypatch.delenv("AI_PROXY", raising=False)
+        assert _ai_proxies() is None
+
+    def test_с_настройкой_идём_через_неё(self, monkeypatch):
+        from apps.common.ai_provider import _ai_proxies
+
+        monkeypatch.setenv("AI_PROXY", "socks5h://xray:1080")
+        assert _ai_proxies() == {"http": "socks5h://xray:1080", "https": "socks5h://xray:1080"}
+
+    def test_пробелы_настройкой_не_считаются(self, monkeypatch):
+        from apps.common.ai_provider import _ai_proxies
+
+        monkeypatch.setenv("AI_PROXY", "   ")
+        assert _ai_proxies() is None
