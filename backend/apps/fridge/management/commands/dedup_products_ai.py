@@ -139,42 +139,67 @@ class Command(BaseCommand):
 
         # product_id -> канон-ключ (нормализованный канон от AI)
         canon_key = {}
-        failed_chunks = 0
-        nchunks = (len(products) + batch - 1) // batch
-        progress = BatchProgress(len(products), nchunks, self._say)
-        for base in range(0, len(products), batch):
-            grp = products[base : base + batch]
-            payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
-            try:
-                raw = complete_with_retry(
-                    client, log=self._say, prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0
-                )
-                data = _parse_json_loose(raw)
-            except Exception as e:
-                self.stderr.write(self.style.WARNING(f"  чанк {base // batch + 1}: ошибка AI: {e}"))
-                failed_chunks += 1
-                data = None
-            if not isinstance(data, list):
-                progress.chunk_done(failed=True)
-                continue
-            taken = 0
-            for d in data:
-                if not isinstance(d, dict) or "i" not in d:
-                    continue
-                try:
-                    j = int(d["i"])
-                except (TypeError, ValueError):
-                    continue
-                if not (0 <= j < len(grp)):
-                    continue
-                canon = d.get("canon")
-                key = normalize_alias(canon) if isinstance(canon, str) else ""
-                if key:
-                    canon_key[grp[j].id] = key
-                    taken += 1
-            progress.chunk_done(items=taken)
+        answered = set()
 
-        progress.finish()
+        def sweep(items, size, label):
+            """Один проход. Возвращает число потерянных пачек."""
+            lost = 0
+            nchunks = (len(items) + size - 1) // size
+            self._say("%s: записей %d, пачка %d" % (label, len(items), size))
+            progress = BatchProgress(len(items), nchunks, self._say)
+            for base in range(0, len(items), size):
+                grp = items[base : base + size]
+                payload = json.dumps([{"i": i, "name": p.name} for i, p in enumerate(grp)], ensure_ascii=False)
+                try:
+                    raw = complete_with_retry(
+                        client, log=self._say, prompt=payload, system=SYSTEM, max_tokens=3000, temperature=0.0
+                    )
+                    data = _parse_json_loose(raw)
+                except Exception as e:
+                    self.stderr.write(self.style.WARNING(f"  пачка {base // size + 1}: ошибка AI: {e}"))
+                    lost += 1
+                    progress.chunk_done(failed=True)
+                    continue
+                if not isinstance(data, list):
+                    lost += 1
+                    progress.chunk_done(failed=True)
+                    continue
+                taken = 0
+                for d in data:
+                    if not isinstance(d, dict) or "i" not in d:
+                        continue
+                    try:
+                        j = int(d["i"])
+                    except (TypeError, ValueError):
+                        continue
+                    if not (0 <= j < len(grp)):
+                        continue
+                    answered.add(grp[j].id)
+                    canon = d.get("canon")
+                    key = normalize_alias(canon) if isinstance(canon, str) else ""
+                    if key:
+                        canon_key[grp[j].id] = key
+                        taken += 1
+                progress.chunk_done(items=taken)
+            progress.finish()
+            return lost
+
+        lost = sweep(products, batch, "Проход 1")
+        pending = [p for p in products if p.id not in answered]
+
+        # MG_AISWEEP2: то же, что в раскладке рубрик. Шлюз рвёт связь тем охотнее,
+        # чем длиннее ответ, и пачками поменьше та же работа обычно доходит.
+        # Здесь второй проход важнее: слияние необратимо, поэтому по неполному
+        # разбору команда писать откажется — и без второго прохода единственным
+        # выходом был бы сорокаминутный прогон заново.
+        if lost and pending:
+            small = max(5, batch // 3)
+            self._say("")
+            sweep(pending, small, "Проход 2 (меньшими пачками)")
+            pending = [p for p in products if p.id not in answered]
+
+        failed_chunks = 1 if pending else 0
+        failed_items = len(pending)
 
         # группируем по канон-ключу
         pmap = {p.id: p for p in products}
@@ -206,13 +231,8 @@ class Command(BaseCommand):
         # модели просто не доехала. Неполный разбор — не итог, а полуфабрикат:
         # слить по нему — значит принять решение, не посмотрев на данные.
         if failed_chunks:
-            lost = failed_chunks * batch
-            self.stderr.write(
-                self.style.ERROR(
-                    "Пачек не разобрано: %d из %d — это примерно %d названий, "
-                    "которых в плане выше НЕТ." % (failed_chunks, nchunks, lost)
-                )
-            )
+            self.stdout.flush()
+            self.stderr.write(self.style.ERROR("Не разобрано названий: %d — их в плане выше НЕТ." % failed_items))
             if apply:
                 self.stderr.write(
                     self.style.ERROR("Слияние отменено: сначала добейтесь полного разбора, потом --apply.")
