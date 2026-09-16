@@ -121,6 +121,15 @@ class TestРучноеСлияние:
         p.refresh_from_db()
         assert p.name == "Плюмбус кедровый"
 
+    def test_переименование_видно_в_итоге(self):
+        """«Слито записей: 0» читалось как «ничего не произошло»."""
+        p = Product.objects.create(name="Плюмбусов кедровых")
+
+        out = _run(str(p.id), "--name", "Плюмбус кедровый", "--apply")
+
+        assert "переименовано в «Плюмбус кедровый»" in out
+        assert "Слито записей: 0" not in out
+
     def test_без_дублей_и_без_имени_делать_нечего(self):
         p = Product.objects.create(name="Плюмбус")
 

@@ -104,7 +104,6 @@ class Command(BaseCommand):
                     "Такая запись уже есть: «%s» (#%d). Сливайте в неё, а не заводите второе имя."
                     % (same[0].name, same[0].id)
                 )
-            self.stdout.write("Новое имя канона: «%s» (было «%s»)" % (new_name, canon.name))
 
         def _describe(p):
             rubric = p.category_fk.slug if p.category_fk else "—"
@@ -112,6 +111,10 @@ class Command(BaseCommand):
             return "«%s» (#%d, рубрика %s, КБЖУ %s, источник %s)" % (p.name, p.id, rubric, kbju, p.source)
 
         self.stdout.write("Канон: %s" % _describe(canon))
+        if new_name:
+            # После описания канона, а не до: иначе строка про новое имя стоит
+            # над строкой со старым и читается задом наперёд.
+            self.stdout.write("  новое имя: «%s»" % new_name)
         for p in dups:
             self.stdout.write("  дубль: %s" % _describe(p))
 
@@ -149,10 +152,15 @@ class Command(BaseCommand):
                 canon.save(update_fields=["name"])
                 learn_alias(old_name, canon, source="merge")
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                "Слито записей: %d. Перенесено — рецепты: %d, покупки: %d, холодильник: %d; "
-                "КБЖУ: %d; прочих полей: %d."
+        # Переименование без слияния — законный исход, и «Слито записей: 0»
+        # читается как «ничего не произошло». Говорим, что именно сделано.
+        done = []
+        if dups:
+            done.append(
+                "слито записей: %d; перенесено — рецепты: %d, покупки: %d, холодильник: %d; "
+                "КБЖУ: %d; прочих полей: %d"
                 % (len(dups), moved["recipe"], moved["shop"], moved["fridge"], moved["kbju"], moved["fields"])
             )
-        )
+        if new_name:
+            done.append("переименовано в «%s», старое имя оставлено синонимом" % new_name)
+        self.stdout.write(self.style.SUCCESS("Готово: " + "; ".join(done) + "."))
