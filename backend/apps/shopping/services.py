@@ -175,7 +175,15 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
         disp = name
         ref = resolve_ref(name, pidx) if name else None
         if ref is not None:
-            disp = ref["name"]
+            # MG_NOTENOISE2: имя товара тоже чистим. Иначе очистка выше
+            # отменяется здесь же: normalize_alias срезает ведущее число, и
+            # «Яйца вареных» находит в каталоге мусорную запись «2 яйца
+            # вареных» — а дальше её имя берётся как имя позиции. В свежем
+            # списке на проде так и стояло «2 яйца вареных — 250.00 г».
+            #
+            # Привязка при этом остаётся: товар тот самый, к нему прицеплены
+            # рубрика и КБЖУ. Меняется только то, что человек читает.
+            disp = clean_ingredient_name(ref["name"]) or name
             if pid is None:
                 pid = ref["id"]
             if not slug and ref["slug"]:

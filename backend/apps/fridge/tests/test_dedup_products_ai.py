@@ -191,6 +191,86 @@ class TestВыжившийВГруппе:
         assert f"#{a.id}" in out and f"#{b.id}" in out
 
 
+class _StubByStage:
+    """Отвечает по-разному на два вопроса команды: канон и выбор имени."""
+
+    def __init__(self, canon, pick):
+        self._canon = canon
+        self._pick = pick
+
+    def complete(self, prompt, system="", max_tokens=256, temperature=0.0):
+        return self._pick if "best" in system else self._canon
+
+
+def _patch_stages(monkeypatch, canon, pick):
+    import apps.common.ai_provider as ai
+
+    monkeypatch.setattr(ai, "get_ai_client", lambda *a, **k: _StubByStage(canon, pick))
+
+
+class TestРазборПропущенныхГрупп:
+    """MG_DEDUPPICK: у правила допуска есть своя цена, и её надо добирать.
+
+    Канон приходит в единственном числе («яйцо», «огурец»), а в каталоге
+    законно лежит множественное («Яйца», «Огурцы»). Совпадения нет ни у одного
+    имени — и группа пропускается КАЖДЫЙ раз, сколько ни запускай. В списке
+    покупок это ровно то, с чего всё началось: восемь строк про яйца, среди них
+    «Яцо» и «Огурцs».
+    """
+
+    _CANON = '[{"i":0,"canon":"Плюмбус"},{"i":1,"canon":"Плюмбус"}]'
+
+    def test_модель_выбирает_имя_из_группы(self, clean_db, monkeypatch):
+        keep = Product.objects.create(name="Плюмбусы")
+        gone = Product.objects.create(name="Плюмбусов")
+        _patch_stages(monkeypatch, self._CANON, '[{"i":0,"best":"Плюмбусы"}]')
+
+        out = _run("--apply")
+
+        assert Product.objects.filter(id=keep.id).exists()
+        assert not Product.objects.filter(id=gone.id).exists()
+        assert "Разобрано вторым вопросом" in out
+
+    def test_отказ_модели_оставляет_группу_нетронутой(self, clean_db, monkeypatch):
+        a = Product.objects.create(name="Плюмбусы")
+        b = Product.objects.create(name="Плюмбусов")
+        _patch_stages(monkeypatch, self._CANON, '[{"i":0,"best":null}]')
+
+        out = _run("--apply")
+
+        assert Product.objects.filter(id__in=[a.id, b.id]).count() == 2
+        assert "Пропущено групп" in out
+
+    def test_сочинённое_имя_не_принимается(self, clean_db, monkeypatch):
+        """Выбор идёт из готовых имён: записи с чужим именем в группе нет."""
+        a = Product.objects.create(name="Плюмбусы")
+        b = Product.objects.create(name="Плюмбусов")
+        _patch_stages(monkeypatch, self._CANON, '[{"i":0,"best":"Плюмбус обыкновенный"}]')
+
+        _run("--apply")
+
+        assert Product.objects.filter(id__in=[a.id, b.id]).count() == 2
+
+    def test_обрывок_выжившим_не_становится_и_здесь(self, clean_db, monkeypatch):
+        a = Product.objects.create(name="Плюмбусы – 1 шт. с1")
+        b = Product.objects.create(name="Плюмбусов")
+        _patch_stages(monkeypatch, self._CANON, '[{"i":0,"best":"Плюмбусы – 1 шт. с1"}]')
+
+        _run("--apply")
+
+        assert Product.objects.filter(id__in=[a.id, b.id]).count() == 2
+
+    def test_флагом_второй_вопрос_отключается(self, clean_db, monkeypatch):
+        a = Product.objects.create(name="Плюмбусы")
+        b = Product.objects.create(name="Плюмбусов")
+        _patch_stages(monkeypatch, self._CANON, '[{"i":0,"best":"Плюмбусы"}]')
+
+        out = _run("--apply", "--no-resolve")
+
+        assert Product.objects.filter(id__in=[a.id, b.id]).count() == 2
+        assert "Разобрано вторым вопросом" not in out
+
+
 class TestПредупреждениеПроСрез:
     """MG_DEDUPLIMIT: срез по id рвёт пары, и пустой план читается как «дублей нет».
 

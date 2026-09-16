@@ -46,6 +46,18 @@ from apps.fridge.visibility import HIDDEN_FROM_PICKERS
 from apps.recipes.ingredient_noise import is_ingredient_fragment
 from apps.recipes.recipe_products import _sentence_case
 
+PICK_SYSTEM = (
+    "Тебе дан JSON-массив объектов {i, names} — группы названий продуктов из "
+    "каталога. Названия внутри группы означают ОДИН и тот же продукт, но "
+    "записаны по-разному. Для каждой группы верни {i, best} — то из "
+    "ПЕРЕЧИСЛЕННЫХ названий, которое годится как название каталога: "
+    "именительный падеж, единственное или обычное для продукта число, без "
+    "опечаток, без количества, без примечаний вроде «для жарки». Отвечай "
+    "ТОЛЬКО названием, дословно взятым из своего же списка names. Если ни одно "
+    "не годится или названия в группе означают разные продукты — best=null. "
+    "Отвечай ТОЛЬКО валидным JSON-массивом, без пояснений."
+)
+
 SYSTEM = (
     "Тебе дан JSON-массив объектов {i, name} — названия продуктов питания из "
     "каталога. Для каждого верни КАНОНИЧЕСКОЕ имя в JSON-массиве {i, canon}. "
@@ -117,11 +129,90 @@ class Command(BaseCommand):
         )
         parser.add_argument("--batch", type=int, default=20, help="Размер чанка для запроса к AI.")
         parser.add_argument("--show", type=int, default=40, help="Сколько групп показать в плане.")
+        parser.add_argument(
+            "--no-resolve",
+            action="store_true",
+            help="MG_DEDUPPICK: не спрашивать модель про группы без годного имени — просто пропустить их.",
+        )
 
     def _say(self, line):
         """Строка хода: печатаем сразу, иначе в докере она повиснет в буфере."""
         self.stdout.write(line)
         self.stdout.flush()
+
+    def _resolve_homeless(self, client, parse_json, homeless, size=10):
+        """MG_DEDUPPICK: спросить модель, какое из имён группы годится в каталог.
+
+        Правило допуска (can_survive) требует, чтобы имя выжившего совпадало с
+        канон-формой. Оно спасает от опечаток и падежей, но у него есть своя
+        цена: канон приходит в единственном числе («яйцо», «огурец»), а в
+        каталоге законно лежит множественное («Яйца», «Огурцы»). Совпадения
+        нет ни у одного имени — и такая группа пропускается КАЖДЫЙ раз, сколько
+        ни запускай. В списке покупок это ровно то, с чего всё началось: восемь
+        строк про яйца, среди них «Яцо» и «Огурцs».
+
+        Здесь группа показывается модели целиком, и та выбирает имя из готовых.
+        Запрос короткий, групп десятки, а не тысячи. Автоматической проверки за
+        этим выбором нет — только запрет на имя-обрывок, — поэтому в плане эти
+        группы печатаются отдельным разделом.
+
+        Возвращает (слияния, оставшиеся неразобранными группы).
+        """
+        picked, left = [], []
+        nchunks = (len(homeless) + size - 1) // size
+        self._say("")
+        self._say("Разбор пропущенных групп: %d, пачка %d" % (len(homeless), size))
+        progress = BatchProgress(len(homeless), nchunks, self._say)
+        for base in range(0, len(homeless), size):
+            grp = homeless[base : base + size]
+            payload = json.dumps(
+                [{"i": i, "names": [p.name for p in members]} for i, (_key, members) in enumerate(grp)],
+                ensure_ascii=False,
+            )
+            try:
+                raw = complete_with_retry(
+                    client, log=self._say, prompt=payload, system=PICK_SYSTEM, max_tokens=2000, temperature=0.0
+                )
+                data = parse_json(raw)
+            except Exception as e:
+                self.stderr.write(self.style.WARNING(f"  пачка {base // size + 1}: ошибка AI: {e}"))
+                left.extend(grp)
+                progress.chunk_done(failed=True)
+                continue
+            if not isinstance(data, list):
+                left.extend(grp)
+                progress.chunk_done(failed=True)
+                continue
+
+            best = {}
+            for d in data:
+                if not isinstance(d, dict) or "i" not in d:
+                    continue
+                try:
+                    j = int(d["i"])
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= j < len(grp) and isinstance(d.get("best"), str):
+                    best[j] = d["best"].strip()
+
+            taken = 0
+            for j, (_key, members) in enumerate(grp):
+                name = best.get(j)
+                # Модель могла ответить null («названия про разные продукты»),
+                # сочинить имя, которого в группе нет, или выбрать обрывок.
+                # Любой из этих случаев — не решение, и группа остаётся нерешённой.
+                fit = [p for p in members if p.name == name and not is_ingredient_fragment(p.name)]
+                if not fit:
+                    left.append((_key, members))
+                    continue
+                survivor = min(fit, key=_survivor_rank)
+                dups = [p for p in members if p.id != survivor.id]
+                if dups:
+                    picked.append((survivor, dups))
+                taken += 1
+            progress.chunk_done(items=taken)
+        progress.finish()
+        return picked, left
 
     def handle(self, *args, **opts):
         apply = opts["apply"]
@@ -268,8 +359,13 @@ class Command(BaseCommand):
             if dups:
                 merges.append((survivor, dups))
 
-        total_dups = sum(len(d) for _, d in merges)
-        self.stdout.write(f"Групп со слиянием: {len(merges)}; дублей к удалению: {total_dups}.")
+        picked = []  # (survivor, [dups]) — выживший выбран вторым вопросом
+        if homeless and not opts["no_resolve"]:
+            picked, homeless = self._resolve_homeless(client, _parse_json_loose, homeless)
+
+        all_merges = merges + picked
+        total_dups = sum(len(d) for _, d in all_merges)
+        self.stdout.write(f"Групп со слиянием: {len(all_merges)}; дублей к удалению: {total_dups}.")
         for survivor, dups in merges[:show]:
             # id обязательны: в каталоге встречаются две записи с одинаковым
             # именем, и без id такая строка читается как «само в себя».
@@ -278,13 +374,26 @@ class Command(BaseCommand):
         if len(merges) > show:
             self.stdout.write(f"  … и ещё {len(merges) - show} групп")
 
+        # MG_DEDUPPICK: эти строки печатаются отдельно не для красоты. В них
+        # выжившего выбрала модель из готовых имён, а не правило: автоматической
+        # проверки за этим выбором нет, кроме запрета на имя-обрывок. Читать их
+        # надо внимательнее остальных.
+        if picked:
+            self.stdout.write("")
+            self.stdout.write("Разобрано вторым вопросом (имя выбрала модель) — групп: %d" % len(picked))
+            for survivor, dups in picked[:show]:
+                names = ", ".join(f"«{d.name}» (#{d.id})" for d in dups)
+                self.stdout.write(f"  {names} -> «{survivor.name}» (#{survivor.id})")
+            if len(picked) > show:
+                self.stdout.write(f"  … и ещё {len(picked) - show} групп")
+
         # MG_DEDUPSURVIVOR: о пропущенных молчать нельзя — иначе «групп со
         # слиянием: N» читается как весь найденный дубляж, а часть его просто
         # некуда сливать. Эти группы разбираются руками или чистятся
         # mg_prune_auto_products, и в следующем прогоне вернутся сюда.
         if homeless:
             self.stdout.write("")
-            self.stdout.write("Пропущено групп (среди имён нет канон-формы, сливать не во что): %d" % len(homeless))
+            self.stdout.write("Пропущено групп (годного имени в группе нет): %d" % len(homeless))
             for key, members in homeless[:show]:
                 names = ", ".join(f"«{p.name}» (#{p.id})" for p in members)
                 self.stdout.write(f"  канон «{key}»: {names}")
@@ -311,7 +420,7 @@ class Command(BaseCommand):
 
         fridge_moved = recipe_moved = shop_moved = kbju_filled = fields_filled = deleted = 0
         with transaction.atomic():
-            for survivor, dups in merges:
+            for survivor, dups in all_merges:
                 for dup in dups:
                     s = merge_product_into(dup, survivor)
                     fridge_moved += s["fridge"]

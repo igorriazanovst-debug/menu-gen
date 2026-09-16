@@ -100,6 +100,31 @@ class TestПримечанияВСписке:
         assert _names(items) == {"Тарелочник"}
         assert items[0]["quantity"] == 40
 
+    def test_мусорное_имя_товара_не_возвращается_через_каталог(self, menu_with_links):
+        """MG_NOTENOISE2: очистка имени отменялась строкой ниже — `disp = ref["name"]`.
+
+        normalize_alias срезает ведущее число, поэтому очищенное «Яйца вареных»
+        находит в каталоге запись «2 яйца вареных» — и её имя бралось как имя
+        позиции. В свежесобранном списке на проде так и стояло «2 яйца вареных
+        — 250.00 г», хотя чистка отработала.
+
+        Привязка при этом правильная: товар тот самый, с рубрикой и КБЖУ.
+        Чинить надо не её, а то, что читает человек.
+        """
+        family, menu, recipe = menu_with_links
+        junk = Product.objects.create(name="2 плюмбуса вареных", source=Product.Source.AUTO)
+        RecipeProduct.objects.create(
+            recipe=recipe,
+            name_canonical="2 плюмбуса вареных",
+            name_raw="2 плюмбуса вареных",
+            product=junk,
+            grams=250,
+        )
+
+        items = build_items_from_menu(menu, family, subtract_fridge=False)
+
+        assert _names(items) == {"Плюмбуса вареных"}
+
     def test_обычный_продукт_проходит_как_был(self, menu_with_links):
         """Фильтр не должен трогать то, что и так продукт."""
         family, menu, recipe = menu_with_links
