@@ -178,3 +178,30 @@ class TestПроверкаПовторяется:
                 check_batch_ai_available(attempts=3)
 
         assert client.calls == 3
+
+
+class TestСрокиСоединенияИЧтения:
+    """MG_AICONNECT: мёртвое соединение не должно стоить как долгий ответ.
+
+    В логах провайдера значились ровно два запроса, оба успешные, — а наши
+    «истёкшие по таймауту» попытки до него не доезжали вовсе. Рвалось по дороге,
+    в туннеле. Со скалярным timeout requests меряет им и соединение, и чтение,
+    поэтому каждая такая попытка стоила все шестьдесят секунд.
+    """
+
+    def test_на_соединение_срок_короче_чем_на_чтение(self):
+        from apps.common.ai_provider import _timeout_pair
+
+        assert _timeout_pair(120) == (10.0, 120.0)
+        assert _timeout_pair(60) == (10.0, 60.0)
+
+    def test_короткий_срок_не_удлиняется(self):
+        """Если ждать велено меньше десяти секунд — ждём меньше, а не больше."""
+        from apps.common.ai_provider import _timeout_pair
+
+        assert _timeout_pair(5) == (5.0, 5.0)
+
+    def test_непонятное_значение_отдаём_как_есть(self):
+        from apps.common.ai_provider import _timeout_pair
+
+        assert _timeout_pair(None) is None

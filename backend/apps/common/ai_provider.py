@@ -83,6 +83,29 @@ def check_ai_available(model=None, timeout=None, attempts=1, log=None):
         raise AIUnavailable("провайдер ответил пустым текстом")
 
 
+def _timeout_pair(timeout):
+    """MG_AICONNECT: раздельные сроки на соединение и на чтение ответа.
+
+    requests со скалярным timeout меряет им и то, и другое. Из-за этого мёртвое
+    соединение стоило столько же, сколько долгий ответ модели, — на проде это
+    шестьдесят секунд впустую.
+
+    Что такое мёртвое соединение, видно по логам провайдера: там значились
+    ровно два запроса, оба успешные, а наши «истёкшие по таймауту» попытки до
+    него не доезжали вовсе. Рвалось по дороге — в туннеле, а не у модели.
+
+    Соединение либо устанавливается за секунды, либо не установится: десяти
+    секунд на него достаточно с запасом. Чтение остаётся долгим: пачка из
+    двадцати названий с ответом на три тысячи токенов честно думает секунд
+    восемь, а под нагрузкой и дольше.
+    """
+    try:
+        read = float(timeout)
+    except (TypeError, ValueError):
+        return timeout
+    return (min(10.0, read), read)
+
+
 class BaseAIClient:
     def complete(
         self,
@@ -147,7 +170,7 @@ class YandexAIClient(BaseAIClient):
             "Content-Type": "application/json",
         }
         try:
-            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=self._timeout)
+            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=_timeout_pair(self._timeout))
         except requests.RequestException as exc:
             raise AIRequestError(f"Yandex AI request failed: {exc}") from exc
 
@@ -207,7 +230,7 @@ class OpenAIAIClient(BaseAIClient):
             "Content-Type": "application/json",
         }
         try:
-            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=self._timeout)
+            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=_timeout_pair(self._timeout))
         except requests.RequestException as exc:
             raise AIRequestError(f"OpenAI request failed: {exc}") from exc
 
