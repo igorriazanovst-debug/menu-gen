@@ -83,6 +83,51 @@ class TestРучноеСлияние:
         with pytest.raises(CommandError, match="скрыт"):
             _run(str(canon.id), str(hidden.id))
 
+    def test_переименование_канона(self):
+        """MG_MERGERENAME: годного имени нет ни у одной записи группы.
+
+        «Агара» и «Агар агара» — правильного «Агар-агар» в каталоге нет вовсе.
+        Слияние без переименования оставило бы кривое имя во всех ссылках.
+        """
+        canon = Product.objects.create(name="Плюмбуса")
+        dup = Product.objects.create(name="Плюмбус плюмбуса")
+
+        _run(str(canon.id), str(dup.id), "--name", "Плюмбус-плюмбус", "--apply")
+
+        canon.refresh_from_db()
+        assert canon.name == "Плюмбус-плюмбус"
+        assert not Product.objects.filter(id=dup.id).exists()
+
+    def test_старое_имя_остаётся_синонимом(self):
+        """По нему ищут связи рецептов и разбор состава — терять его нельзя."""
+        from apps.fridge.models import ProductAlias
+
+        canon = Product.objects.create(name="Плюмбуса")
+        dup = Product.objects.create(name="Плюмбус плюмбуса")
+
+        _run(str(canon.id), str(dup.id), "--name", "Плюмбус-плюмбус", "--apply")
+
+        from apps.fridge.aliases import normalize_alias
+
+        aliases = set(ProductAlias.objects.filter(product=canon).values_list("alias_norm", flat=True))
+        assert normalize_alias("Плюмбуса") in aliases
+
+    def test_имя_с_примечанием_не_принимается(self):
+        canon = Product.objects.create(name="Плюмбуса")
+        dup = Product.objects.create(name="Плюмбус плюмбуса")
+
+        with pytest.raises(CommandError, match="не название продукта"):
+            _run(str(canon.id), str(dup.id), "--name", "Плюмбус для обжарки", "--apply")
+
+    def test_столкновение_с_существующей_записью_это_ошибка(self):
+        """Иначе в каталоге завелось бы второе имя того же товара — новый дубль."""
+        canon = Product.objects.create(name="Плюмбуса")
+        dup = Product.objects.create(name="Плюмбус плюмбуса")
+        Product.objects.create(name="Плюмбус-плюмбус")
+
+        with pytest.raises(CommandError, match="уже есть"):
+            _run(str(canon.id), str(dup.id), "--name", "Плюмбус-плюмбус", "--apply")
+
     def test_цена_ошибки_видна_до_записи(self):
         """Сколько ссылок переедет — в dry-run, а не в отчёте после."""
         from apps.recipes.models import Recipe, RecipeProduct

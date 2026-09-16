@@ -17,14 +17,23 @@
 Первый номер — канон (он останется), остальные — дубли (их удалят, а ссылки
 переедут на канон). Поля, которых у канона нет, он заберёт у дубля: рубрику,
 КБЖУ, картинку, срок хранения (MG_MERGEKEEP).
+
+MG_MERGERENAME: бывает, что годного имени нет ни у одной записи группы. «Агара»
+и «Агар агара» — правильного «Агар-агар» в каталоге нет вовсе, и слияние без
+переименования оставило бы кривое имя во всех ссылках. Для этого есть --name;
+старое имя канона при этом становится его синонимом.
+
+    docker compose exec -T backend python manage.py mg_merge_products 35477 35550 --name "Агар-агар" --apply
 """
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from apps.fridge.aliases import learn_alias, normalize_alias
 from apps.fridge.dedup import merge_product_into
 from apps.fridge.models import Product
 from apps.fridge.visibility import HIDDEN_FROM_PICKERS
+from apps.recipes.ingredient_noise import is_ingredient_fragment
 
 
 class Command(BaseCommand):
@@ -34,6 +43,11 @@ class Command(BaseCommand):
         parser.add_argument("canon_id", type=int, help="Номер записи, которая останется.")
         parser.add_argument("dup_ids", type=int, nargs="+", help="Номера записей, которые сольются в канон.")
         parser.add_argument("--apply", action="store_true", help="Выполнить слияние (иначе только показать).")
+        parser.add_argument(
+            "--name",
+            default="",
+            help="Переименовать канон после слияния. Для случая, когда годного имени нет ни у одной записи.",
+        )
 
     def handle(self, *args, **opts):
         canon_id = opts["canon_id"]
@@ -58,6 +72,29 @@ class Command(BaseCommand):
 
         canon = found[canon_id]
         dups = [found[i] for i in dup_ids]
+
+        # MG_MERGERENAME: последняя горсть групп из дедупа — те, где годного
+        # имени нет ни у кого. «Агара» и «Агар агара»: правильного «Агар-агар»
+        # в каталоге нет вовсе, и слияние без переименования оставляет кривое
+        # имя во всех ссылках. Рядом «Подсолнечное» + «Масл подсолнечное» и
+        # «Яйца – 1 шт. с1» + «Яйца – 1шт».
+        new_name = (opts["name"] or "").strip()
+        if new_name:
+            if is_ingredient_fragment(new_name):
+                raise CommandError("«%s» — не название продукта: в нём примечание или количество." % new_name)
+            clash = (
+                Product.objects.filter(owner_family__isnull=True)
+                .exclude(id__in=[canon_id] + dup_ids)
+                .exclude(source__in=HIDDEN_FROM_PICKERS)
+            )
+            key = normalize_alias(new_name)
+            same = [p for p in clash if normalize_alias(p.name) == key]
+            if same:
+                raise CommandError(
+                    "Такая запись уже есть: «%s» (#%d). Сливайте в неё, а не заводите второе имя."
+                    % (same[0].name, same[0].id)
+                )
+            self.stdout.write("Новое имя канона: «%s» (было «%s»)" % (new_name, canon.name))
 
         def _describe(p):
             rubric = p.category_fk.slug if p.category_fk else "—"
@@ -92,6 +129,15 @@ class Command(BaseCommand):
                 s = merge_product_into(dup, canon)
                 for k in moved:
                     moved[k] += s[k]
+            if new_name:
+                # Старое имя остаётся синонимом: по нему ищут связи рецептов и
+                # разбор ингредиентов, и терять его при переименовании нельзя.
+                # Порядок важен — learn_alias молча ничего не делает, если имя
+                # совпадает с текущим именем товара, так что сперва переименование.
+                old_name = canon.name
+                canon.name = new_name
+                canon.save(update_fields=["name"])
+                learn_alias(old_name, canon, source="merge")
 
         self.stdout.write(
             self.style.SUCCESS(
