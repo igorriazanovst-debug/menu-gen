@@ -156,12 +156,28 @@ class Command(BaseCommand):
         этим выбором нет — только запрет на имя-обрывок, — поэтому в плане эти
         группы печатаются отдельным разделом.
 
-        Возвращает (слияния, оставшиеся неразобранными группы).
+        Возвращает (слияния, отказы модели, не дошедшие до модели).
         """
-        picked, left = [], []
+        picked, refused, lost = self._pick_pass(client, parse_json, homeless, size, "Разбор пропущенных групп")
+
+        # MG_AISWEEP2, тот же случай, что в основном проходе: потерянная пачка
+        # — это не ответ модели, а обрыв по дороге, и меньшей пачкой та же
+        # работа обычно доходит. Без второй попытки на dev так и вышло: в
+        # «пропущено» встали десять групп («Креветки», «Бананы», «Баклажаны»),
+        # которых модель вообще не видела, — и читались они наравне с честными
+        # отказами.
+        if lost:
+            p2, r2, lost = self._pick_pass(client, parse_json, lost, max(3, size // 3), "Разбор групп: вторая попытка")
+            picked.extend(p2)
+            refused.extend(r2)
+        return picked, refused, lost
+
+    def _pick_pass(self, client, parse_json, homeless, size, label):
+        """Один проход выбора имени. Возвращает (слияния, отказы, потерянные)."""
+        picked, refused, lost = [], [], []
         nchunks = (len(homeless) + size - 1) // size
         self._say("")
-        self._say("Разбор пропущенных групп: %d, пачка %d" % (len(homeless), size))
+        self._say("%s: %d, пачка %d" % (label, len(homeless), size))
         progress = BatchProgress(len(homeless), nchunks, self._say)
         for base in range(0, len(homeless), size):
             grp = homeless[base : base + size]
@@ -176,11 +192,11 @@ class Command(BaseCommand):
                 data = parse_json(raw)
             except Exception as e:
                 self.stderr.write(self.style.WARNING(f"  пачка {base // size + 1}: ошибка AI: {e}"))
-                left.extend(grp)
+                lost.extend(grp)
                 progress.chunk_done(failed=True)
                 continue
             if not isinstance(data, list):
-                left.extend(grp)
+                lost.extend(grp)
                 progress.chunk_done(failed=True)
                 continue
 
@@ -203,7 +219,7 @@ class Command(BaseCommand):
                 # Любой из этих случаев — не решение, и группа остаётся нерешённой.
                 fit = [p for p in members if p.name == name and not is_ingredient_fragment(p.name)]
                 if not fit:
-                    left.append((_key, members))
+                    refused.append((_key, members))
                     continue
                 survivor = min(fit, key=_survivor_rank)
                 dups = [p for p in members if p.id != survivor.id]
@@ -212,7 +228,7 @@ class Command(BaseCommand):
                 taken += 1
             progress.chunk_done(items=taken)
         progress.finish()
-        return picked, left
+        return picked, refused, lost
 
     def handle(self, *args, **opts):
         apply = opts["apply"]
@@ -360,8 +376,9 @@ class Command(BaseCommand):
                 merges.append((survivor, dups))
 
         picked = []  # (survivor, [dups]) — выживший выбран вторым вопросом
+        unseen = []  # группы, до которых модель не дошла: это не отказ
         if homeless and not opts["no_resolve"]:
-            picked, homeless = self._resolve_homeless(client, _parse_json_loose, homeless)
+            picked, homeless, unseen = self._resolve_homeless(client, _parse_json_loose, homeless)
 
         all_merges = merges + picked
         total_dups = sum(len(d) for _, d in all_merges)
@@ -399,6 +416,20 @@ class Command(BaseCommand):
                 self.stdout.write(f"  канон «{key}»: {names}")
             if len(homeless) > show:
                 self.stdout.write(f"  … и ещё {len(homeless) - show} групп")
+
+        # «Не дошло до модели» и «модель отказалась» — разные исходы, и мешать
+        # их в одном списке нельзя. На dev в «пропущено» стояло 13 групп, но
+        # десять из них были целой потерянной пачкой («Креветки», «Бананы»,
+        # «Баклажаны») — модель их не видела. Читалось это как её решение.
+        if unseen:
+            self.stdout.write("")
+            self.stdout.write("До модели не дошло групп: %d — это не отказ, а обрыв связи." % len(unseen))
+            for key, members in unseen[:show]:
+                names = ", ".join(f"«{p.name}» (#{p.id})" for p in members)
+                self.stdout.write(f"  канон «{key}»: {names}")
+            if len(unseen) > show:
+                self.stdout.write(f"  … и ещё {len(unseen) - show} групп")
+            self.stdout.write("  Следующий прогон спросит про них снова.")
 
         # MG_AIBATCH: молчать о потерянных пачках нельзя. На проде команда при
         # пяти отвалившихся чанках из десяти напечатала «Групп со слиянием: 1»,

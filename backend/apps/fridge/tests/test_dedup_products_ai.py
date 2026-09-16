@@ -260,6 +260,57 @@ class TestРазборПропущенныхГрупп:
 
         assert Product.objects.filter(id__in=[a.id, b.id]).count() == 2
 
+    def test_потерянная_пачка_не_выдаётся_за_отказ(self, clean_db, monkeypatch):
+        """На dev в «пропущено» стояло 13 групп, но десять были целой потерянной пачкой.
+
+        Читалось это как решение модели, хотя она их не видела. Исходы разные:
+        отказ окончателен, обрыв лечится повтором.
+        """
+        Product.objects.create(name="Плюмбусы")
+        Product.objects.create(name="Плюмбусов")
+
+        class _Broken(_StubByStage):
+            def complete(self, prompt, system="", max_tokens=256, temperature=0.0):
+                if "best" in system:
+                    raise RuntimeError("Read timed out")
+                return self._canon
+
+        import apps.common.ai_provider as ai
+
+        monkeypatch.setattr(ai, "get_ai_client", lambda *a, **k: _Broken(self._CANON, ""))
+
+        out = _run()
+
+        assert "До модели не дошло групп: 1" in out
+        assert "Пропущено групп" not in out
+
+    def test_вторая_попытка_добирает_потерянное(self, clean_db, monkeypatch):
+        keep = Product.objects.create(name="Плюмбусы")
+        gone = Product.objects.create(name="Плюмбусов")
+
+        class _FlakyOnce(_StubByStage):
+            tries = 0
+
+            def complete(self, prompt, system="", max_tokens=256, temperature=0.0):
+                if "best" not in system:
+                    return self._canon
+                _FlakyOnce.tries += 1
+                # Первый проход рвётся, вторым та же группа доходит. Ошибка
+                # намеренно не AIRequestError: complete_with_retry повторяет
+                # только её, так что пачка теряется целиком — как на dev.
+                if _FlakyOnce.tries == 1:
+                    raise RuntimeError("Read timed out")
+                return self._pick
+
+        import apps.common.ai_provider as ai
+
+        monkeypatch.setattr(ai, "get_ai_client", lambda *a, **k: _FlakyOnce(self._CANON, '[{"i":0,"best":"Плюмбусы"}]'))
+
+        _run("--apply")
+
+        assert Product.objects.filter(id=keep.id).exists()
+        assert not Product.objects.filter(id=gone.id).exists()
+
     def test_флагом_второй_вопрос_отключается(self, clean_db, monkeypatch):
         a = Product.objects.create(name="Плюмбусы")
         b = Product.objects.create(name="Плюмбусов")
