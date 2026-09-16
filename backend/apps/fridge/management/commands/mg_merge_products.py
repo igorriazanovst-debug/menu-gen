@@ -41,7 +41,12 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("canon_id", type=int, help="Номер записи, которая останется.")
-        parser.add_argument("dup_ids", type=int, nargs="+", help="Номера записей, которые сольются в канон.")
+        parser.add_argument(
+            "dup_ids",
+            type=int,
+            nargs="*",
+            help="Номера записей, которые сольются в канон. Можно не указывать, если задан --name.",
+        )
         parser.add_argument("--apply", action="store_true", help="Выполнить слияние (иначе только показать).")
         parser.add_argument(
             "--name",
@@ -52,6 +57,11 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         canon_id = opts["canon_id"]
         dup_ids = list(dict.fromkeys(opts["dup_ids"]))  # повтор номера — не две операции
+        # Без дублей команда всё равно осмысленна, если задано новое имя:
+        # «Варенья из кедровых шишек» — кривая запись без пары, сливать её не во
+        # что, а переименовать надо.
+        if not dup_ids and not (opts["name"] or "").strip():
+            raise CommandError("Нечего делать: укажите номера дублей или --name.")
         if canon_id in dup_ids:
             raise CommandError("Канон #%d указан и среди дублей: слить запись саму в себя нельзя." % canon_id)
 

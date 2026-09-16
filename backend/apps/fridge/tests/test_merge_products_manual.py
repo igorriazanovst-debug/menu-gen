@@ -112,6 +112,21 @@ class TestРучноеСлияние:
         aliases = set(ProductAlias.objects.filter(product=canon).values_list("alias_norm", flat=True))
         assert normalize_alias("Плюмбуса") in aliases
 
+    def test_переименование_без_слияния(self):
+        """«Варенья из кедровых шишек» — кривое имя без пары: сливать не во что."""
+        p = Product.objects.create(name="Плюмбусов кедровых")
+
+        _run(str(p.id), "--name", "Плюмбус кедровый", "--apply")
+
+        p.refresh_from_db()
+        assert p.name == "Плюмбус кедровый"
+
+    def test_без_дублей_и_без_имени_делать_нечего(self):
+        p = Product.objects.create(name="Плюмбус")
+
+        with pytest.raises(CommandError, match="Нечего делать"):
+            _run(str(p.id))
+
     def test_имя_с_примечанием_не_принимается(self):
         canon = Product.objects.create(name="Плюмбуса")
         dup = Product.objects.create(name="Плюмбус плюмбуса")
