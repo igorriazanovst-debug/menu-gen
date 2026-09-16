@@ -108,6 +108,45 @@ class TestРазборСирот:
 
         assert "не наводятся на товар: 0" in out
 
+    def test_строку_можно_выкинуть_из_плана(self):
+        """MG_LINKSKIP: «Сала» — родительный от «Сало», а совпало с «Салат».
+
+        Морфологию без словаря правило не берёт, и это цена эвристики. Цена
+        приемлема ровно потому, что план читает человек и может убрать строку.
+        """
+        Product.objects.create(name="Плюмбусат")
+        _link("Плюмбуса")
+
+        out = _run("--skip", "Плюмбуса", "--apply")
+
+        assert not _has_alias("Плюмбуса")
+        assert "Выкинуто из плана" in out
+
+    def test_свою_пару_можно_задать_руками(self):
+        """MG_LINKMANUAL: «Помидор черри» и «Томаты черри» правилу не пара, человеку — да."""
+        product = Product.objects.create(name="Завроплюмбусы садовые")
+        _link("Плюмбус садовый")
+
+        _run("--alias", "Плюмбус садовый=%d" % product.id, "--apply")
+
+        assert ProductAlias.objects.filter(product=product, alias_norm=normalize_alias("Плюмбус садовый")).exists()
+
+    def test_пара_с_несуществующим_номером_это_ошибка(self):
+        from django.core.management.base import CommandError
+
+        _link("Плюмбус садовый")
+
+        with pytest.raises(CommandError, match="нет в каталоге"):
+            _run("--alias", "Плюмбус садовый=99999999", "--apply")
+
+    def test_кривая_пара_это_ошибка(self):
+        from django.core.management.base import CommandError
+
+        _link("Плюмбус садовый")
+
+        with pytest.raises(CommandError, match="Имя=НОМЕР"):
+            _run("--alias", "просто строка", "--apply")
+
     def test_скрытые_из_подборщиков_кандидатами_не_считаются(self):
         """Синоним на упаковку из справочника штрих-кодов увёл бы ингредиент на SKU."""
         Product.objects.create(name="Плюмбусы сушёные 400 г", source=Product.Source.RETAIL)

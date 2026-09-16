@@ -24,14 +24,20 @@
 ошибку видно в списке синонимов админки — удалить строку дешевле, чем
 разбирать последствия слияния.
 
+Правило — эвристика, и план читает человек. Поэтому есть два флага: --skip
+выкидывает из плана строку («Сала» — родительный от «Сало», а совпало с
+«Салат»), --alias задаёт пару, которую правило не нашло («Помидор черри» и
+«Томаты черри» начинаются с разных слов).
+
     docker compose exec -T backend python manage.py mg_link_orphans
-    docker compose exec -T backend python manage.py mg_link_orphans --apply
+    docker compose exec -T backend python manage.py mg_link_orphans --skip Сала --apply
+    docker compose exec -T backend python manage.py mg_link_orphans --alias "Помидор черри=969"
 """
 
 import collections
 import re
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.fridge.aliases import learn_alias, normalize_alias, product_ref_index, resolve_ref
@@ -64,6 +70,18 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--apply", action="store_true", help="Записать синонимы (иначе только показать).")
         parser.add_argument("--show", type=int, default=60, help="Сколько строк показать в каждом разделе.")
+        parser.add_argument(
+            "--skip",
+            action="append",
+            default=[],
+            help="Убрать имя из плана: «--skip Сала». Можно повторять.",
+        )
+        parser.add_argument(
+            "--alias",
+            action="append",
+            default=[],
+            help="Своя пара, которую правило не нашло: «--alias 'Помидор черри=969'». Можно повторять.",
+        )
 
     def handle(self, *args, **opts):
         from apps.recipes.models import RecipeProduct
@@ -96,13 +114,52 @@ class Command(BaseCommand):
             if key:
                 by_key[key].append(p)
 
-        plan, unmatched = [], []
+        # MG_LINKSKIP: план читает человек, и выкинуть из него строку он должен
+        # уметь. Морфологию без словаря правило не берёт: «Сала» — родительный
+        # от «Сало», но «сала» совпало с началом «салат», а «сало» с ключом
+        # «сало» в кандидаты не попало. Чинить тут нечего — это цена эвристики,
+        # и цена приемлемая ровно потому, что план просматривают.
+        skip = {normalize_alias(s) for s in opts["skip"]}
+
+        # MG_LINKMANUAL: обратный случай — связь очевидна человеку, а правилу
+        # нет: «Помидор черри» и «Томаты черри» (22 связи на проде) начинаются
+        # с разных слов. Указать пару руками надо уметь, иначе самый частый
+        # случай остаётся неразобранным.
+        manual = {}
+        for pair in opts["alias"]:
+            name, _, pid = pair.rpartition("=")
+            if not name or not pid.strip().isdigit():
+                raise CommandError("Пара задаётся как «Имя=НОМЕР», получено: %r" % pair)
+            product = Product.objects.filter(id=int(pid)).first()
+            if product is None:
+                raise CommandError("Товара #%s нет в каталоге (пара «%s»)." % (pid.strip(), name))
+            manual[normalize_alias(name)] = (name.strip(), product)
+
+        plan, unmatched, skipped = [], [], []
         for name, count in orphans.most_common():
+            norm = normalize_alias(name)
+            if norm in skip:
+                skipped.append((count, name))
+                continue
+            if norm in manual:
+                plan.append((count, name, manual[norm][1]))
+                continue
             found = by_key.get(stem_key(name) or (), [])
             if len(found) == 1:
                 plan.append((count, name, found[0]))
             else:
                 unmatched.append((count, name, len(found)))
+
+        # Пары, которых среди сирот не нашлось: имя могло измениться или уже
+        # разобраться. Молчать нельзя — человек считает, что задал связь.
+        seen = {normalize_alias(n) for _c, n, _p in plan}
+        for norm, (name, product) in manual.items():
+            if norm not in seen:
+                self.stderr.write(
+                    self.style.WARNING(
+                        "Пара «%s» -> «%s»: такого имени среди связей нет, строка пропущена." % (name, product.name)
+                    )
+                )
 
         show = opts["show"]
         self.stdout.write("")
@@ -122,6 +179,12 @@ class Command(BaseCommand):
             self.stdout.write("   %3d  «%s» — %s" % (count, name, why))
         if len(unmatched) > show:
             self.stdout.write("   … и ещё %d" % (len(unmatched) - show))
+
+        if skipped:
+            self.stdout.write("")
+            self.stdout.write("Выкинуто из плана флагом --skip — %d:" % len(skipped))
+            for count, name in skipped:
+                self.stdout.write("   %3d  «%s»" % (count, name))
 
         if not opts["apply"]:
             self.stdout.write(self.style.WARNING("DRY-RUN — ничего не изменено. Для записи: --apply"))
