@@ -222,7 +222,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("DRY-RUN — ничего не изменено. Для записи: --apply"))
             return
 
-        fridge_moved = recipe_moved = shop_moved = kbju_filled = deleted = 0
+        fridge_moved = recipe_moved = shop_moved = kbju_filled = fields_filled = deleted = 0
         with transaction.atomic():
             for dup_id, canon_id in merges.items():
                 s = merge_product_into(pmap[dup_id], pmap[canon_id])
@@ -230,12 +230,14 @@ class Command(BaseCommand):
                 recipe_moved += s["recipe"]
                 shop_moved += s["shop"]
                 kbju_filled += s["kbju"]
+                fields_filled += s["fields"]
                 deleted += 1
 
         self.stdout.write(
             self.style.SUCCESS(
                 f"Слияние выполнено. Удалено дублей: {deleted}; перенесено ссылок — "
                 f"холодильник: {fridge_moved}, рецепты: {recipe_moved}, покупки: {shop_moved}; "
-                f"КБЖУ перенесено в канон: {kbju_filled}."
+                f"КБЖУ перенесено в канон: {kbju_filled}; "
+                f"прочих полей дозаполнено: {fields_filled}."
             )
         )
