@@ -566,6 +566,16 @@ class _MenuScreenState extends State<MenuScreen> {
                           .add(MenuDetailRequested(id));
                     }
                   },
+                  // MG_WRITEOFF: списали или вернули продукты — перечитать
+                  // меню, чтобы отметка «Приготовлено» на карточке была
+                  // настоящей. Лист приёма остаётся открытым: блюда одного
+                  // приёма обычно отмечают подряд.
+                  onCookedChanged: () {
+                    final id = _activeMenuId;
+                    if (id != null) {
+                      context.read<MenuBloc>().add(MenuDetailRequested(id));
+                    }
+                  },
                 ),
               ),
             ],

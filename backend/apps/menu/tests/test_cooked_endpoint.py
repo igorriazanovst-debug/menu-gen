@@ -153,6 +153,57 @@ class TestОтмена:
 
 
 @pytest.mark.django_db
+class TestОтметкаВМеню:
+    """Меню должно помнить, что блюдо приготовлено.
+
+    Без этого кнопка врёт: человек закрыл приложение, вернулся — и она снова
+    выглядит ненажатой, хотя продукты уже ушли.
+    """
+
+    def _item(self, resp, dish):
+        return next(i for i in resp.data["items"] if i["id"] == dish.id)
+
+    def test_до_отметки_не_приготовлено(self, owner, dish, fridge_item):
+        resp = _client(owner).get(f"/api/v1/menu/{dish.menu_id}/")
+
+        assert self._item(resp, dish)["is_cooked"] is False
+
+    def test_после_отметки_приготовлено(self, owner, dish, fridge_item):
+        client = _client(owner)
+        client.post(_url(dish))
+
+        resp = client.get(f"/api/v1/menu/{dish.menu_id}/")
+
+        assert self._item(resp, dish)["is_cooked"] is True
+
+    def test_после_отмены_снова_нет(self, owner, dish, fridge_item):
+        client = _client(owner)
+        client.post(_url(dish))
+        client.delete(_url(dish))
+
+        resp = client.get(f"/api/v1/menu/{dish.menu_id}/")
+
+        assert self._item(resp, dish)["is_cooked"] is False
+
+    def test_соседнее_блюдо_не_загорается(self, owner, menu, dish, fridge_item, plumbus):
+        """Ключ события — блюдо, а не меню: отметка не должна течь на другие."""
+        other = MenuItem.objects.create(
+            menu=menu,
+            recipe=Recipe.objects.create(title="Другое блюдо", ingredients=[]),
+            day_offset=0,
+            meal_type=MenuItem.MealType.DINNER,
+            meal_slot="dinner",
+        )
+        client = _client(owner)
+        client.post(_url(dish))
+
+        resp = client.get(f"/api/v1/menu/{menu.id}/")
+
+        assert self._item(resp, dish)["is_cooked"] is True
+        assert self._item(resp, other)["is_cooked"] is False
+
+
+@pytest.mark.django_db
 class TestДоступ:
     def test_чужое_меню_не_видно(self, dish, fridge_item):
         stranger = User.objects.create_user(email="stranger@example.com", password="pass12345", name="Чужой")

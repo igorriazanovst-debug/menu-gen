@@ -57,6 +57,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
     product = serializers.SerializerMethodField()
     member_name = serializers.CharField(source="member.user.name", read_only=True, default=None)
     member = serializers.IntegerField(source="member_id", read_only=True, default=None)  # MG_FAMILYGEN
+    is_cooked = serializers.SerializerMethodField()  # MG_WRITEOFF
 
     class Meta:
         model = MenuItem
@@ -73,7 +74,24 @@ class MenuItemSerializer(serializers.ModelSerializer):
             "member_name",
             "quantity",
             "is_cheat_meal",
+            "is_cooked",
         )
+
+    def get_is_cooked(self, obj):
+        """MG_WRITEOFF: списаны ли продукты этого блюда.
+
+        Без этого поля кнопка «Приготовил» врёт: человек закрывает приложение,
+        возвращается — и она снова выглядит ненажатой, хотя продукты уже ушли.
+
+        Ключ тот же, что у события списания (блюдо, а не человек), поэтому у
+        трёх участников с одним блюдом галочка загорится у всех троих.
+        Множество ключей кладёт в контекст MenuDetailSerializer — одним
+        запросом на меню, а не по запросу на блюдо.
+        """
+        keys = self.context.get("cooked_keys")
+        if keys is None:
+            return False
+        return (obj.day_offset, obj.meal_slot or obj.meal_type or "", obj.recipe_id) in keys
 
     def get_recipe(self, obj):
         if obj.recipe_id:
@@ -151,10 +169,27 @@ class MenuListSerializer(serializers.ModelSerializer):
 
 
 class MenuDetailSerializer(serializers.ModelSerializer):
-    items = MenuItemSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
     # MG_FAMILYGEN: кто смотрит (для фильтра «свои приёмы» и окна главы семьи).
     my_member_id = serializers.SerializerMethodField()
     is_head = serializers.SerializerMethodField()
+
+    def get_items(self, obj):
+        """MG_WRITEOFF: блюда плюс отметка «приготовлено».
+
+        Списания читаются одним запросом на всё меню и кладутся в контекст
+        ключами — иначе на каждое блюдо ушёл бы свой запрос, а их в недельном
+        меню под сотню.
+        """
+        from apps.fridge.models import FridgeWriteOff
+
+        cooked = set(
+            FridgeWriteOff.objects.filter(family_id=obj.family_id, menu_id=obj.id).values_list(
+                "day_offset", "meal_slot", "recipe_id"
+            )
+        )
+        ctx = {**self.context, "cooked_keys": cooked}
+        return MenuItemSerializer(obj.items.all(), many=True, context=ctx).data
 
     def _my_member(self, obj):
         req = self.context.get("request")

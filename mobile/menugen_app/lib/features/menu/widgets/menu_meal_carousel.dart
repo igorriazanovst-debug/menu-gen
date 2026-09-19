@@ -7,6 +7,7 @@ import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/food_groups.dart'; // MG_SWAPFREE
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
+import 'cooked_sheet.dart'; // MG_WRITEOFF
 
 /// Список крупных карточек блюд для выбранного приёма пищи.
 /// Если в slot 1 элемент — карточка во всю ширину; если несколько — Column со
@@ -112,7 +113,7 @@ class NutritionTotalsBar extends StatelessWidget {
   }
 }
 
-class MenuMealCarousel extends StatelessWidget {
+class MenuMealCarousel extends StatefulWidget {
   final String slotLabel;
   final List<Map<String, dynamic>> items;
   final ValueChanged<int> onRecipeTap;
@@ -121,6 +122,11 @@ class MenuMealCarousel extends StatelessWidget {
   final int? menuId;
   final ApiClient? apiClient;
   final VoidCallback? onSwapped;
+  // MG_WRITEOFF: списали или вернули продукты — меню надо перечитать, иначе
+  // отметка «Приготовлено» на карточке останется от прошлого состояния.
+  // В отличие от замены, лист приёма при этом не закрывается: человек обычно
+  // отмечает подряд несколько блюд одного приёма.
+  final VoidCallback? onCookedChanged;
 
   const MenuMealCarousel({
     super.key,
@@ -130,10 +136,34 @@ class MenuMealCarousel extends StatelessWidget {
     this.menuId,
     this.apiClient,
     this.onSwapped,
+    this.onCookedChanged,
   });
 
   @override
+  State<MenuMealCarousel> createState() => _MenuMealCarouselState();
+}
+
+class _MenuMealCarouselState extends State<MenuMealCarousel> {
+  /// MG_WRITEOFF: блюда, состояние которых поменяли прямо сейчас.
+  ///
+  /// Список блюд приёма приходит снаружи и приезжает заново только после
+  /// перечитывания меню — а лист остаётся открытым, и человек ждёт, что
+  /// кнопка отзовётся сразу. Запись живёт до следующей выдачи с сервера:
+  /// [didUpdateWidget] её сбрасывает, чтобы наша память не спорила с правдой.
+  final Map<int, bool> _justChanged = {};
+
+  @override
+  void didUpdateWidget(MenuMealCarousel old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.items, widget.items)) _justChanged.clear();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final slotLabel = widget.slotLabel;
+    final items = widget.items;
+    final menuId = widget.menuId;
+    final apiClient = widget.apiClient;
     if (items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -175,10 +205,14 @@ class MenuMealCarousel extends StatelessWidget {
                   apiClient != null &&
                   itemId != null &&
                   recipeId != null;
+              // MG_WRITEOFF: «Приготовил» работает и у блюда-продукта —
+              // списывать там тоже есть что, рецепт для этого не нужен.
+              final canCook = menuId != null && apiClient != null && itemId != null;
               return _RecipeBigCard(
                 recipe: recipe,
                 memberName: item['member_name'] as String?,
-                onTap: recipeId == null ? null : () => onRecipeTap(recipeId),
+                isCooked: _justChanged[itemId] ?? (item['is_cooked'] == true),
+                onTap: recipeId == null ? null : () => widget.onRecipeTap(recipeId),
                 onReplace: !canSwap
                     ? null
                     : () => showSwapPicker(
@@ -188,7 +222,20 @@ class MenuMealCarousel extends StatelessWidget {
                           itemId: itemId!,
                           currentRecipeId: recipeId!,
                           foodGroup: recipe['food_group'] as String?,
-                          onSwapped: onSwapped,
+                          onSwapped: widget.onSwapped,
+                        ),
+                onCooked: !canCook
+                    ? null
+                    : () => showCookedSheet(
+                          context,
+                          apiClient: apiClient!,
+                          menuId: menuId!,
+                          itemId: itemId!,
+                          dishTitle: (recipe['title'] as String?) ?? 'Блюдо',
+                          onChanged: (cooked) {
+                            if (mounted) setState(() => _justChanged[itemId!] = cooked);
+                            widget.onCookedChanged?.call();
+                          },
                         ),
               );
             },
@@ -204,12 +251,16 @@ class _RecipeBigCard extends StatelessWidget {
   final String? memberName;
   final VoidCallback? onTap;
   final VoidCallback? onReplace;
+  final VoidCallback? onCooked;
+  final bool isCooked;
 
   const _RecipeBigCard({
     required this.recipe,
     required this.memberName,
     required this.onTap,
     this.onReplace,
+    this.onCooked,
+    this.isCooked = false,
   });
 
   String? get _imageUrl => recipe['image_url'] as String?;
@@ -292,23 +343,57 @@ class _RecipeBigCard extends StatelessWidget {
                         _MetaChip(icon: Icons.person_outline, text: memberName!),
                     ],
                   ),
-                  if (onReplace != null) ...[
+                  if (onReplace != null || onCooked != null) ...[
                     const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        onPressed: onReplace,
-                        icon: const Icon(Icons.swap_horiz, size: 18),
-                        label: const Text('Заменить'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: cs.primary,
-                          side: BorderSide(color: cs.primary.withOpacity(0.5)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                    // Wrap, а не Row: у длинных подписей на узком экране
+                    // кнопки переносятся, а не режутся.
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (onReplace != null)
+                          OutlinedButton.icon(
+                            onPressed: onReplace,
+                            icon: const Icon(Icons.swap_horiz, size: 18),
+                            label: const Text('Заменить'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: cs.primary,
+                              side: BorderSide(color: cs.primary.withOpacity(0.5)),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        // MG_WRITEOFF: отмеченное блюдо остаётся нажимаемым —
+                        // через тот же лист человек отменяет ошибочное списание.
+                        if (onCooked != null)
+                          isCooked
+                              ? FilledButton.tonalIcon(
+                                  onPressed: onCooked,
+                                  icon: const Icon(Icons.check_circle, size: 18),
+                                  label: const Text('Приготовлено'),
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                )
+                              : OutlinedButton.icon(
+                                  onPressed: onCooked,
+                                  icon: const Icon(Icons.local_fire_department, size: 18),
+                                  label: const Text('Приготовил'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: cs.primary,
+                                    side: BorderSide(color: cs.primary.withOpacity(0.5)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                      ],
                     ),
                   ],
                 ],
