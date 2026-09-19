@@ -49,7 +49,16 @@ def _write_off_planned(entry, user_id):
     Ошибка холодильника не должна ронять запись в дневник: человек отмечал
     съеденное, а не работал с продуктами. Поэтому сбой пишется в лог, а ответ
     остаётся успешным.
+
+    Пока в приложении у людей нет кнопок «приготовил» и «отменить списание»,
+    это списание молчаливое и необратимое для них — поэтому оно за флагом
+    MG_WRITEOFF_ON_EATEN и по умолчанию выключено (см. config/settings.py).
     """
+    from django.conf import settings
+
+    if not getattr(settings, "MG_WRITEOFF_ON_EATEN", False):
+        return
+
     from apps.fridge.writeoff import write_off_menu_item
 
     try:

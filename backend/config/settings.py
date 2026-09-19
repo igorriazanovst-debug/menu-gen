@@ -450,3 +450,19 @@ AI_IMAGE_POLL_INTERVAL = config("AI_IMAGE_POLL_INTERVAL", default=2.0, cast=floa
 # Prompt-builder text model (recipe -> visual slots). Defaults to the PRO model
 # for richer descriptions; override via env.
 AI_IMAGE_PROMPT_MODEL = config("AI_IMAGE_PROMPT_MODEL", default=AI_TEXT_MODEL_PRO)
+
+# MG_WRITEOFF: списывать ли продукты, когда человек отмечает «съел» у блюда из
+# меню в дневнике.
+#
+# По умолчанию ВЫКЛЮЧЕНО, и это не осторожность ради осторожности. Дневник есть
+# в уже опубликованном приложении, а кнопки «приготовил» и «отменить списание»
+# — только в новой сборке. Включить раньше неё значит: у людей начнут убывать
+# продукты из холодильника без видимой причины и без способа это отменить.
+#
+# Кнопка «приготовил» (POST /menu/<m>/items/<i>/cooked/) от флага НЕ зависит:
+# там человек сам нажал и сразу видит, что ушло. Флаг закрывает только молчаливое
+# списание по отметке в дневнике.
+#
+# Включать после выхода версии приложения с этими кнопками:
+#   MG_WRITEOFF_ON_EATEN=true в .env, затем рестарт backend.
+MG_WRITEOFF_ON_EATEN = config("MG_WRITEOFF_ON_EATEN", default=False, cast=bool)

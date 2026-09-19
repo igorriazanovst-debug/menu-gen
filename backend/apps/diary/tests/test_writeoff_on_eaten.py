@@ -8,6 +8,11 @@
 Передумать записывать съеденное можно, вернуть продукты в холодильник —
 нет. Отмена — отдельное действие на самом блюде.
 
+Всё это живёт за флагом MG_WRITEOFF_ON_EATEN и по умолчанию выключено: пока в
+опубликованном приложении нет кнопок «приготовил» и «отменить», списание по
+отметке в дневнике для человека молчаливое и необратимое. Поэтому тесты флаг
+включают явно, а отдельный класс проверяет выключенное состояние.
+
 Названия продуктов выдуманы: посевная миграция заводит каталог в каждую
 тестовую базу.
 """
@@ -109,6 +114,12 @@ def _client(user):
     return client
 
 
+@pytest.fixture(autouse=True)
+def включённый_флаг(settings):
+    """Списание по «съел» включено — иначе проверять было бы нечего."""
+    settings.MG_WRITEOFF_ON_EATEN = True
+
+
 @pytest.mark.django_db
 class TestОтметкаСъел:
     def test_галочка_списывает_продукты(self, owner, planned, fridge_item):
@@ -198,3 +209,33 @@ class TestОдноБлюдоОдноСписание:
         fridge_item.refresh_from_db()
         assert fridge_item.quantity == Decimal("300.00")
         assert FridgeWriteOff.objects.count() == 1
+
+
+@pytest.mark.django_db
+class TestФлагВыключен:
+    """По умолчанию списание по отметке в дневнике выключено.
+
+    Дневник есть в уже опубликованном приложении, а кнопок «приготовил» и
+    «отменить списание» в нём нет. Включённое списание означало бы, что у людей
+    убывают продукты без видимой причины и без способа это отменить.
+    """
+
+    def test_галочка_ничего_не_списывает(self, owner, planned, fridge_item, settings):
+        settings.MG_WRITEOFF_ON_EATEN = False
+
+        resp = _client(owner).patch(f"/api/v1/diary/{planned.id}/", {"is_eaten": True}, format="json")
+
+        assert resp.status_code == 200
+        fridge_item.refresh_from_db()
+        assert fridge_item.quantity == Decimal("500.00")
+        assert FridgeWriteOff.objects.count() == 0
+
+    def test_кнопка_приготовил_от_флага_не_зависит(self, owner, dish, fridge_item, settings):
+        """Там человек нажал сам и сразу видит, что ушло, — прятать нечего."""
+        settings.MG_WRITEOFF_ON_EATEN = False
+
+        resp = _client(owner).post(f"/api/v1/menu/{dish.menu_id}/items/{dish.id}/cooked/")
+
+        assert resp.status_code == 201
+        fridge_item.refresh_from_db()
+        assert fridge_item.quantity == Decimal("300.00")
