@@ -286,6 +286,50 @@ class ProductAlias(models.Model):
         return f"{self.alias_norm} -> {self.product_id}"
 
 
+class ProductUnitWeight(models.Model):
+    """MG_UNITNORM: сколько граммов в одной «штуке», «упаковке», «литре» товара.
+
+    Холодильник хранит то, что человек принёс из магазина: яйца в штуках, творог
+    в упаковках, молоко в литрах. Рецепты и список покупок считают в граммах.
+    Пока перевода не было, эти две правды не встречались: «Яйца куриные 50 г»
+    для блюда не находили в холодильнике «яйца 30 шт», хотя товар определялся
+    верно. Списание это показало, а список покупок вёл себя так же — молча, и
+    человек просто получал в списке то, что у него лежит.
+
+    Перевод один на оба конца: «одна единица U товара P весит N граммов».
+    Поэтому таблица не про штуки, а про любую единицу — `шт`, `упаковка`,
+    `банка`, `л` (для жидкого это заодно плотность), `пучок`, `ломтик`.
+
+    Данные заводятся по товару и только явно. Угадывать «в среднем по
+    категории» здесь нельзя: ошибка в весе не видна никому и тихо уносит из
+    холодильника не то количество. Чего нет — то и не сходится, как раньше:
+    честная нехватка лучше выдуманного остатка.
+    """
+
+    class Source(models.TextChoices):
+        SEED = "seed", "Справочник"
+        MANUAL = "manual", "Указано человеком"
+        AI = "ai", "Оценка модели"
+
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="unit_weights")
+    # Единица в нормализованном виде (см. _mg_norm_unit): «шт», а не «шт.».
+    unit = models.CharField(max_length=50)
+    grams = models.DecimalField(max_digits=10, decimal_places=2, help_text="Сколько граммов в одной такой единице")
+    source = models.CharField(max_length=16, choices=Source.choices, default=Source.MANUAL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "product_unit_weights"
+        constraints = [
+            models.UniqueConstraint(fields=["product", "unit"], name="uniq_product_unit_weight"),
+        ]
+        indexes = [models.Index(fields=["unit"])]
+
+    def __str__(self):
+        return f"{self.product_id}: 1 {self.unit} = {self.grams} г"
+
+
 class FridgeWriteOff(models.Model):
     """MG_WRITEOFF: событие списания продуктов из холодильника.
 

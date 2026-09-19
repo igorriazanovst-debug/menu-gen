@@ -19,6 +19,16 @@ from django.urls import reverse
 from apps.fridge.admin import ProductAdmin
 from apps.fridge.models import Product, ProductCategory
 
+# MG_UNITNORM: служебные поля раздела «Вес единицы». Их шлёт любой браузер,
+# даже если человек в раздел не заглядывал, — без них Django отвергает всю
+# форму целиком.
+_EMPTY_INLINE = {
+    "unit_weights-TOTAL_FORMS": "0",
+    "unit_weights-INITIAL_FORMS": "0",
+    "unit_weights-MIN_NUM_FORMS": "0",
+    "unit_weights-MAX_NUM_FORMS": "1000",
+}
+
 
 @pytest.fixture
 def staff_client(db, client):
@@ -105,6 +115,12 @@ class TestСтраницаДобавления:
                 "category_fk": cat.id,
                 "default_unit": "г",
                 "source": Product.Source.MANUAL,
+                # MG_UNITNORM: у страницы появился раздел «Вес единицы».
+                # Браузер шлёт его служебные поля всегда, даже когда человек
+                # туда не заглядывал; без них форма не проходит проверку, и
+                # товар молча не сохраняется — ровно та беда, про которую этот
+                # тест и написан.
+                **_EMPTY_INLINE,
             },
         )
 
@@ -116,7 +132,7 @@ class TestСтраницаДобавления:
     def test_без_рубрики_не_сохраняется(self, staff_client):
         page = staff_client.post(
             reverse("admin:fridge_product_add"),
-            {"name": "Плюмбус безрубричный", "source": Product.Source.MANUAL},
+            {"name": "Плюмбус безрубричный", "source": Product.Source.MANUAL, **_EMPTY_INLINE},
         )
 
         assert page.status_code == 200  # форма вернулась с ошибкой, а не сохранилась

@@ -8,7 +8,7 @@ from django.utils.html import format_html
 
 from apps.common.search import AdminSearchMixin  # MG_YOSEARCH/MG_MORPHSEARCH
 
-from .models import FridgeItem, Product, ProductCategory
+from .models import FridgeItem, Product, ProductCategory, ProductUnitWeight
 
 
 class ProductAdminForm(forms.ModelForm):
@@ -113,9 +113,26 @@ class ProductCategoryAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
 
 
+class ProductUnitWeightInline(admin.TabularInline):
+    """MG_UNITNORM: вес единицы товара — здесь, а не отдельным разделом.
+
+    Заполняется редко и только для тех товаров, что лежат в холодильнике не в
+    граммах: яйца в штуках, творог в упаковках, молоко в литрах. Без этой
+    строки такой товар не сходится с рецептом и уходит в «не хватило», сколько
+    бы его дома ни лежало.
+    """
+
+    model = ProductUnitWeight
+    extra = 0
+    fields = ("unit", "grams", "source")
+    verbose_name = "вес единицы"
+    verbose_name_plural = "Вес единицы (шт, упаковка, л)"
+
+
 @admin.register(Product)
 class ProductAdmin(AdminSearchMixin, admin.ModelAdmin):
     form = ProductAdminForm
+    inlines = [ProductUnitWeightInline]
     # Продукты-кандидаты на замену блюда = все продукты в поиске (системные +
     # пользовательские). Для добавления фото удобны: превью, фильтр «без фото»,
     # inline-правка image_url в списке и загрузка файла на странице продукта.

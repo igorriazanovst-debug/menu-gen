@@ -31,6 +31,13 @@
 (`_fr_base`, `_fr_unit_factor`): граммы к килограммам, миллилитры к литрам,
 штуки к штукам. Одно правило на оба конца — иначе список и холодильник
 разъедутся на первом же «кг».
+
+MG_UNITNORM: одной арифметики мало. Холодильник хранит покупку («яйца 30 шт»),
+рецепт считает граммами, и эти две правды не встречались вовсе — позиция уходила
+в нехватку, сколько бы её дома ни лежало. Перевод между ними лежит в
+`apps/fridge/units.py` и зовётся отсюда и из `_subtract_fridge`. Работает он
+только по явной записи о весе единицы: нет записи — нет перевода, и всё ведёт
+себя как раньше.
 """
 
 from decimal import Decimal
@@ -107,41 +114,80 @@ def write_off_menu_item(menu_item, *, user_id=None):
         return existing, False
 
     from apps.fridge.aliases import product_ref_index
+    from apps.fridge.units import to_grams, unit_weight_index
 
     pidx = product_ref_index()
     rows = _fridge_rows(family)
+    needs = [n for n in _need_rows(menu_item) if n.get("quantity") is not None]
+
     state = []
     for it in rows:
         dim, base = _fr_base(it.quantity, it.unit)
         _, factor = _fr_unit_factor(it.unit)
         pid, canon = _match_key(it.name, it.product_id, pidx)
-        state.append({"item": it, "dim": dim, "base": base, "factor": factor, "pid": pid, "canon": canon})
+        state.append(
+            {"item": it, "dim": dim, "base": base, "factor": factor, "pid": pid, "canon": canon, "g_per_base": None}
+        )
+
+    # MG_UNITNORM: справочник весов — одним запросом на всё блюдо, а не по
+    # запросу на позицию: в недельном меню позиций под сотню.
+    need_keys = [_match_key(n.get("name"), n.get("product_id"), pidx)[0] for n in needs]
+    widx = unit_weight_index([s["pid"] for s in state] + need_keys)
+
+    for s in state:
+        # Сколько граммов в одной единице БАЗЫ (г для массы, мл для объёма,
+        # штука для штук). Считаем общим переводом, чтобы не разбирать каждую
+        # единицу отдельно: «1 л = 1030 г» превращается здесь в «1.03 г на мл»
+        # сам собой.
+        mass_total = to_grams(s["item"].quantity, s["item"].unit, s["pid"], widx)
+        if mass_total is not None and s["base"]:
+            s["g_per_base"] = mass_total / s["base"]
 
     write_off = FridgeWriteOff.objects.create(reason=FridgeWriteOff.Reason.COOKED, created_by_id=user_id, **key)
 
-    for need in _need_rows(menu_item):
+    for need in needs:
         qty = need.get("quantity")
-        if qty is None:
-            # Потребность без числа («Соль») списывать не из чего: сколько её
-            # ушло, не знает никто. Такие строки просто пропускаем.
-            continue
         need_dim, need_factor = _fr_unit_factor(need.get("unit"))
         try:
-            remaining = (qty if isinstance(qty, Decimal) else Decimal(str(qty))) * need_factor
+            need_qty = qty if isinstance(qty, Decimal) else Decimal(str(qty))
         except Exception:
             continue
 
         pid, canon = _match_key(need.get("name"), need.get("product_id"), pidx)
-        matches = [s for s in state if s["base"] and s["dim"] == need_dim and pid and s["pid"] == pid]
+        need_mass = to_grams(need_qty, need.get("unit"), pid, widx)
+
+        # MG_UNITNORM: если потребность переводится в граммы, считаем в них —
+        # тогда «яйца 30 шт» в холодильнике закрывают «Яйца куриные 50 г» в
+        # рецепте. Раньше такие строки не встречались вовсе: размерности
+        # разные, и позиция молча уходила в нехватку.
+        #
+        # Если веса нет ни у одной стороны, работаем как раньше — по
+        # совпадению размерности. Догадываться о весе нельзя: неверная цифра
+        # унесёт из холодильника не то количество, и человек узнает об этом,
+        # только открыв дверцу.
+        in_grams = need_mass is not None
+        if in_grams:
+            remaining = need_mass
+            candidates = [s for s in state if s["base"] and s["g_per_base"]]
+            per_need_unit = need_mass / need_qty if need_qty else Decimal(1)
+        else:
+            remaining = need_qty * need_factor
+            candidates = [s for s in state if s["base"] and s["dim"] == need_dim]
+            per_need_unit = need_factor
+
+        matches = [s for s in candidates if pid and s["pid"] == pid]
         if not matches:
-            matches = [s for s in state if s["base"] and s["dim"] == need_dim and canon and s["canon"] == canon]
+            matches = [s for s in candidates if canon and s["canon"] == canon]
 
         for s in matches:
             if remaining <= 0:
                 break
-            take = min(s["base"], remaining)
+            g_per_base = s["g_per_base"] if in_grams else Decimal(1)
+            available = s["base"] * g_per_base
+            take = min(available, remaining)
             remaining -= take
-            s["base"] -= take
+            take_base = take / g_per_base
+            s["base"] -= take_base
             item = s["item"]
             item.quantity = (s["base"] / s["factor"]) if s["factor"] else s["base"]
             if item.quantity <= 0:
@@ -153,7 +199,7 @@ def write_off_menu_item(menu_item, *, user_id=None):
                 fridge_item=item,
                 product_id=item.product_id,
                 name=item.name,
-                quantity=(take / s["factor"]) if s["factor"] else take,
+                quantity=(take_base / s["factor"]) if s["factor"] else take_base,
                 unit=item.unit,
             )
 
@@ -163,7 +209,7 @@ def write_off_menu_item(menu_item, *, user_id=None):
                 fridge_item=None,
                 product_id=need.get("product_id"),
                 name=need.get("name") or "",
-                shortfall=(remaining / need_factor) if need_factor else remaining,
+                shortfall=(remaining / per_need_unit) if per_need_unit else remaining,
                 shortfall_unit=need.get("unit") or "",
             )
 
@@ -174,10 +220,12 @@ def write_off_menu_item(menu_item, *, user_id=None):
 def write_off_fridge_item(item, quantity=None, *, user_id=None):
     """Ручное списание: человек израсходовал позицию сам, без блюда из меню.
 
-    Количество — в единице самой позиции, и ни во что не переводится. Это не
-    упрощение, а обход известной ямы (BACKLOG T-36): яйца лежат в штуках,
-    творог в упаковках, и перевести их в граммы нечем. Здесь перевод и не
-    нужен: человек говорит, сколько ушло из ТОЙ пачки, на которую смотрит.
+    Количество — в единице самой позиции, и ни во что не переводится. Перевод
+    (MG_UNITNORM) нужен там, где встречаются две разные правды: рецепт в
+    граммах и холодильник в штуках. Здесь правда одна — человек смотрит на
+    конкретную пачку и говорит, сколько ушло из НЕЁ. Переводить это в граммы и
+    обратно значило бы гонять число через справочник без всякой нужды, теряя на
+    округлении.
 
     `quantity=None` — израсходовано всё. Больше, чем лежит, списать нельзя:
     остаток обрезается, иначе холодильник ушёл бы в минус.

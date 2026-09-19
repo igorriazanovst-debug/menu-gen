@@ -88,8 +88,18 @@ def _fr_unit_factor(unit):
 
 def _subtract_fridge(agg, fridge_rows, pidx=None):  # MG_PRODALIAS
     """Match by product_id, else canonical name; subtract fridge qty (unit
-    conversion within same dimension); drop item if remaining <= 0."""
+    conversion within same dimension); drop item if remaining <= 0.
+
+    MG_UNITNORM: размерности мало. Холодильник хранит покупку («яйца 30 шт»),
+    рецепт считает граммами — и вычитание их не встречало, сколько бы дома ни
+    лежало. Если у товара известен вес единицы, обе стороны приводятся к
+    граммам общим переводом (apps/fridge/units.py) — тем же, что и списание
+    при «приготовил». Правило одно на оба конца намеренно: разойдись они, и
+    список покупок разошёлся бы с холодильником, а сказать об этом было бы
+    некому — оба места просто молчат, когда не сходится.
+    """
     from apps.fridge.aliases import normalize_alias, product_ref_index, resolve_ref
+    from apps.fridge.units import to_grams, unit_weight_index
 
     if pidx is None:
         pidx = product_ref_index()
@@ -99,28 +109,53 @@ def _subtract_fridge(agg, fridge_rows, pidx=None):  # MG_PRODALIAS
         ref = resolve_ref(it.name, pidx)
         fpid = it.product_id or (ref["id"] if ref else None)
         fcanon = normalize_alias(ref["name"]) if ref else _fr_canon(it.name)
-        frs.append({"pid": fpid, "canon": fcanon, "dim": dim, "base": base, "used": False})
+        frs.append(
+            {"pid": fpid, "canon": fcanon, "dim": dim, "base": base, "used": False, "item": it, "g_per_base": None}
+        )
+
+    widx = unit_weight_index([f["pid"] for f in frs] + [v.get("product_id") for v in agg.values()])
+    for f in frs:
+        mass_total = to_grams(f["item"].quantity, f["item"].unit, f["pid"], widx)
+        if mass_total is not None and f["base"]:
+            f["g_per_base"] = mass_total / f["base"]
+
     for key in list(agg.keys()):
         v = agg[key]
         pid = v.get("product_id")
         vref = resolve_ref(v.get("name"), pidx)
         vcanon = normalize_alias(vref["name"]) if vref else _fr_canon(v.get("name"))
         agg_dim, agg_factor = _fr_unit_factor(v.get("unit"))
-        matches = [f for f in frs if not f["used"] and pid and f["pid"] == pid]
-        if not matches:
-            matches = [f for f in frs if not f["used"] and vcanon and f["canon"] == vcanon]
-        consumed = [f for f in matches if f["base"] is not None and f["dim"] == agg_dim]
-        if not consumed:
-            continue
-        for f in consumed:
-            f["used"] = True
-        total_base = sum((f["base"] for f in consumed), Decimal(0))
         try:
             need = v["quantity"] if isinstance(v["quantity"], Decimal) else Decimal(str(v["quantity"]))
         except Exception:
             continue
-        deduct = (total_base / agg_factor) if agg_factor else total_base
-        remaining = need - deduct
+
+        need_pid = pid or (vref["id"] if vref else None)
+        need_mass = to_grams(need, v.get("unit"), need_pid, widx)
+        in_grams = need_mass is not None
+
+        matches = [f for f in frs if not f["used"] and pid and f["pid"] == pid]
+        if not matches:
+            matches = [f for f in frs if not f["used"] and vcanon and f["canon"] == vcanon]
+        if in_grams:
+            consumed = [f for f in matches if f["base"] is not None and f["g_per_base"]]
+        else:
+            consumed = [f for f in matches if f["base"] is not None and f["dim"] == agg_dim]
+        if not consumed:
+            continue
+        for f in consumed:
+            f["used"] = True
+
+        if in_grams:
+            have = sum((f["base"] * f["g_per_base"] for f in consumed), Decimal(0))
+            per_need_unit = need_mass / need if need else Decimal(1)
+            remaining_g = need_mass - have
+            remaining = (remaining_g / per_need_unit) if per_need_unit else remaining_g
+        else:
+            total_base = sum((f["base"] for f in consumed), Decimal(0))
+            deduct = (total_base / agg_factor) if agg_factor else total_base
+            remaining = need - deduct
+
         if remaining <= 0:
             agg.pop(key, None)
         else:
