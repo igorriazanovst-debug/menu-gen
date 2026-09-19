@@ -649,10 +649,15 @@ class MenuItemCookedView(APIView):
     блюдо приготовлено, может любой участник семьи, а не только её глава.
     Редактирование меню (`_can_edit_menu`) — про состав меню, а приготовление
     — про то, что уже произошло на кухне.
+
+    Премиум-гейт тот же, что у остального меню и у записи в холодильник.
+    Сначала здесь стояла одна `IsAuthenticated`, и получалась дыра: правка
+    холодильника руками закрыта подпиской, а это нажатие меняло его же в обход
+    — достаточно было знать номер блюда. Подписка семейная, а не личная,
+    поэтому «любому участнику» она не мешает.
     """
 
-    # freemium: холодильник и меню открыты всем, отдельной премиум-проверки нет.
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
     def _get_item(self, request, menu_id, item_id):
         family = _get_family(request.user)

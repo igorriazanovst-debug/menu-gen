@@ -313,6 +313,21 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         return instance
 
 
+class FridgeConsumeSerializer(serializers.Serializer):
+    """MG_WRITEOFF: сколько израсходовали из позиции холодильника.
+
+    Единицы нет намеренно: количество считается в единице самой позиции.
+    Пустое поле значит «всё» — так чаще всего и бывает: пачку доели.
+    """
+
+    quantity = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+
+    def validate_quantity(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Количество должно быть больше нуля.")
+        return value
+
+
 class BarcodeLookupSerializer(serializers.Serializer):
     barcode = serializers.CharField(max_length=64)
 

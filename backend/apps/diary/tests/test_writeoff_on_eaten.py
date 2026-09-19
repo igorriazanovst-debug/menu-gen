@@ -35,8 +35,11 @@ def owner(db):
 
 
 @pytest.fixture
-def family(owner):
-    return Family.objects.get(owner=owner)
+def family(owner, grant_premium):
+    family = Family.objects.get(owner=owner)
+    # Дневник бесплатен, но тест дёргает и ручку меню — ей нужен премиум.
+    grant_premium(family)
+    return family
 
 
 @pytest.fixture

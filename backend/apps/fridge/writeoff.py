@@ -171,6 +171,46 @@ def write_off_menu_item(menu_item, *, user_id=None):
 
 
 @transaction.atomic
+def write_off_fridge_item(item, quantity=None, *, user_id=None):
+    """Ручное списание: человек израсходовал позицию сам, без блюда из меню.
+
+    Количество — в единице самой позиции, и ни во что не переводится. Это не
+    упрощение, а обход известной ямы (BACKLOG T-36): яйца лежат в штуках,
+    творог в упаковках, и перевести их в граммы нечем. Здесь перевод и не
+    нужен: человек говорит, сколько ушло из ТОЙ пачки, на которую смотрит.
+
+    `quantity=None` — израсходовано всё. Больше, чем лежит, списать нельзя:
+    остаток обрезается, иначе холодильник ушёл бы в минус.
+    """
+    available = item.quantity or Decimal(0)
+    take = available if quantity is None else Decimal(str(quantity))
+    if take <= 0:
+        raise ValueError("Количество должно быть больше нуля.")
+    take = min(take, available)
+
+    write_off = FridgeWriteOff.objects.create(
+        family=item.family,
+        reason=FridgeWriteOff.Reason.MANUAL,
+        created_by_id=user_id,
+    )
+    FridgeWriteOffLine.objects.create(
+        write_off=write_off,
+        fridge_item=item,
+        product_id=item.product_id,
+        name=item.name,
+        quantity=take,
+        unit=item.unit,
+    )
+
+    item.quantity = available - take
+    if item.quantity <= 0:
+        item.quantity = Decimal(0)
+        item.is_deleted = True
+    item.save(update_fields=["quantity", "is_deleted", "updated_at"])
+    return write_off
+
+
+@transaction.atomic
 def undo_write_off(write_off):
     """Вернуть в холодильник ровно то, что ушло, и убрать запись."""
     for line in write_off.lines.select_related("fridge_item"):

@@ -30,8 +30,11 @@ def owner(db):
 
 
 @pytest.fixture
-def family(owner):
-    return Family.objects.get(owner=owner)
+def family(owner, grant_premium):
+    family = Family.objects.get(owner=owner)
+    # Меню и запись в холодильник закрыты премиумом — «приготовил» тоже.
+    grant_premium(family)
+    return family
 
 
 @pytest.fixture
@@ -205,9 +208,12 @@ class TestОтметкаВМеню:
 
 @pytest.mark.django_db
 class TestДоступ:
-    def test_чужое_меню_не_видно(self, dish, fridge_item):
+    def test_чужое_меню_не_видно(self, dish, fridge_item, grant_premium):
+        # Премиум чужому тоже выдаём: иначе сработает платный гейт, и тест
+        # проверит подписку вместо границ чужой семьи.
         stranger = User.objects.create_user(email="stranger@example.com", password="pass12345", name="Чужой")
         _bootstrap_user(stranger)
+        grant_premium(Family.objects.get(owner=stranger))
 
         resp = _client(stranger).post(_url(dish))
 

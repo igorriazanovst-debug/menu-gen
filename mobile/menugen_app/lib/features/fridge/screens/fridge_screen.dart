@@ -7,7 +7,10 @@ import '../../../core/api/api_client.dart';
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../bloc/fridge_bloc.dart';
 import 'add_fridge_item_sheet.dart';
+import 'consume_sheet.dart'; // MG_WRITEOFF
+import 'edit_fridge_item_sheet.dart'; // MG_WRITEOFF
 import 'fridge_history_screen.dart';
+import 'inventory_screen.dart'; // MG_WRITEOFF
 import 'my_products_screen.dart';
 
 /// Days-left buckets for "by expiry" view.
@@ -173,6 +176,22 @@ class _FridgeScreenState extends State<FridgeScreen>
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => MyProductsScreen(apiClient: widget.apiClient),
+                ),
+              );
+            },
+          ),
+          // MG_WRITEOFF: пройти холодильник подряд и сверить с правдой.
+          IconButton(
+            tooltip: 'Инвентаризация',
+            icon: const Icon(Icons.fact_check_outlined),
+            onPressed: () {
+              final bloc = context.read<FridgeBloc>();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => BlocProvider.value(
+                    value: bloc,
+                    child: InventoryScreen(apiClient: widget.apiClient),
+                  ),
                 ),
               );
             },
@@ -542,9 +561,52 @@ class _FridgeScreenState extends State<FridgeScreen>
           ? null
           : Text(subtitle,
               style: TextStyle(color: subtitleColor, fontSize: 12)),
-      trailing: Text(
-        '${item['quantity'] ?? ''} ${item['unit'] ?? ''}',
-        style: const TextStyle(fontSize: 13),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${item['quantity'] ?? ''} ${item['unit'] ?? ''}',
+            style: const TextStyle(fontSize: 13),
+          ),
+          // MG_WRITEOFF: раньше единственным действием было долгое нажатие,
+          // которое молча удаляло позицию — без подписи, без подтверждения и
+          // без возможности сказать «съел половину». Теперь действия названы.
+          if (!selectable)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 20),
+              tooltip: 'Действия',
+              onSelected: (value) => _itemAction(value, item),
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'consume',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.remove_circle_outline),
+                    title: Text('Израсходовал'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'edit',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.edit_outlined),
+                    title: Text('Править'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.delete_outline),
+                    title: Text('Удалить'),
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
       onTap: () async {
         if (selectable) {
@@ -562,13 +624,58 @@ class _FridgeScreenState extends State<FridgeScreen>
           }
         }
       },
-      onLongPress: _selecting
-          ? null
-          : () {
-              if (id != null) {
-                context.read<FridgeBloc>().add(FridgeItemDeleted(id));
-              }
-            },
     );
+  }
+
+  /// MG_WRITEOFF: действия над позицией холодильника.
+  ///
+  /// «Израсходовал» и «Удалить» — разные вещи, и раньше их не различали вовсе:
+  /// долгое нажатие удаляло позицию, что бы человек ни имел в виду. Съели
+  /// половину пачки — удаления это не описывает; ошиблись при заведении —
+  /// списание не описывает тем более.
+  Future<void> _itemAction(String action, Map<String, dynamic> item) async {
+    final id = item['id'] as int?;
+    if (id == null) return;
+    final name = (item['name'] ?? 'позицию').toString();
+
+    void reload() {
+      if (mounted) context.read<FridgeBloc>().add(const FridgeLoadRequested());
+    }
+
+    switch (action) {
+      case 'consume':
+        await showConsumeSheet(
+          context,
+          apiClient: widget.apiClient,
+          item: item,
+          onDone: reload,
+        );
+        return;
+      case 'edit':
+        final ok = await EditFridgeItemSheet.show(context, widget.apiClient, item);
+        if (ok == true) reload();
+        return;
+      case 'delete':
+        // Спрашиваем подтверждение: удаление из списка не возвращается, а
+        // промахнуться по «⋮» проще, чем кажется.
+        final yes = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Удалить из холодильника?'),
+            content: Text(
+              '«$name» пропадёт из списка. Если продукт съеден, выберите '
+              '«Израсходовал» — тогда его можно будет вернуть.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Удалить')),
+            ],
+          ),
+        );
+        if (yes == true && mounted) {
+          context.read<FridgeBloc>().add(FridgeItemDeleted(id));
+        }
+        return;
+    }
   }
 }

@@ -15,6 +15,7 @@ from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 from .models import FridgeItem, Product, ProductCategory
 from .serializers import (
     BarcodeLookupSerializer,
+    FridgeConsumeSerializer,
     FridgeHistoryItemSerializer,
     FridgeItemSerializer,
     FridgeItemWriteSerializer,
@@ -160,6 +161,70 @@ class FridgeItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     @extend_schema(request=FridgeItemWriteSerializer, responses={200: FridgeItemSerializer})
     def patch(self, request, *args, **kwargs):
         return super().patch(request, *args, **kwargs)
+
+
+class FridgeItemConsumeView(APIView):
+    """MG_WRITEOFF: «израсходовал» — ручное списание позиции холодильника.
+
+    POST принимает `quantity` в единице самой позиции; без него списывается
+    всё. Единицу не спрашиваем и не переводим: человек смотрит на конкретную
+    пачку и говорит, сколько из НЕЁ ушло (см. BACKLOG T-36 — перевести штуки и
+    упаковки в граммы всё равно нечем).
+
+    Списание пишется записью, а не просто уменьшает число: без неё нельзя
+    отменить ошибочное нажатие. Номер записи возвращается, отмена — DELETE на
+    /fridge/write-offs/<id>/.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    @extend_schema(request=FridgeConsumeSerializer, responses={200: FridgeItemSerializer})
+    def post(self, request, pk):
+        from .writeoff import write_off_fridge_item
+
+        family = _family_for(request)
+        if not family:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        item = FridgeItem.objects.filter(pk=pk, family=family, is_deleted=False).first()
+        if item is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        serializer = FridgeConsumeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            write_off = write_off_fridge_item(item, serializer.validated_data.get("quantity"), user_id=request.user.id)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {"write_off_id": write_off.id, "item": FridgeItemSerializer(item).data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class FridgeWriteOffUndoView(APIView):
+    """MG_WRITEOFF: отменить списание — и ручное, и по блюду.
+
+    Одна ручка на оба случая: возвращать продукты в холодильник надо одинаково,
+    а чем списание было вызвано, для отмены значения не имеет.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, pk):
+        from .models import FridgeWriteOff
+        from .writeoff import undo_write_off
+
+        family = _family_for(request)
+        if not family:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        write_off = FridgeWriteOff.objects.filter(pk=pk, family=family).first()
+        if write_off is None:
+            # Отменять нечего — для клиента это тот же итог, что и успех.
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        undo_write_off(write_off)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class BarcodeLookupView(APIView):
