@@ -12,6 +12,7 @@ from .views import (
     MenuDeleteView,
     MenuDetailView,
     MenuGenerateView,
+    MenuItemCookedView,
     MenuItemSwapView,
     MenuListView,
     MenuPurgeAllView,
@@ -38,6 +39,9 @@ urlpatterns = [
     path("<int:menu_id>/delete/", MenuDeleteView.as_view(), name="menu-delete"),
     path("<int:menu_id>/archive/", MenuArchiveView.as_view(), name="menu-archive"),
     path("<int:menu_id>/items/<int:item_id>/", MenuItemSwapView.as_view(), name="menu-item-swap"),
+    # MG_WRITEOFF: «приготовил» — POST списывает продукты блюда из холодильника,
+    # DELETE возвращает их обратно.
+    path("<int:menu_id>/items/<int:item_id>/cooked/", MenuItemCookedView.as_view(), name="menu-item-cooked"),
     path("<int:menu_id>/shopping-list/", ShoppingListView.as_view(), name="menu-shopping-list"),
     # Имя маршрута — своё, а не общее с apps.shopping: там ручка называлась так
     # же, и reverse() отдавал последнюю зарегистрированную. Тесты списка покупок

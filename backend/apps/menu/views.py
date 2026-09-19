@@ -638,6 +638,64 @@ class MenuItemSwapView(APIView):
         )
 
 
+class MenuItemCookedView(APIView):
+    """MG_WRITEOFF: «приготовил» — списать продукты блюда из холодильника.
+
+    POST списывает, DELETE возвращает обратно. Списание привязано к блюду, а
+    не к человеку, поэтому повторный POST ничего не меняет и отдаёт 200 с уже
+    сделанным событием — на 201 клиент отличает первое нажатие от повторного.
+
+    Права здесь шире, чем на правку меню: холодильник — общий, и отметить, что
+    блюдо приготовлено, может любой участник семьи, а не только её глава.
+    Редактирование меню (`_can_edit_menu`) — про состав меню, а приготовление
+    — про то, что уже произошло на кухне.
+    """
+
+    # freemium: холодильник и меню открыты всем, отдельной премиум-проверки нет.
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_item(self, request, menu_id, item_id):
+        family = _get_family(request.user)
+        if not family:
+            return None
+        return (
+            MenuItem.objects.select_related("menu", "menu__family", "recipe", "product")
+            .filter(id=item_id, menu_id=menu_id, menu__family=family)
+            .first()
+        )
+
+    @extend_schema(request=None, responses={200: None, 201: None})
+    def post(self, request, menu_id, item_id):
+        from apps.fridge.writeoff import write_off_menu_item, write_off_payload
+
+        item = self._get_item(request, menu_id, item_id)
+        if item is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        write_off, created = write_off_menu_item(item, user_id=request.user.id)
+        payload = write_off_payload(write_off)
+        payload["created"] = created
+        return Response(payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, menu_id, item_id):
+        from apps.fridge.writeoff import find_write_off, undo_write_off
+
+        item = self._get_item(request, menu_id, item_id)
+        if item is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        write_off = find_write_off(item)
+        if write_off is None:
+            # Отменять нечего. Это не ошибка клиента: две отмены подряд или
+            # отмена не списанного блюда должны выглядеть одинаково — «сейчас
+            # не списано».
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        undo_write_off(write_off)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class MenuArchiveView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 

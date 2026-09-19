@@ -1,3 +1,4 @@
+import logging
 from datetime import date, timedelta
 
 from django.db import transaction
@@ -29,10 +30,32 @@ from .serializers import (
     WeightLogSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _get_member(user):
     # MG_ONEFAMILY: правило выбора членства — одно на весь проект, см. family/selection.py.
     return current_membership(user)
+
+
+def _write_off_planned(entry, user_id):
+    """MG_WRITEOFF: отметили «съел» у блюда из меню — списать его продукты.
+
+    Если человек ест блюдо из меню, значит, его кто-то приготовил, а продукты
+    на него ушли. Списание идёт тем же кодом, что и кнопка «приготовил», и по
+    тому же ключу блюда — поэтому трое, отметившие одно блюдо, спишут его один
+    раз.
+
+    Ошибка холодильника не должна ронять запись в дневник: человек отмечал
+    съеденное, а не работал с продуктами. Поэтому сбой пишется в лог, а ответ
+    остаётся успешным.
+    """
+    from apps.fridge.writeoff import write_off_menu_item
+
+    try:
+        write_off_menu_item(entry.planned_menu_item, user_id=user_id)
+    except Exception:  # noqa: BLE001 — дневник важнее холодильника
+        logger.exception("MG_WRITEOFF: не удалось списать продукты по записи дневника %s", entry.pk)
 
 
 def _resolve_target_member(request, current_member):
@@ -250,7 +273,18 @@ class DiaryEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
         # MG_OWNDIARY: и владельца тоже — запись нельзя переписать на другого.
         request.data.pop("member", None)
         request.data.pop("user", None)
-        return super().update(request, *args, **kwargs)
+        was_eaten = self.get_object().is_eaten
+        response = super().update(request, *args, **kwargs)
+        # MG_WRITEOFF: съеденное блюдо из меню кто-то приготовил — значит,
+        # продукты на него ушли. Снятие галочки списание НЕ отменяет: человек
+        # может передумать записывать съеденное в дневник, но продукты от этого
+        # обратно в холодильник не вернутся. Отмена — отдельное действие на
+        # самом блюде.
+        if not was_eaten:
+            entry = self.get_object()
+            if entry.is_eaten and entry.planned_menu_item_id:
+                _write_off_planned(entry, request.user.id)
+        return response
 
 
 # MG_605D_V_views: расчёт КБЖУ записи переехал в entry_nutrition.py — тем же

@@ -70,6 +70,28 @@ def _match_key(name, product_id, pidx):
     return pid, canon
 
 
+def _dish_key(menu_item):
+    """Ключ события: блюдо в меню, а не отметка человека.
+
+    Уникальность в базе на этот ключ есть только при заполненном `menu`, и
+    Postgres считает NULL-ы различными — у блюда-продукта `recipe_id` пуст.
+    Поэтому повторное списание ловится не ограничением, а поиском по этому же
+    ключу перед записью.
+    """
+    return {
+        "family": menu_item.menu.family,
+        "menu_id": menu_item.menu_id,
+        "day_offset": menu_item.day_offset,
+        "meal_slot": menu_item.meal_slot or menu_item.meal_type or "",
+        "recipe_id": menu_item.recipe_id,
+    }
+
+
+def find_write_off(menu_item):
+    """Списание этого блюда, если оно уже было. Иначе None."""
+    return FridgeWriteOff.objects.filter(**_dish_key(menu_item)).first()
+
+
 @transaction.atomic
 def write_off_menu_item(menu_item, *, user_id=None):
     """Списать продукты блюда. Возвращает (событие, создано ли оно сейчас).
@@ -79,13 +101,7 @@ def write_off_menu_item(menu_item, *, user_id=None):
     from apps.shopping.services import _fr_base, _fr_unit_factor
 
     family = menu_item.menu.family
-    key = {
-        "family": family,
-        "menu_id": menu_item.menu_id,
-        "day_offset": menu_item.day_offset,
-        "meal_slot": menu_item.meal_slot or menu_item.meal_type or "",
-        "recipe_id": menu_item.recipe_id,
-    }
+    key = _dish_key(menu_item)
     existing = FridgeWriteOff.objects.filter(**key).first()
     if existing is not None:
         return existing, False
@@ -168,5 +184,45 @@ def undo_write_off(write_off):
 
 
 def shortfall_lines(write_off):
-    """Чего не хватило — для экрана «докупил»."""
-    return list(write_off.lines.filter(fridge_item__isnull=True))
+    """Чего не хватило — для экрана «докупил».
+
+    Отбор идёт по `shortfall`, а не по пустому `fridge_item`: позицию
+    холодильника могут удалить, связь тогда обнуляется (SET_NULL), и списанная
+    строка притворилась бы нехваткой.
+    """
+    return list(write_off.lines.filter(shortfall__isnull=False))
+
+
+def write_off_payload(write_off):
+    """Что показать человеку после «приготовил»: что ушло и чего не хватило.
+
+    Числа отдаём строками — так же, как их отдаёт DRF для Decimal в остальных
+    ручках: иначе мобильный клиент получит в одном месте число, в другом
+    строку и разберёт их по-разному.
+    """
+    written, missing = [], []
+    for line in write_off.lines.all():
+        if line.shortfall is not None:
+            missing.append(
+                {
+                    "name": line.name,
+                    "product_id": line.product_id,
+                    "quantity": str(line.shortfall),
+                    "unit": line.shortfall_unit,
+                }
+            )
+        elif line.quantity is not None:
+            written.append(
+                {
+                    "name": line.name,
+                    "product_id": line.product_id,
+                    "fridge_item_id": line.fridge_item_id,
+                    "quantity": str(line.quantity),
+                    "unit": line.unit,
+                }
+            )
+    return {
+        "write_off_id": write_off.id,
+        "written_off": written,
+        "shortfall": missing,
+    }
