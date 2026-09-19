@@ -284,3 +284,77 @@ class ProductAlias(models.Model):
 
     def __str__(self):
         return f"{self.alias_norm} -> {self.product_id}"
+
+
+class FridgeWriteOff(models.Model):
+    """MG_WRITEOFF: событие списания продуктов из холодильника.
+
+    Списание — это не просто «минус к количеству». Без записи о том, что и
+    откуда ушло, нельзя ни отменить ошибочное нажатие, ни ответить человеку,
+    почему у него пропал фарш. Поэтому событие хранится целиком, а строки
+    (FridgeWriteOffLine) помнят каждую затронутую позицию.
+
+    Событие привязано к БЛЮДУ, а не к отметке человека. Пункт меню принадлежит
+    участнику семьи: одно блюдо на троих — это три пункта, и «съел» отметят
+    трое. Списаться при этом должно один раз, поэтому ключ события — меню,
+    день, приём и рецепт, и он уникален.
+    """
+
+    class Reason(models.TextChoices):
+        COOKED = "cooked", "Приготовлено по меню"
+        MANUAL = "manual", "Списано вручную"
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="fridge_write_offs")
+    reason = models.CharField(max_length=16, choices=Reason.choices, default=Reason.COOKED)
+
+    # Ключ блюда. Пусто — ручное списание, оно ни с чем не сверяется.
+    menu = models.ForeignKey("menu.Menu", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    recipe = models.ForeignKey("recipes.Recipe", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    day_offset = models.PositiveSmallIntegerField(null=True, blank=True)
+    meal_slot = models.CharField(max_length=20, blank=True)
+
+    created_by_id = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "fridge_write_offs"
+        indexes = [models.Index(fields=["family", "created_at"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["family", "menu", "day_offset", "meal_slot", "recipe"],
+                condition=models.Q(menu__isnull=False),
+                name="uniq_fridge_writeoff_per_dish",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.get_reason_display()} #{self.pk} ({self.family})"
+
+
+class FridgeWriteOffLine(models.Model):
+    """Одна строка списания: что и сколько ушло, и чего не хватило.
+
+    Строка без `fridge_item` — это нехватка: продукт нужен был, а в холодильнике
+    его не нашлось. Человек решает её сам («докупил»), и мы не выдумываем за
+    него остатки.
+
+    Количество хранится в единице ТОЙ позиции, из которой списали, а нехватка —
+    в единице потребности: иначе отмена вернула бы в холодильник не то число.
+    """
+
+    write_off = models.ForeignKey(FridgeWriteOff, on_delete=models.CASCADE, related_name="lines")
+    fridge_item = models.ForeignKey(FridgeItem, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    name = models.CharField(max_length=255)
+
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    unit = models.CharField(max_length=50, blank=True)
+    shortfall = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    shortfall_unit = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        db_table = "fridge_write_off_lines"
+        indexes = [models.Index(fields=["write_off"])]
+
+    def __str__(self):
+        return f"{self.name}: -{self.quantity} {self.unit}"

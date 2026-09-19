@@ -128,10 +128,22 @@ def _subtract_fridge(agg, fridge_rows, pidx=None):  # MG_PRODALIAS
 
 
 def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECIPELINK_BUILD
+    """Состав всего меню — список покупок."""
+    items = MenuItem.objects.filter(menu=menu).select_related("recipe", "product")
+    return build_items_for_menu_items(items, family, subtract_fridge)
+
+
+def build_items_for_menu_items(menu_items, family, subtract_fridge=False):  # MG_RECIPELINK_BUILD
     """MG_RECIPELINK: prefer precomputed RecipeProduct links (canonical name,
     category, qty). Recipes without links fall back to raw ingredients + AI
     cleanup (ai_clean_item_names). Returns dicts with category_slug /
-    category_fk_id / product_id so the import can colour by section."""
+    category_fk_id / product_id so the import can colour by section.
+
+    MG_WRITEOFF: функция принимает пункты меню, а не меню целиком, потому что
+    списание продуктов при «приготовил» считает состав ОДНОГО блюда — и обязано
+    считать его ровно так же, как список покупок. Иначе «купили» и «списали»
+    разойдутся, и холодильник начнёт врать в другую сторону.
+    """
     from apps.fridge.aliases import product_ref_index, resolve_ref  # MG_PRODALIAS
     from apps.recipes.ingredient_noise import clean_ingredient_name  # MG_NOTENOISE
     from apps.recipes.models import RecipeProduct
@@ -142,7 +154,8 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
     if subtract_fridge:
         fridge_rows = list(FridgeItem.objects.filter(family=family, is_deleted=False))  # MG_FRIDGESUB
 
-    recipe_ids = list(MenuItem.objects.filter(menu=menu).values_list("recipe_id", flat=True))
+    menu_items = list(menu_items)
+    recipe_ids = [mi.recipe_id for mi in menu_items if mi.recipe_id]
     linked_ids = set(
         RecipeProduct.objects.filter(recipe_id__in=recipe_ids).values_list("recipe_id", flat=True).distinct()
     )
@@ -214,8 +227,16 @@ def build_items_from_menu(menu: Menu, family, subtract_fridge: bool):  # MG_RECI
                 cur["product_id"] = pid
 
     raw_items = []
-    for mi in MenuItem.objects.filter(menu=menu).select_related("recipe"):
+    for mi in menu_items:
         rid = mi.recipe_id
+        if rid is None:
+            # MG_PRODDISH: приём еды бывает не рецептом, а продуктом с
+            # граммовкой («Творог 150 г на завтрак»). Раньше здесь стояло
+            # обращение к mi.recipe.ingredients — для такого пункта это падение
+            # на None. Продукт как блюдо — такая же потребность, как рецепт.
+            if mi.product_id:
+                _add(mi.product.name, mi.grams, "г", "", None, mi.product_id)
+            continue
         if rid in linked_ids:
             for rp in links_by_recipe.get(rid, []):
                 name = rp.name_canonical or rp.name_raw
