@@ -234,6 +234,10 @@ export interface MenuItem {
   component_role?: ComponentRole;
   recipe: Recipe; member?: number | null; member_name?: string; quantity: number; // MG_FAMILYGEN: member
   is_cheat_meal?: boolean; // MG_505_V_types
+  // MG_WRITEOFF: списаны ли продукты этого блюда из холодильника. Без этого
+  // поля кнопка «Приготовил» врёт: человек обновил страницу — и она снова
+  // выглядит ненажатой, хотя продукты уже ушли.
+  is_cooked?: boolean;
   // MG_PRODDISH: позиция-продукт (recipe тогда синтетический, с флагом is_product)
   product?: { id: number; name: string; image_url?: string | null; category_name?: string | null } | null;
   grams?: number | null;
@@ -694,4 +698,30 @@ export interface AndroidBuild {
   sha256?: string;
   notes?: string;
   created_at?: string;
+}
+
+// ── MG_WRITEOFF: списание продуктов из холодильника ─────────────────────────
+
+/** Строка списания: что ушло из холодильника. */
+export interface WriteOffLine {
+  name: string;
+  product_id: number | null;
+  fridge_item_id?: number | null;
+  quantity: string;
+  unit: string;
+}
+
+/** Ответ на «Приготовил»: что списалось и чего не хватило. */
+export interface CookedResult {
+  write_off_id: number;
+  /** false — блюдо уже было отмечено, второй раз ничего не списалось. */
+  created: boolean;
+  written_off: WriteOffLine[];
+  shortfall: WriteOffLine[];
+}
+
+/** Ответ на ручное списание позиции холодильника («Израсходовал»). */
+export interface ConsumeResult {
+  write_off_id: number;
+  item: FridgeItem;
 }

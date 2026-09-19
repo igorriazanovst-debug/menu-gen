@@ -1,6 +1,7 @@
 import client from './client';
 import type {
   BarcodeLookupResult,
+  ConsumeResult,
   FridgeHistoryItem,
   FridgeItem,
   FridgeItemDetailsResponse,
@@ -26,6 +27,17 @@ export const fridgeApi = {
   }) => client.post<FridgeItem>('/fridge/', data),
 
   delete: (id: number) => client.delete(`/fridge/${id}/`),
+
+  // MG_WRITEOFF: «израсходовал» — ручное списание позиции.
+  //
+  // Количество — в единице САМОЙ позиции и никуда не переводится: человек
+  // смотрит на конкретную пачку и говорит, сколько ушло из неё. Без quantity
+  // списывается всё; больше, чем лежит, списать нельзя — остаток обрежется.
+  consume: (id: number, quantity?: number) =>
+    client.post<ConsumeResult>(`/fridge/${id}/consume/`, quantity == null ? {} : { quantity }),
+
+  // Отмена списания — одна на оба вида, и ручное, и по блюду.
+  undoWriteOff: (writeOffId: number) => client.delete(`/fridge/write-offs/${writeOffId}/`),
 
   // MG_B03: edit an existing fridge item (PATCH).
   update: (

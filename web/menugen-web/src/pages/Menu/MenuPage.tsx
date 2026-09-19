@@ -11,11 +11,12 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { ImageLightbox } from '../../components/ui/ImageLightbox'; // MG_PHOTOZOOM
-import type { Menu, MenuItem, MealType, ComponentRole, Recipe } from '../../types';
+import type { CookedResult, Menu, MenuItem, MealType, ComponentRole, Recipe } from '../../types';
 import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../types';
 import { categoryLabel } from '../../constants/categories'; // MG_SWAPFREE: подпись пищевой группы
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
 import { DayNutritionSummary } from '../../components/menu/DayNutritionSummary';
+import { CookedResultModal } from '../../components/menu/CookedResultModal'; // MG_WRITEOFF
 import { AllergenBadges } from '../../components/recipe/AllergenBadges';
 import { MadePhotoControl } from '../../components/recipes/MadePhotoControl'; // MG_MADEPHOTO
 import { useEscapeKey } from '../../hooks/useEscapeKey'; // MG_ESC
@@ -342,6 +343,79 @@ const RecipeDetailModal: React.FC<{ recipeId: number; onClose: () => void }> = (
   );
 };
 
+// ── MG_WRITEOFF: «Приготовил» ───────────────────────────────────────────────
+
+interface CookInlineProps {
+  itemId: number;
+  menuId: number;
+  dishTitle: string;
+  isCooked: boolean;
+  /** Списали или вернули продукты — меню надо перечитать. */
+  onChanged: () => void;
+}
+
+/**
+ * Нажатие сразу списывает продукты и открывает окно с итогом.
+ *
+ * Подтверждения заранее нет намеренно: человек уже сказал, что приготовил, а
+ * ошибку снимает «Отменить списание» в том же окне. Отмеченное блюдо остаётся
+ * нажимаемым — через него и отменяют.
+ */
+const CookInline: React.FC<CookInlineProps> = ({ itemId, menuId, dishTitle, isCooked, onChanged }) => {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<CookedResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  // Список блюд приёма — снимок, сделанный при открытии окна: перечитанное меню
+  // до него не доедет, пока окно не закроют. Поэтому свежее нажатие кнопка
+  // помнит сама, иначе она отзовётся только после закрытия и повторного входа.
+  const [changedNow, setChangedNow] = useState<boolean | null>(null);
+  const cooked = changedNow ?? isCooked;
+
+  const handleCook = async () => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const { data } = await menuApi.cookItem(menuId, itemId);
+      setResult(data);
+      setChangedNow(true);
+      onChanged();
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Не удалось списать продукты');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleCook}
+        disabled={busy}
+        className={
+          'text-xs hover:underline disabled:opacity-60 ' +
+          (cooked ? 'text-green-700 font-semibold' : 'text-tomato')
+        }
+        title={cooked ? 'Продукты списаны — нажмите, чтобы увидеть или отменить' : 'Списать продукты из холодильника'}
+      >
+        {cooked ? '✅ Приготовлено' : '🍳 Приготовил'}
+      </button>
+      {err && <span className="text-xs text-red-600 ml-2">{err}</span>}
+      {result && (
+        <CookedResultModal
+          menuId={menuId}
+          itemId={itemId}
+          dishTitle={dishTitle}
+          result={result}
+          onClose={() => setResult(null)}
+          onUndone={() => { setChangedNow(false); onChanged(); }}
+        />
+      )}
+    </>
+  );
+};
+
 // ── MealDetailModal ─────────────────────────────────────────────────────────
 
 interface MealDetailModalProps {
@@ -351,9 +425,12 @@ interface MealDetailModalProps {
   onClose: () => void;
   menuId: number; // MG-402
   onSwapped: (result?: SwapResult, itemId?: number) => void; // MG-402 / MG_SWAPFREE
+  // MG_WRITEOFF: списали или вернули продукты — перечитать меню, иначе отметка
+  // «Приготовлено» на карточке останется от прошлого состояния.
+  onCookedChanged: () => void;
 }
 
-const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, dayLabel, onClose, menuId, onSwapped }) => {
+const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, dayLabel, onClose, menuId, onSwapped, onCookedChanged }) => {
   const sorted = useMemo(() => sortByRole(items), [items]);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -478,6 +555,13 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
                         foodGroup={(item.recipe as any).food_group ?? null}
                         currentRecipeId={item.recipe.id}
                         onSwapped={(result) => onSwapped(result, item.id)}
+                      />
+                      <CookInline
+                        itemId={item.id}
+                        menuId={menuId}
+                        dishTitle={item.recipe.title}
+                        isCooked={item.is_cooked === true}
+                        onChanged={onCookedChanged}
                       />
                     </div>
                   </div>
@@ -1016,6 +1100,10 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
             setMealModal(null);
             onRefresh();
           }}
+          // MG_WRITEOFF: окно приёма не закрываем — блюда одного приёма обычно
+          // отмечают подряд. Меню перечитываем, чтобы отметка была настоящей
+          // после закрытия.
+          onCookedChanged={onRefresh}
         />
       )}
     </div>

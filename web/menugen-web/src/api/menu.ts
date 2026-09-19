@@ -1,5 +1,5 @@
 import client from './client';
-import type { Menu, PaginatedResponse, ShoppingList } from '../types';
+import type { CookedResult, Menu, PaginatedResponse, ShoppingList } from '../types';
 
 export interface DeletedMenu {
   id: number;
@@ -61,6 +61,16 @@ export const menuApi = {
   purge: (deletedId: number) => client.delete(`/menu/quarantine/${deletedId}/purge/`),
 
   purgeAll: () => client.delete<{ deleted: number }>(`/menu/quarantine/purge-all/`),
+
+  // MG_WRITEOFF: «приготовил» — списать продукты блюда из холодильника.
+  // Повторный вызов ничего не меняет и отдаёт 200 с уже сделанным событием;
+  // по 201 клиент отличает первое нажатие от повторного (поле created).
+  cookItem: (menuId: number, itemId: number) =>
+    client.post<CookedResult>(`/menu/${menuId}/items/${itemId}/cooked/`),
+
+  // Отмена: возвращает в холодильник ровно то, что ушло.
+  undoCookItem: (menuId: number, itemId: number) =>
+    client.delete(`/menu/${menuId}/items/${itemId}/cooked/`),
 
   swapItem: (menuId: number, itemId: number, recipeId: number) =>
     client.patch<SwapResult>(`/menu/${menuId}/items/${itemId}/`, { recipe_id: recipeId }),

@@ -7,6 +7,7 @@ import { AddFridgeItemModal } from '../../components/fridge/AddFridgeItemModal';
 import { FridgeItemDetailModal } from '../../components/fridge/FridgeItemDetailModal';
 import { HistoryEditorModal } from '../../components/fridge/HistoryEditorModal';
 import { EditFridgeItemModal } from '../../components/fridge/EditFridgeItemModal'; // MG_B03
+import { ConsumeFridgeItemModal } from '../../components/fridge/ConsumeFridgeItemModal'; // MG_WRITEOFF
 import type { FridgeItem, ProductCategory } from '../../types';
 
 function daysUntil(d: string | null | undefined): number | null {
@@ -18,7 +19,12 @@ function daysUntil(d: string | null | undefined): number | null {
   return Math.floor((dt.getTime() - today.getTime()) / 86_400_000);
 }
 
-type ViewMode = 'groups' | 'expiry';
+// MG_WRITEOFF: инвентаризация — третий взгляд на тот же холодильник. Группы и
+// сроки отвечают на вопрос «что у меня есть», инвентаризация — на другой:
+// «что из этого кончилось». Поэтому она не фильтр, а отдельный режим: позиции
+// в ней проходят подряд, и каждая уходит из очереди, как только про неё
+// сказали. Иначе на третьей строке человек забывает, где остановился.
+type ViewMode = 'groups' | 'expiry' | 'inventory';
 
 const EXPIRY_BUCKETS = [
   { key: 'expired', title: 'Просрочено!',                emoji: '❌', color: '#FFCDD2', match: (d: number | null) => d != null && d < 0 },
@@ -34,6 +40,11 @@ export const FridgePage: React.FC = () => {
   const [showAdd, setShowAdd]       = useState(false);
   const [detailId, setDetailId]     = useState<number | null>(null);
   const [editItem, setEditItem]     = useState<FridgeItem | null>(null); // MG_B03
+  const [consumeItem, setConsumeItem] = useState<FridgeItem | null>(null); // MG_WRITEOFF
+  // MG_WRITEOFF: про эти позиции в текущем проходе инвентаризации уже сказали
+  // «есть». Списанные уходят из списка сами — их убирает перезагрузка.
+  const [kept, setKept] = useState<Set<number>>(new Set());
+  const [consumedCount, setConsumedCount] = useState(0);
   const [viewMode, setViewMode]     = useState<ViewMode>('groups');
   const [showHistory, setShowHistory] = useState(false);
 
@@ -60,7 +71,13 @@ export const FridgePage: React.FC = () => {
   const onAdded = (item: FridgeItem) => setItems(prev => [item, ...prev]);
 
   const onDelete = async (id: number) => {
-    if (!window.confirm('Удалить продукт?')) return;
+    // MG_WRITEOFF: удаление и расход — разные вещи, и человеку это надо
+    // сказать прямо: удалённое не вернуть, а списанное можно.
+    if (!window.confirm(
+      'Удалить продукт из холодильника?\n\n' +
+      'Если он съеден — закройте это окно и нажмите «Израсходовал»: такое ' +
+      'списание можно отменить.',
+    )) return;
     await fridgeApi.delete(id);
     setItems(prev => prev.filter(it => it.id !== id));
   };
@@ -194,6 +211,12 @@ export const FridgePage: React.FC = () => {
         </div>
         {!selecting && (
           <div className="flex flex-col gap-1">
+            {/* MG_WRITEOFF: расход — не удаление; пачку можно початую */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setConsumeItem(it); }}
+              className="text-gray-400 hover:text-primary text-sm"
+              title="Израсходовал"
+            >➖</button>
             {/* MG_B03: edit */}
             <button
               onClick={(e) => { e.stopPropagation(); setEditItem(it); }}
@@ -246,6 +269,7 @@ export const FridgePage: React.FC = () => {
         {([
           { key: 'groups', label: '🗂  По группам' },
           { key: 'expiry', label: '⏱  По сроку годности' },
+          { key: 'inventory', label: '📋  Инвентаризация' },
         ] as { key: ViewMode; label: string }[]).map(t => (
           <button
             key={t.key}
@@ -266,6 +290,23 @@ export const FridgePage: React.FC = () => {
         <Card className="p-8 text-center text-gray-500">
           Холодильник пуст. Нажмите «+ Добавить» чтобы внести продукт.
         </Card>
+      ) : viewMode === 'inventory' ? (
+        <InventoryList
+          items={items.filter(it => !kept.has(it.id))}
+          total={items.length}
+          consumed={consumedCount}
+          onKeep={(id) => setKept(prev => new Set(prev).add(id))}
+          onPartly={(it) => setConsumeItem(it)}
+          onGone={async (it) => {
+            try {
+              await fridgeApi.consume(it.id);
+              setConsumedCount(c => c + 1);
+              await load();
+            } catch {
+              window.alert('Не удалось списать позицию.');
+            }
+          }}
+        />
       ) : viewMode === 'groups' ? (
         <div className="space-y-4">
           {groupedByCategory.map(grp => {
@@ -316,6 +357,14 @@ export const FridgePage: React.FC = () => {
         />
       )}
 
+      {consumeItem && (
+        <ConsumeFridgeItemModal
+          item={consumeItem}
+          onClose={() => setConsumeItem(null)}
+          onDone={() => { setConsumedCount(c => c + 1); load(); }}
+        />
+      )}
+
       {showAdd && (
         <AddFridgeItemModal onClose={() => setShowAdd(false)} onAdded={onAdded} />
       )}
@@ -326,6 +375,59 @@ export const FridgePage: React.FC = () => {
           onChanged={load}
         />
       )}
+    </div>
+  );
+};
+
+// ── MG_WRITEOFF: инвентаризация ─────────────────────────────────────────────
+
+interface InventoryListProps {
+  items: FridgeItem[];
+  total: number;
+  consumed: number;
+  onKeep: (id: number) => void;
+  onPartly: (item: FridgeItem) => void;
+  onGone: (item: FridgeItem) => void;
+}
+
+/**
+ * Проход по холодильнику: три ответа на позицию — «есть», «осталось меньше» и
+ * «кончилось». Удаления здесь нет намеренно: инвентаризация про расход, а не
+ * про ошибки в списке. Ошибки правятся в обычном виде холодильника.
+ */
+const InventoryList: React.FC<InventoryListProps> = ({ items, total, consumed, onKeep, onPartly, onGone }) => {
+  if (total === 0) {
+    return <Card className="p-8 text-center text-gray-500">Холодильник пуст — сверять нечего.</Card>;
+  }
+  if (items.length === 0) {
+    return (
+      <Card className="p-8 text-center">
+        <div className="text-4xl">📋</div>
+        <p className="mt-3 text-chocolate">
+          {consumed === 0 ? 'Всё на месте. Холодильник сходится.' : `Готово. Списано позиций: ${consumed}.`}
+        </p>
+      </Card>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-sm text-gray-500 px-1">
+        <span>Осталось пройти: {items.length} из {total}</span>
+        {consumed > 0 && <span className="text-primary">списано: {consumed}</span>}
+      </div>
+      {items.map(it => (
+        <Card key={it.id} className="p-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-semibold text-chocolate truncate">{it.name}</span>
+            <span className="text-sm text-gray-500 whitespace-nowrap">{it.quantity ?? ''} {it.unit ?? ''}</span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" onClick={() => onKeep(it.id)}>✓ Есть</Button>
+            <Button size="sm" variant="ghost" onClick={() => onPartly(it)}>✎ Осталось меньше</Button>
+            <Button size="sm" onClick={() => onGone(it)}>➖ Кончилось</Button>
+          </div>
+        </Card>
+      ))}
     </div>
   );
 };
