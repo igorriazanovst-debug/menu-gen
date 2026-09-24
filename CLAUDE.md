@@ -23,6 +23,25 @@
 `menugen.ru`. У них разные переменные окружения, разные каталоги продуктов и
 разные цифры в выводе: результат с dev нельзя переносить на прод как ожидаемый.
 
+**Новая переменная в `.env` требует `up -d`, а не `restart`.** `docker compose
+restart` поднимает контейнер с тем окружением, которое он получил при создании;
+`env_file` перечитывается только при пересоздании. Так и вышло с
+`MG_WRITEOFF_ON_EATEN`: строка в `.env` стояла, рестарт прошёл, а Django
+показывал `False` — и выглядело это как неработающий флаг, а не как непрочитанный
+файл. Работает только это:
+
+```bash
+cd /opt/menugen
+docker compose up -d backend celery celery-beat
+```
+
+Проверять после этого сам параметр, а не наличие строки в файле:
+
+```bash
+docker compose exec -T backend python manage.py shell -c \
+  "from django.conf import settings; print(settings.<ИМЯ>)"
+```
+
 ## Долгие прогоны
 
 **Отдельным контейнером, а не через `exec`.** `docker compose exec` — даже с
