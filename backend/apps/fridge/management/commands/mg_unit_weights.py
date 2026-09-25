@@ -88,8 +88,13 @@ class Command(BaseCommand):
             metavar='"ID=единица:граммы"',
             help='Записать вес руками, например --set "41=шт:55". Можно несколько раз.',
         )
+        parser.add_argument(
+            "--from-catalog",
+            action="store_true",
+            help="Разобрать фасовку из каталога («250 г») и завести вес упаковки. Dry-run без --apply.",
+        )
         parser.add_argument("--ai", action="store_true", help="Оценить недостающие веса моделью.")
-        parser.add_argument("--apply", action="store_true", help="Записать результат --ai (иначе dry-run).")
+        parser.add_argument("--apply", action="store_true", help="Записать результат --ai / --from-catalog.")
         parser.add_argument("--limit", type=int, default=0, help="Обработать не более N пар (0 = все).")
         parser.add_argument("--batch", type=int, default=20, help="Размер чанка для одного запроса к AI.")
 
@@ -137,6 +142,74 @@ class Command(BaseCommand):
         for (pid, unit), n in sorted(counts.items(), key=lambda kv: -kv[1]):
             name = names.get(pid, "?")
             self._say(f'  {n:>3} | {name} (#{pid}) | {unit} | --set "{pid}={unit}:<граммы>"')
+
+    # ── разбор каталога ──────────────────────────────────────────────────────
+
+    def _from_catalog(self, apply, limit):
+        """MG_PACKSIZE: вес упаковки из строки фасовки, уже лежащей в каталоге.
+
+        Импорт справочников сетей и OpenFoodFacts кладёт фасовку в
+        `default_unit` строкой: «250 г», «930 мл», «4.5 г x 4 шт». Для таких
+        товаров вес упаковки не надо ни выдумывать, ни спрашивать у модели —
+        достаточно прочитать. У обычных товаров там единица («шт»), и разбор
+        сам их пропустит: числа в строке нет.
+
+        Заводится ТОЛЬКО «упаковка». «Штука» сюда не идёт намеренно: одна
+        упаковка — это всегда пачка целиком, а одна штука бывает и пачкой, и
+        отдельной оливкой из банки. Записав пачку как штуку, мы бы получили
+        «25 шт оливок = 7,5 кг» — то самое молчаливое списание не того
+        количества, ради которого всё и затевалось. Что значит «шт» для
+        конкретного товара, спросим у человека в форме добавления.
+
+        Готовое не трогаем: если вес уже задан — руками ли, моделью ли, — он
+        победил, и перезаписывать его разбором строки нельзя.
+        """
+        from apps.fridge.package_size import package_grams
+
+        existing = set(ProductUnitWeight.objects.filter(unit="упаковка").values_list("product_id", flat=True))
+
+        scanned = parsed = skipped_known = 0
+        found = []
+        for product in Product.objects.exclude(default_unit="").only("id", "name", "default_unit").order_by("id"):
+            scanned += 1
+            grams = package_grams(product.default_unit)
+            if grams is None:
+                continue
+            parsed += 1
+            if product.id in existing:
+                skipped_known += 1
+                continue
+            found.append((product, grams))
+            if limit > 0 and len(found) >= limit:
+                break
+
+        self._say(f"Товаров с непустой фасовкой: {scanned}")
+        self._say(f"Из них строка разобралась: {parsed}")
+        self._say(f"Вес упаковки уже задан, не трогаем: {skipped_known}")
+        self._say(f"К записи: {len(found)}")
+        self._say("")
+
+        show = found if len(found) <= 40 else found[:40]
+        for product, grams in show:
+            self._say(f"  #{product.id} {product.name[:60]} — «{product.default_unit}» → 1 упаковка = {grams} г")
+        if len(found) > len(show):
+            self._say(f"  … и ещё {len(found) - len(show)}; показаны первые {len(show)}")
+        self._say("")
+
+        if not apply:
+            self._say("Это был dry-run, ничего не записано. Записать: тот же запуск с --apply.")
+            return
+
+        created = 0
+        for product, grams in found:
+            _row, was_created = ProductUnitWeight.objects.get_or_create(
+                product=product,
+                unit="упаковка",
+                defaults={"grams": grams, "source": ProductUnitWeight.Source.SEED},
+            )
+            if was_created:
+                created += 1
+        self._say(f"Записано: {created}")
 
     # ── оценка моделью ───────────────────────────────────────────────────────
 
@@ -232,6 +305,13 @@ class Command(BaseCommand):
         if opts["set"]:
             self._apply_manual(opts["set"])
             self._say("")
+
+        # Разбор каталога идёт первым и сам по себе: он смотрит на весь каталог,
+        # а не на то, чего не хватает холодильникам, — и после него список
+        # недостающих становится короче. Считать его до записи было бы враньём.
+        if opts["from_catalog"]:
+            self._from_catalog(opts["apply"], opts["limit"])
+            return
 
         counts = missing_pairs()
         if opts["ai"]:
