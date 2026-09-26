@@ -238,7 +238,9 @@ export const FridgePage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-chocolate">Холодильник</h1>
-        <div className="flex gap-2">
+        {/* MG_WEBMOBILE: группа переносится целиком. Без flex-wrap три кнопки
+            складываются в строку шире телефона и тянут за собой всю страницу. */}
+        <div className="flex flex-wrap gap-2">
           <Button variant="ghost" onClick={() => setShowHistory(true)}>🕘 История</Button>
           {expiredItems.length > 0 && !selecting && (
             <Button variant="ghost" onClick={() => setSelecting(true)}>
@@ -264,8 +266,11 @@ export const FridgePage: React.FC = () => {
         </Card>
       )}
 
-      {/* Tabs */}
-      <div className="flex border-b border-border">
+      {/* Tabs. MG_WEBMOBILE: три названия не помещаются в ширину телефона, а
+          переносить их нельзя — подчёркивание выбранной вкладки держится на
+          одной строке. Поэтому полоса прокручивается вбок: край третьей вкладки
+          виден и сам показывает, что там есть продолжение. */}
+      <div className="flex border-b border-border overflow-x-auto">
         {([
           { key: 'groups', label: '🗂  По группам' },
           { key: 'expiry', label: '⏱  По сроку годности' },
@@ -275,7 +280,7 @@ export const FridgePage: React.FC = () => {
             key={t.key}
             onClick={() => setViewMode(t.key)}
             className={
-              'px-4 py-2 text-sm font-semibold border-b-2 transition ' +
+              'flex-shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-semibold border-b-2 transition ' +
               (viewMode === t.key
                 ? 'border-tomato text-tomato'
                 : 'border-transparent text-gray-500 hover:text-chocolate')

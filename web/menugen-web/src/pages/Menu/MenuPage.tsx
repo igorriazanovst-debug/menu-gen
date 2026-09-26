@@ -1010,7 +1010,7 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-500">
           {formatDate(menu.start_date)} — {formatDate(menu.end_date)} · {menu.period_days} дн.
         </p>
@@ -1060,7 +1060,13 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
             <h3 className="font-semibold text-chocolate mb-3 capitalize">{dayLabel}</h3>
             {/* MG-204: дневная сводка КБЖУ */}
             <DayNutritionSummary items={dayItems} targets={targets} />
-            <div className={`grid gap-2 ${slots.length === 5 ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-3'}`}>
+            {/* MG_WEBMOBILE: на телефоне приёмы идут столбиком.
+                В три колонки на ширине 360 на карточку приходилось около ста
+                пикселей, из которых сорок занимала картинка блюда, — на
+                название оставалось пять-шесть букв в строке. Пять колонок в
+                две так же не читались. Количество приёмов решает разбивку
+                только начиная с планшета. */}
+            <div className={`grid gap-2 grid-cols-1 ${slots.length === 5 ? 'sm:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-3'}`}>
               {slots.map(slot => {
                 const rawSlotItems = dayItems.filter(i => getSlotKey(i) === slot);
                 const seenIds = new Set<number>();

@@ -228,13 +228,20 @@ export const ShoppingPage: React.FC = () => {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+    /* MG_WEBMOBILE: своего p-6 здесь быть не должно — отступ уже даёт оболочка
+       (`AppLayout`, p-4 md:p-6), и на телефоне поля складывались: 24 + 24 с
+       каждой стороны съедали почти сотню пикселей из трёхсот шестидесяти.
+       Остальные разделы отступ не добавляют. */
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h1 className="text-2xl font-bold text-chocolate">🛒 Списки покупок</h1>
         <Button onClick={() => setShowCreate(true)}>+ Новый список</Button>
       </div>
 
-      <div className="flex gap-2 mb-4">
+      {/* Вкладок четыре, и в одну строку на телефоне они не встают. Здесь, в
+          отличие от холодильника, у полосы нет общего подчёркивания — перенос
+          ничего не ломает и читается лучше прокрутки. */}
+      <div className="flex flex-wrap gap-2 mb-4">
         {(['active', 'pending', 'archived', 'history'] as Tab[]).map((t) => (
           <button
             key={t}

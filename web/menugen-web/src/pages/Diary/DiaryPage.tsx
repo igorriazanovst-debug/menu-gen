@@ -282,7 +282,10 @@ export const DiaryPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-chocolate">Дневник питания</h1>
-        <div className="flex items-center gap-2">
+        {/* MG_WEBMOBILE: переносить надо и внутри группы. Внешний ряд уже умел
+            переноситься, но эти пять кнопок оставались одним куском шириной
+            далеко за пределы телефона и растягивали страницу. */}
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="ghost" onClick={() => setShowPrint(true)}>🖨 Печать</Button>
           <Button variant="ghost" onClick={() => setShowCopy(true)}>📋 Копировать</Button>
           <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Заполнить из меню</Button>
