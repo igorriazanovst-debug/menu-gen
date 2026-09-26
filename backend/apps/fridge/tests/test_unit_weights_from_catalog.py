@@ -128,3 +128,52 @@ class TestРазборКаталога:
         run("--from-catalog", "--apply")
 
         assert to_grams(Decimal("2"), "упаковка", retail.id) == Decimal("500.00")
+
+
+@pytest.mark.django_db
+class TestРасхождениеСНазванием:
+    """Фасовка иногда описывает не упаковку, а то, из чего она состоит.
+
+    Поймано на dry-run прода: у чая в поле фасовки «2 г» — это один пакетик, а
+    множитель «x 100шт» остался в названии. Записав это, мы объявили бы пачку
+    чая двумя граммами и получали нехватку на каждом рецепте — ошибка в сто раз
+    и совершенно незаметная.
+    """
+
+    def test_чай_с_множителем_в_названии_пропускается(self, db):
+        product = Product.objects.create(
+            name="Чай Ahmad Tea Earl Grey черный с бергамотом (2г x 100шт), 200г",
+            default_unit="2г",
+        )
+
+        out = run("--from-catalog", "--apply")
+
+        assert not ProductUnitWeight.objects.filter(product=product).exists()
+        assert "спорит с названием" in out
+
+    def test_согласное_название_не_мешает(self, db):
+        """Обычный случай: и в названии, и в фасовке одно и то же число."""
+        product = Product.objects.create(name="Соус Плюмбус острый, 350мл", default_unit="350мл")
+
+        run("--from-catalog", "--apply")
+
+        assert ProductUnitWeight.objects.get(product=product).grams == Decimal("350.00")
+
+    def test_название_без_размера_не_мешает(self, db):
+        product = Product.objects.create(name="Вода плюмбусная негазированная", default_unit="1.5л")
+
+        run("--from-catalog", "--apply")
+
+        assert ProductUnitWeight.objects.get(product=product).grams == Decimal("1500.00")
+
+    def test_коробка_из_стаканов_тоже_пропускается(self, db):
+        """«40 г x 24 шт» — 960 г в коробке или 40 г в стакане?
+
+        Из строки это не следует, и брать число из названия было бы такой же
+        догадкой, как брать из фасовки. Пропускаем.
+        """
+        product = Product.objects.create(name="Пюре Плюмбус со вкусом курицы, 40г x 24 шт", default_unit="40г")
+
+        run("--from-catalog", "--apply")
+
+        assert not ProductUnitWeight.objects.filter(product=product).exists()

@@ -163,13 +163,25 @@ class Command(BaseCommand):
 
         Готовое не трогаем: если вес уже задан — руками ли, моделью ли, — он
         победил, и перезаписывать его разбором строки нельзя.
+
+        И отдельно про расхождение с названием. У части товаров в поле фасовки
+        лежит вес НЕ упаковки, а того, из чего она состоит: у чая «2 г» — это
+        один пакетик, а множитель «x 100шт» остался в названии. Записать такое
+        значит объявить пачку чая двумя граммами и получать нехватку на каждом
+        рецепте. Поэтому название разбирается тоже, и если числа расходятся,
+        товар пропускается целиком.
+
+        Именно пропускается, а не берётся из названия: «Доширак, 40 г x 24 шт»
+        даёт 960 г, но что купил человек — коробку или один стакан, — из строки
+        не следует. Честная нехватка лучше уверенного вранья.
         """
         from apps.fridge.package_size import package_grams
 
         existing = set(ProductUnitWeight.objects.filter(unit="упаковка").values_list("product_id", flat=True))
 
-        scanned = parsed = skipped_known = 0
+        scanned = parsed = skipped_known = conflicts = 0
         found = []
+        conflict_examples = []
         for product in Product.objects.exclude(default_unit="").only("id", "name", "default_unit").order_by("id"):
             scanned += 1
             grams = package_grams(product.default_unit)
@@ -179,6 +191,12 @@ class Command(BaseCommand):
             if product.id in existing:
                 skipped_known += 1
                 continue
+            from_name = package_grams(product.name)
+            if from_name is not None and from_name != grams:
+                conflicts += 1
+                if len(conflict_examples) < 10:
+                    conflict_examples.append((product, grams, from_name))
+                continue
             found.append((product, grams))
             if limit > 0 and len(found) >= limit:
                 break
@@ -186,8 +204,18 @@ class Command(BaseCommand):
         self._say(f"Товаров с непустой фасовкой: {scanned}")
         self._say(f"Из них строка разобралась: {parsed}")
         self._say(f"Вес упаковки уже задан, не трогаем: {skipped_known}")
+        self._say(f"Фасовка спорит с названием, пропущено: {conflicts}")
         self._say(f"К записи: {len(found)}")
         self._say("")
+
+        if conflict_examples:
+            self._say("Примеры расхождений (их не пишем — из строки не понять, что из этого упаковка):")
+            for product, from_unit, from_name in conflict_examples:
+                self._say(
+                    f"  #{product.id} {product.name[:55]} — фасовка «{product.default_unit}» = {from_unit} г, "
+                    f"а по названию {from_name} г"
+                )
+            self._say("")
 
         show = found if len(found) <= 40 else found[:40]
         for product, grams in show:
