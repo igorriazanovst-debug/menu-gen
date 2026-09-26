@@ -21,7 +21,13 @@ const NAV = [
   { path: '/profile',       icon: '👤', label: 'Профиль',      premium: false },
 ];
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  /** MG_WEBMOBILE: закрыть выдвижную панель после перехода. На широком экране
+      её никто не открывал — колбэк тогда просто ничего не делает. */
+  onNavigate?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
   const isPremium = useIsPremium();
@@ -50,6 +56,7 @@ export const Sidebar: React.FC = () => {
           <NavLink
             key={path}
             to={path}
+            onClick={onNavigate}
             className={({ isActive }) =>
               [
                 'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors',
@@ -68,6 +75,7 @@ export const Sidebar: React.FC = () => {
         {isSpecialist && (
           <NavLink
             to="/specialist"
+            onClick={onNavigate}
             className={({ isActive }) =>
               [
                 'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors',
@@ -85,6 +93,7 @@ export const Sidebar: React.FC = () => {
         {isSpecialist && (
           <NavLink
             to="/constructor"
+            onClick={onNavigate}
             className={({ isActive }) =>
               [
                 'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors',
@@ -110,10 +119,10 @@ export const Sidebar: React.FC = () => {
         </button>
         {/* MG_LEGAL */}
         <div className="mt-2 px-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-sidebar-muted">
-          <NavLink to="/requisites" className="hover:text-sidebar-fg">Реквизиты</NavLink>
-          <NavLink to="/offer" className="hover:text-sidebar-fg">Оферта</NavLink>
+          <NavLink to="/requisites" onClick={onNavigate} className="hover:text-sidebar-fg">Реквизиты</NavLink>
+          <NavLink to="/offer" onClick={onNavigate} className="hover:text-sidebar-fg">Оферта</NavLink>
           {/* MG_PRIVACY */}
-          <NavLink to="/privacy" className="hover:text-sidebar-fg">Политика ПД</NavLink>
+          <NavLink to="/privacy" onClick={onNavigate} className="hover:text-sidebar-fg">Политика ПД</NavLink>
         </div>
       </div>
     </aside>
