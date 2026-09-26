@@ -24,6 +24,10 @@ export const fridgeApi = {
     // MG_FAMBARCODE: код отсканированной упаковки. Если товар не опознался и
     // название вписали руками, сервер запомнит его для этой семьи.
     barcode?: string;
+    // MG_FAMWEIGHT: сколько граммов в одной такой единице. Шлём только для
+    // «шт», «упак» и «банки»: у граммов и литров вес известен из арифметики,
+    // и лишняя запись только замусорит справочник.
+    unit_grams?: number;
   }) => client.post<FridgeItem>('/fridge/', data),
 
   delete: (id: number) => client.delete(`/fridge/${id}/`),
@@ -49,6 +53,7 @@ export const fridgeApi = {
       expiry_date?: string;
       category_slug?: string;
       product?: number | null;
+      unit_grams?: number; // MG_FAMWEIGHT
     },
   ) => client.patch<FridgeItem>(`/fridge/${id}/`, data),
 

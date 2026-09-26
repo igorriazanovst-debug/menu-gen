@@ -50,6 +50,14 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
   bool _highlightCategory = false;
   bool _highlightDate = false;
   String _unit = _UNITS.first;
+  // MG_FAMWEIGHT: единицы, которые сами по себе меры не несут. Для них
+  // спрашиваем, сколько граммов в одной, — иначе позиция не сойдётся ни с
+  // рецептом, ни со списком покупок.
+  static const _COUNTABLE = {'шт', 'упак', 'банка'};
+  final _unitGramsCtrl = TextEditingController();
+  // Что про этот товар уже известно: {единица: граммы}. Приходит вместе с
+  // товаром из каталога, чтобы не ходить на сервер в момент выбора единицы.
+  Map<String, String> _knownWeights = const {};
   DateTime? _expiry;
   int? _productId;
   String? _imageUrl;
@@ -135,6 +143,7 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
     _searchDebounce?.cancel();
     _nameCtrl.dispose();
     _qtyCtrl.dispose();
+    _unitGramsCtrl.dispose(); // MG_FAMWEIGHT
     _nameFocus.dispose();
     _qtyFocus.dispose();
     super.dispose();
@@ -276,10 +285,36 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
     _searchResults = const [];
   }
 
+  /// MG_FAMWEIGHT: {единица: граммы} из выдачи каталога.
+  Map<String, String> _readWeights(dynamic raw) {
+    if (raw is! Map) return const {};
+    final out = <String, String>{};
+    raw.forEach((k, v) => out[k.toString()] = v.toString());
+    return out;
+  }
+
+  /// Подставить известный вес для выбранной единицы.
+  ///
+  /// «упак» в списке единиц и «упаковка» в справочнике — одно и то же, но
+  /// пишутся по-разному: справочник хранит каноничное написание. Без этой
+  /// подстановки поле оставалось бы пустым там, где ответ известен.
+  void _prefillUnitGrams() {
+    final canon = _unit == 'упак' ? 'упаковка' : _unit;
+    final known = _knownWeights[canon] ?? _knownWeights[_unit];
+    if (known == null) {
+      _unitGramsCtrl.clear();
+      return;
+    }
+    // «200.00» человеку показывать незачем.
+    _unitGramsCtrl.text = known.contains('.') ? known.replaceFirst(RegExp(r'\.?0+$'), '') : known;
+  }
+
   void _applyProduct(Map<String, dynamic> p) {
     setState(() {
       _nameCtrl.text = (p['name'] as String?) ?? '';
       _productId = p['id'] as int?;
+      _knownWeights = _readWeights(p['unit_weights']);
+      _prefillUnitGrams();
       final img = p['image_url'] as String?;
       if (img != null && img.isNotEmpty) _imageUrl = img;
       final unit = p['default_unit'] as String?;
@@ -396,6 +431,9 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
           caloriesPer100g: recMatchesName ? rec.caloriesPer100g : null,
           nutrition: recMatchesName ? rec.nutrition : null,
           barcode: _scannedCode, // MG_FAMBARCODE
+          unitGrams: _COUNTABLE.contains(_unit)
+              ? double.tryParse(_unitGramsCtrl.text.trim().replaceAll(',', '.'))
+              : null, // MG_FAMWEIGHT
         ));
     Navigator.of(context).pop();
   }
@@ -818,11 +856,37 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
                       items: _UNITS
                           .map((u) => DropdownMenuItem(value: u, child: Text(u)))
                           .toList(),
-                      onChanged: (v) => setState(() => _unit = v ?? _UNITS.first),
+                      onChanged: (v) => setState(() {
+                        _unit = v ?? _UNITS.first;
+                        _prefillUnitGrams(); // MG_FAMWEIGHT
+                      }),
                     ),
                   ),
                 ],
               ),
+              // MG_FAMWEIGHT: у «шт», «упак» и «банки» единица ничего не
+              // говорит о весе — спрашиваем. У граммов и литров не спрашиваем
+              // ничего: там вес известен из арифметики.
+              if (_COUNTABLE.contains(_unit)) ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _unitGramsCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Сколько граммов в одной ($_unit)',
+                    helperText: 'Нужно, чтобы продукт сходился с рецептами и списком покупок',
+                    helperMaxLines: 2,
+                    suffixText: 'г',
+                  ),
+                  validator: (v) {
+                    final raw = (v ?? '').trim();
+                    if (raw.isEmpty) return null; // необязательно: без веса всё как раньше
+                    final n = double.tryParse(raw.replaceAll(',', '.'));
+                    if (n == null || n <= 0) return 'Число > 0';
+                    return null;
+                  },
+                ),
+              ],
               const SizedBox(height: 12),
               InkWell(
                 onTap: _pickDate,

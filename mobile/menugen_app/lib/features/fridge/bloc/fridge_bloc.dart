@@ -29,6 +29,10 @@ class FridgeItemAdded extends FridgeEvent {
   // MG_FAMBARCODE: код отсканированной упаковки. Если товар не опознан, сервер
   // запомнит название для семьи и подставит его при следующем скане.
   final String? barcode;
+  // MG_FAMWEIGHT: сколько граммов в одной такой единице. Спрашивается только
+  // там, где единица сама меры не несёт («шт», «упак», «банка»), и запоминается
+  // за семьёй: у каждой свои пачки.
+  final double? unitGrams;
   const FridgeItemAdded({
     required this.name,
     required this.quantity,
@@ -39,10 +43,11 @@ class FridgeItemAdded extends FridgeEvent {
     this.caloriesPer100g,
     this.nutrition,
     this.barcode,
+    this.unitGrams,
   });
   @override
   List<Object?> get props =>
-      [name, quantity, unit, expiryDate, productId, categorySlug, caloriesPer100g, nutrition, barcode];
+      [name, quantity, unit, expiryDate, productId, categorySlug, caloriesPer100g, nutrition, barcode, unitGrams];
 }
 
 class FridgeItemDeleted extends FridgeEvent {
@@ -196,6 +201,7 @@ class FridgeBloc extends Bloc<FridgeEvent, FridgeState> {
       if (e.caloriesPer100g != null) body['calories_per_100g'] = e.caloriesPer100g;
       if (e.nutrition != null && e.nutrition!.isNotEmpty) body['nutrition'] = e.nutrition;
       if (e.barcode != null && e.barcode!.isNotEmpty) body['barcode'] = e.barcode; // MG_FAMBARCODE
+      if (e.unitGrams != null) body['unit_grams'] = e.unitGrams; // MG_FAMWEIGHT
       await apiClient.post('/fridge/', data: body);
       add(const FridgeLoadRequested());
     } catch (err) {

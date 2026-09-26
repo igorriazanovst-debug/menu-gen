@@ -369,6 +369,9 @@ export interface Product {
   category_icon?: string | null;
   category_color?: string | null;
   default_unit?: string;
+  // MG_FAMWEIGHT: сколько граммов в «штуке» и «упаковке» этого товара —
+  // {единица: граммы}. Своё значение семьи уже подставлено вместо общего.
+  unit_weights?: Record<string, string>;
   calories_per_100g?: string | number | null;
   nutrition?: Record<string, number>;
   barcode?: string | null;

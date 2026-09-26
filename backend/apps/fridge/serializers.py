@@ -31,6 +31,11 @@ class ProductSerializer(serializers.ModelSerializer):
     # Считается только там, где запрошено (список своих продуктов): без
     # аннотации поле не отдаётся, иначе каждый список продуктов ловил бы N+1.
     fridge_usage = serializers.SerializerMethodField()
+    # MG_FAMWEIGHT: сколько граммов в «штуке» и «упаковке» этого товара —
+    # {единица: граммы}. Отдаётся вместе с товаром, а не отдельным запросом:
+    # форма спрашивает вес ровно в тот момент, когда человек выбрал единицу,
+    # и лишний поход на сервер там виден как задержка.
+    unit_weights = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -51,7 +56,18 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_seed",
             "is_own",
             "fridge_usage",
+            "unit_weights",
         )
+
+    def get_unit_weights(self, obj) -> dict:
+        """MG_FAMWEIGHT: веса этого товара — общий каталог плюс своё поверх."""
+        from .units import unit_weight_index
+        from .visibility import family_of
+
+        req = self.context.get("request")
+        family = family_of(req.user) if req and req.user.is_authenticated else None
+        index = unit_weight_index([obj.id], family=family)
+        return {unit: str(grams) for (_pid, unit), grams in index.items()}
 
     def get_fridge_usage(self, obj):
         return getattr(obj, "fridge_usage", None)
@@ -142,6 +158,12 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
     # опознался и название человек вписал сам — тогда мы это запоминаем, и в
     # следующий раз та же упаковка подставится без ввода.
     barcode = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=64)
+    # MG_FAMWEIGHT: сколько граммов в одной такой единице. Спрашивается формой
+    # только там, где единица сама по себе меры не несёт («шт», «упаковка»), и
+    # запоминается за семьёй: у каждой свои пачки.
+    unit_grams = serializers.DecimalField(
+        write_only=True, required=False, allow_null=True, max_digits=10, decimal_places=2
+    )
 
     class Meta:
         model = FridgeItem
@@ -155,6 +177,44 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
             "calories_per_100g",
             "nutrition",
             "barcode",
+            "unit_grams",
+        )
+
+    def validate_unit_grams(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Вес должен быть больше нуля.")
+        return value
+
+    def _remember_unit_grams(self, item, grams, family):
+        """MG_FAMWEIGHT: запомнить вес единицы за этой семьёй.
+
+        Пишем, только если есть к чему привязать (товар) и если единица сама
+        меры не несёт. Для граммов и килограммов запись бессмысленна: там вес
+        известен из арифметики, а лишняя строка в справочнике потом собьёт с
+        толку того, кто будет разбираться.
+
+        Своё значение перетирается новым намеренно: человек говорит про свою
+        пачку, и последнее сказанное вернее прежнего. Общий каталог при этом не
+        трогается — у него своя строка.
+        """
+        from .models import ProductUnitWeight
+        from .units import norm_unit
+
+        if grams is None or item.product_id is None or family is None:
+            return
+        unit = norm_unit(item.unit)
+        if not unit:
+            return
+        from apps.shopping.services import _mg_unit_tables
+
+        mass, vol, _clove = _mg_unit_tables()
+        if unit in mass or unit in vol:
+            return
+        ProductUnitWeight.objects.update_or_create(
+            product_id=item.product_id,
+            unit=unit,
+            family=family,
+            defaults={"grams": grams, "source": ProductUnitWeight.Source.MANUAL},
         )
 
     def _resolve_product(self, name, category_slug, calories, nutrition):
@@ -246,6 +306,7 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         family = self.context["family"]
         user = self.context["request"].user
         barcode = validated_data.pop("barcode", "")  # MG_FAMBARCODE
+        unit_grams = validated_data.pop("unit_grams", None)  # MG_FAMWEIGHT
         category_slug = validated_data.pop("category_slug", "")
         calories = validated_data.pop("calories_per_100g", None)
         nutrition = validated_data.pop("nutrition", None)
@@ -265,6 +326,9 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
             family=family,
             added_by_id=user.id,
         )
+
+        # MG_FAMWEIGHT: после создания — у позиции уже есть товар и единица.
+        self._remember_unit_grams(item, unit_grams, family)
 
         # MG_FAMBARCODE: запоминаем, что этот код у этой семьи — вот этот товар.
         #
@@ -296,6 +360,7 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
         category_slug = validated_data.pop("category_slug", None)
         calories = validated_data.pop("calories_per_100g", None)
         nutrition = validated_data.pop("nutrition", None)
+        unit_grams = validated_data.pop("unit_grams", None)  # MG_FAMWEIGHT
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -310,6 +375,11 @@ class FridgeItemWriteSerializer(serializers.ModelSerializer):
                     instance.product = product
 
         instance.save()
+
+        # MG_FAMWEIGHT: правка — такой же повод уточнить вес, как и заведение.
+        # Человек меняет единицу на «упаковка», и вопрос про граммы уместен
+        # ровно здесь.
+        self._remember_unit_grams(instance, unit_grams, instance.family)
         return instance
 
 

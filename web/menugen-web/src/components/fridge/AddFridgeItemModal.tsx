@@ -14,6 +14,8 @@ import type {
 } from '../../types';
 
 const UNITS = ['шт', 'г', 'кг', 'мл', 'л', 'упак', 'банка'];
+// MG_FAMWEIGHT: единицы, которые сами по себе меры не несут.
+const COUNTABLE = ['шт', 'упак', 'банка'];
 
 interface Props {
   onClose: () => void;
@@ -24,6 +26,11 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const [name, setName]           = useState('');
   const [quantity, setQuantity]   = useState('');
   const [unit, setUnit]           = useState(UNITS[0]);
+  // MG_FAMWEIGHT: единицы, которые сами меры не несут. Для них спрашиваем, во
+  // сколько граммов обходится одна, — иначе позиция не сойдётся ни с рецептом,
+  // ни со списком покупок.
+  const [unitGrams, setUnitGrams] = useState('');
+  const [knownWeights, setKnownWeights] = useState<Record<string, string>>({});
   const [expiry, setExpiry]       = useState('');
   const [productId, setProductId] = useState<number | null>(null);
   const [imageUrl, setImageUrl]   = useState<string | null>(null);
@@ -235,9 +242,27 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
 
   const closeSuggest = () => { setSearchOpen(false); setSearchResults([]); };
 
+  // MG_FAMWEIGHT: запомнить, что известно про веса выбранного товара. Данные
+  // приходят вместе с товаром, отдельного запроса в момент выбора единицы нет
+  // — там он читался бы как задержка.
+  const rememberWeights = (p: { unit_weights?: Record<string, string> }) =>
+    setKnownWeights(p.unit_weights ?? {});
+
+  // «упак» в списке единиц и «упаковка» в справочнике — одно и то же, но
+  // пишутся по-разному: справочник хранит каноничное написание.
+  const canonUnit = (u: string) => (u === 'упак' ? 'упаковка' : u);
+
+  // Известный вес подставляется, как только он есть: человек не вводит вслепую
+  // то, что приложение уже знает, и видит, с чем спорит, если пачка другая.
+  useEffect(() => {
+    const known = knownWeights[canonUnit(unit)] ?? knownWeights[unit];
+    setUnitGrams(known ? known.replace(/\.?0+$/, '') : '');
+  }, [unit, knownWeights]);
+
   const applyProduct = (p: Product) => {
     setName(p.name);
     setProductId(p.id);
+    rememberWeights(p);
     if (p.image_url) setImageUrl(p.image_url);
     if (p.default_unit && UNITS.includes(p.default_unit)) setUnit(p.default_unit);
     if (p.category_slug) {
@@ -262,6 +287,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
   const applySeed = (p: Product) => {
     setName(p.name);
     setProductId(p.id);
+    rememberWeights(p);
     closeSuggest();
     if (p.image_url) setImageUrl(p.image_url);
     if (p.default_unit && UNITS.includes(p.default_unit)) setUnit(p.default_unit);
@@ -282,6 +308,7 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
       setScanInfo({ kbju: productKbjuLine(p), guess: !!p.low_confidence }); // MG_SCANSRC
       setName(p.name);
       setProductId(p.id);
+      rememberWeights(p);
       closeSuggest();
       if (p.image_url) setImageUrl(p.image_url);
       if (p.default_unit && UNITS.includes(p.default_unit)) setUnit(p.default_unit);
@@ -345,6 +372,12 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
         product: productId,
         category_slug: selectedCat?.slug, // MG_B02CAT
         barcode: scannedCode ?? undefined, // MG_FAMBARCODE
+        // MG_FAMWEIGHT: только для единиц, которым вес нужен, и только если
+        // человек его указал.
+        unit_grams:
+          COUNTABLE.includes(unit) && unitGrams.trim() && Number(unitGrams) > 0
+            ? Number(unitGrams)
+            : undefined,
       });
       onAdded(data);
       onClose();
@@ -598,6 +631,25 @@ export const AddFridgeItemModal: React.FC<Props> = ({ onClose, onAdded }) => {
                   </select>
                 </div>
               </div>
+
+              {/* MG_FAMWEIGHT: у «шт», «упак» и «банки» единица ничего не
+                  говорит о весе — спрашиваем. У граммов и литров не
+                  спрашиваем: там вес известен из арифметики. */}
+              {COUNTABLE.includes(unit) && (
+                <div>
+                  <Input
+                    label={`Сколько граммов в одной (${unit})`}
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={unitGrams}
+                    onChange={(e) => setUnitGrams(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Нужно, чтобы продукт сходился с рецептами и списком покупок. Запомним для вашей семьи.
+                  </p>
+                </div>
+              )}
 
               <Input
                 label="Срок годности *"
