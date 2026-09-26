@@ -86,7 +86,7 @@ def _fr_unit_factor(unit):
     return (u, Decimal(1))
 
 
-def _subtract_fridge(agg, fridge_rows, pidx=None):  # MG_PRODALIAS
+def _subtract_fridge(agg, fridge_rows, pidx=None, family=None):  # MG_PRODALIAS
     """Match by product_id, else canonical name; subtract fridge qty (unit
     conversion within same dimension); drop item if remaining <= 0.
 
@@ -113,7 +113,10 @@ def _subtract_fridge(agg, fridge_rows, pidx=None):  # MG_PRODALIAS
             {"pid": fpid, "canon": fcanon, "dim": dim, "base": base, "used": False, "item": it, "g_per_base": None}
         )
 
-    widx = unit_weight_index([f["pid"] for f in frs] + [v.get("product_id") for v in agg.values()])
+    # MG_FAMWEIGHT: вес этой семьи перекрывает общий. Семья приходит сверху, а
+    # не выводится из позиций холодильника: у пустого холодильника их нет, а
+    # потребность переводить всё равно надо.
+    widx = unit_weight_index([f["pid"] for f in frs] + [v.get("product_id") for v in agg.values()], family=family)
     for f in frs:
         mass_total = to_grams(f["item"].quantity, f["item"].unit, f["pid"], widx)
         if mass_total is not None and f["base"]:
@@ -301,7 +304,7 @@ def build_items_for_menu_items(menu_items, family, subtract_fridge=False):  # MG
             _add(d.get("name") or "", d.get("quantity"), d.get("unit") or "", "", None, None)
 
     if subtract_fridge and fridge_rows:  # MG_FRIDGESUB
-        _subtract_fridge(agg, fridge_rows)
+        _subtract_fridge(agg, fridge_rows, family=family)  # MG_FAMWEIGHT
 
     _apply_catalog_categories(agg)  # MG_CATLIVE
     _drop_skipped(agg)  # MG_NOBUY

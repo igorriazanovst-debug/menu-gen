@@ -132,7 +132,9 @@ def write_off_menu_item(menu_item, *, user_id=None):
     # MG_UNITNORM: справочник весов — одним запросом на всё блюдо, а не по
     # запросу на позицию: в недельном меню позиций под сотню.
     need_keys = [_match_key(n.get("name"), n.get("product_id"), pidx)[0] for n in needs]
-    widx = unit_weight_index([s["pid"] for s in state] + need_keys)
+    # MG_FAMWEIGHT: вес этой семьи важнее общего — своя пачка творога, а не
+    # усреднённая по каталогу.
+    widx = unit_weight_index([s["pid"] for s in state] + need_keys, family=family)
 
     for s in state:
         # Сколько граммов в одной единице БАЗЫ (г для массы, мл для объёма,

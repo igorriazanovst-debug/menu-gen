@@ -34,24 +34,46 @@ def norm_unit(unit):
     return _mg_norm_unit(unit)
 
 
-def unit_weight_index(product_ids=None):
+def unit_weight_index(product_ids=None, family=None):
     """{(product_id, единица): граммов в одной единице}.
 
     Одним запросом на всё: у недельного меню под сотню позиций, и поштучные
     обращения к базе превратили бы сборку списка в сотню запросов.
+
+    MG_FAMWEIGHT: вес семьи перекрывает общий. Оба уровня берутся одним
+    запросом и склеиваются здесь, а не в вызывающем коде: правило «своё важнее
+    общего» должно быть в одном месте, иначе списание и список покупок однажды
+    решат по-разному, и разницу никто не увидит.
+
+    `family=None` — только общие веса. Это не «веса всех семей»: чужой вес не
+    должен просочиться в чужой холодильник даже случайно.
     """
+    from django.db.models import F, Q
+
     from apps.fridge.models import ProductUnitWeight
 
-    qs = ProductUnitWeight.objects.all()
+    scope = Q(family__isnull=True)
+    if family is not None:
+        scope |= Q(family=family)
+
+    qs = ProductUnitWeight.objects.filter(scope)
     if product_ids is not None:
         ids = [pid for pid in product_ids if pid]
         if not ids:
             return {}
         qs = qs.filter(product_id__in=ids)
-    return {(row.product_id, row.unit): row.grams for row in qs.only("product_id", "unit", "grams")}
+
+    index = {}
+    # Общие кладём первыми, семейные поверх. `nulls_first` здесь обязателен:
+    # по умолчанию Postgres при сортировке по возрастанию ставит NULL В КОНЕЦ,
+    # и общий вес затирал бы семейный — то есть правило работало бы наоборот.
+    rows = qs.only("product_id", "unit", "grams", "family_id").order_by(F("family_id").asc(nulls_first=True))
+    for row in rows:
+        index[(row.product_id, row.unit)] = row.grams
+    return index
 
 
-def grams_per_unit(product_id, unit, index=None):
+def grams_per_unit(product_id, unit, index=None, family=None):
     """Сколько граммов в одной единице этого товара. None — неизвестно.
 
     Граммы и килограммы переводятся без всякого справочника: это не свойство
@@ -69,11 +91,11 @@ def grams_per_unit(product_id, unit, index=None):
     if not product_id:
         return None
     if index is None:
-        index = unit_weight_index([product_id])
+        index = unit_weight_index([product_id], family=family)
     return index.get((product_id, u))
 
 
-def to_grams(quantity, unit, product_id, index=None):
+def to_grams(quantity, unit, product_id, index=None, family=None):
     """Количество в граммах, или None, если перевести нечем."""
     if quantity is None:
         return None
@@ -81,20 +103,20 @@ def to_grams(quantity, unit, product_id, index=None):
         qty = quantity if isinstance(quantity, Decimal) else Decimal(str(quantity))
     except (InvalidOperation, TypeError, ValueError):
         return None
-    per = grams_per_unit(product_id, unit, index)
+    per = grams_per_unit(product_id, unit, index, family=family)
     if per is None:
         return None
     return qty * per
 
 
-def from_grams(grams, unit, product_id, index=None):
+def from_grams(grams, unit, product_id, index=None, family=None):
     """Обратно: сколько это в единице `unit`. None — перевести нечем.
 
     Нужно там, где число возвращается человеку или в холодильник: списали
     граммами, а в позиции лежат штуки, и записать в неё надо штуки — иначе
     отмена вернёт не то.
     """
-    per = grams_per_unit(product_id, unit, index)
+    per = grams_per_unit(product_id, unit, index, family=family)
     if per is None or per == 0 or grams is None:
         return None
     return grams / per

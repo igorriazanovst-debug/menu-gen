@@ -304,6 +304,16 @@ class ProductUnitWeight(models.Model):
     категории» здесь нельзя: ошибка в весе не видна никому и тихо уносит из
     холодильника не то количество. Чего нет — то и не сходится, как раньше:
     честная нехватка лучше выдуманного остатка.
+
+    MG_FAMWEIGHT: у веса два уровня. Пустая семья — общее значение каталога,
+    оно одно на всех. Заданная семья — значение этой семьи, и оно перекрывает
+    общее.
+
+    Без второго уровня общий каталог врал бы половине людей: «Творог 5%» — это
+    обобщённая запись, к которой привязаны рецепты, а пачки у всех разные.
+    Поставив ей 200 г, мы сделали бы верно тем, кто берёт по 200, и вдвое
+    неверно тем, кто берёт по 400 — причём молча, потому что вес никто не
+    открывает, все смотрят на список покупок.
     """
 
     class Source(models.TextChoices):
@@ -316,15 +326,37 @@ class ProductUnitWeight(models.Model):
     unit = models.CharField(max_length=50)
     grams = models.DecimalField(max_digits=10, decimal_places=2, help_text="Сколько граммов в одной такой единице")
     source = models.CharField(max_length=16, choices=Source.choices, default=Source.MANUAL)
+    # MG_FAMWEIGHT: чей это вес. NULL → общий, виден всем.
+    family = models.ForeignKey(
+        Family,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="unit_weights",
+        verbose_name="Семья",
+        help_text="Пусто — общий вес для всех. Задана — вес этой семьи, он перекрывает общий.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "product_unit_weights"
         constraints = [
-            models.UniqueConstraint(fields=["product", "unit"], name="uniq_product_unit_weight"),
+            # Два ограничения вместо одного: Postgres считает NULL-ы
+            # различными, и общее ограничение на (товар, единица, семья)
+            # пропустило бы два общих веса для одного товара.
+            models.UniqueConstraint(
+                fields=["product", "unit"],
+                condition=models.Q(family__isnull=True),
+                name="uniq_product_unit_weight_common",
+            ),
+            models.UniqueConstraint(
+                fields=["product", "unit", "family"],
+                condition=models.Q(family__isnull=False),
+                name="uniq_product_unit_weight_family",
+            ),
         ]
-        indexes = [models.Index(fields=["unit"])]
+        indexes = [models.Index(fields=["unit"]), models.Index(fields=["family", "product"])]
 
     def __str__(self):
         return f"{self.product_id}: 1 {self.unit} = {self.grams} г"

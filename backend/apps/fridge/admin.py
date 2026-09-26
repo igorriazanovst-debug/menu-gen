@@ -120,11 +120,16 @@ class ProductUnitWeightInline(admin.TabularInline):
     граммах: яйца в штуках, творог в упаковках, молоко в литрах. Без этой
     строки такой товар не сходится с рецептом и уходит в «не хватило», сколько
     бы его дома ни лежало.
+
+    MG_FAMWEIGHT: пустая семья — общий вес, он один на всех. Заданная — вес
+    этой семьи, и он перекрывает общий. Здесь видно оба уровня сразу, иначе
+    непонятно, почему у одних считается так, а у других иначе.
     """
 
     model = ProductUnitWeight
     extra = 0
-    fields = ("unit", "grams", "source")
+    fields = ("unit", "grams", "source", "family")
+    autocomplete_fields = ("family",)
     verbose_name = "вес единицы"
     verbose_name_plural = "Вес единицы (шт, упаковка, л)"
 
