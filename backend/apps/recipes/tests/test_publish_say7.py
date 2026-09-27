@@ -72,6 +72,24 @@ class TestКогоПубликуем:
         recipe.refresh_from_db()
         assert recipe.is_published is False
 
+    def test_абсолютная_ссылка_на_свой_хост_это_обложка(self, cover, settings):
+        """Админка пишет обложку абсолютной ссылкой на наш же домен.
+
+        Именно на этом команда и ошиблась в первый раз: тридцать готовых
+        обложек она сочла «ссылками на чужой хост» и не опубликовала ни одной.
+        """
+        settings.ALLOWED_HOSTS = ["menugen.ru"]
+        recipe = _recipe(
+            "Плюмбус с абсолютной ссылкой",
+            legacy="say7:11",
+            image_url="https://menugen.ru/media/recipes/plumbus.jpg",
+        )
+
+        run("--apply")
+
+        recipe.refresh_from_db()
+        assert recipe.is_published is True
+
     def test_чужая_ссылка_только_по_явному_разрешению(self, cover):
         recipe = _recipe("Плюмбус с чужой картинкой", legacy="say7:4", image_url="https://example.com/p.jpg")
 

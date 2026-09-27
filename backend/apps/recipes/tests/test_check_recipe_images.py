@@ -34,6 +34,29 @@ class TestLocalPath:
         assert local_path("https://example.com/a.png") is None
         assert local_path("http://31.192.110.121:8003/media/a.png") is None
 
+    def test_абсолютная_ссылка_на_свой_хост_это_путь(self, media, settings):
+        """Админка пишет обложку абсолютной ссылкой — файл при этом свой.
+
+        Раньше всё на http считалось чужим, и собственные обложки уезжали в
+        «внешние»: там их никто не проверял, а сами они выглядели пропавшими.
+        """
+        settings.ALLOWED_HOSTS = ["menugen.ru"]
+
+        assert (
+            local_path("https://menugen.ru/media/recipes/images/есть.png") == media / "recipes" / "images" / "есть.png"
+        )
+
+    def test_у_своего_хоста_проверяем_только_медиа(self, media, settings):
+        """Статика на диске лежит не здесь — склейка с MEDIA_ROOT соврала бы."""
+        settings.ALLOWED_HOSTS = ["menugen.ru"]
+
+        assert local_path("https://menugen.ru/static/admin/css/base.css") is None
+
+    def test_звёздочка_в_allowed_hosts_не_делает_своими_всех(self, media, settings):
+        settings.ALLOWED_HOSTS = ["*"]
+
+        assert local_path("https://example.com/media/a.png") is None
+
     def test_пустая_ссылка(self, media):
         assert local_path("") is None
 

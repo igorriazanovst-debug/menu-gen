@@ -2,12 +2,19 @@
 
 Картинка не показывается по трём разным причинам, и лечатся они по-разному:
 
-* ``missing``  — ссылка относительная (``/media/...``), но файла на диске нет.
-  Обычно файл не доехал при переносе между серверами.
-* ``external`` — ссылка ведёт на чужой хост. Такие переживают переезд плохо:
+* ``missing``  — ссылка ведёт на наше медиа (``/media/...``), но файла на диске
+  нет. Обычно файл не доехал при переносе между серверами.
+* ``external`` — ссылка ведёт на ЧУЖОЙ хост. Такие переживают переезд плохо:
   внешний сайт мог удалить файл, а ссылки на старый адрес проекта отваливаются,
   когда тот сервер выключают. С ``--check-remote`` каждая проверяется запросом.
 * ``empty``    — картинки нет вовсе.
+
+«Наше медиа» — это не только относительная ссылка. Админка при загрузке файла
+записывает и абсолютную, вида ``https://menugen.ru/media/recipes/images/x.png``,
+и такая ссылка указывает на тот же файл на том же диске. Раньше всё, что
+начинается с ``http``, считалось чужим — и собственные обложки попадали в
+«внешние», где их никто не проверял, а ``--check-remote`` зря ходил запросом на
+свой же сервер.
 
 Команда только читает БД и диск, ничего не меняет.
 
@@ -19,6 +26,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -28,14 +36,53 @@ from django.core.management.base import BaseCommand
 _TIMEOUT = 10
 
 
+def own_hosts() -> set[str]:
+    """Хосты, чьё ``/media/…`` лежит на этом же диске.
+
+    Своего домена одной переменной в проекте нет: абсолютные ссылки собираются
+    из ``BACKEND_PUBLIC_URL``, письма — из ``FRONTEND_URL``, а Django пускает к
+    себе то, что перечислено в ``ALLOWED_HOSTS``. Берём все три: ссылка могла
+    быть записана в любую эпоху настроек, а ошибиться в другую сторону дороже —
+    чужой хост, принятый за свой, даст «файла нет» там, где картинка на месте.
+
+    ``*`` из ``ALLOWED_HOSTS`` не в счёт: с ним своим оказался бы весь интернет.
+    """
+    hosts: set[str] = set()
+    for raw in (os.environ.get("BACKEND_PUBLIC_URL", ""), getattr(settings, "FRONTEND_URL", "") or ""):
+        host = urlparse(raw or "").hostname
+        if host:
+            hosts.add(host.lower())
+    for entry in getattr(settings, "ALLOWED_HOSTS", None) or []:
+        entry = (entry or "").strip().lower().lstrip(".")
+        if entry and entry != "*":
+            hosts.add(entry)
+    return hosts
+
+
 def local_path(image_url: str) -> Path | None:
-    """Относительная ссылка → путь на диске. Для внешних ссылок — None."""
+    """Ссылка на наше медиа → путь на диске. Для чужих хостов — None.
+
+    Наше — это и относительная ``/media/…``, и абсолютная на собственный хост:
+    админка при загрузке файла пишет вторую, и файл у неё тот же самый.
+    """
     url = (image_url or "").strip()
-    if not url or url.lower().startswith(("http://", "https://")):
+    if not url:
         return None
 
-    path = unquote(urlparse(url).path or url)
+    parsed = urlparse(url)
     media_url = (getattr(settings, "MEDIA_URL", "/media/") or "/media/").rstrip("/")
+
+    if parsed.scheme in ("http", "https"):
+        if (parsed.hostname or "").lower() not in own_hosts():
+            return None
+        path = unquote(parsed.path or "")
+        # У своего хоста проверяем только медиа: всё остальное (статика,
+        # страницы) на диске лежит не здесь, и склейка с MEDIA_ROOT соврала бы.
+        if not media_url or not path.startswith(media_url + "/"):
+            return None
+    else:
+        path = unquote(parsed.path or url)
+
     if media_url and path.startswith(media_url):
         path = path[len(media_url) :]
     return Path(settings.MEDIA_ROOT) / path.lstrip("/")
