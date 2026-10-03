@@ -91,7 +91,35 @@ cp -a "$WT_SRC/build/." "$DIST/"
 echo "==> 6. Reload nginx"
 nginx -t && nginx -s reload
 
+echo "==> 7. Сверка: nginx отдаёт именно то, что мы положили"
+# Проверка сравнивает ДВЕ вещи: имя бандла в web-dist (это то, что мы положили
+# прямо сейчас) и имя бандла на странице, которую отдаёт nginx.
+#
+# Раньше здесь был один grep с «|| true», и на проде он молча ничего не
+# находил: nginx на 80 отдаёт редирект на https, тела в ответе нет, grep пуст,
+# «|| true» это съедает — в выводе оставалась строка «nginx отдаёт:» и пустота
+# под ней, а деплой говорил ГОТОВО. Проверка, которая ничего не проверила и не
+# пожаловалась, хуже отсутствующей: ей верят.
+#
+# -L обязателен из-за того самого редиректа, -k — потому что по адресу
+# 127.0.0.1 сертификат домена не сойдётся.
+EXPECTED=$(grep -oE 'static/js/main\.[a-z0-9]+\.js' "$DIST/index.html" | head -1 || true)
+SERVED=$(curl -fsSLk -H 'Cache-Control: no-cache' "$WEB_URL/?nocache=$(date +%s)" 2>/dev/null \
+  | grep -oE 'static/js/main\.[a-z0-9]+\.js' | head -1 || true)
+
+echo "    в web-dist:   ${EXPECTED:-(не найден)}"
+echo "    nginx отдаёт: ${SERVED:-(страницу получить не удалось)}"
+
+if [ -z "$EXPECTED" ]; then
+  echo "    !! В web-dist/index.html не нашлось имени бандла — проверьте сборку."
+elif [ -z "$SERVED" ]; then
+  echo "    !! Страницу по $WEB_URL получить не удалось, сверить не с чем."
+  echo "       Файлы на месте; проверьте вручную: curl -sL https://menugen.ru/ | grep main"
+elif [ "$EXPECTED" = "$SERVED" ]; then
+  echo "    Совпадает — свежий бандл отдаётся."
+else
+  echo "    !! РАСХОЖДЕНИЕ: nginx отдаёт старый бандл. Проверьте root в конфиге nginx"
+  echo "       и кеш проксирующего слоя, если он есть."
+fi
+
 echo "==> ГОТОВО. В браузере: Ctrl+Shift+R"
-echo "    nginx отдаёт:"
-curl -sH 'Cache-Control: no-cache' "$WEB_URL/?nocache=$(date +%s)" \
-  | grep -oE 'src="[^"]*\.js[^"]*"' || true
