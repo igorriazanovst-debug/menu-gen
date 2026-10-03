@@ -9,6 +9,21 @@
 только то, что ещё без КБЖУ). --limit — обработать только N продуктов (удобно
 для тестовой партии и контроля стоимости).
 
+MG_KBJUSCOPE: что команда НЕ берёт по умолчанию и почему.
+
+* **Личные продукты людей** (`owner_family` заполнен) — никогда, даже с флагом.
+  Это чужая запись, которую человек завёл сам; дописать в неё догадку модели
+  молча — не наше дело. Человек правит её в «Моих продуктах» руками, и пустое
+  поле там означает «неизвестно», а не «посчитай за меня».
+* **Скрытые из выбора источники** (`ai`, `retail`, `off_bulk`) — только с
+  `--include-hidden`. Это магазинные SKU: их десятки тысяч, в выборе продуктов
+  они не показываются (видны лишь по сканированию штрихкода), а запрос к модели
+  на каждую позицию стоит денег. Прогон по ним — отдельное осознанное решение,
+  а не побочный эффект слова «все».
+
+Отбор идёт запросом в базу, а не перебором в питоне: раньше команда тянула весь
+каталог в память, чтобы выбросить из него почти всё.
+
     docker compose exec -T backend python manage.py fill_kbju_ai --limit 50          # dry-run, 50 шт
     docker compose exec -T backend python manage.py fill_kbju_ai --limit 50 --apply
     docker compose exec -T backend python manage.py fill_kbju_ai --apply             # весь хвост
@@ -17,10 +32,12 @@
 import json
 
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 
 from apps.common.ai_provider import complete_with_retry
 from apps.common.progress import BatchProgress
 from apps.fridge.models import Product
+from apps.fridge.visibility import HIDDEN_FROM_PICKERS  # MG_KBJUSCOPE
 
 SYSTEM = (
     "Ты — нутрициолог. На вход дан JSON-массив объектов {i, name} — названия "
@@ -59,6 +76,12 @@ class Command(BaseCommand):
         parser.add_argument("--apply", action="store_true", help="Записать результат (иначе dry-run).")
         parser.add_argument("--limit", type=int, default=0, help="Обработать не более N продуктов (0 = все).")
         parser.add_argument("--batch", type=int, default=20, help="Размер чанка для одного запроса к AI.")
+        # MG_KBJUSCOPE: магазинные SKU — отдельное решение, см. заголовок файла.
+        parser.add_argument(
+            "--include-hidden",
+            action="store_true",
+            help="Взять и скрытые из выбора источники (ai, retail, off_bulk) — десятки тысяч позиций.",
+        )
 
     def _say(self, line):
         """Строка хода: печатаем сразу, иначе в докере она повиснет в буфере."""
@@ -95,10 +118,17 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("Парсер JSON недоступен (_parse_json_loose)."))
             return
 
-        targets = [p for p in Product.objects.all().order_by("id") if not _has_kbju(p)]
+        # MG_KBJUSCOPE: отбор запросом в базу, а не перебором в питоне, и без
+        # личных продуктов людей. Пустой nutrition — это `{}` либо NULL; та же
+        # проверка, что и в _has_kbju, только выраженная SQL-ом.
+        qs = Product.objects.filter(owner_family__isnull=True).filter(Q(nutrition__isnull=True) | Q(nutrition={}))
+        if not opts["include_hidden"]:
+            qs = qs.exclude(source__in=HIDDEN_FROM_PICKERS)
+        targets = list(qs.order_by("id"))
         if limit > 0:
             targets = targets[:limit]
-        self.stdout.write(f"Продуктов без КБЖУ к обработке: {len(targets)} (batch={batch}).")
+        scope = "весь каталог" if opts["include_hidden"] else "видимый каталог (без магазинных SKU)"
+        self.stdout.write(f"Продуктов без КБЖУ к обработке: {len(targets)} — {scope}, batch={batch}.")
 
         filled = not_food = failed = 0
         samples = []
