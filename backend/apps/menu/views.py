@@ -532,6 +532,41 @@ class MenuPurgeAllView(APIView):
         return Response({"deleted": cnt}, status=status.HTTP_200_OK)
 
 
+def _dish_items(menu, item):
+    """MG_FAMILYDISH: все записи ОДНОГО блюда, а не одна запись одного человека.
+
+    В режиме «одно меню на всю семью» блюдо хранится по записи на каждого члена:
+    в них одинаковые день, приём, роль и рецепт, разный только `member`. Клиенты
+    показывают такую пачку одной карточкой — и веб, и приложение склеивают
+    позиции по рецепту сознательно, иначе в обеде на троих было бы девять
+    карточек вместо трёх.
+
+    Отсюда правило: замена и удаление работают с блюдом целиком. Пока они правили
+    одну запись, у остальных членов семьи оставалось старое блюдо, и склеенная
+    пара расклеивалась: человек заменял блюдо, а вместо замены видел, что в
+    приёме стало на одно блюдо больше. Именно так это и пришло с прода — обед из
+    четырёх карточек превращался в пять, и пятой оказывалась замена, а четвёртой
+    оставалось то же «Лобио» у второго члена семьи.
+
+    Тот же урок уже записан у списания из холодильника: «событие привязано к
+    БЛЮДУ, а не к отметке человека» (apps/fridge, FridgeWriteOff). Замене его
+    тогда не применили.
+
+    В режиме «каждому своё» блюда у членов семьи разные по смыслу, и трогать
+    чужую запись нельзя — там возвращается ровно одна.
+    """
+    mode = (menu.filters_used or {}).get("mode") or "family"
+    if mode == "per_member":
+        return MenuItem.objects.filter(id=item.id)
+    return MenuItem.objects.filter(
+        menu=menu,
+        day_offset=item.day_offset,
+        meal_slot=item.meal_slot,
+        meal_type=item.meal_type,
+        component_role=item.component_role,
+    )
+
+
 class MenuItemSwapView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
@@ -582,7 +617,10 @@ class MenuItemSwapView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        item.delete()
+        # MG_FAMILYDISH: блюдо убирается у всей семьи. Удалить его одному из
+        # двоих значит оставить второго с блюдом, которого в меню больше не
+        # видно: клиенты рисуют пачку записей одной карточкой.
+        _dish_items(menu, item).delete()
         menu.modified_by = Menu.ModifiedBy.USER
         menu.save(update_fields=["modified_by", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -616,10 +654,9 @@ class MenuItemSwapView(APIView):
             except Product.DoesNotExist:
                 return Response({"detail": "Продукт не найден."}, status=status.HTTP_404_NOT_FOUND)
 
-            item.recipe = None
-            item.product = product
-            item.grams = data["grams"]
-            item.save(update_fields=["recipe", "product", "grams"])
+            # MG_FAMILYDISH: блюдо меняется у всей семьи, а не одному человеку.
+            _dish_items(menu, item).update(recipe=None, product=product, grams=data["grams"])
+            item.refresh_from_db(fields=["recipe", "product", "grams"])
             menu.modified_by = Menu.ModifiedBy.USER
             menu.save(update_fields=["modified_by", "updated_at"])
 
@@ -655,10 +692,8 @@ class MenuItemSwapView(APIView):
         new_fg = getattr(recipe, "food_group", None)
         food_group_warning = bool(original_fg and new_fg and original_fg != new_fg)
 
-        item.recipe = recipe
-        item.product = None
-        item.grams = None
-        item.save(update_fields=["recipe", "product", "grams"])
+        # MG_FAMILYDISH: блюдо меняется у всей семьи, а не одному человеку.
+        _dish_items(menu, item).update(recipe=recipe, product=None, grams=None)
         menu.modified_by = Menu.ModifiedBy.USER
         menu.save(update_fields=["modified_by", "updated_at"])
 
