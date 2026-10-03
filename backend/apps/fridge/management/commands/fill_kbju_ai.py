@@ -9,6 +9,12 @@
 только то, что ещё без КБЖУ). --limit — обработать только N продуктов (удобно
 для тестовой партии и контроля стоимости).
 
+**DRY-RUN «сухой» для базы, но не для счёта.** Запросы к модели он делает ровно
+те же, что и прогон с --apply: `--apply` управляет только записью результата.
+Чтобы узнать объём, не потратив ничего, есть `--count-only` — он печатает число
+и выходит, не касаясь провайдера. На этом уже попались: замер хвоста запустили
+без --apply, считая его бесплатным.
+
 MG_KBJUSCOPE: что команда НЕ берёт по умолчанию и почему.
 
 * **Личные продукты людей** (`owner_family` заполнен) — никогда, даже с флагом.
@@ -24,9 +30,16 @@ MG_KBJUSCOPE: что команда НЕ берёт по умолчанию и �
 Отбор идёт запросом в базу, а не перебором в питоне: раньше команда тянула весь
 каталог в память, чтобы выбросить из него почти всё.
 
+    docker compose exec -T backend python manage.py fill_kbju_ai --count-only   # сколько, бесплатно
     docker compose exec -T backend python manage.py fill_kbju_ai --limit 50          # dry-run, 50 шт
     docker compose exec -T backend python manage.py fill_kbju_ai --limit 50 --apply
-    docker compose exec -T backend python manage.py fill_kbju_ai --apply             # весь хвост
+
+Весь хвост — длинный прогон, и его нельзя запускать через `exec`: тот умирает
+вместе с сессией. Отдельным контейнером:
+
+    docker compose run -d --name mg-kbju backend python manage.py fill_kbju_ai --apply
+    docker logs -f mg-kbju
+    docker rm mg-kbju            # только после того, как итог прочитан
 """
 
 import json
@@ -76,6 +89,12 @@ class Command(BaseCommand):
         parser.add_argument("--apply", action="store_true", help="Записать результат (иначе dry-run).")
         parser.add_argument("--limit", type=int, default=0, help="Обработать не более N продуктов (0 = все).")
         parser.add_argument("--batch", type=int, default=20, help="Размер чанка для одного запроса к AI.")
+        # MG_KBJUCOUNT: узнать объём, ничего не потратив.
+        parser.add_argument(
+            "--count-only",
+            action="store_true",
+            help="Только сказать, сколько позиций под прогон. К модели не обращается.",
+        )
         # MG_KBJUSCOPE: магазинные SKU — отдельное решение, см. заголовок файла.
         parser.add_argument(
             "--include-hidden",
@@ -88,10 +107,40 @@ class Command(BaseCommand):
         self.stdout.write(line)
         self.stdout.flush()
 
+    def _targets(self, opts):
+        """Кого обрабатывать. MG_KBJUSCOPE — границы описаны в заголовке файла.
+
+        Отбор запросом в базу, а не перебором в питоне: раньше в память тянулся
+        весь каталог, чтобы выбросить из него почти всё. Пустой nutrition — это
+        `{}` либо NULL; та же проверка, что и в _has_kbju, только выраженная SQL.
+        """
+        qs = Product.objects.filter(owner_family__isnull=True).filter(Q(nutrition__isnull=True) | Q(nutrition={}))
+        if not opts["include_hidden"]:
+            qs = qs.exclude(source__in=HIDDEN_FROM_PICKERS)
+        rows = list(qs.order_by("id"))
+        limit = opts["limit"]
+        return rows[:limit] if limit > 0 else rows
+
     def handle(self, *args, **opts):
         apply = opts["apply"]
-        limit = opts["limit"]
         batch = max(1, opts["batch"])
+
+        # MG_KBJUCOUNT: сначала считаем, потом тратим.
+        #
+        # Отбор и его число печатаются ДО провайдера, и с --count-only команда
+        # на этом и заканчивается. Иначе узнать «сколько там позиций» было
+        # нечем: прогон без --apply спрашивает модель на каждую пачку точно так
+        # же, как с ним, и «сухой» он только для базы, а не для счёта. На этом
+        # уже попались: замер хвоста запустили без --apply, считая его
+        # бесплатным.
+        targets = self._targets(opts)
+        scope = "весь каталог" if opts["include_hidden"] else "видимый каталог (без магазинных SKU)"
+        self.stdout.write(f"Продуктов без КБЖУ к обработке: {len(targets)} — {scope}, batch={batch}.")
+        if opts["count_only"]:
+            self.stdout.write("Только подсчёт: к модели не обращались, ничего не записано.")
+            return
+        if not targets:
+            return
 
         try:
             from apps.common.ai_provider import get_batch_ai_client
@@ -117,18 +166,6 @@ class Command(BaseCommand):
         if _parse_json_loose is None:
             self.stderr.write(self.style.ERROR("Парсер JSON недоступен (_parse_json_loose)."))
             return
-
-        # MG_KBJUSCOPE: отбор запросом в базу, а не перебором в питоне, и без
-        # личных продуктов людей. Пустой nutrition — это `{}` либо NULL; та же
-        # проверка, что и в _has_kbju, только выраженная SQL-ом.
-        qs = Product.objects.filter(owner_family__isnull=True).filter(Q(nutrition__isnull=True) | Q(nutrition={}))
-        if not opts["include_hidden"]:
-            qs = qs.exclude(source__in=HIDDEN_FROM_PICKERS)
-        targets = list(qs.order_by("id"))
-        if limit > 0:
-            targets = targets[:limit]
-        scope = "весь каталог" if opts["include_hidden"] else "видимый каталог (без магазинных SKU)"
-        self.stdout.write(f"Продуктов без КБЖУ к обработке: {len(targets)} — {scope}, batch={batch}.")
 
         filled = not_food = failed = 0
         samples = []

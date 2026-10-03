@@ -148,3 +148,44 @@ class TestОтборПродуктов:
 
         assert "видимый каталог" in _run()
         assert "весь каталог" in _run("--include-hidden")
+
+
+@pytest.mark.django_db
+class TestТолькоПодсчёт:
+    """MG_KBJUCOUNT: узнать объём, ничего не потратив.
+
+    Прогон без --apply «сухой» только для базы: запросы к модели он делает те
+    же. Поэтому для вопроса «сколько там позиций» нужен отдельный режим, и он
+    не должен касаться провайдера вовсе.
+    """
+
+    def test_подсчёт_не_обращается_к_модели(self, clean_db, monkeypatch):
+        Product.objects.create(name="Кабачок плюмбусный жареный", nutrition={})
+
+        def _взрыв(*a, **k):
+            raise AssertionError("провайдера трогать нельзя: это только подсчёт")
+
+        import apps.common.ai_provider as ai
+
+        monkeypatch.setattr(ai, "get_batch_ai_client", _взрыв)
+        monkeypatch.setattr(ai, "check_batch_ai_available", _взрыв)
+
+        out = _run("--count-only")
+
+        assert "к обработке: 1" in out
+        assert "к модели не обращались" in out
+
+    def test_подсчёт_ничего_не_пишет(self, clean_db, monkeypatch):
+        p = Product.objects.create(name="Кабачок плюмбусный жареный", nutrition={})
+        _patch_ai(monkeypatch, '[{"i":0,"kcal":90,"protein":1.2,"fat":6.0,"carb":7.0}]')
+
+        _run("--count-only", "--apply")  # --apply вместе с подсчётом ничего не меняет
+
+        p.refresh_from_db()
+        assert p.nutrition == {}
+
+    def test_подсчёт_уважает_область(self, clean_db, monkeypatch):
+        Product.objects.create(name="Соус Плюмбус, 350мл", nutrition={}, source=Product.Source.RETAIL)
+
+        assert "к обработке: 0" in _run("--count-only")
+        assert "к обработке: 1" in _run("--count-only", "--include-hidden")
