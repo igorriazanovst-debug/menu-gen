@@ -248,6 +248,9 @@ export interface Menu {
   status: string; filters_used: Record<string, unknown>;
   generated_at: string; updated_at: string; items: MenuItem[];
   my_member_id?: number | null; is_head?: boolean; // MG_FAMILYGEN
+  // MG_ITEMDEL: меню тронуто руками — заменой или удалением блюда. Нужно,
+  // чтобы сказать, что цифры генератора больше не те.
+  modified_by?: 'user' | 'specialist' | null;
 }
 export interface ShoppingItem {
   id: number; name: string; quantity?: number; unit?: string;

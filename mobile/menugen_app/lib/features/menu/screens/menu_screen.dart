@@ -385,6 +385,33 @@ class _MenuScreenState extends State<MenuScreen> {
                     ],
                   ),
                 ),
+              // MG_ITEMDEL: меню правили руками — замена или удаление блюда.
+              // Говорим прямо: КБЖУ дня считался генератором, и после правок в
+              // его нормы меню уже не укладывается. Молчать тут хуже всего —
+              // человек смотрит на донат и верит ему.
+              if (menu['modified_by'] == 'user')
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFFE082)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.edit_note, size: 18, color: Color(0xFF8D6E00)),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Меню правили вручную: итоги за день посчитаны по тому, '
+                          'что осталось, и в нормы генератора уже не укладываются.',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF8D6E00)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               // MG_SKIN: карточка-итог за ВЫБРАННЫЙ день (донат КБЖУ).
               MenuSummaryCard(
                 totals: MealNutritionTotals.fromItems(dayItems),
@@ -571,6 +598,16 @@ class _MenuScreenState extends State<MenuScreen> {
                   // настоящей. Лист приёма остаётся открытым: блюда одного
                   // приёма обычно отмечают подряд.
                   onCookedChanged: () {
+                    final id = _activeMenuId;
+                    if (id != null) {
+                      context.read<MenuBloc>().add(MenuDetailRequested(id));
+                    }
+                  },
+                  // MG_ITEMDEL: блюдо убрали — лист закрываем, как при замене.
+                  // Список блюд в нём снимок, и удалённое осталось бы на
+                  // экране живым.
+                  onItemRemoved: () {
+                    Navigator.of(sheetCtx).pop();
                     final id = _activeMenuId;
                     if (id != null) {
                       context.read<MenuBloc>().add(MenuDetailRequested(id));

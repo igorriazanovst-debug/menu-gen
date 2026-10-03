@@ -127,6 +127,9 @@ class MenuMealCarousel extends StatefulWidget {
   // В отличие от замены, лист приёма при этом не закрывается: человек обычно
   // отмечает подряд несколько блюд одного приёма.
   final VoidCallback? onCookedChanged;
+  /// MG_ITEMDEL: блюдо убрали из меню — меню надо перечитать, а лист закрыть:
+  /// список блюд в нём снимок, и удалённое осталось бы на экране.
+  final VoidCallback? onItemRemoved;
 
   const MenuMealCarousel({
     super.key,
@@ -137,6 +140,7 @@ class MenuMealCarousel extends StatefulWidget {
     this.apiClient,
     this.onSwapped,
     this.onCookedChanged,
+    this.onItemRemoved,
   });
 
   @override
@@ -156,6 +160,49 @@ class _MenuMealCarouselState extends State<MenuMealCarousel> {
   void didUpdateWidget(MenuMealCarousel old) {
     super.didUpdateWidget(old);
     if (!identical(old.items, widget.items)) _justChanged.clear();
+  }
+
+  /// MG_ITEMDEL: убрать блюдо из меню.
+  ///
+  /// Спрашиваем подтверждение, и блюдо в вопросе называем по имени: удаление
+  /// необратимо, в отличие от замены, и «вы уверены?» на это не отвечает.
+  ///
+  /// Отказ 409 — блюдо отмечено приготовленным, продукты уже списаны. Текст с
+  /// тем, что делать, присылает сервер: он один и тот же во всех клиентах, и
+  /// пересказывать его своими словами значит заводить второй источник правды.
+  Future<void> _removeItem(int itemId, String title) async {
+    final apiClient = widget.apiClient;
+    final menuId = widget.menuId;
+    if (apiClient == null || menuId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Убрать блюдо?'),
+        content: Text('«$title» исчезнет из меню. Отменить это будет нельзя.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Убрать')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await apiClient.delete('/menu/$menuId/items/$itemId/');
+      if (!mounted) return;
+      widget.onItemRemoved?.call();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось убрать блюдо')),
+      );
+    }
   }
 
   @override
@@ -224,6 +271,9 @@ class _MenuMealCarouselState extends State<MenuMealCarousel> {
                           foodGroup: recipe['food_group'] as String?,
                           onSwapped: widget.onSwapped,
                         ),
+                onRemove: !canCook
+                    ? null
+                    : () => _removeItem(itemId!, (recipe['title'] as String?) ?? 'Блюдо'),
                 onCooked: !canCook
                     ? null
                     : () => showCookedSheet(
@@ -252,6 +302,8 @@ class _RecipeBigCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onReplace;
   final VoidCallback? onCooked;
+  /// MG_ITEMDEL: убрать блюдо из меню совсем.
+  final VoidCallback? onRemove;
   final bool isCooked;
 
   const _RecipeBigCard({
@@ -260,6 +312,7 @@ class _RecipeBigCard extends StatelessWidget {
     required this.onTap,
     this.onReplace,
     this.onCooked,
+    this.onRemove,
     this.isCooked = false,
   });
 
@@ -343,7 +396,7 @@ class _RecipeBigCard extends StatelessWidget {
                         _MetaChip(icon: Icons.person_outline, text: memberName!),
                     ],
                   ),
-                  if (onReplace != null || onCooked != null) ...[
+                  if (onReplace != null || onCooked != null || onRemove != null) ...[
                     const SizedBox(height: 8),
                     // Wrap, а не Row: у длинных подписей на узком экране
                     // кнопки переносятся, а не режутся.
@@ -393,6 +446,23 @@ class _RecipeBigCard extends StatelessWidget {
                                     ),
                                   ),
                                 ),
+                        // MG_ITEMDEL: убрать блюдо. Стоит последней и выглядит
+                        // тише остальных: действие необратимое, в отличие от
+                        // замены, и промахнуться по нему не должно быть легко.
+                        if (onRemove != null)
+                          OutlinedButton.icon(
+                            onPressed: onRemove,
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            label: const Text('Убрать'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: context.tokens.textSecondary,
+                              side: BorderSide(color: context.tokens.border),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ],

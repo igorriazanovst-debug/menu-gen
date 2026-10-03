@@ -75,6 +75,11 @@ export const menuApi = {
   swapItem: (menuId: number, itemId: number, recipeId: number) =>
     client.patch<SwapResult>(`/menu/${menuId}/items/${itemId}/`, { recipe_id: recipeId }),
 
+  // MG_ITEMDEL: убрать блюдо из меню. 409 — блюдо отмечено приготовленным,
+  // продукты уже списаны; текст причины приходит в detail.
+  deleteItem: (menuId: number, itemId: number) =>
+    client.delete(`/menu/${menuId}/items/${itemId}/`),
+
   shoppingList: (menuId: number) =>
     client.get<ShoppingList>(`/menu/${menuId}/shopping-list/`),
 

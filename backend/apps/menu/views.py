@@ -535,6 +535,58 @@ class MenuPurgeAllView(APIView):
 class MenuItemSwapView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsFamilyPremiumOrReadOnly]
 
+    # MG_ITEMDEL: убрать блюдо из меню совсем.
+    #
+    # Раньше выхода было два: заменить блюдо или удалить меню целиком. Между
+    # ними ничего, а нужно именно это — «не буду я во вторник суп».
+    #
+    # Баланс дня от удаления поедет, и это не повод запрещать: меню и так
+    # правится заменами. Клиенты показывают, что меню тронуто руками, по
+    # modified_by — его для этого и отдаём в выдаче меню.
+    @extend_schema(responses={204: None})
+    def delete(self, request, menu_id, item_id):
+        family = _get_family(request.user)
+        if not family:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if not _can_edit_menu(request.user, family):
+            return Response({"detail": "Нет прав на редактирование меню."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            menu = Menu.objects.get(id=menu_id, family=family)
+            item = MenuItem.objects.select_related("recipe").get(id=item_id, menu=menu)
+        except (Menu.DoesNotExist, MenuItem.DoesNotExist):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        # Приготовленное блюдо не удаляем. Событие списания привязано к блюду
+        # (меню, день, приём, рецепт), а не к пункту меню, и при удалении
+        # останется без блюда — то есть продукты ушли, а отменить это станет
+        # нечем. Пусть человек сначала снимет «Приготовил»: тогда продукты
+        # вернутся в холодильник, и удаление будет честным.
+        from apps.fridge.models import FridgeWriteOff
+
+        cooked = FridgeWriteOff.objects.filter(
+            family=family,
+            menu=menu,
+            recipe_id=item.recipe_id,
+            day_offset=item.day_offset,
+            meal_slot=item.meal_slot or item.meal_type or "",
+        ).exists()
+        if cooked:
+            return Response(
+                {
+                    "detail": "Блюдо отмечено приготовленным: продукты уже списаны. "
+                    "Сначала отмените «Приготовил» — продукты вернутся в холодильник.",
+                    "code": "item_cooked",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        item.delete()
+        menu.modified_by = Menu.ModifiedBy.USER
+        menu.save(update_fields=["modified_by", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @extend_schema(request=MenuItemSwapSerializer, responses={200: None})
     def patch(self, request, menu_id, item_id):
         family = _get_family(request.user)

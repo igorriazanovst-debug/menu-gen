@@ -416,6 +416,63 @@ const CookInline: React.FC<CookInlineProps> = ({ itemId, menuId, dishTitle, isCo
   );
 };
 
+// ── RemoveInline ────────────────────────────────────────────────────────────
+
+interface RemoveInlineProps {
+  itemId: number;
+  menuId: number;
+  dishTitle: string;
+  onRemoved: () => void;
+}
+
+/**
+ * MG_ITEMDEL: убрать блюдо из меню.
+ *
+ * Выходов было два — заменить блюдо или удалить меню целиком, а нужно именно
+ * это: «не буду я во вторник суп».
+ *
+ * Подтверждение здесь не формальность: удаление нельзя отменить, в отличие от
+ * замены. Блюдо называется в вопросе по имени, чтобы человек видел, что
+ * удаляет, а не «вы уверены?».
+ *
+ * Отказ 409 — блюдо отмечено приготовленным, продукты уже списаны. Бэкенд
+ * присылает текст с тем, что делать; показываем его, а не своё сообщение.
+ */
+const RemoveInline: React.FC<RemoveInlineProps> = ({ itemId, menuId, dishTitle, onRemoved }) => {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleRemove = async () => {
+    if (busy) return;
+    if (!window.confirm(`Убрать «${dishTitle}» из меню? Отменить это будет нельзя.`)) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await menuApi.deleteItem(menuId, itemId);
+      onRemoved();
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Не удалось убрать блюдо');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleRemove}
+        disabled={busy}
+        className="text-xs text-gray-400 hover:text-red-600 hover:underline disabled:opacity-60"
+        title="Убрать блюдо из меню"
+      >
+        🗑 Убрать
+      </button>
+      {err && <span className="text-xs text-red-600 ml-2">{err}</span>}
+    </>
+  );
+};
+
 // ── MealDetailModal ─────────────────────────────────────────────────────────
 
 interface MealDetailModalProps {
@@ -562,6 +619,14 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
                         dishTitle={item.recipe.title}
                         isCooked={item.is_cooked === true}
                         onChanged={onCookedChanged}
+                      />
+                      {/* MG_ITEMDEL: убрать блюдо. Окно закрываем — список блюд
+                          в нём снимок, и удалённое осталось бы на экране. */}
+                      <RemoveInline
+                        itemId={item.id}
+                        menuId={menuId}
+                        dishTitle={item.recipe.title}
+                        onRemoved={() => { onCookedChanged(); onClose(); }}
                       />
                     </div>
                   </div>
@@ -1018,6 +1083,18 @@ const MenuGrid: React.FC<MenuGridProps> = ({ menu, onRefresh, onDelete }) => {
           🗑 Удалить
         </Button>
       </div>
+
+      {/* MG_ITEMDEL: меню правили руками — замена или удаление блюда.
+          Говорим об этом прямо: КБЖУ дня и нормы считал генератор, и после
+          правок они уже не те. Молчать здесь хуже всего — человек смотрит на
+          сводку дня и верит ей. */}
+      {menu.modified_by === 'user' && (
+        <div className="rounded-xl bg-yellow-50 border border-yellow-200 px-3 py-2 text-xs text-yellow-800">
+          Меню правили вручную: блюда заменяли или убирали. Итоги по калориям и БЖУ
+          за день посчитаны по тому, что осталось, но в нормы генератора они больше
+          не укладываются.
+        </div>
+      )}
 
       {/* MG_FAMILYGEN: выбор члена семьи (глава — любые; обычный член — только свои) */}
       {isPerMember && memberOptions.length > 1 && (

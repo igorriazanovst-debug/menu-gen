@@ -221,6 +221,11 @@ class MenuDetailSerializer(serializers.ModelSerializer):
             "warnings",  # MG_304_V_serializers
             "my_member_id",
             "is_head",
+            # MG_ITEMDEL: меню тронуто руками — заменой или удалением блюда.
+            # Поле в модели было с самого начала, но клиентам не отдавалось, и
+            # показать «баланс дня больше не тот, что считал генератор» им было
+            # нечем.
+            "modified_by",
         )
 
 
