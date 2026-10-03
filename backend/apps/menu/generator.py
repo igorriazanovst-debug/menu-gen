@@ -169,6 +169,15 @@ MAIN_MEAL_TYPES = ("breakfast", "lunch", "dinner")  # сладкое запре�
 # чтобы сладкое блюдо было несладким.
 SWEET_ROLES = frozenset({"dessert", "bakery"})
 
+# MG_DAYBUDGET: «член семьи», от имени которого идёт подбор в режиме одного меню
+# на всю семью. Настоящих идентификаторов 0 не бывает — Postgres выдаёт их с
+# единицы, — поэтому счётчики виртуального ни с чьими не смешиваются, а сборщики
+# предупреждений его не видят: они идут по self.members.
+#
+# Было выписано числом в трёх местах, и ровно поэтому разошлось: подбор спрашивал
+# счётчики у нуля, а записывались они настоящим членам.
+FAMILY_VIRTUAL_MEMBER_ID = 0
+
 TIER_FEATURES = {
     "free": {"country": True},
     "lite": {"country": True, "disliked": True},
@@ -288,6 +297,21 @@ class MenuGenerator:
         self.mode = str(self.filters.get("mode", "family"))
         if self.mode not in ("per_member", "family"):
             self.mode = "family"
+        # MG_DAYBUDGET: последний приём дня, в котором есть горячее.
+        #
+        # Нужен правилу «растительный белок хотя бы раз в день». Правило
+        # дневное, а слотов с горячим в дне два, и выполнять его надо в
+        # последнем: иначе оно срабатывает на обеде — первом горячем дня, когда
+        # счётчик заведомо нулевой, — и обед выходит бобовым каждый день. Именно
+        # так это и читалось с прода: «обед без мясного основного блюда».
+        #
+        # К ужину счётчик часто уже не нулевой: растительный белок мог прийти с
+        # завтраком, супом или салатом — их трекер считает наравне с горячим. То
+        # есть ужин тоже остаётся с выбором чаще, чем кажется.
+        self._last_main_slot = next(
+            (slot for slot in reversed(self.meal_types) if "main" in MEAL_COMPONENTS.get(slot, ())),
+            None,
+        )
         self.tracker = _WeeklyTracker()
         self.last_warnings: list = []
         # MG_303_V_generator: фактические ккал по (member_id, day_offset, meal_slot)
@@ -363,6 +387,7 @@ class MenuGenerator:
                             target_cal=per_role_cal,
                             member_id=member.id,
                             day_offset=day,
+                            meal_slot=meal_slot,  # MG_DAYBUDGET
                             is_cheat=(
                                 _mg505_is_cheat and meal_slot == _mg505_cheat_slot and role == "main"
                             ),  # MG_505_V_generate_loop
@@ -650,6 +675,10 @@ class MenuGenerator:
         target_cal: Optional[float],
         member_id: int,
         day_offset: int,
+        # MG_DAYBUDGET: слот приёма, а не только его тип в базе. Нужен правилу
+        # растительного белка: оно дневное и выполняется в последнем приёме с
+        # горячим, а тип в базе («lunch», «dinner») этого не говорит.
+        meal_slot: Optional[str] = None,
         is_cheat: bool = False,  # MG_505_V_pick_bypass
     ) -> Optional[Recipe]:
         primary = pools.get(role, [])
@@ -709,7 +738,18 @@ class MenuGenerator:
                     candidates = no_red
 
             # 2) plant/день — приоритетнее, чем недельный fish-boost (правило ежедневное)
-            if day.get("plant", 0) < PLANT_PROTEIN_MIN_PER_DAY:
+            #
+            # MG_DAYBUDGET: добирать растительный белок — дело ПОСЛЕДНЕГО приёма
+            # с горячим. Правило дневное, а слотов с горячим два, и применённое
+            # в первом оно делало обед бобовым каждый божий день: на момент
+            # подбора обеда счётчик дня нулевой всегда. Человек видит это как
+            # «обед без мясного» и «опять фасоль» — так и пришло с прода.
+            #
+            # meal_slot может не прийти (вызов из юнит-теста) — тогда ведём себя
+            # как раньше и правило применяем: пропустить его молча хуже, чем
+            # применить не в том слоте.
+            _plant_slot_ok = meal_slot is None or self._last_main_slot is None or meal_slot == self._last_main_slot
+            if _plant_slot_ok and day.get("plant", 0) < PLANT_PROTEIN_MIN_PER_DAY:
                 plant = [r for r in candidates if getattr(r, "protein_type", None) == "plant"]
                 if plant:
                     candidates = plant
@@ -901,7 +941,7 @@ class MenuGenerator:
                         continue
                     # MG_611_V_generator: dessert+bakery combined limit
                     if role in ("dessert", "bakery"):
-                        _d611f = self.tracker.get_day(0, day)
+                        _d611f = self.tracker.get_day(FAMILY_VIRTUAL_MEMBER_ID, day)
                         _sweet_f = int(_d611f.get("dessert_count", 0)) + int(_d611f.get("bakery_count", 0))
                         if _sweet_f >= DESSERT_MAX_PER_DAY:
                             continue
@@ -913,8 +953,9 @@ class MenuGenerator:
                         hard_exclude=hard_exclude,
                         fridge_ids=fridge_ids,
                         target_cal=per_role_cal,
-                        member_id=0,
+                        member_id=FAMILY_VIRTUAL_MEMBER_ID,
                         day_offset=day,
+                        meal_slot=meal_slot,
                         is_cheat=False,
                     )
                     if recipe is None:
@@ -937,6 +978,22 @@ class MenuGenerator:
 
                     used.add(recipe.id)
                     rcal = self._recipe_cal(recipe)
+
+                    # MG_DAYBUDGET: счётчики дня пишем и виртуальному члену —
+                    # у него их спрашивает подбор (member_id выше тот же).
+                    #
+                    # Без этой строки все дневные правила в режиме «одно меню на
+                    # семью» были мёртвыми: читались нули, которых никто не
+                    # заполнял. Лимит «десерт с выпечкой — один на день» не
+                    # срабатывал, и обед получал оба; правило «растительный белок
+                    # раз в день» срабатывало наоборот ВСЕГДА (ноль меньше
+                    # единицы), и каждое горячее каждого обеда и ужина выходило
+                    # бобовым. На проде это выглядело как «два десерта в обед» и
+                    # «опять фасоль», то есть как два разных бага.
+                    #
+                    # Виртуальный член не попадает в предупреждения: их сборщики
+                    # идут по self.members, а его там нет.
+                    self.tracker.add(FAMILY_VIRTUAL_MEMBER_ID, day, recipe)
 
                     for member in self.members:
                         self.tracker.add(member.id, day, recipe)
