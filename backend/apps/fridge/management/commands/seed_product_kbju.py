@@ -346,6 +346,12 @@ class Command(BaseCommand):
     help = "Проставить КБЖУ (на 100 г) сид-продуктам по выверенному справочнику."
 
     def add_arguments(self, parser):
+        # MG_KBJUSCOPE: личные продукты людей — только по явному требованию.
+        parser.add_argument(
+            "--include-personal",
+            action="store_true",
+            help="Трогать и личные продукты семей (по умолчанию только общий каталог).",
+        )
         parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -363,9 +369,28 @@ class Command(BaseCommand):
         dry = opts["dry_run"]
         force = opts["force"]
 
+        # MG_KBJUSCOPE: по умолчанию работаем с ОБЩИМ каталогом.
+        #
+        # Личный продукт (owner_family заполнен) человек завёл сам, и пустое
+        # поле КБЖУ там означает «не знаю», а не «посчитай за меня». Справочные
+        # цифры там обычно к месту — «Подсолнечное масло» у всех одинаковое, —
+        # но записывать их в чужую запись молча всё равно не наше дело.
+        #
+        # Тот же урок уже выучен в dedup_products: там в комментарии записано,
+        # что раньше стоял Product.objects.all(), и чем это кончилось на проде.
+        # Сюда он не доехал, и команда писала КБЖУ в личные продукты.
+        scope = Product.objects.all() if opts["include_personal"] else Product.objects.filter(owner_family__isnull=True)
+        self.stdout.write(
+            "Область: " + ("весь каталог, включая личные продукты" if opts["include_personal"] else "общий каталог")
+        )
+
         created = 0
 
         # 1. Создаём отсутствующие базовые продукты (матч по нормализованному имени).
+        #
+        # Существующие имена смотрим по ВСЕМ продуктам, а не по области: если
+        # такое имя есть у кого-то личным, базовый продукт всё равно нужен —
+        # но и дубль в общем каталоге заводить незачем.
         existing_norm = {_norm(p.name) for p in Product.objects.only("name")}
         cat_by_slug = {c.slug: c for c in ProductCategory.objects.all()}
         for name, (slug, kcal, prot, fat, carb) in NEW_PRODUCTS.items():
@@ -387,7 +412,7 @@ class Command(BaseCommand):
         # 2. Проставляем КБЖУ продуктам, имя которых есть в справочнике.
         updated = skipped_has_nutrition = unmatched = 0
         to_update = []
-        for p in Product.objects.all():
+        for p in scope:
             row = _KBJU_INDEX.get(_norm(p.name))
             if row is None:
                 unmatched += 1
@@ -416,7 +441,9 @@ class Command(BaseCommand):
 
         # 3. Синонимы -> канонический продукт (через ProductAlias).
         prod_by_norm = {}
-        for p in Product.objects.only("id", "name"):
+        # Синонимы ведут на продукт ОБЩЕГО каталога: личная запись одной семьи
+        # не должна становиться целью поиска для всех остальных.
+        for p in Product.objects.filter(owner_family__isnull=True).only("id", "name"):
             prod_by_norm.setdefault(_norm(p.name), p)
         aliases_added = aliases_skipped = 0
         for canon, syns in ALIASES.items():

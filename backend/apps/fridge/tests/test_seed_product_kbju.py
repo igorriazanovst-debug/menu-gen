@@ -116,3 +116,75 @@ class TestAliasSearch:
         resp = c.get("/api/v1/fridge/products/search/", {"q": "Огур"})
         names = [r["name"] for r in resp.data["results"]]
         assert "Огурцы" in names
+
+
+# ── MG_KBJUSCOPE: личные продукты людей ─────────────────────────────────────
+
+
+class TestЛичныеПродукты:
+    """Справочник заполняет ОБЩИЙ каталог, а не чужие личные записи.
+
+    Личный продукт человек завёл сам, и пустое КБЖУ там означает «не знаю», а
+    не «посчитай за меня». Цифры из справочника там чаще всего к месту —
+    подсолнечное масло у всех одинаковое, — но дописывать их в чужую запись
+    молча всё равно не наше дело.
+
+    Команда ходила по Product.objects.all() и писала в личные продукты. На
+    проде это и вскрылось: шесть записей «бекон» в выводе оказались личными
+    продуктами шести разных семей.
+    """
+
+    @staticmethod
+    def _family():
+        from apps.family.models import Family
+        from apps.users.models import User
+
+        owner = User.objects.create_user(email="kbjuseed@example.com", name="Хозяин", password="pass12345")
+        return Family.objects.create(owner=owner, name="Семья")
+
+    def test_личный_продукт_не_трогается(self, db):
+        family = self._family()
+        mine = Product.objects.create(name="Подсолнечное масло", nutrition={}, owner_family=family)
+
+        call_command("seed_product_kbju", stdout=StringIO())
+
+        mine.refresh_from_db()
+        assert mine.nutrition == {}
+        assert mine.calories_per_100g is None
+
+    def test_личный_продукт_берётся_по_явному_флагу(self, db):
+        family = self._family()
+        mine = Product.objects.create(name="Подсолнечное масло", nutrition={}, owner_family=family)
+
+        call_command("seed_product_kbju", "--include-personal", stdout=StringIO())
+
+        mine.refresh_from_db()
+        assert mine.nutrition != {}
+
+    def test_общий_каталог_заполняется_как_прежде(self, db):
+        common = Product.objects.create(name="Подсолнечное масло", nutrition={})
+
+        call_command("seed_product_kbju", stdout=StringIO())
+
+        common.refresh_from_db()
+        assert float(common.calories_per_100g) == 899
+
+    def test_синоним_не_ведёт_на_личную_запись(self, db):
+        """Иначе поиск всех пользователей уводило бы в чужой личный продукт."""
+        from apps.fridge.models import ProductAlias
+
+        family = self._family()
+        Product.objects.create(name="Подсолнечное масло", nutrition={}, owner_family=family)
+        common = Product.objects.create(name="Подсолнечное масло", nutrition={})
+
+        call_command("seed_product_kbju", stdout=StringIO())
+
+        assert ProductAlias.objects.exists(), "синонимы должны завестись"
+        for alias in ProductAlias.objects.all():
+            assert alias.product.owner_family_id is None, alias.alias
+        assert common.owner_family_id is None
+
+    def test_область_названа_в_выводе(self, db):
+        out = StringIO()
+        call_command("seed_product_kbju", "--dry-run", stdout=out)
+        assert "общий каталог" in out.getvalue()
