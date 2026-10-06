@@ -13,6 +13,7 @@ import '../../../core/utils/package_size.dart'; // MG_DIARYSCAN
 import '../../fridge/screens/barcode_scanner_screen.dart'; // MG_DIARYSCAN
 import '../../../core/widgets/draggable_action_button.dart'; // MG_SKIN
 import '../../../core/widgets/suggestion_list.dart'; // MG_SUGGEST
+import '../../../core/widgets/tall_dialog.dart'; // MG_TALLDIALOG
 import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
 import '../models/diary_stats.dart';
@@ -2155,9 +2156,14 @@ class _AddManualDialogState extends State<_AddManualDialog>
     required String query,
     // Возвращает null, когда калорийность неизвестна: нулём её не подменяем.
     String? Function(Map<String, dynamic>)? trailing,
+    // MG_TALLDIALOG: список забирает весь остаток высоты вместо выдуманных
+    // 220 точек. Включается там, где он стоит под полем поиска и ему некуда
+    // деться — то есть на вкладках поиска.
+    bool fill = false,
   }) {
     return SuggestionList(
       query: query,
+      maxHeight: fill ? double.infinity : 220,
       items: items
           .map((it) => SuggestionItem(
                 title: label(it),
@@ -2193,49 +2199,64 @@ class _AddManualDialogState extends State<_AddManualDialog>
   }
 
   Widget _recipeTab() {
-    return ListView(
-      padding: const EdgeInsets.only(top: 4),
-      children: [
-        if (_recipe == null) ...[
+    // MG_TALLDIALOG: пока рецепт не выбран, поле поиска прижато вверху, а
+    // список занимает остаток. Раньше тут был один `ListView` на оба
+    // состояния, и список подсказок ехал внутри него со своей высотой —
+    // с поднятой клавиатурой от него оставалась одна обрезанная строка.
+    if (_recipe == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 4),
           TextField(
             controller: _recipeQuery,
             decoration: _dec('Поиск рецепта (от 2 букв)'),
             onChanged: _searchRecipes,
           ),
-          if (_recipeLoading) const Padding(padding: EdgeInsets.all(8), child: Text('Поиск…')),
-          _searchResults(_recipeResults, _pickRecipe, (r) => (r['title'] ?? '').toString(),
-              query: _recipeQuery.text, trailing: _kcalOf),
-        ] else ...[
-          Row(
-            children: [
-              Expanded(child: Text(_recipe!['title']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
-              TextButton(
-                onPressed: () => setState(() {
-                  _recipe = null;
-                  _recipeQuery.clear();
-                }),
-                child: const Text('сменить'),
-              ),
-            ],
+          if (_recipeLoading)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Поиск…')),
+          Flexible(
+            child: _searchResults(_recipeResults, _pickRecipe, (r) => (r['title'] ?? '').toString(),
+                query: _recipeQuery.text, trailing: _kcalOf, fill: true),
           ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _recipeAmount,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: _dec(_recipeGrams ? 'Количество (г)' : 'Количество (порций) — нет веса порции'),
-            onChanged: (_) => setState(() {}),
-          ),
-          _previewLine(_recipeTotals()),
         ],
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.only(top: 4),
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(_recipe!['title']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
+            TextButton(
+              onPressed: () => setState(() {
+                _recipe = null;
+                _recipeQuery.clear();
+              }),
+              child: const Text('сменить'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _recipeAmount,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _dec(_recipeGrams ? 'Количество (г)' : 'Количество (порций) — нет веса порции'),
+          onChanged: (_) => setState(() {}),
+        ),
+        _previewLine(_recipeTotals()),
       ],
     );
   }
 
   Widget _productTab() {
-    return ListView(
-      padding: const EdgeInsets.only(top: 4),
-      children: [
-        if (_product == null) ...[
+    // MG_TALLDIALOG: то же, что и на вкладке рецепта, — поле прижато вверху,
+    // список забирает остаток. Именно здесь это и увидели на телефоне.
+    if (_product == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 4),
           Row(
             children: [
               Expanded(
@@ -2261,36 +2282,43 @@ class _AddManualDialogState extends State<_AddManualDialog>
               padding: const EdgeInsets.only(top: 6),
               child: Text(_scanNote!, style: const TextStyle(fontSize: 12, color: Color(0xFFB45309))),
             ),
-          if (_productLoading) const Padding(padding: EdgeInsets.all(8), child: Text('Поиск…')),
-          _searchResults(_productResults, _pickProduct, (p) => (p['name'] ?? '').toString(),
-              query: _productQuery.text, trailing: _kcalOf),
-        ] else ...[
-          Row(
-            children: [
-              Expanded(child: Text(_product!['name']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
-              TextButton(
-                onPressed: () => setState(() {
-                  _product = null;
-                  _productQuery.clear();
-                }),
-                child: const Text('сменить'),
-              ),
-            ],
+          if (_productLoading)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Поиск…')),
+          Flexible(
+            child: _searchResults(_productResults, _pickProduct, (p) => (p['name'] ?? '').toString(),
+                query: _productQuery.text, trailing: _kcalOf, fill: true),
           ),
-          const SizedBox(height: 8),
-          if (_scanNote != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(_scanNote!, style: const TextStyle(fontSize: 12, color: Color(0xFFB45309))),
-            ),
-          TextField(
-            controller: _productGrams,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: _dec('Количество (г)'),
-            onChanged: (_) => setState(() {}),
-          ),
-          _previewLine(_productTotals()),
         ],
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.only(top: 4),
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(_product!['name']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
+            TextButton(
+              onPressed: () => setState(() {
+                _product = null;
+                _productQuery.clear();
+              }),
+              child: const Text('сменить'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_scanNote != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(_scanNote!, style: const TextStyle(fontSize: 12, color: Color(0xFFB45309))),
+          ),
+        TextField(
+          controller: _productGrams,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _dec('Количество (г)'),
+          onChanged: (_) => setState(() {}),
+        ),
+        _previewLine(_productTotals()),
       ],
     );
   }
@@ -2345,50 +2373,58 @@ class _AddManualDialogState extends State<_AddManualDialog>
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Добавить в дневник'),
-      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      content: SizedBox(
-        width: double.maxFinite,
-        height: 440,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // MG_MEALSLOT: выбираем место в дне, а не род еды — перекусов два.
-            DropdownButtonFormField<MealSlot>(
-              value: _meal,
-              isExpanded: true,
-              decoration: _dec('Приём пищи'),
-              items: MealSlot.values
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
-                  .toList(),
-              onChanged: (v) => setState(() => _meal = v ?? MealSlot.breakfast),
-            ),
-            const SizedBox(height: 8),
-            TabBar(
-              controller: _tab,
-              labelColor: Theme.of(context).colorScheme.primary,
-              tabs: const [Tab(text: 'Рецепт'), Tab(text: 'Продукт'), Tab(text: 'Вручную')],
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tab,
-                children: [_recipeTab(), _productTab(), _manualTab()],
-              ),
-            ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-              ),
-          ],
-        ),
-      ),
+    // MG_TALLDIALOG: высота больше не задаётся числом. Раньше здесь стояло
+    // `height: 440`, и с поднятой клавиатурой от списка подсказок оставалась
+    // обрезанная посередине строка: диалог ужимался в остаток экрана, а
+    // содержимое продолжало требовать своё. Теперь диалог занимает весь
+    // доступный остаток, а растягивается внутри него список.
+    return TallDialog(
+      title: 'Добавить в дневник',
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Отмена')),
         FilledButton(onPressed: _submit, child: const Text('Добавить')),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // MG_MEALSLOT: выбираем место в дне, а не род еды — перекусов два.
+          DropdownButtonFormField<MealSlot>(
+            value: _meal,
+            isExpanded: true,
+            decoration: _dec('Приём пищи'),
+            items: MealSlot.values
+                .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
+                .toList(),
+            onChanged: (v) => setState(() => _meal = v ?? MealSlot.breakfast),
+          ),
+          const SizedBox(height: 4),
+          // Вкладки ужаты: по умолчанию полоса занимает 46 точек, и на
+          // телефоне это ровно строка списка.
+          SizedBox(
+            height: 38,
+            child: TabBar(
+              controller: _tab,
+              labelColor: Theme.of(context).colorScheme.primary,
+              labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(fontSize: 14),
+              padding: EdgeInsets.zero,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+              tabs: const [Tab(text: 'Рецепт'), Tab(text: 'Продукт'), Tab(text: 'Вручную')],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tab,
+              children: [_recipeTab(), _productTab(), _manualTab()],
+            ),
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ),
+        ],
+      ),
     );
   }
 }
