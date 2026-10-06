@@ -2153,7 +2153,8 @@ class _AddManualDialogState extends State<_AddManualDialog>
     void Function(Map<String, dynamic>) onTap,
     String Function(Map<String, dynamic>) label, {
     required String query,
-    String Function(Map<String, dynamic>)? trailing,
+    // Возвращает null, когда калорийность неизвестна: нулём её не подменяем.
+    String? Function(Map<String, dynamic>)? trailing,
   }) {
     return SuggestionList(
       query: query,
