@@ -109,7 +109,7 @@ void main() {
       expect(tester.getSize(find.byType(SuggestionList)).height, lessThan(200));
     });
 
-    testWidgets('на маленьком экране с клавиатурой не ужимается в щель', (tester) async {
+    testWidgets('на маленьком экране берёт остаток и не лезет за край', (tester) async {
       tester.view.devicePixelRatio = 2;
       tester.view.physicalSize = const Size(320 * 2, 480 * 2);
       tester.view.viewInsets = FakeViewPadding(bottom: 300 * 2);
@@ -121,9 +121,12 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      // 480 − 300 − 24 = 156, и это уже не диалог. Держим нижний предел:
-      // пусть лучше уедет под клавиатуру, чем покажет щель.
-      expect(_boxHeight(tester), 260);
+      // 480 − 300 − 24 = 156. Соблазн потребовать здесь «не меньше 260» —
+      // ровно то, на чём этот тест и упал: `Dialog` зажимает ребёнка в
+      // остаток, коробка выше остатка обрезается, и вместо обещанного
+      // минимума получаются те же 156, только с полосами переполнения.
+      expect(_boxHeight(tester), closeTo(156, 1));
+      expect(tester.takeException(), isNull);
     });
   });
 }

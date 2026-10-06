@@ -34,16 +34,11 @@ class TallDialog extends StatelessWidget {
   /// Кнопки внизу, одной строкой справа.
   final List<Widget> actions;
 
-  /// Ниже этого не ужимаемся даже на маленьком экране с большой клавиатурой:
-  /// лучше дать диалогу уехать под клавиатуру, чем показать щель.
-  final double minHeight;
-
   const TallDialog({
     super.key,
     required this.title,
     required this.child,
     this.actions = const [],
-    this.minHeight = 260,
   });
 
   /// Поля диалога от краёв экрана.
@@ -69,9 +64,15 @@ class TallDialog extends StatelessWidget {
     return math.max(0, free);
   }
 
+  // Нижнего предела высоты здесь намеренно нет. Соблазн написать
+  // `max(260, доступное)` велик, но это обещание, которого не сдержать:
+  // `Dialog` зажимает ребёнка в оставшийся кусок экрана, и коробка выше
+  // остатка просто обрежется — на экране 480 точек с клавиатурой 300 вместо
+  // обещанных 260 выйдет 156, да ещё и с полосами переполнения. Пусть лучше
+  // диалог честно займёт то, что есть.
   @override
   Widget build(BuildContext context) {
-    final height = math.max(minHeight, availableHeight(context));
+    final height = availableHeight(context);
 
     return Dialog(
       insetPadding: _inset,
