@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/suggestion_list.dart'; // MG_SUGGEST
 import '../bloc/fridge_bloc.dart';
 import 'barcode_scanner_screen.dart';
 import 'recognize_photo_flow.dart';
@@ -803,32 +804,17 @@ class _AddFridgeItemSheetState extends State<AddFridgeItemSheet> {
                 onChanged: _onNameTyped,
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Обязательно' : null,
               ),
+              // MG_SUGGEST: подсказки общим виджетом — он же в дневнике и покупках.
               if (_searchOpen && _searchResults.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.only(top: 4),
-                  constraints: const BoxConstraints(maxHeight: 180),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _searchResults.length,
-                    itemBuilder: (_, i) {
-                      final p = _searchResults[i];
-                      final own = p['is_own'] == true;
-                      return ListTile(
-                        dense: true,
-                        title: Text(
-                          '${p['name'] ?? ''}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: own ? const Text('своё') : null,
-                        onTap: () => _applyProduct(p),
-                      );
-                    },
-                  ),
+                SuggestionList(
+                  query: _nameCtrl.text,
+                  items: _searchResults
+                      .map((p) => SuggestionItem(
+                            title: '${p['name'] ?? ''}',
+                            subtitle: p['is_own'] == true ? 'своё' : null,
+                            onTap: () => _applyProduct(p),
+                          ))
+                      .toList(),
                 ),
               const SizedBox(height: 12),
               Row(

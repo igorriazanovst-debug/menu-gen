@@ -12,6 +12,7 @@ import '../../../core/premium/premium_gate_cubit.dart';
 import '../../../core/utils/package_size.dart'; // MG_DIARYSCAN
 import '../../fridge/screens/barcode_scanner_screen.dart'; // MG_DIARYSCAN
 import '../../../core/widgets/draggable_action_button.dart'; // MG_SKIN
+import '../../../core/widgets/suggestion_list.dart'; // MG_SUGGEST
 import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
 import '../models/diary_stats.dart';
@@ -2143,24 +2144,51 @@ class _AddManualDialogState extends State<_AddManualDialog>
         ),
       );
 
-  Widget _searchResults(List<Map<String, dynamic>> items, void Function(Map<String, dynamic>) onTap,
-      String Function(Map<String, dynamic>) label) {
-    if (items.isEmpty) return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      constraints: const BoxConstraints(maxHeight: 180),
-      decoration: BoxDecoration(border: Border.all(color: Colors.black12), borderRadius: BorderRadius.circular(8)),
-      child: ListView(
-        shrinkWrap: true,
-        children: items
-            .map((it) => ListTile(
-                  dense: true,
-                  title: Text(label(it), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  onTap: () => onTap(it),
-                ))
-            .toList(),
-      ),
+  /// MG_SUGGEST: подсказки общим виджетом — он же в холодильнике и покупках.
+  ///
+  /// `query` нужен для подсветки совпадения: без неё непонятно, почему
+  /// «творожная масса» нашлась по запросу «творог».
+  Widget _searchResults(
+    List<Map<String, dynamic>> items,
+    void Function(Map<String, dynamic>) onTap,
+    String Function(Map<String, dynamic>) label, {
+    required String query,
+    String Function(Map<String, dynamic>)? trailing,
+  }) {
+    return SuggestionList(
+      query: query,
+      items: items
+          .map((it) => SuggestionItem(
+                title: label(it),
+                trailing: trailing?.call(it),
+                onTap: () => onTap(it),
+              ))
+          .toList(),
     );
+  }
+
+  /// Калорийность на 100 г для правой колонки подсказки.
+  ///
+  /// У продукта она лежит в `calories_per_100g`, у рецепта — в `nutrition`.
+  /// Пусто — колонка не рисуется вовсе, выдумывать ноль нельзя: ноль ккал это
+  /// утверждение, а не «не знаем».
+  static String? _kcalOf(Map<String, dynamic> m) {
+    final direct = m['calories_per_100g'];
+    if (direct is num) return '${direct.round()} ккал';
+    if (direct is String && direct.trim().isNotEmpty) {
+      final v = double.tryParse(direct);
+      if (v != null) return '${v.round()} ккал';
+    }
+    final n = m['nutrition'];
+    if (n is Map) {
+      final c = n['calories'];
+      if (c is num) return '${c.round()} ккал';
+      if (c is Map && c['value'] != null) {
+        final v = double.tryParse(c['value'].toString());
+        if (v != null) return '${v.round()} ккал';
+      }
+    }
+    return null;
   }
 
   Widget _recipeTab() {
@@ -2174,7 +2202,8 @@ class _AddManualDialogState extends State<_AddManualDialog>
             onChanged: _searchRecipes,
           ),
           if (_recipeLoading) const Padding(padding: EdgeInsets.all(8), child: Text('Поиск…')),
-          _searchResults(_recipeResults, _pickRecipe, (r) => (r['title'] ?? '').toString()),
+          _searchResults(_recipeResults, _pickRecipe, (r) => (r['title'] ?? '').toString(),
+              query: _recipeQuery.text, trailing: _kcalOf),
         ] else ...[
           Row(
             children: [
@@ -2232,7 +2261,8 @@ class _AddManualDialogState extends State<_AddManualDialog>
               child: Text(_scanNote!, style: const TextStyle(fontSize: 12, color: Color(0xFFB45309))),
             ),
           if (_productLoading) const Padding(padding: EdgeInsets.all(8), child: Text('Поиск…')),
-          _searchResults(_productResults, _pickProduct, (p) => (p['name'] ?? '').toString()),
+          _searchResults(_productResults, _pickProduct, (p) => (p['name'] ?? '').toString(),
+              query: _productQuery.text, trailing: _kcalOf),
         ] else ...[
           Row(
             children: [

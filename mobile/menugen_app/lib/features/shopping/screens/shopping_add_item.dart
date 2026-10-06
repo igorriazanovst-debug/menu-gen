@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/suggestion_list.dart'; // MG_SUGGEST
 import '../models/shopping_models.dart';
 
 const List<String> kShoppingUnits = [
@@ -305,35 +306,31 @@ class _ShoppingAddItemState extends State<ShoppingAddItem> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // MG_SUGGEST: подсказки общим виджетом — он же в дневнике и холодильнике.
+          //
+          // «Добавить как новый» теперь прижата вниз отдельной полосой, а не
+          // стоит последней находкой: в прежнем виде она терялась среди
+          // товаров и по ней промахивались.
           if (showList)
-            Container(
-              constraints: const BoxConstraints(maxHeight: 220),
-              margin: const EdgeInsets.only(bottom: 6),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: ListView(
-                shrinkWrap: true,
-                children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: SuggestionList(
+                query: _search.text,
+                items: [
                   for (final r in _results)
-                    ListTile(
-                      dense: true,
-                      title: Text(r.name),
-                      subtitle: r.categoryName.isNotEmpty
-                          ? Text(r.categoryName)
-                          : null,
+                    SuggestionItem(
+                      title: r.name,
+                      subtitle: r.categoryName.isNotEmpty ? r.categoryName : null,
                       onTap: () => _pickExisting(r),
                     ),
-                  if (_search.text.trim().isNotEmpty)
-                    ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.add),
-                      title: Text(
-                          'Добавить «${_search.text.trim()}» как новый'),
-                      onTap: () => _pickNew(_search.text.trim()),
-                    ),
                 ],
+                emptyText: _search.text.trim().isEmpty ? null : 'Ничего не нашлось',
+                action: _search.text.trim().isEmpty
+                    ? null
+                    : SuggestionAction(
+                        label: 'Добавить «${_search.text.trim()}» как новый',
+                        onTap: () => _pickNew(_search.text.trim()),
+                      ),
               ),
             ),
           Row(
