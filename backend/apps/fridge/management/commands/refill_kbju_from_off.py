@@ -33,14 +33,19 @@
 `--include-hidden`. Денег это не стоит, но идёт небыстро — один запрос к OFF
 на позицию.
 
-    docker compose exec -T backend python manage.py refill_kbju_from_off --count-only
-    docker compose exec -T backend python manage.py refill_kbju_from_off --limit 50
-    docker compose exec -T backend python manage.py refill_kbju_from_off --limit 50 --apply
+Оговорка до запуска: звать через `python -u` и НЕ заворачивать в `tail`.
+Терминала у `docker compose exec -T` нет, питон копит вывод блоками, а `tail`
+не покажет ни строки до самого конца — вдвоём они превращают идущий прогон в
+«команда повисла». Сама команда вывод проталкивает, но флаг надёжнее.
+
+    docker compose exec -T backend python -u manage.py refill_kbju_from_off --count-only
+    docker compose exec -T backend python -u manage.py refill_kbju_from_off --limit 50
+    docker compose exec -T backend python -u manage.py refill_kbju_from_off --limit 50 --apply
 
 Весь хвост — длинный прогон, и через `exec` его нельзя: тот умирает вместе с
 сессией. Отдельным контейнером:
 
-    docker compose run -d --name mg-offkbju backend python manage.py \\
+    docker compose run -d --name mg-offkbju backend python -u manage.py \\
         refill_kbju_from_off --apply --include-hidden
     docker logs -f mg-offkbju
     docker rm mg-offkbju            # только после того, как итог прочитан
@@ -95,6 +100,19 @@ class Command(BaseCommand):
         limit = opts["limit"]
         return qs[:limit] if limit > 0 else qs
 
+    def _say(self, line, style=None):
+        """Сказать и протолкнуть.
+
+        Без принудительного сброса длинный прогон выглядит зависшим: терминала
+        у `docker compose exec -T` нет, и питон копит вывод блоками, отдавая
+        его в конце. На четырёхчасовом прогоне это разница между «идёт» и
+        «непонятно, живо ли оно». Человеку со стороны это всё равно стоит
+        запускать как `python -u`, но полагаться только на флаг нельзя — его
+        забудут.
+        """
+        self.stdout.write(style(line) if style else line)
+        self.stdout.flush()
+
     def _ask_off(self, barcode: str, pause: float):
         """Спросить OFF, с отступлением при отказе.
 
@@ -108,7 +126,7 @@ class Command(BaseCommand):
             if outcome != "error":
                 return raw, outcome
             if attempt == 0:
-                self.stdout.write(self.style.WARNING(f"  {barcode}: OFF не ответил, жду и пробую ещё раз"))
+                self._say(f"  {barcode}: OFF не ответил, жду и пробую ещё раз", self.style.WARNING)
         return {}, "error"
 
     def handle(self, *args, **opts):
@@ -129,15 +147,21 @@ class Command(BaseCommand):
 
         apply = opts["apply"]
         pause = max(0.0, opts["sleep"])
-        self.stdout.write(
-            f"{'ЗАПИСЬ' if apply else 'ПОКАЗ (без записи)'}: {total} позиций, пауза {pause} с между запросами."
-        )
+        self._say(f"{'ЗАПИСЬ' if apply else 'ПОКАЗ (без записи)'}: {total} позиций, пауза {pause} с между запросами.")
 
         filled_kcal = filled_macro = not_found = no_data = failed = 0
         in_a_row = 0
         for i, p in enumerate(rows, 1):
             if i > 1 and pause:
                 time.sleep(pause)
+
+            # Отметка о ходе печатается ДО разбора и до любого `continue`.
+            # Раньше она стояла в конце тела цикла, после трёх выходов по
+            # `continue`, и печаталась только для позиций, которым что-то
+            # проставили. На прогоне, где ничего не находится, команда молчала
+            # до самого конца — и выглядело это как зависание, а не как работа.
+            if i == 1 or i % 25 == 0:
+                self._say(f"  …спрашиваю {i} из {total}")
 
             raw, outcome = self._ask_off(p.barcode, pause)
             if outcome == "error":
@@ -147,7 +171,7 @@ class Command(BaseCommand):
                 # больше не обслуживает. Долбиться дальше и грубо, и
                 # бессмысленно: итог всё равно будет враньём.
                 if in_a_row >= 20:
-                    self.stdout.write(
+                    self._say(
                         self.style.ERROR(
                             f"20 отказов подряд на позиции {i} из {total}. OFF не отвечает — "
                             "останавливаюсь. Обработанное сохранено, прогон можно повторить позже."
@@ -180,19 +204,16 @@ class Command(BaseCommand):
                 no_data += 1
                 continue
 
-            self.stdout.write(f"  {p.barcode:<15} {p.name[:50]:<50} {', '.join(updates)}")
+            self._say(f"  {p.barcode:<15} {p.name[:50]:<50} {', '.join(updates)}")
             if apply:
                 p.save(update_fields=updates)
 
-            if i % 100 == 0:
-                self.stdout.write(f"  …обработано {i} из {total}")
-
-        self.stdout.write("")
-        self.stdout.write(f"Обработано:            {total}")
-        self.stdout.write(f"  проставлены калории: {filled_kcal}")
-        self.stdout.write(f"  проставлено макро:   {filled_macro}")
-        self.stdout.write(f"  нет в OFF:           {not_found}")
-        self.stdout.write(f"  в OFF без КБЖУ:      {no_data}  → остаются платной починке")
-        self.stdout.write(f"  не удалось спросить: {failed}  → повторный прогон возьмёт их снова")
+        self._say("")
+        self._say(f"Обработано:            {total}")
+        self._say(f"  проставлены калории: {filled_kcal}")
+        self._say(f"  проставлено макро:   {filled_macro}")
+        self._say(f"  нет в OFF:           {not_found}")
+        self._say(f"  в OFF без КБЖУ:      {no_data}  → остаются платной починке")
+        self._say(f"  не удалось спросить: {failed}  → повторный прогон возьмёт их снова")
         if not apply:
-            self.stdout.write(self.style.WARNING("Ничего не записано: это показ. Повторить с --apply."))
+            self._say("Ничего не записано: это показ. Повторить с --apply.", self.style.WARNING)
