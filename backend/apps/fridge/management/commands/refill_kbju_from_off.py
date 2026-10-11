@@ -76,6 +76,14 @@ class Command(BaseCommand):
             help=f"взять и скрытые из выбора источники ({', '.join(HIDDEN_FROM_PICKERS)}) — их десятки тысяч",
         )
         parser.add_argument(
+            "--source",
+            help=(
+                "взять только один источник, например off_bulk. "
+                "Нужно для замера: без него выборка идёт по возрастанию id и "
+                "первые сотни оказываются сплошь retail, а это совсем другая отдача"
+            ),
+        )
+        parser.add_argument(
             "--count-only",
             action="store_true",
             help="напечатать, скольких это коснётся, и выйти, не обращаясь к OFF",
@@ -96,6 +104,11 @@ class Command(BaseCommand):
         )
         if not opts["include_hidden"]:
             qs = qs.exclude(source__in=HIDDEN_FROM_PICKERS)
+        # Отбор по источнику сильнее, чем --include-hidden: прямо названный
+        # источник и означает, что его берут сознательно.
+        if opts.get("source"):
+            qs = Product.objects.filter(owner_family__isnull=True).filter(NO_NUTRITION | NO_KCAL)
+            qs = qs.exclude(barcode__isnull=True).exclude(barcode="").filter(source=opts["source"])
         qs = qs.order_by("id")
         limit = opts["limit"]
         return qs[:limit] if limit > 0 else qs

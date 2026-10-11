@@ -153,6 +153,24 @@ class TestДозаполнениеИзOFF:
             p.refresh_from_db()
             assert p.calories_per_100g == 250
 
+    def test_отбор_по_источнику(self):
+        # Нужно для замера. Выборка идёт по возрастанию id, и первые сотни
+        # оказались сплошь retail — каталог торговой сети, которого в OFF нет
+        # по определению. Отдача по нему (6%) ничего не говорит про off_bulk,
+        # а именно его шестнадцать тысяч.
+        Product.objects.create(name="Плюмбус сетевой", barcode="4600000000110", source=Product.Source.RETAIL)
+        bulk = Product.objects.create(name="Плюмбус справочный", barcode="4600000000127", source=Product.Source.OFFBULK)
+
+        with patch(
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
+            return_value=_off(kcal=250),
+        ) as fetch:
+            _run("--apply", "--sleep", "0", "--source", "off_bulk")
+
+        bulk.refresh_from_db()
+        assert bulk.calories_per_100g == 250
+        assert fetch.call_count == 1, "сетевой товар трогать не должны были"
+
     def test_без_штрих_кода_не_берём(self):
         p = Product.objects.create(name="Плюмбус безымянный", source=Product.Source.OFF)
 
