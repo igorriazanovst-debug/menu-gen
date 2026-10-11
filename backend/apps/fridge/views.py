@@ -12,6 +12,7 @@ from apps.common.search import search_q  # MG_YOSEARCH/MG_MORPHSEARCH
 from apps.family.selection import current_family  # MG_ONEFAMILY
 from apps.subscriptions.permissions import IsFamilyPremiumOrReadOnly
 
+from .kbju_match import suggest_from_catalog  # MG_KBJUMATCH
 from .models import FridgeItem, Product, ProductCategory
 from .serializers import (
     BarcodeLookupSerializer,
@@ -397,6 +398,41 @@ class ProductSearchView(generics.ListAPIView):
 
 
 # ─── MG-609: category list ──────────────────────────────────────────────────
+class ProductKbjuSuggestView(APIView):
+    """GET /fridge/products/kbju-suggest/?name=<название> — чьё КБЖУ подойдёт.
+
+    MG_KBJUMATCH: человек заводит свой продукт «фарш телятина» и получает
+    запись без КБЖУ, хотя в каталоге лежит «Фарш из телятины» с 220 ккал.
+    Обычный поиск его не показывает: он требует слова подряд и в том же
+    порядке, а между ними стоит «из». Здесь порядок слов и предлоги не важны.
+
+    Ручка только ПРЕДЛАГАЕТ. Ничего не пишет и ничего не выбирает за человека:
+    подставить чужие числа в его запись молча — не наше дело.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        name = (request.query_params.get("name") or "").strip()
+        if len(name) < 2:
+            return Response({"suggestions": []})
+
+        found = suggest_from_catalog(name, limit=5)
+        ctx = {"request": request}
+        return Response(
+            {
+                "suggestions": [
+                    # Совпадение отдаётся наружу намеренно: по нему клиент
+                    # решает, предлагать молча или спросить. Точное совпадение
+                    # (1.0) можно подставлять кнопкой, частичное — только
+                    # показав, что именно предлагается.
+                    {**ProductSerializer(p, context=ctx).data, "match": round(score, 2)}
+                    for p, score in found
+                ]
+            }
+        )
+
+
 class ProductCategoryListView(generics.ListAPIView):
     """GET /fridge/categories/  — list active product categories."""
 
@@ -439,6 +475,11 @@ class ProductListView(generics.ListCreateAPIView):
             # сказать, сколько позиций холодильника на продукт ссылается.
             # Аннотацией, а не отдельным запросом на каждый продукт.
             qs = qs.annotate(fridge_usage=Count("fridgeitem", distinct=True))
+        # MG_KBJUMATCH: экран «Мои продукты» показывает, у скольких записей нет
+        # КБЖУ, и предлагает заполнить. Определение пустоты то же, что у
+        # mg_kbju_gaps: два разных в одном проекте дали бы два разных числа.
+        if self.request.query_params.get("no_kbju") in ("1", "true"):
+            qs = qs.filter(calories_per_100g__isnull=True).filter(Q(nutrition__isnull=True) | Q(nutrition={}))
         return qs.order_by("category_fk__sort_order", "name")[:500]
 
     def perform_create(self, serializer):

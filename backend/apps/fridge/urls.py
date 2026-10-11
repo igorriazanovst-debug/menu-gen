@@ -12,6 +12,7 @@ from .views import (
     FridgeWriteOffUndoView,
     ProductCategoryListView,
     ProductDetailView,
+    ProductKbjuSuggestView,
     ProductListView,
     ProductSearchView,
     RecognizePhotoView,
@@ -27,6 +28,8 @@ urlpatterns = [
     path("scan/", BarcodeLookupView.as_view(), name="fridge-scan"),
     path("products/", ProductListView.as_view(), name="product-list"),
     path("products/search/", ProductSearchView.as_view(), name="product-search"),
+    # MG_KBJUMATCH: чьё КБЖУ подойдёт под свободно набранное название.
+    path("products/kbju-suggest/", ProductKbjuSuggestView.as_view(), name="product-kbju-suggest"),
     path("products/history/", FridgeHistoryView.as_view(), name="fridge-history"),
     path("products/history/<str:name>/", FridgeHistoryEntryView.as_view(), name="fridge-history-entry"),
     path("products/<int:pk>/", ProductDetailView.as_view(), name="product-detail"),  # MG_PRODOWN
