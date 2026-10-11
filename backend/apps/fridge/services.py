@@ -21,6 +21,48 @@ logger = logging.getLogger(__name__)
 
 
 # ── OpenFoodFacts (existing) ────────────────────────────────────────────────
+
+# MG_OFFKJ: в килоджоулях на килокалорию. Коэффициент по определению, не
+# приближение: пищевая килокалория — это ровно 4,184 кДж.
+_KJ_PER_KCAL = 4.184
+
+
+def _off_kcal(nutriments: dict) -> Optional[float]:
+    """Калорийность на 100 г из ответа OFF.
+
+    MG_OFFKJ: раньше здесь стояло `energy-kcal_100g or energy-kcal`, и это
+    оставляло без калорийности целый пласт записей. У европейских товаров
+    этикетка обязана нести килоджоули, а килокалории — нет, и в базу попадает
+    только `energy_100g` в кДж. Для нас такой продукт выглядел как «КБЖУ
+    неизвестно», хотя число есть и переводится точно.
+    """
+    for key in ("energy-kcal_100g", "energy-kcal"):
+        v = _num_or_none(nutriments.get(key))
+        if v is not None:
+            # Ноль — это ответ, а не пропуск: у воды и чая без сахара ровно
+            # столько. Прежняя цепочка через `or` его теряла и шла дальше.
+            return v
+
+    # Поля с «kj» в имени однозначны. У безымянных `energy_100g`/`energy`
+    # единицу надо спросить отдельно: обычно там килоджоули, но не всегда, и
+    # перевести килокалории ещё раз значит занизить их вчетверо.
+    unit = str(nutriments.get("energy_unit") or "").strip().lower()
+    keys = ["energy-kj_100g", "energy-kj"]
+    if unit != "kcal":
+        keys += ["energy_100g", "energy"]
+    for key in keys:
+        v = _num_or_none(nutriments.get(key))
+        if v is None:
+            continue
+        kcal = round(v / _KJ_PER_KCAL, 1)
+        # Чистое сало — около 900 ккал на 100 г; выше этого числа у еды не
+        # бывает. Молчаливая подстановка мусора хуже пустого поля: пустое
+        # видно, а неверное расходится по дневнику и меню.
+        if 0 <= kcal <= 900:
+            return kcal
+    return None
+
+
 def _normalize_off_product(raw: dict) -> Optional[dict]:
     name = (
         raw.get("product_name_ru")
@@ -33,11 +75,7 @@ def _normalize_off_product(raw: dict) -> Optional[dict]:
         return None
 
     nutriments = raw.get("nutriments") or {}
-    calories = nutriments.get("energy-kcal_100g") or nutriments.get("energy-kcal")
-    try:
-        calories = float(calories) if calories is not None else None
-    except (TypeError, ValueError):
-        calories = None
+    calories = _off_kcal(nutriments)
 
     nutrition = {}
     for key, off_key in (
@@ -346,26 +384,35 @@ def fetch_off_image_url(barcode: Optional[str] = None, name: Optional[str] = Non
     return None
 
 
-def fetch_product_from_off(barcode: str) -> Optional[Product]:
-    # MENUGEN_BARCODE_FETCH: OFF lookup + category_fk mapping + GPT fallbacks.
+def fetch_off_raw(barcode: str) -> dict:
+    """Карточка товара из OFF как есть. Пустой словарь — не нашли или не дошли.
+
+    Вынесено из `fetch_product_from_off`, чтобы дозаполнение каталога
+    (`refill_kbju_from_off`) ходило в OFF тем же кодом, а не своей копией:
+    две копии разойдутся, и расследовать потом придётся обе.
+    """
     base = getattr(settings, "OPENFOODFACTS_BASE_URL", "https://world.openfoodfacts.org")
     timeout = getattr(settings, "OPENFOODFACTS_TIMEOUT", 4.0)
     ua = getattr(settings, "OPENFOODFACTS_USER_AGENT", "MenuGen/1.0")
 
-    raw_off = {}
-    fields = None
     url = f"{base}/api/v2/product/{barcode}.json"
     try:
         r = requests.get(url, headers={"User-Agent": ua}, timeout=timeout)
         if r.status_code == 200:
             body = r.json()
             if body.get("status") == 1:
-                raw_off = body.get("product") or {}
-                fields = _normalize_off_product(raw_off)
+                return body.get("product") or {}
         else:
             logger.info("OFF returned status=%s for barcode=%s", r.status_code, barcode)
     except (requests.RequestException, ValueError) as e:
         logger.warning("OFF request failed for barcode=%s: %s", barcode, e)
+    return {}
+
+
+def fetch_product_from_off(barcode: str) -> Optional[Product]:
+    # MENUGEN_BARCODE_FETCH: OFF lookup + category_fk mapping + GPT fallbacks.
+    raw_off = fetch_off_raw(barcode)
+    fields = _normalize_off_product(raw_off) if raw_off else None
 
     category_fk = None
     if fields:
