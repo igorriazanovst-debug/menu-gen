@@ -83,8 +83,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--sleep",
             type=float,
-            default=0.7,
-            help="пауза между запросами к OFF, секунды (по умолчанию 0.7 — около 85 запросов в минуту)",
+            default=1.2,
+            help="пауза между запросами к OFF, секунды (по умолчанию 1.2 — около 50 запросов в минуту)",
         )
 
     def _targets(self, opts):
@@ -113,16 +113,37 @@ class Command(BaseCommand):
         self.stdout.write(style(line) if style else line)
         self.stdout.flush()
 
-    def _ask_off(self, barcode: str, pause: float):
-        """Спросить OFF, с отступлением при отказе.
+    # MG_OFF429: просьбу сбавить темп пережидаем по-настоящему.
+    #
+    # У OFF около сотни запросов в минуту на карточки. Пауза 0,7 с — это 85, и
+    # всплеск он срезает; на проде так и вышло. Отвечать на 429 повтором через
+    # две секунды бессмысленно — окно столько не длится. Ждём минуту, потом
+    # две: это дольше, зато прогон доживает до конца, а не осыпается в
+    # «не удалось спросить» на первой же просадке.
+    THROTTLE_WAITS = (60.0, 120.0)
 
-        Отказ чаще всего означает, что мы спрашиваем слишком часто. Разумный
-        ответ на это — подождать подольше, а не повторить немедленно.
-        """
+    def _ask_off(self, barcode: str, pause: float):
+        """Спросить OFF, пережидая отказы и просьбы сбавить темп."""
         for attempt, backoff in enumerate((0.0, 2.0, 6.0)):
             if backoff:
                 time.sleep(backoff if pause else 0)
             raw, outcome = fetch_off_result(barcode)
+
+            if outcome == "throttled":
+                for wait in self.THROTTLE_WAITS:
+                    self._say(
+                        f"  OFF просит сбавить темп. Жду {wait:.0f} с и продолжаю " "(прогон не прерывается).",
+                        self.style.WARNING,
+                    )
+                    time.sleep(wait if pause else 0)
+                    raw, outcome = fetch_off_result(barcode)
+                    if outcome != "throttled":
+                        break
+                if outcome == "throttled":
+                    # Пережидать дальше в одиночку смысла нет: пусть решает
+                    # общий счётчик отказов наверху.
+                    return {}, "error"
+
             if outcome != "error":
                 return raw, outcome
             if attempt == 0:
