@@ -384,12 +384,20 @@ def fetch_off_image_url(barcode: Optional[str] = None, name: Optional[str] = Non
     return None
 
 
-def fetch_off_raw(barcode: str) -> dict:
-    """Карточка товара из OFF как есть. Пустой словарь — не нашли или не дошли.
+def fetch_off_result(barcode: str) -> tuple:
+    """Карточка товара из OFF и чем кончился запрос: (raw, исход).
 
-    Вынесено из `fetch_product_from_off`, чтобы дозаполнение каталога
-    (`refill_kbju_from_off`) ходило в OFF тем же кодом, а не своей копией:
-    две копии разойдутся, и расследовать потом придётся обе.
+    Исход — одно из трёх, и различать их обязательно:
+
+    * `"ok"` — карточка пришла;
+    * `"not_found"` — OFF ответил, что такого штрих-кода у него нет;
+    * `"error"` — спросить не удалось: сеть, таймаут, 429, пятисотка.
+
+    Для одиночного сканирования разницы между вторым и третьим почти нет, и
+    `fetch_off_raw` её справедливо прячет. Для прогона по восемнадцати тысячам
+    позиций она решающая: если OFF начнёт притормаживать запросы, все отказы
+    молча сложатся в «нет в OFF», итог соврёт, а повторный прогон эти позиции
+    уже не возьмёт — они будут выглядеть проверенными.
     """
     base = getattr(settings, "OPENFOODFACTS_BASE_URL", "https://world.openfoodfacts.org")
     timeout = getattr(settings, "OPENFOODFACTS_TIMEOUT", 4.0)
@@ -401,12 +409,26 @@ def fetch_off_raw(barcode: str) -> dict:
         if r.status_code == 200:
             body = r.json()
             if body.get("status") == 1:
-                return body.get("product") or {}
-        else:
-            logger.info("OFF returned status=%s for barcode=%s", r.status_code, barcode)
+                return body.get("product") or {}, "ok"
+            return {}, "not_found"
+        if r.status_code == 404:
+            return {}, "not_found"
+        logger.info("OFF returned status=%s for barcode=%s", r.status_code, barcode)
+        return {}, "error"
     except (requests.RequestException, ValueError) as e:
         logger.warning("OFF request failed for barcode=%s: %s", barcode, e)
-    return {}
+        return {}, "error"
+
+
+def fetch_off_raw(barcode: str) -> dict:
+    """Карточка товара из OFF как есть. Пустой словарь — не нашли или не дошли.
+
+    Вынесено из `fetch_product_from_off`, чтобы дозаполнение каталога
+    (`refill_kbju_from_off`) ходило в OFF тем же кодом, а не своей копией:
+    две копии разойдутся, и расследовать потом придётся обе.
+    """
+    raw, _ = fetch_off_result(barcode)
+    return raw
 
 
 def fetch_product_from_off(barcode: str) -> Optional[Product]:

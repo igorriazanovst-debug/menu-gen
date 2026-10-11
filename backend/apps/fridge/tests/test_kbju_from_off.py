@@ -69,12 +69,13 @@ def _run(*args):
 
 
 def _off(kcal=None, proteins=None):
+    """Ответ OFF как его отдаёт fetch_off_result: карточка плюс исход."""
     nutriments = {}
     if kcal is not None:
         nutriments["energy-kcal_100g"] = kcal
     if proteins is not None:
         nutriments["proteins_100g"] = proteins
-    return {"product_name": "Плюмбус в глазури", "nutriments": nutriments}
+    return {"product_name": "Плюмбус в глазури", "nutriments": nutriments}, "ok"
 
 
 @pytest.mark.django_db
@@ -83,7 +84,7 @@ class TestДозаполнениеИзOFF:
         p = _catalog("Плюмбус в глазури", "4600000000011")
 
         with patch(
-            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_raw",
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
             return_value=_off(kcal=250, proteins=7),
         ):
             _run("--apply", "--sleep", "0")
@@ -98,7 +99,7 @@ class TestДозаполнениеИзOFF:
         p = _catalog("Плюмбус копчёный", "4600000000028", calories_per_100g=300)
 
         with patch(
-            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_raw",
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
             return_value=_off(kcal=250, proteins=7),
         ):
             _run("--apply", "--sleep", "0")
@@ -111,7 +112,7 @@ class TestДозаполнениеИзOFF:
         p = _catalog("Плюмбус сушёный", "4600000000035")
 
         with patch(
-            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_raw",
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
             return_value=_off(kcal=250),
         ):
             out = _run("--sleep", "0")
@@ -128,7 +129,7 @@ class TestДозаполнениеИзOFF:
         )
 
         with patch(
-            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_raw",
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
             return_value=_off(kcal=250),
         ) as fetch:
             _run("--apply", "--sleep", "0")
@@ -141,7 +142,7 @@ class TestДозаполнениеИзOFF:
         p = Product.objects.create(name="Плюмбус магазинный", barcode="4600000000059", source=Product.Source.OFFBULK)
 
         with patch(
-            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_raw",
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
             return_value=_off(kcal=250),
         ):
             _run("--apply", "--sleep", "0")
@@ -156,7 +157,7 @@ class TestДозаполнениеИзOFF:
         p = Product.objects.create(name="Плюмбус безымянный", source=Product.Source.OFF)
 
         with patch(
-            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_raw",
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
             return_value=_off(kcal=250),
         ) as fetch:
             _run("--apply", "--sleep", "0")
@@ -170,7 +171,7 @@ class TestДозаполнениеИзOFF:
         # запускать. Там на этом уже обожглись.
         _catalog("Плюмбус для счёта", "4600000000066")
 
-        with patch("apps.fridge.management.commands.refill_kbju_from_off.fetch_off_raw") as fetch:
+        with patch("apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result") as fetch:
             out = _run("--count-only")
 
         assert fetch.call_count == 0
@@ -180,14 +181,45 @@ class TestДозаполнениеИзOFF:
         p = _catalog("Плюмбус неизвестный", "4600000000073")
 
         with patch(
-            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_raw",
-            return_value={},
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
+            return_value=({}, "not_found"),
         ):
             out = _run("--apply", "--sleep", "0")
 
         p.refresh_from_db()
         assert p.calories_per_100g is None
         assert "нет в OFF:           1" in out
+
+    def test_отказ_это_не_то_же_что_отсутствие(self):
+        # Разница решающая на прогоне в восемнадцать тысяч позиций: если OFF
+        # начнёт притормаживать, все отказы молча сложатся в «нет в OFF», итог
+        # соврёт, а повторный прогон эти позиции уже не возьмёт — они будут
+        # выглядеть проверенными.
+        _catalog("Плюмбус недоспрошенный", "4600000000097")
+
+        with patch(
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
+            return_value=({}, "error"),
+        ):
+            out = _run("--apply", "--sleep", "0")
+
+        assert "не удалось спросить: 1" in out
+        assert "нет в OFF:           0" in out
+
+    def test_череда_отказов_останавливает_прогон(self):
+        # Двадцать подряд — это не «не повезло», а «нас больше не обслуживают».
+        for i in range(30):
+            _catalog(f"Плюмбус партии {i}", f"46000001000{i:02d}")
+
+        with patch(
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
+            return_value=({}, "error"),
+        ) as fetch:
+            out = _run("--apply", "--sleep", "0")
+
+        assert "OFF не отвечает" in out
+        # Три попытки на позицию, двадцать позиций — и остановка, а не все 30.
+        assert fetch.call_count == 60
 
 
 @pytest.mark.django_db

@@ -52,7 +52,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Q
 
 from apps.fridge.models import Product
-from apps.fridge.services import _normalize_off_product, fetch_off_raw
+from apps.fridge.services import _normalize_off_product, fetch_off_result
 from apps.fridge.visibility import HIDDEN_FROM_PICKERS
 
 NO_NUTRITION = Q(nutrition__isnull=True) | Q(nutrition={})
@@ -95,6 +95,22 @@ class Command(BaseCommand):
         limit = opts["limit"]
         return qs[:limit] if limit > 0 else qs
 
+    def _ask_off(self, barcode: str, pause: float):
+        """Спросить OFF, с отступлением при отказе.
+
+        Отказ чаще всего означает, что мы спрашиваем слишком часто. Разумный
+        ответ на это — подождать подольше, а не повторить немедленно.
+        """
+        for attempt, backoff in enumerate((0.0, 2.0, 6.0)):
+            if backoff:
+                time.sleep(backoff if pause else 0)
+            raw, outcome = fetch_off_result(barcode)
+            if outcome != "error":
+                return raw, outcome
+            if attempt == 0:
+                self.stdout.write(self.style.WARNING(f"  {barcode}: OFF не ответил, жду и пробую ещё раз"))
+        return {}, "error"
+
     def handle(self, *args, **opts):
         targets = self._targets(opts)
 
@@ -117,13 +133,30 @@ class Command(BaseCommand):
             f"{'ЗАПИСЬ' if apply else 'ПОКАЗ (без записи)'}: {total} позиций, пауза {pause} с между запросами."
         )
 
-        filled_kcal = filled_macro = not_found = no_data = 0
+        filled_kcal = filled_macro = not_found = no_data = failed = 0
+        in_a_row = 0
         for i, p in enumerate(rows, 1):
             if i > 1 and pause:
                 time.sleep(pause)
 
-            raw = fetch_off_raw(p.barcode)
-            if not raw:
+            raw, outcome = self._ask_off(p.barcode, pause)
+            if outcome == "error":
+                failed += 1
+                in_a_row += 1
+                # Двадцать отказов подряд — это не «не повезло», а OFF нас
+                # больше не обслуживает. Долбиться дальше и грубо, и
+                # бессмысленно: итог всё равно будет враньём.
+                if in_a_row >= 20:
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"20 отказов подряд на позиции {i} из {total}. OFF не отвечает — "
+                            "останавливаюсь. Обработанное сохранено, прогон можно повторить позже."
+                        )
+                    )
+                    break
+                continue
+            in_a_row = 0
+            if outcome == "not_found" or not raw:
                 not_found += 1
                 continue
             fields = _normalize_off_product(raw)
@@ -160,5 +193,6 @@ class Command(BaseCommand):
         self.stdout.write(f"  проставлено макро:   {filled_macro}")
         self.stdout.write(f"  нет в OFF:           {not_found}")
         self.stdout.write(f"  в OFF без КБЖУ:      {no_data}  → остаются платной починке")
+        self.stdout.write(f"  не удалось спросить: {failed}  → повторный прогон возьмёт их снова")
         if not apply:
             self.stdout.write(self.style.WARNING("Ничего не записано: это показ. Повторить с --apply."))
