@@ -67,7 +67,7 @@ MG_OFFQUOTA: паузу меньше 4,3 с ставить бессмыслен�
 
 import time
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import DataError
 from django.db.models import Q
 
@@ -89,6 +89,14 @@ class Command(BaseCommand):
             "--include-hidden",
             action="store_true",
             help=f"взять и скрытые из выбора источники ({', '.join(HIDDEN_FROM_PICKERS)}) — их десятки тысяч",
+        )
+        parser.add_argument(
+            "--after-barcode",
+            help=(
+                "продолжить с позиции, следующей за этим штрих-кодом. "
+                "Нужно после обрыва: команда не помнит, что уже спрашивала, и "
+                "без этого переспросит всё заново — а это часы впустую"
+            ),
         )
         parser.add_argument(
             "--source",
@@ -124,6 +132,24 @@ class Command(BaseCommand):
         if opts.get("source"):
             qs = Product.objects.filter(owner_family__isnull=True).filter(NO_NUTRITION | NO_KCAL)
             qs = qs.exclude(barcode__isnull=True).exclude(barcode="").filter(source=opts["source"])
+        # MG_OFFRESUME: продолжение с места обрыва.
+        #
+        # Команда не помнит, какие позиции уже спрашивала: «нет в OFF» и «в
+        # OFF без КБЖУ» остаются целями навсегда, потому что дыра в КБЖУ
+        # никуда не делась. После падения на одиннадцати тысячах из
+        # восемнадцати второй заход переспросил бы девять тысяч проверенных —
+        # одиннадцать часов впустую при квоте в четырнадцать запросов в
+        # минуту.
+        #
+        # Отбор идёт по возрастанию id, поэтому «всё после такого-то
+        # штрих-кода» — точное и дешёвое продолжение. Штрих-код, а не id,
+        # потому что в журнале прогона видно именно его.
+        after = (opts.get("after_barcode") or "").strip()
+        if after:
+            last = Product.objects.filter(barcode=after).values_list("id", flat=True).first()
+            if last is None:
+                raise CommandError(f"Штрих-кода {after} в каталоге нет — проверьте, что скопировали из журнала.")
+            qs = qs.filter(id__gt=last)
         qs = qs.order_by("id")
         limit = opts["limit"]
         return qs[:limit] if limit > 0 else qs

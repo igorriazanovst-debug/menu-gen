@@ -207,6 +207,37 @@ class TestДозаполнениеИзOFF:
         assert good.calories_per_100g == 250, "годная запись должна была сохраниться"
         assert "база не приняла" in out
 
+    def test_продолжение_с_места_обрыва(self):
+        # MG_OFFRESUME. Команда не помнит, что уже спрашивала: «нет в OFF» и
+        # «в OFF без КБЖУ» остаются целями навсегда — дыра-то не делась. После
+        # падения на одиннадцати тысячах из восемнадцати второй заход
+        # переспросил бы девять тысяч проверенных, а при квоте в четырнадцать
+        # запросов в минуту это одиннадцать часов впустую.
+        first = _catalog("Плюмбус первый", "4600000000158")
+        second = _catalog("Плюмбус второй", "4600000000165")
+
+        with patch(
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
+            return_value=_off(kcal=250),
+        ) as fetch:
+            _run("--apply", "--sleep", "0", "--after-barcode", first.barcode)
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        assert first.calories_per_100g is None, "пройденное переспрашивать не должны"
+        assert second.calories_per_100g == 250
+        assert fetch.call_count == 1
+
+    def test_неизвестный_штрихкод_для_продолжения_это_ошибка(self):
+        # Опечатка в штрих-коде не должна молча означать «начать сначала»:
+        # это те самые часы впустую, ради которых флаг и заводился.
+        from django.core.management.base import CommandError
+
+        _catalog("Плюмбус одинокий", "4600000000172")
+
+        with pytest.raises(CommandError):
+            _run("--apply", "--sleep", "0", "--after-barcode", "0000000000000")
+
     def test_отбор_по_источнику(self):
         # Нужно для замера. Выборка идёт по возрастанию id, и первые сотни
         # оказались сплошь retail — каталог торговой сети, которого в OFF нет
