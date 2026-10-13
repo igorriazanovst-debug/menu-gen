@@ -53,6 +53,32 @@ class TestКалорийностьИзOFF:
         # дневнику и меню.
         assert _off_kcal({"energy_100g": 99999}) is None
 
+    def test_мусор_отсеивается_и_в_готовых_килокалориях(self):
+        # MG_OFFJUNK. Проверка стояла только на пересчёте из килоджоулей, а
+        # готовые килокалории шли в базу как есть. На проде среди
+        # восемнадцати тысяч записей нашлась одна с калорийностью больше ста
+        # тысяч: поле numeric(7,2) её не приняло, и суточный прогон упал на
+        # одиннадцати тысячах.
+        assert _off_kcal({"energy-kcal_100g": 123456}) is None
+        assert _off_kcal({"energy-kcal_100g": -5}) is None
+        # А правдоподобное по-прежнему проходит.
+        assert _off_kcal({"energy-kcal_100g": 900}) == 900
+        assert _off_kcal({"energy-kcal_100g": 901}) is None
+
+    def test_мусорное_макро_тоже_не_берём(self):
+        from apps.fridge.services import _normalize_off_product
+
+        fields = _normalize_off_product(
+            {
+                "product_name": "Плюмбус невозможный",
+                "nutriments": {"proteins_100g": 1200, "fat_100g": 5, "carbohydrates_100g": -3},
+            }
+        )
+
+        # Белка «1200 г на 100 г» не бывает. В JSON переполнения не случится,
+        # но такое число разойдётся по дневнику и меню как факт.
+        assert fields["nutrition"] == {"fats": 5.0}
+
     def test_нет_ничего_нет_и_ответа(self):
         assert _off_kcal({}) is None
         assert _off_kcal({"energy-kcal_100g": "—"}) is None
@@ -152,6 +178,34 @@ class TestДозаполнениеИзOFF:
             _run("--apply", "--sleep", "0", "--include-hidden")
             p.refresh_from_db()
             assert p.calories_per_100g == 250
+
+    def test_одна_кривая_запись_не_валит_прогон(self):
+        # MG_OFFJUNK. Так и вышло на проде: суточный прогон упал на
+        # одиннадцати тысячах из восемнадцати. Записанное до того уцелело, но
+        # полсуток работы — нет. Проверка значений стоит выше по течению;
+        # здесь — последний рубеж, потому что данные у OFF чужие и меняются.
+        from django.db import DataError
+
+        bad = _catalog("Плюмбус негодный", "4600000000134")
+        good = _catalog("Плюмбус годный", "4600000000141")
+
+        real_save = Product.save
+
+        def save(self, *a, **kw):
+            if self.pk == bad.pk:
+                raise DataError("numeric field overflow")
+            return real_save(self, *a, **kw)
+
+        with patch(
+            "apps.fridge.management.commands.refill_kbju_from_off.fetch_off_result",
+            return_value=_off(kcal=250),
+        ):
+            with patch.object(Product, "save", save):
+                out = _run("--apply", "--sleep", "0")
+
+        good.refresh_from_db()
+        assert good.calories_per_100g == 250, "годная запись должна была сохраниться"
+        assert "база не приняла" in out
 
     def test_отбор_по_источнику(self):
         # Нужно для замера. Выборка идёт по возрастанию id, и первые сотни

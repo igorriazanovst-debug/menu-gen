@@ -27,6 +27,29 @@ logger = logging.getLogger(__name__)
 _KJ_PER_KCAL = 4.184
 
 
+# Чистое сало — около 900 ккал на 100 г; выше этого у еды не бывает.
+MAX_KCAL_PER_100G = 900.0
+# Больше 100 г чего-либо в 100 граммах не бывает по определению.
+MAX_GRAMS_PER_100G = 100.0
+
+
+def _sane_kcal(kcal: Optional[float]) -> Optional[float]:
+    """Калорийность, если она похожа на правду. Иначе ничего.
+
+    MG_OFFJUNK: проверка стояла только на ветке пересчёта из килоджоулей, а
+    готовые килокалории шли в базу как есть. OFF ведут люди, и среди
+    восемнадцати тысяч записей нашлась такая, где калорийность оказалась
+    больше ста тысяч. Поле в базе — numeric(7,2), и суточный прогон упал с
+    `numeric field overflow` на одиннадцати тысячах из восемнадцати.
+
+    Проверка теперь одна на все ветки: место для неё ровно одно, и забыть его
+    при следующей правке нельзя.
+    """
+    if kcal is None:
+        return None
+    return kcal if 0 <= kcal <= MAX_KCAL_PER_100G else None
+
+
 def _off_kcal(nutriments: dict) -> Optional[float]:
     """Калорийность на 100 г из ответа OFF.
 
@@ -41,7 +64,7 @@ def _off_kcal(nutriments: dict) -> Optional[float]:
         if v is not None:
             # Ноль — это ответ, а не пропуск: у воды и чая без сахара ровно
             # столько. Прежняя цепочка через `or` его теряла и шла дальше.
-            return v
+            return _sane_kcal(v)
 
     # Поля с «kj» в имени однозначны. У безымянных `energy_100g`/`energy`
     # единицу надо спросить отдельно: обычно там килоджоули, но не всегда, и
@@ -54,11 +77,8 @@ def _off_kcal(nutriments: dict) -> Optional[float]:
         v = _num_or_none(nutriments.get(key))
         if v is None:
             continue
-        kcal = round(v / _KJ_PER_KCAL, 1)
-        # Чистое сало — около 900 ккал на 100 г; выше этого числа у еды не
-        # бывает. Молчаливая подстановка мусора хуже пустого поля: пустое
-        # видно, а неверное расходится по дневнику и меню.
-        if 0 <= kcal <= 900:
+        kcal = _sane_kcal(round(v / _KJ_PER_KCAL, 1))
+        if kcal is not None:
             return kcal
     return None
 
@@ -85,12 +105,12 @@ def _normalize_off_product(raw: dict) -> Optional[dict]:
         ("fiber", "fiber_100g"),
         ("sugars", "sugars_100g"),
     ):
-        v = nutriments.get(off_key)
-        try:
-            if v is not None:
-                nutrition[key] = float(v)
-        except (TypeError, ValueError):
-            pass
+        # MG_OFFJUNK: макронутриенты тоже бывают мусорными. В базу они едут
+        # в JSON, где переполнения не случится, — но белок «1200 г на 100 г»
+        # разойдётся по дневнику и меню как факт, а это хуже пустого поля.
+        v = _num_or_none(nutriments.get(off_key))
+        if v is not None and 0 <= v <= MAX_GRAMS_PER_100G:
+            nutrition[key] = v
 
     image = raw.get("image_front_url") or raw.get("image_url") or raw.get("image_small_url")
     category = (raw.get("categories") or "").split(",")[0].strip() if raw.get("categories") else ""

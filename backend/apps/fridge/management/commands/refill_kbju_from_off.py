@@ -68,6 +68,7 @@ MG_OFFQUOTA: паузу меньше 4,3 с ставить бессмыслен�
 import time
 
 from django.core.management.base import BaseCommand
+from django.db import DataError
 from django.db.models import Q
 
 from apps.fridge.models import Product
@@ -197,7 +198,7 @@ class Command(BaseCommand):
         pause = max(0.0, opts["sleep"])
         self._say(f"{'ЗАПИСЬ' if apply else 'ПОКАЗ (без записи)'}: {total} позиций, пауза {pause} с между запросами.")
 
-        filled_kcal = filled_macro = not_found = no_data = failed = 0
+        filled_kcal = filled_macro = not_found = no_data = failed = rejected = 0
         in_a_row = 0
         for i, p in enumerate(rows, 1):
             if i > 1 and pause:
@@ -254,7 +255,20 @@ class Command(BaseCommand):
 
             self._say(f"  {p.barcode:<15} {p.name[:50]:<50} {', '.join(updates)}")
             if apply:
-                p.save(update_fields=updates)
+                # MG_OFFJUNK: одна кривая запись не должна валить суточный
+                # прогон. Так и вышло: на одиннадцати тысячах из восемнадцати
+                # пришла калорийность больше ста тысяч, поле в базе —
+                # numeric(7,2), и всё остановилось. Записанное до этого
+                # уцелело, но полсуток работы — нет.
+                #
+                # Проверка значений стоит выше по течению и такое больше не
+                # пропустит. Здесь — последний рубеж: данные у OFF чужие и
+                # меняются, а падать на них посреди ночи незачем.
+                try:
+                    p.save(update_fields=updates)
+                except DataError as e:
+                    rejected += 1
+                    self._say(f"  {p.barcode}: база не приняла значения ({e}), пропускаю", self.style.WARNING)
 
         self._say("")
         self._say(f"Обработано:            {total}")
@@ -263,5 +277,7 @@ class Command(BaseCommand):
         self._say(f"  нет в OFF:           {not_found}")
         self._say(f"  в OFF без КБЖУ:      {no_data}  → остаются платной починке")
         self._say(f"  не удалось спросить: {failed}  → повторный прогон возьмёт их снова")
+        if rejected:
+            self._say(f"  база не приняла:     {rejected}  → значения в OFF негодные")
         if not apply:
             self._say("Ничего не записано: это показ. Повторить с --apply.", self.style.WARNING)
