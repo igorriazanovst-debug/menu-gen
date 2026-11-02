@@ -21,6 +21,25 @@ from rest_framework import serializers
 class RoundedDecimalField(serializers.DecimalField):
     """Как `DecimalField`, но лишние знаки округляет, а лишние нули не показывает."""
 
+    def to_internal_value(self, data):
+        """Запятая — такой же разделитель, как точка.
+
+        MG_WEIGHT2: на русской раскладке цифровая клавиатура даёт запятую, и
+        «78,25» — это ровно то, что человек видит на весах. Приложение меняет
+        её на точку само, а веб отдаёт как есть, и сервер отвечал «требуется
+        численное значение». Чинить это только в вебе значит ждать, пока на
+        те же грабли наступит следующий клиент.
+
+        Замена делается ТОЛЬКО когда запятая одна и точки нет. «1,234.56» —
+        это разделитель тысяч, и трогать его нельзя: получилось бы другое
+        число. Такая запись не разберётся и даст честный отказ.
+        """
+        if isinstance(data, str):
+            text = data.strip()
+            if text.count(",") == 1 and "." not in text:
+                data = text.replace(",", ".")
+        return super().to_internal_value(data)
+
     def validate_precision(self, value):
         if self.decimal_places is not None and value.is_finite():
             # Decimal(1).scaleb(-2) — это Decimal('0.01'): шаг округления

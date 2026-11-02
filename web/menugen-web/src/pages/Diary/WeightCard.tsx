@@ -112,10 +112,17 @@ export const WeightCard: React.FC<Props> = ({ date, memberId, onPickDate }) => {
       </div>
       {showChart && <WeightChart points={points} />}
       <div className="flex items-center gap-2">
+        {/* MG_WEIGHT2: text + inputMode, а не type="number".
+            На русской раскладке цифровая клавиатура даёт запятую, и
+            type="number" с ней ведёт себя по-разному: Firefox отдаёт число,
+            Chrome и Safari — пустую строку. На пустую строку save() молча
+            выходил, ничего не записав и ничего не сказав, — человек был
+            уверен, что вес записан.
+            inputMode="decimal" оставляет ту же цифровую клавиатуру на
+            телефоне, но значение доходит до нас таким, каким его набрали. */}
         <input
-          type="number"
-          step="0.1"
-          min="0"
+          type="text"
+          inputMode="decimal"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="кг"
