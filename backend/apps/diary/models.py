@@ -239,7 +239,9 @@ class WeightLog(OwnedByPerson):
         related_name="weight_logs",
     )
     date = models.DateField()
-    weight_kg = models.DecimalField(max_digits=5, decimal_places=1)
+    # MG_WEIGHT2: два знака — бытовые весы дают 50-граммовый шаг (78.25),
+    # и округлять его до 78.3 значит терять то, ради чего человек взвешивался.
+    weight_kg = models.DecimalField(max_digits=5, decimal_places=2)
     note = models.CharField(max_length=255, blank=True)
     added_by = added_by_field()  # MG_HEADKEEPS
     created_at = models.DateTimeField(auto_now_add=True)

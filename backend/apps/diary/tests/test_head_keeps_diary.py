@@ -18,6 +18,7 @@
 """
 
 import datetime
+from decimal import Decimal
 
 import pytest
 from django.urls import reverse
@@ -318,7 +319,9 @@ class TestFixingADay:
         rows = WeightLog.objects.filter(user_id=household["adult"].user_id, date=TODAY)
         # Вторая точка за тот же день не заводится — замер один.
         assert rows.count() == 1
-        assert str(rows.first().weight_kg) == "69.4"
+        # MG_WEIGHT2: сравниваем число, а не его запись. Поле стало с двумя
+        # знаками, и «69.4» в базе теперь «69.40» — то же самое число.
+        assert rows.first().weight_kg == Decimal("69.4")
 
     def test_own_weight_can_be_removed(self, client, household):
         client.force_authenticate(household["adult"].user)
@@ -381,7 +384,7 @@ class TestFixingADay:
         )
 
         assert resp.status_code == 403
-        assert str(WeightLog.objects.get(user_id=household["adult"].user_id, date=TODAY).weight_kg) == "70.0"
+        assert WeightLog.objects.get(user_id=household["adult"].user_id, date=TODAY).weight_kg == Decimal("70.0")
 
     def test_head_may_fix_own_mistake(self, client, household):
         """Строку, которую внёс сам, глава правит и убирает без разрешения."""
@@ -422,4 +425,4 @@ class TestFixingADay:
         client.delete(reverse("diary-weight") + f"?date={TODAY}")
 
         household["adult"].user.profile.refresh_from_db()
-        assert str(household["adult"].user.profile.weight_kg) == "70.0"
+        assert household["adult"].user.profile.weight_kg == Decimal("70.0")

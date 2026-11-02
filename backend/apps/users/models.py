@@ -134,7 +134,9 @@ class Profile(models.Model):
     birth_year = models.PositiveSmallIntegerField(null=True, blank=True)
     gender = models.CharField(max_length=10, choices=Gender.choices, null=True, blank=True)
     height_cm = models.PositiveSmallIntegerField(null=True, blank=True)
-    weight_kg = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+    # MG_WEIGHT2: столько же знаков, сколько в замерах дневника. Разная
+    # точность в двух местах про одно и то же — источник вечных расхождений.
+    weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     activity_level = models.CharField(max_length=20, choices=ActivityLevel.choices, default=ActivityLevel.MODERATE)
     goal = models.CharField(max_length=20, choices=Goal.choices, default=Goal.HEALTHY)
     calorie_target = models.PositiveSmallIntegerField(null=True, blank=True)

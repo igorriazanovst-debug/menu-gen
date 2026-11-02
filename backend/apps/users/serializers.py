@@ -4,6 +4,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.common.fields import RoundedDecimalField  # MG_WEIGHT2
+
 from .models import Profile
 
 # MG_504_V_serializers
@@ -140,6 +142,11 @@ class ProfileTargetAuditSerializer(serializers.Serializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    # MG_WEIGHT2: столько же знаков и та же терпимость к лишним, что и у
+    # замера в дневнике. Иначе одно и то же число принимается в одном
+    # месте и отвергается в другом.
+    weight_kg = RoundedDecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+
     targets_calculated = serializers.SerializerMethodField()
     targets_meta = serializers.SerializerMethodField()
 
@@ -358,7 +365,7 @@ class CalculatorRequestSerializer(serializers.Serializer):
 
     # base inputs (для preset и для custom_mode=percents)
     height_cm = serializers.IntegerField(min_value=50, max_value=250, required=False)
-    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=1, min_value=20, max_value=400, required=False)
+    weight_kg = RoundedDecimalField(max_digits=5, decimal_places=2, min_value=20, max_value=400, required=False)
     birth_year = serializers.IntegerField(min_value=1900, max_value=2030, required=False)
     gender = serializers.ChoiceField(choices=[(g, g) for g in _CALC_GENDERS], required=False)
     activity_level = serializers.ChoiceField(choices=[(a, a) for a in _CALC_ACTIVITIES], required=False)

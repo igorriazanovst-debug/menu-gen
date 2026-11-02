@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
+import '../../../core/api/api_exception.dart'; // MG_WEIGHT2
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/premium/premium_gate_cubit.dart';
 import '../../../core/utils/package_size.dart'; // MG_DIARYSCAN
@@ -1575,8 +1576,17 @@ class _WeightCardState extends State<_WeightCard> {
       await widget.api.post(path, data: {'date': widget.date, 'weight_kg': raw, 'note': ''});
       await _load();
       if (mounted) FocusScope.of(context).unfocus();
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Не удалось сохранить вес.');
+    } catch (e) {
+      // MG_WEIGHT2: причину отказа говорим словами сервера.
+      //
+      // Раньше здесь стояло общее «Не удалось сохранить вес», и человек,
+      // вводивший два знака после точки, читал это как «записано, но не
+      // показывается» — и шёл искать поломку в отображении. Сервер при этом
+      // отвечал ровно по делу, просто мы его ответ выбрасывали.
+      final why = e is ApiException ? e.message : null;
+      if (mounted) {
+        setState(() => _error = (why != null && why.isNotEmpty) ? why : 'Не удалось сохранить вес.');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

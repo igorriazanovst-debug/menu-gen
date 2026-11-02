@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.common.fields import RoundedDecimalField  # MG_WEIGHT2
+
 from .models import BodyMeasurement, DiaryEntry, WaterLog, WeightLog
 
 
@@ -169,6 +171,11 @@ class WaterLogSerializer(AddedByMixin):
 
 class WeightLogSerializer(AddedByMixin):
     """MG_TRAINER: точка замера веса. На дату — одна запись."""
+
+    # MG_WEIGHT2: поле объявлено явно, чтобы лишние знаки округлялись, а не
+    # отвергались. Без него ModelSerializer берёт обычный DecimalField, и
+    # человек, переписавший с весов «78.256», получает отказ вместо замера.
+    weight_kg = RoundedDecimalField(max_digits=5, decimal_places=2)
 
     class Meta:
         model = WeightLog
