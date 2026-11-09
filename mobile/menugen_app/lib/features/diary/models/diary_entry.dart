@@ -120,6 +120,28 @@ class DiaryEntry extends Equatable {
   String get displayTitle =>
       (recipeTitle?.isNotEmpty == true) ? recipeTitle! : customName;
 
+  /// Одно значение КБЖУ записи с учётом количества порций.
+  ///
+  /// Чтение терпит всё, что побывало в этом поле: число, строку и старую
+  /// форму `{"value": ...}`. Одно место на весь экран — иначе сумма приёма,
+  /// сумма дня и полосы «Итогов» однажды разойдутся на одной и той же записи.
+  double nutritionValue(String key) {
+    final raw = nutrition[key];
+    double plain(dynamic x) {
+      if (x is num) return x.toDouble();
+      if (x is String) return double.tryParse(x.replaceAll(',', '.')) ?? 0;
+      return 0;
+    }
+
+    final base = raw is Map ? plain(raw['value']) : plain(raw);
+    return base * quantity;
+  }
+
+  double get calories => nutritionValue('calories');
+  double get proteins => nutritionValue('proteins');
+  double get fats => nutritionValue('fats');
+  double get carbs => nutritionValue('carbs');
+
   // MG_SKIN: lightweight copy for optimistic is_eaten flips.
   DiaryEntry copyWith({bool? isEaten}) => DiaryEntry(
         id: id,

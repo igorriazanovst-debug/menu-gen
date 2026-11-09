@@ -53,6 +53,46 @@ export interface MeasurementPayload {
   note?: string;
 }
 
+// MG_WORKOUT: справочник занятий. MET в выдаче есть, но интерфейсу он не нужен:
+// расход считает сервер — иначе два места считали бы по-разному.
+export interface DiaryActivityType {
+  id: number;
+  code: string;
+  name: string;
+  group: string;
+  group_label: string;
+  met: string;
+}
+
+// MG_WORKOUT: одно занятие в дневнике.
+export interface DiaryWorkout {
+  id: number;
+  date: string;
+  title: string;
+  activity?: number | null;
+  activity_name?: string | null;
+  custom_name?: string;
+  duration_min: number;
+  // null — считать было не из чего: без веса расход не считается, и выдумывать
+  // его нельзя. Пустое честнее неверного числа.
+  calories: number | null;
+  // Посчитали мы или вписал человек: нашу оценку нельзя выдавать за показание
+  // пульсометра.
+  calories_estimated: boolean;
+  note?: string;
+  added_by?: number | null; // MG_HEADKEEPS
+  added_by_name?: string | null;
+}
+
+export interface WorkoutPayload {
+  date: string;
+  activity?: number;
+  custom_name?: string;
+  duration_min: number;
+  calories?: number;
+  note?: string;
+}
+
 // DIARY_MULTIDAY: одиночная дата (date) ИЛИ диапазон (from/to). page_size — чтобы
 // диапазон уместился в одну страницу (бэкенд: PageNumberPagination, default 20).
 export interface DiaryListParams {
@@ -154,6 +194,25 @@ export const diaryApi = {
     ),
   deleteMeasurement: (date: string, memberId?: number) => // MG_DAYFIX
     client.delete('/diary/measurements/', { params: { date, ...(memberId ? { member_id: memberId } : {}) } }),
+
+  // MG_WORKOUT: физнагрузки. Записей на день МНОГО (пробежка утром и зал
+  // вечером — два занятия), поэтому POST всегда создаёт новую строку, а
+  // удаление адресуется идентификатором, а не датой, как у веса и воды.
+  getActivities: async (): Promise<DiaryActivityType[]> => {
+    const { data } = await client.get<DiaryActivityType[]>('/diary/activities/');
+    return Array.isArray(data) ? data : [];
+  },
+  getWorkouts: async (date: string, memberId?: number): Promise<DiaryWorkout[]> => {
+    const params: Record<string, string | number> = { date };
+    if (memberId) params.member_id = memberId;
+    const { data } = await client.get<DiaryWorkout[]>('/diary/workouts/', { params });
+    return Array.isArray(data) ? data : [];
+  },
+  addWorkout: (payload: WorkoutPayload, memberId?: number) =>
+    client.post<DiaryWorkout>('/diary/workouts/', payload,
+      { params: memberId ? { member_id: memberId } : undefined },
+    ),
+  deleteWorkout: (id: number) => client.delete(`/diary/workouts/${id}/`),
 
   // DIARY_COPY_V3: copy selected entries into target day as plan.
   copy: (entryIds: number[], targetDate: string, memberId?: number) =>

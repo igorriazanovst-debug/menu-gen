@@ -11,17 +11,20 @@ import { CopyFromDayModal } from '../../components/diary/CopyFromDayModal'; // D
 import { EditDiaryEntryModal } from '../../components/diary/EditDiaryEntryModal';
 import { AddedByMark } from '../../components/diary/AddedByMark'; // MG_HEADKEEPS
 import { MeasurementsCard } from './MeasurementsCard'; // MG_BODYSIZE
+import { WorkoutsCard } from './WorkoutsCard'; // MG_WORKOUT
+import { DaySummary } from './DaySummary'; // MG_DAYSUM
 import { PrintDiaryModal } from '../../components/diary/PrintDiaryModal'; // DIARY_HIER_PRINT_V5
 import { getErrorMessage } from '../../utils/api';
 import {
-  MEAL_SLOT_LABELS, MEAL_SLOT_ORDER, MEAL_SLOTS_BY_PLAN, MEAL_SLOT_COLORS,
+  MEAL_SLOT_LABELS, MEAL_SLOTS_BY_PLAN, MEAL_SLOT_COLORS,
 } from '../../types';
+import { nutriVal, slotOf, visibleSlots } from '../../utils/diaryNutrition'; // MG_DAYSUM
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { WeightCard } from './WeightCard'; // MG_TRAINER
 import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
 import { dayTotalsHint } from '../../utils/dayTotalsHint'; // DIARY_TOTALS_V1
 import { allEaten, toMark } from '../../utils/markEaten'; // DIARY_EATALL_V1
-import type { DiaryEntry, DiaryDayStats, DiaryWaterLog, FamilyMember, MealSlot } from '../../types';
+import type { DiaryEntry, DiaryDayStats, DiaryWaterLog, FamilyMember } from '../../types';
 
 const today = todayIso; // ISO_DATE_V1: локальный календарь, а не UTC
 const WATER_GOAL_ML = 2000;
@@ -86,6 +89,14 @@ export const DiaryPage: React.FC = () => {
   const [openMeals, setOpenMeals] = useState<Set<string>>(new Set());
   const [customWater, setCustomWater] = useState('');
   const authUserId = useAppSelector((s) => s.auth.user?.id);
+  // MG_DIARYTABS: в один момент времени на экране что-то одно.
+  //
+  // Раньше страница была одной простынёй: сводка, вода, вес, обхваты и только
+  // потом еда — до главного приходилось доскролливать, а на телефоне это
+  // половина экрана карточек, которых человек не просил.
+  //
+  // «Приёмы» первыми и по умолчанию: за едой сюда и приходят.
+  const [tab, setTab] = useState<'meals' | 'summary' | 'water' | 'body'>('meals');
 
   // Family (for member switcher; HEAD only).
   useEffect(() => {
@@ -201,8 +212,9 @@ export const DiaryPage: React.FC = () => {
   // Слот у записи есть всегда: сервер проставляет его сам, а старым записям его
   // проставила миграция. Запасной путь по meal_type оставлен на случай ответа
   // из офлайн-кэша, снятого до обновления.
-  const slotOf = (e: DiaryEntry): MealSlot =>
-    (e.meal_slot ?? (e.meal_type === 'snack' ? 'snack1' : e.meal_type)) as MealSlot;
+  // (slotOf и nutriVal — в utils/diaryNutrition: то же чтение нужно «Итогам»,
+  // а две копии разбора однажды разойдутся, и две суммы за один день на двух
+  // соседних экранах перестанут сходиться.)
 
   // Сколько приёмов у человека — столько разделов и показываем, даже пустыми:
   // в пустой раздел видно, что туда ещё ничего не записано, и понятно, куда
@@ -210,24 +222,10 @@ export const DiaryPage: React.FC = () => {
   const viewedMember = members.find((m) =>
     memberId ? m.id === memberId : m.user_id === authUserId);
   const mealPlan = viewedMember?.profile?.meal_plan_type === '5' ? '5' : '3';
-  const slotsWithEntries = new Set(entries.map(slotOf));
-  const visibleSlots = MEAL_SLOT_ORDER.filter(
-    (slot) => MEAL_SLOTS_BY_PLAN[mealPlan].includes(slot) || slotsWithEntries.has(slot));
-  const mealGroups = visibleSlots.map((slot) => ({
+  const mealGroups = visibleSlots(entries, MEAL_SLOTS_BY_PLAN[mealPlan]).map((slot) => ({
     slot,
     items: entries.filter((e) => slotOf(e) === slot),
   }));
-  // DIARY_HIER_PRINT_V5: read a nutrition field that may be flat (number) or {value,unit}.
-  const nutriVal = (e: DiaryEntry, key: 'calories' | 'proteins' | 'fats' | 'carbs'): number => {
-    const raw = (e.nutrition as Record<string, unknown> | undefined)?.[key];
-    let n = 0;
-    if (typeof raw === 'number') n = raw;
-    else if (typeof raw === 'string') n = parseFloat(raw);
-    else if (raw && typeof raw === 'object' && 'value' in (raw as object)) {
-      n = parseFloat(String((raw as { value: unknown }).value));
-    }
-    return Number.isFinite(n) ? n * (e.quantity ?? 1) : 0;
-  };
   const mealKcal = (items: DiaryEntry[]) =>
     Math.round(items.reduce((sum, e) => sum + nutriVal(e, 'calories'), 0));
   // Итог приёма считаем из тех же записей, что показаны на экране: добавили
@@ -285,18 +283,23 @@ export const DiaryPage: React.FC = () => {
         {/* MG_WEBMOBILE: переносить надо и внутри группы. Внешний ряд уже умел
             переноситься, но эти пять кнопок оставались одним куском шириной
             далеко за пределы телефона и растягивали страницу. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" onClick={() => setShowPrint(true)}>🖨 Печать</Button>
-          <Button variant="ghost" onClick={() => setShowCopy(true)}>📋 Копировать</Button>
-          <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Заполнить из меню</Button>
-          {/* DIARY_EATALL_V1: весь день одной кнопкой */}
-          {toMark(entries).ids.length > 0 && (
-            <Button variant="ghost" disabled={bulkBusy} onClick={() => markAll(entries)}>
-              {allEaten(entries) ? '↩️ Снять отметки' : '✅ Съедено всё'}
-            </Button>
-          )}
-          <Button onClick={() => setShowAdd(true)}>＋ Добавить</Button>
-        </div>
+        {/* Кнопки про еду — только там, где с едой и работают. На «Воде» и
+            «Теле» у каждой карточки свои кнопки, и «Добавить» здесь вело бы в
+            чужой диалог. */}
+        {(tab === 'meals' || tab === 'summary') && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" onClick={() => setShowPrint(true)}>🖨 Печать</Button>
+            <Button variant="ghost" onClick={() => setShowCopy(true)}>📋 Копировать</Button>
+            <Button variant="ghost" onClick={() => setShowImport(true)}>📥 Заполнить из меню</Button>
+            {/* DIARY_EATALL_V1: весь день одной кнопкой */}
+            {toMark(entries).ids.length > 0 && (
+              <Button variant="ghost" disabled={bulkBusy} onClick={() => markAll(entries)}>
+                {allEaten(entries) ? '↩️ Снять отметки' : '✅ Съедено всё'}
+              </Button>
+            )}
+            <Button onClick={() => setShowAdd(true)}>＋ Добавить</Button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -327,8 +330,45 @@ export const DiaryPage: React.FC = () => {
         </p>
       )}
 
-      {/* Stats card (план / факт) — DIARY_CHART: кольцо калорий + макросы */}
-      {stats && (
+      {/* MG_DIARYTABS: вкладки подписями, а не иконками: «Итоги» и «Тело»
+          картинкой не объяснить. Порядок тот же, что в приложении, — человек
+          видит один и тот же дневник в браузере и на телефоне. */}
+      <div className="flex gap-1 border-b border-border overflow-x-auto">
+        {([
+          ['meals', 'Приёмы'],
+          ['summary', 'Итоги'],
+          ['water', 'Вода'],
+          ['body', 'Тело'],
+        ] as const).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setTab(key)}
+            className={`px-4 py-2 text-sm whitespace-nowrap border-b-[3px] -mb-px transition-colors ${
+              tab === key
+                ? 'border-avocado text-avocado font-bold'
+                : 'border-transparent text-gray-500 hover:text-chocolate'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* MG_DAYSUM: сколько съедено из нормы и сколько осталось. */}
+      {tab === 'summary' && (
+        <DaySummary
+          date={date}
+          memberId={memberId}
+          stats={stats}
+          entries={entries}
+          waterMl={waterMl}
+          // Профиль того, чей дневник открыт: нормы у главы семьи и у
+          // участника свои, и считать по чужой было бы просто неверно.
+          profile={viewedMember?.profile ?? null}
+        />
+      )}
+
+      {/* Stats card (план / факт) — DIARY_CHART: кольцо калорий + макросы.
+          Остаётся на «Приёмах»: здесь вопрос «выполнил ли план», а «сколько мне
+          ещё можно» — это «Итоги», и сравнивают они с разным. */}
+      {tab === 'meals' && stats && (
         <Card className="p-4">
           <div className="text-sm font-semibold text-chocolate mb-3">Итог за день (факт / план)</div>
           <div className="flex items-center gap-4">
@@ -348,6 +388,7 @@ export const DiaryPage: React.FC = () => {
       )}
 
       {/* Water tracker */}
+      {tab === 'water' && (
       <Card className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-semibold text-chocolate">
@@ -387,17 +428,26 @@ export const DiaryPage: React.FC = () => {
           </div>
         </div>
       </Card>
+      )}
 
-      {/* MG_TRAINER: вес по датам — без него у тренера пустой график */}
-      <WeightCard date={date} memberId={memberId} onPickDate={setDate} />
+      {tab === 'body' && (
+        <>
+          {/* MG_TRAINER: вес по датам — без него у тренера пустой график */}
+          <WeightCard date={date} memberId={memberId} onPickDate={setDate} />
 
-      {/* MG_BODYSIZE: обхваты — там же, где вес: их меряют в один заход. */}
-      <MeasurementsCard date={date} memberId={memberId} onPickDate={setDate} />
+          {/* MG_BODYSIZE: обхваты — там же, где вес: их меряют в один заход. */}
+          <MeasurementsCard date={date} memberId={memberId} onPickDate={setDate} />
+
+          {/* MG_WORKOUT: занятия — тоже про тело, а не про еду. Расход в норму
+              не вычитается: она уже содержит коэффициент активности. */}
+          <WorkoutsCard date={date} memberId={memberId} onChanged={load} />
+        </>
+      )}
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
 
       {/* DIARY: только выбранный день — приёмы пищи списком. */}
-      {loading ? <PageSpinner /> : (entries.length === 0 ? (
+      {tab === 'meals' && (loading ? <PageSpinner /> : (entries.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <div className="text-5xl mb-4">📔</div>
           <p>Нет записей за этот день</p>
@@ -470,7 +520,7 @@ export const DiaryPage: React.FC = () => {
             </details>
           ))}
         </div>
-      ))}
+      )))}
 
       {editing && (
         <EditDiaryEntryModal entry={editing}

@@ -2,6 +2,7 @@ import 'dart:async'; // DIARY_FREEMIUM: debounce поиска в добавле�
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart'; // MG_DAYSUM: переход в калькулятор
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -10,6 +11,7 @@ import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
 import '../../../core/api/api_exception.dart'; // MG_WEIGHT2
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
 import '../../../core/premium/premium_gate_cubit.dart';
+import '../../../core/theme/app_theme.dart'; // MG_DIARYTABS: context.tokens
 import '../../../core/utils/package_size.dart'; // MG_DIARYSCAN
 import '../../fridge/screens/barcode_scanner_screen.dart'; // MG_DIARYSCAN
 import '../../../core/widgets/draggable_action_button.dart'; // MG_SKIN
@@ -18,9 +20,11 @@ import '../../../core/widgets/tall_dialog.dart'; // MG_TALLDIALOG
 import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
 import '../models/diary_stats.dart';
+import '../widgets/day_summary.dart'; // MG_DAYSUM
 import '../widgets/diary_stats_card.dart';
 import '../widgets/measurements_card.dart'; // MG_BODYSIZE
 import '../widgets/weight_chart.dart'; // MG_BODYCHART
+import '../widgets/workouts_card.dart'; // MG_WORKOUT
 
 class DiaryScreen extends StatefulWidget {
   const DiaryScreen({super.key});
@@ -49,6 +53,33 @@ class _DiaryScreenState extends State<DiaryScreen> {
   // Свой идентификатор — чтобы не показывать себя в списке членов семьи дважды.
   int? _meUserId;
 
+  /// MG_DIARYTABS: какая вкладка открыта.
+  ///
+  /// Раньше календарь, вода, вес и обхваты стояли на экране одновременно, над
+  /// списком еды: четыре карточки занимали половину телефона, и до еды —
+  /// главного в дневнике — приходилось доскролливать. Теперь в один момент
+  /// времени на экране что-то одно.
+  ///
+  /// «Приёмы» первой и по умолчанию: за едой сюда и приходят.
+  int _tab = 0;
+
+  /// Вкладки, на которых человек уже был. Пока не заходил — не строим: вода,
+  /// вес, обхваты и занятия ходят на сервер сами, и четыре запроса за тем,
+  /// чего не просили, тут ни к чему.
+  final Set<int> _visited = {0};
+
+  /// MG_DAYSUM: профиль целиком — «Итогам» нужны нормы по калориям и БЖУ, а
+  /// калькулятору, который открывается, когда нормы нет, нужны те же поля для
+  /// предзаполнения.
+  Map<String, dynamic>? _profile;
+
+  double? _target(String key) {
+    final raw = _profile?[key];
+    if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw.replaceAll(',', '.'));
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +101,8 @@ class _DiaryScreenState extends State<DiaryScreen> {
           if (plan != null) _mealPlanType = plan;
           _gender = gender;
           _meUserId = meId;
+          // MG_DAYSUM: нормы по калориям и БЖУ живут здесь же.
+          _profile = profile is Map ? Map<String, dynamic>.from(profile) : null;
         });
       }
     } catch (_) {/* не критично: покажем три приёма */}
@@ -119,7 +152,10 @@ class _DiaryScreenState extends State<DiaryScreen> {
           fontWeight: FontWeight.w700,
           color: Theme.of(context).colorScheme.onSurface,
         ),
-        title: const Text('Дневник питания'),
+        // MG_DIARYTABS: дата — в шапке, а не отдельной полосой календаря.
+        // Выбранный день нужен на всех вкладках сразу: правя вес за одно
+        // число, а еду видя за другое, человек ошибётся.
+        title: _dateStrip(),
         actions: [
           // «Я» в списке уже есть, поэтому себя из членов семьи убираем: своё
           // имя рядом с «Я» читается как два разных человека.
@@ -166,117 +202,276 @@ class _DiaryScreenState extends State<DiaryScreen> {
           Positioned.fill(
             child: Column(
               children: [
-                _calendarBar(),
-                _WaterCard( // DIARY_V2
-                  onAdd: (delta) {
-                    final st = context.read<DiaryBloc>().state;
-                    final cur = st is DiaryLoaded ? st.waterMl : 0;
-                    context.read<DiaryBloc>().add(DiaryWaterSetRequested(
-                          date: DateFormat('yyyy-MM-dd').format(_selected),
-                          waterMl: (cur + delta) < 0 ? 0 : (cur + delta),
-                          memberId: _memberId,
-                        ));
-                  },
-                  onSet: (ml) {
-                    context.read<DiaryBloc>().add(DiaryWaterSetRequested(
-                          date: DateFormat('yyyy-MM-dd').format(_selected),
-                          waterMl: ml < 0 ? 0 : ml,
-                          memberId: _memberId,
-                        ));
-                  },
-                  onClear: () {
-                    context.read<DiaryBloc>().add(DiaryWaterClearRequested(
-                          date: DateFormat('yyyy-MM-dd').format(_selected),
-                          memberId: _memberId,
-                        ));
-                  },
+                _tabBar(),
+                // IndexedStack, а не подстановка одной вкладки: карточки веса,
+                // обхватов и занятий сами ходят на сервер в initState, и
+                // пересоздание на каждом переключении означало бы запрос за
+                // запросом и потерянный скролл.
+                //
+                // Но и строить все четыре сразу нельзя: открыв дневник за едой,
+                // человек получил бы четыре лишних запроса за тем, чего не
+                // просил. Вкладка создаётся при первом заходе и дальше живёт.
+                Expanded(
+                  child: IndexedStack(
+                    index: _tab,
+                    children: [
+                      for (var i = 0; i < 4; i++)
+                        _visited.contains(i) ? _tabChild(i) : const SizedBox.shrink(),
+                    ],
+                  ),
                 ),
-                _WeightCard( // MG_MOBWEIGHT
-                  api: context.read<DiaryBloc>().apiClient,
-                  date: DateFormat('yyyy-MM-dd').format(_selected),
-                  memberId: _memberId,
-                  onPickDate: _openDay, // MG_DAYFIX
-                ),
-                // MG_BODYSIZE: обхваты — там же, где вес: их меряют в один заход.
-                MeasurementsCard(
-                  api: context.read<DiaryBloc>().apiClient,
-                  date: DateFormat('yyyy-MM-dd').format(_selected),
-                  memberId: _memberId,
-                  gender: _gender,
-                  onPickDate: _openDay, // MG_DAYFIX
-                ),
-                Expanded(child: _buildBody()),
               ],
             ),
           ),
-          Positioned.fill(
-            child: DraggableActionButton(
-              onPressed: _onAddManualTap, // DIARY_V2
-              icon: Icons.add,
-              label: 'Добавить',
-              width: 150,
+          // Кнопка «Добавить» — только там, где добавляют еду. На «Воде» и
+          // «Теле» у каждой карточки свои кнопки, и общая плавающая вела бы в
+          // чужой диалог.
+          if (_tab == 0 || _tab == 1)
+            Positioned.fill(
+              child: DraggableActionButton(
+                onPressed: _onAddManualTap, // DIARY_V2
+                icon: Icons.add,
+                label: 'Добавить',
+                width: 150,
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  // MG_SKIN: минимальный недельный выбор даты (рус. локаль) + кнопка модалки.
-  Widget _calendarBar() {
-    final monthLabel = _cap(DateFormat('LLLL yyyy', 'ru').format(_focusedDay));
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+  /// MG_DIARYTABS: дата в шапке — стрелками по дням, нажатием в календарь.
+  Widget _dateStrip() {
+    final isToday = DateUtils.isSameDay(_selected, DateTime.now());
+    final label = _cap(DateFormat('d MMMM, EEE', 'ru').format(_selected));
+    return Row(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 4, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(monthLabel,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 14)),
+        IconButton(
+          iconSize: 20,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+          icon: const Icon(Icons.chevron_left),
+          tooltip: 'Предыдущий день',
+          onPressed: () => _shiftDay(-1),
+        ),
+        Flexible(
+          child: InkWell(
+            onTap: _openCalendarModal,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      // «Сегодня» вместо даты: это и есть ответ на вопрос
+                      // «какой день открыт», и он нужнее числа.
+                      isToday ? 'Сегодня' : label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Иконка внутри той же области нажатия, а не отдельной
+                  // кнопкой справа: в шапке уже три кнопки, и четвёртая съела
+                  // бы ширину у самой даты.
+                  const Icon(Icons.calendar_month_outlined, size: 16),
+                ],
               ),
-              TextButton.icon(
-                onPressed: _openCalendarModal,
-                icon: const Icon(Icons.calendar_month, size: 18),
-                label: const Text('Календарь'),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-        TableCalendar(
-          locale: 'ru',
-          firstDay: DateTime(2020),
-          lastDay: DateTime(2030),
-          focusedDay: _focusedDay,
-          currentDay: DateTime.now(),
-          headerVisible: false,
-          rowHeight: 40,
-          daysOfWeekHeight: 18,
-          availableGestures: AvailableGestures.horizontalSwipe,
-          calendarFormat: CalendarFormat.week,
-          selectedDayPredicate: (d) => isSameDay(d, _selected),
-          onDaySelected: (sel, foc) {
-            setState(() {
-              _selected = sel;
-              _focusedDay = foc;
-            });
-            _load();
+        IconButton(
+          iconSize: 20,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+          icon: const Icon(Icons.chevron_right),
+          tooltip: 'Следующий день',
+          onPressed: () => _shiftDay(1),
+        ),
+      ],
+    );
+  }
+
+  void _shiftDay(int days) {
+    final d = _selected.add(Duration(days: days));
+    setState(() {
+      _selected = DateTime(d.year, d.month, d.day);
+      _focusedDay = _selected;
+    });
+    _load();
+  }
+
+  /// MG_DIARYTABS: вкладки подписями, а не иконками.
+  ///
+  /// Иконка воды и иконка весов узнаются, а «Итоги» и «Тело» картинкой не
+  /// объяснить: пришлось бы угадывать по графику и по человечку. Четыре
+  /// подписи в строку на телефон влезают.
+  Widget _tabBar() {
+    const titles = ['Приёмы', 'Итоги', 'Вода', 'Тело'];
+    final cs = Theme.of(context).colorScheme;
+    final t = context.tokens;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(bottom: BorderSide(color: t.border)),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < titles.length; i++)
+            Expanded(
+              child: InkWell(
+                onTap: () => setState(() {
+                  _tab = i;
+                  _visited.add(i);
+                }),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(2, 11, 2, 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: _tab == i ? cs.primary : Colors.transparent,
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    titles[i],
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: _tab == i ? FontWeight.w700 : FontWeight.w400,
+                      color: _tab == i ? cs.primary : t.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabChild(int i) {
+    switch (i) {
+      case 1:
+        return _summaryTab();
+      case 2:
+        return _waterTab();
+      case 3:
+        return _bodyTab();
+      default:
+        return _buildBody();
+    }
+  }
+
+  /// MG_DAYSUM: «Итоги дня» — сколько съедено из нормы и сколько осталось.
+  Widget _summaryTab() {
+    return BlocBuilder<DiaryBloc, DiaryState>(
+      builder: (context, state) {
+        if (state is! DiaryLoaded) {
+          // На «Итогах» своего заглушечного состояния не рисуем: ошибки и
+          // премиум-замок уже показаны на «Приёмах», и дублировать их здесь
+          // значит объяснять одно и то же двумя разными словами.
+          return _buildBody();
+        }
+        return DaySummaryTab(
+          api: context.read<DiaryBloc>().apiClient,
+          date: DateFormat('yyyy-MM-dd').format(_selected),
+          memberId: _memberId,
+          stats: state.stats,
+          entries: state.entries,
+          waterMl: state.waterMl,
+          mealPlanType: _mealPlanType,
+          calorieTarget: _target('calorie_target')?.round(),
+          proteinTarget: _target('protein_target_g'),
+          fatTarget: _target('fat_target_g'),
+          carbTarget: _target('carb_target_g'),
+          onCalcTarget: () async {
+            await context.push('/profile/kbju-calculator', extra: _profile);
+            // Норма могла поменяться — перечитываем профиль, иначе кольцо
+            // осталось бы без цели до перезапуска приложения.
+            if (mounted) _loadMealPlan();
           },
-          onPageChanged: (foc) => setState(() => _focusedDay = foc),
-          calendarStyle: const CalendarStyle(
-            outsideDaysVisible: false,
-            cellMargin: EdgeInsets.all(4),
-          ),
-          daysOfWeekStyle: const DaysOfWeekStyle(
-            weekdayStyle: TextStyle(fontSize: 11),
-            weekendStyle: TextStyle(fontSize: 11),
-          ),
+        );
+      },
+    );
+  }
+
+  Widget _waterTab() {
+    return ListView(
+      key: const PageStorageKey('diary-water'),
+      padding: const EdgeInsets.only(top: 6, bottom: 16),
+      children: [
+        _WaterCard( // DIARY_V2
+          // Во вкладке карточка раскрыта: сворачивать единственное, что на
+          // экране, незачем — свёрнутой она была, когда карточек было четыре.
+          initiallyExpanded: true,
+          onAdd: (delta) {
+            final st = context.read<DiaryBloc>().state;
+            final cur = st is DiaryLoaded ? st.waterMl : 0;
+            context.read<DiaryBloc>().add(DiaryWaterSetRequested(
+                  date: DateFormat('yyyy-MM-dd').format(_selected),
+                  waterMl: (cur + delta) < 0 ? 0 : (cur + delta),
+                  memberId: _memberId,
+                ));
+          },
+          onSet: (ml) {
+            context.read<DiaryBloc>().add(DiaryWaterSetRequested(
+                  date: DateFormat('yyyy-MM-dd').format(_selected),
+                  waterMl: ml < 0 ? 0 : ml,
+                  memberId: _memberId,
+                ));
+          },
+          onClear: () {
+            context.read<DiaryBloc>().add(DiaryWaterClearRequested(
+                  date: DateFormat('yyyy-MM-dd').format(_selected),
+                  memberId: _memberId,
+                ));
+          },
+        ),
+      ],
+    );
+  }
+
+  /// Вкладка «Тело»: вес, обхваты и занятия.
+  ///
+  /// Нагрузки стоят здесь, а не отдельной вкладкой: это про тело, а не про
+  /// еду, и их меряют в один заход с весом. Пятая подпись в строку вкладок уже
+  /// не влезла бы.
+  Widget _bodyTab() {
+    final api = context.read<DiaryBloc>().apiClient;
+    final date = DateFormat('yyyy-MM-dd').format(_selected);
+    return ListView(
+      key: const PageStorageKey('diary-body'),
+      padding: const EdgeInsets.only(top: 6, bottom: 16),
+      children: [
+        _WeightCard( // MG_MOBWEIGHT
+          api: api,
+          date: date,
+          memberId: _memberId,
+          initiallyExpanded: true,
+          onPickDate: _openDay, // MG_DAYFIX
+        ),
+        // MG_BODYSIZE: обхваты — там же, где вес: их меряют в один заход.
+        // Свёрнуты: их меряют раз в неделю-две, а вес — каждый день.
+        MeasurementsCard(
+          api: api,
+          date: date,
+          memberId: _memberId,
+          gender: _gender,
+          onPickDate: _openDay, // MG_DAYFIX
+        ),
+        // MG_WORKOUT: занятия за день.
+        WorkoutsCard(
+          api: api,
+          date: date,
+          memberId: _memberId,
+          // Расход попал в сводку дня — «Итогам» надо перечитать её.
+          onChanged: _load,
         ),
       ],
     );
@@ -543,26 +738,16 @@ class _MealTotals {
   final double carbs;
   const _MealTotals(this.calories, this.proteins, this.fats, this.carbs);
 
-  static double _value(Map<String, dynamic> nutrition, String key) {
-    final raw = nutrition[key];
-    if (raw is num) return raw.toDouble();
-    if (raw is String) return double.tryParse(raw.replaceAll(',', '.')) ?? 0;
-    if (raw is Map && raw['value'] != null) {
-      final v = raw['value'];
-      if (v is num) return v.toDouble();
-      if (v is String) return double.tryParse(v.replaceAll(',', '.')) ?? 0;
-    }
-    return 0;
-  }
-
+  // Чтение КБЖУ записи живёт в самой записи (DiaryEntry.nutritionValue): то же
+  // число нужно и «Итогам», а две копии разбора однажды разойдутся на одной и
+  // той же записи — и две суммы на одном экране перестанут сходиться.
   factory _MealTotals.of(Iterable<DiaryEntry> entries) {
     double cal = 0, prot = 0, fat = 0, carb = 0;
     for (final e in entries) {
-      final q = e.quantity;
-      cal += _value(e.nutrition, 'calories') * q;
-      prot += _value(e.nutrition, 'proteins') * q;
-      fat += _value(e.nutrition, 'fats') * q;
-      carb += _value(e.nutrition, 'carbs') * q;
+      cal += e.calories;
+      prot += e.proteins;
+      fat += e.fats;
+      carb += e.carbs;
     }
     return _MealTotals(cal, prot, fat, carb);
   }
@@ -1306,10 +1491,14 @@ class _WaterCard extends StatefulWidget {
   /// человека одно и то же, но в базе разное: пустой день не должен выглядеть
   /// как «выпил 0».
   final VoidCallback onClear;
+
+  /// MG_DIARYTABS: во вкладке карточка раскрыта сразу — она там единственная.
+  final bool initiallyExpanded;
   const _WaterCard({
     required this.onAdd,
     required this.onSet,
     required this.onClear,
+    this.initiallyExpanded = false,
   });
   @override
   State<_WaterCard> createState() => _WaterCardState();
@@ -1318,7 +1507,7 @@ class _WaterCard extends StatefulWidget {
 class _WaterCardState extends State<_WaterCard> {
   static const int _goal = 2000;
   final _ctrl = TextEditingController();
-  bool _expanded = false; // MG_SKIN: по умолчанию свёрнуто в строчку
+  late bool _expanded = widget.initiallyExpanded; // MG_SKIN: свёрнуто в строчку
 
   @override
   void dispose() {
@@ -1442,11 +1631,16 @@ class _WeightCard extends StatefulWidget {
 
   /// MG_DAYFIX: открыть другой день — по нажатию на прошлый замер.
   final void Function(String date)? onPickDate;
+
+  /// MG_DIARYTABS: во вкладке «Тело» поле ввода раскрыто сразу — вес пишут
+  /// каждый день, и лишнее нажатие на этом пути не нужно.
+  final bool initiallyExpanded;
   const _WeightCard({
     required this.api,
     required this.date,
     this.memberId,
     this.onPickDate,
+    this.initiallyExpanded = false,
   });
   @override
   State<_WeightCard> createState() => _WeightCardState();
@@ -1457,7 +1651,7 @@ class _WeightCardState extends State<_WeightCard> {
 
   final _ctrl = TextEditingController();
   List<Map<String, dynamic>> _points = const [];
-  bool _expanded = false;
+  late bool _expanded = widget.initiallyExpanded;
   // MG_BODYCHART: график по желанию, и выбор помнится: одному нужна динамика
   // каждый день, другому — только сегодняшнее число.
   bool _showChart = false;

@@ -501,6 +501,11 @@ export interface DiaryDayStats {
   planned: DiaryNutritionBucket;
   actual: DiaryNutritionBucket;
   total: DiaryNutritionBucket;
+  // MG_WORKOUT: потрачено на занятиях, ккал. Стоит рядом со съеденным и НЕ
+  // участвует в подсчёте остатка: норма уже содержит коэффициент активности,
+  // и прибавка за тренировку посчитала бы его дважды. Поле может не прийти со
+  // старого сервера — читать как 0.
+  burned?: number;
 }
 export interface DiaryWaterLog {
   id?: number | null;

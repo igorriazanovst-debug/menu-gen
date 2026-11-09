@@ -39,18 +39,26 @@ class NutritionBucket extends Equatable {
 /// Per-day stats from `GET /api/v1/diary/stats/?from=&to=`.
 ///
 /// Backend (MG-605.D) returns a *plain array* (not paginated):
-/// `[{date, planned, actual, total}]`.
+/// `[{date, planned, actual, total, burned}]`.
 class DiaryDayStats extends Equatable {
   final String date;
   final NutritionBucket planned;
   final NutritionBucket actual;
   final NutritionBucket total;
 
+  /// MG_WORKOUT: потрачено на занятиях за день, ккал.
+  ///
+  /// Стоит рядом с съеденным и НЕ участвует в подсчёте остатка: норма уже
+  /// содержит коэффициент активности, и прибавка за тренировку посчитала бы
+  /// его дважды — человеку на похудении приложение разрешило бы съесть лишнее.
+  final int burned;
+
   const DiaryDayStats({
     required this.date,
     required this.planned,
     required this.actual,
     required this.total,
+    this.burned = 0,
   });
 
   factory DiaryDayStats.fromJson(Map<String, dynamic> j) => DiaryDayStats(
@@ -58,8 +66,11 @@ class DiaryDayStats extends Equatable {
         planned: NutritionBucket.fromJson(j['planned'] as Map<String, dynamic>?),
         actual: NutritionBucket.fromJson(j['actual'] as Map<String, dynamic>?),
         total: NutritionBucket.fromJson(j['total'] as Map<String, dynamic>?),
+        // Ноль, а не null: «не тренировался» — это ноль. Старое приложение,
+        // читающее ответ без поля, получит то же самое.
+        burned: (j['burned'] as num?)?.round() ?? 0,
       );
 
   @override
-  List<Object?> get props => [date, planned, actual, total];
+  List<Object?> get props => [date, planned, actual, total, burned];
 }
