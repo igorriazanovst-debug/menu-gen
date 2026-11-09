@@ -316,3 +316,106 @@ class BodyMeasurement(OwnedByPerson):
 
     def __str__(self):
         return f"Body({self.user}, {self.date})"
+
+
+class ActivityType(models.Model):
+    """MG_WORKOUT: справочник физнагрузок с коэффициентом MET.
+
+    MET — во сколько раз занятие расходует больше, чем покой. Числа не наши:
+    это общепринятый Compendium of Physical Activities, на который ссылаются и
+    счётчики калорий, и научные работы. Выдумывать свои значения нельзя —
+    человек сверит с любым калькулятором и перестанет нам верить.
+
+    Расход считается по формуле MET × 3,5 × вес(кг) × минуты / 200. Вес берётся
+    из последнего замера: без веса расход не посчитать вовсе, и тогда человек
+    вписывает калории руками.
+
+    Справочник общий и правится админкой: тренер, которому нужен свой вид
+    занятий, добавляет его через «своё название» в записи, а не плодит записи
+    в каталоге.
+    """
+
+    class Group(models.TextChoices):
+        CARDIO = "cardio", "Кардио"
+        STRENGTH = "strength", "Силовые"
+        SPORT = "sport", "Игры и спорт"
+        DAILY = "daily", "Повседневное"
+        MIND = "mind", "Растяжка и дыхание"
+
+    code = models.SlugField(max_length=60, unique=True)
+    name = models.CharField(max_length=120)
+    group = models.CharField(max_length=20, choices=Group.choices, default=Group.CARDIO)
+    # Дробный: у ходьбы 3,5, у бега 9,8 — округление до целого даёт ошибку
+    # в сотни килокалорий за час.
+    met = models.DecimalField(max_digits=4, decimal_places=1)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "activity_types"
+        ordering = ["group", "sort_order", "name"]
+        indexes = [models.Index(fields=["is_active"])]
+
+    def __str__(self):
+        return f"{self.name} (MET {self.met})"
+
+
+class WorkoutLog(OwnedByPerson):
+    """MG_WORKOUT: одно занятие.
+
+    Устройство повторяет WeightLog, кроме одного: записей на день МНОГО.
+    Пробежка утром и зал вечером — два разных занятия, и сливать их в одну
+    строку значит терять то, ради чего тренер и смотрит дневник.
+
+    Расход не вычитается из дневной нормы и вычитаться не должен. Норма уже
+    содержит в себе коэффициент активности («умеренные нагрузки 3–5 раз в
+    неделю» — это множитель 1,55 в профиле), и прибавка за каждую тренировку
+    посчитала бы её дважды: человеку на похудении приложение разрешило бы
+    съесть лишние полтысячи калорий. Поэтому в «Итогах дня» расход стоит
+    отдельным числом рядом со съеденным, а не внутри остатка.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workout_logs")
+    member = models.ForeignKey(
+        FamilyMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workout_logs",
+    )
+    date = models.DateField()
+    # Активность из справочника ИЛИ своё название. Оба пустыми быть не могут —
+    # это проверяет сериализатор: у базы нет способа сказать об этом по-русски.
+    activity = models.ForeignKey(
+        ActivityType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workouts",
+    )
+    custom_name = models.CharField(max_length=120, blank=True)
+    duration_min = models.PositiveSmallIntegerField()
+    # Посчитанный или введённый руками. Хранится числом, а не считается на
+    # лету: вес человека меняется, и пересчёт задним числом переписал бы
+    # историю — вчерашняя пробежка не должна «подешеветь» оттого, что сегодня
+    # человек похудел.
+    calories = models.PositiveSmallIntegerField(null=True, blank=True)
+    note = models.CharField(max_length=255, blank=True)
+    added_by = added_by_field()  # MG_HEADKEEPS: тренер пишет за клиента
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workout_logs"
+        ordering = ["-date", "-created_at"]
+        indexes = [
+            models.Index(fields=["user_id", "-date"]),
+            models.Index(fields=["member_id", "-date"]),
+        ]
+
+    def __str__(self):
+        return f"Workout({self.user}, {self.date}, {self.title}, {self.duration_min} мин)"
+
+    @property
+    def title(self) -> str:
+        """Как называть занятие: своё название важнее справочного."""
+        return self.custom_name or (self.activity.name if self.activity_id else "Занятие")

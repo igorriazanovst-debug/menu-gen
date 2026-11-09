@@ -2,7 +2,8 @@ from rest_framework import serializers
 
 from apps.common.fields import RoundedDecimalField  # MG_WEIGHT2
 
-from .models import BodyMeasurement, DiaryEntry, WaterLog, WeightLog
+from .models import ActivityType, BodyMeasurement, DiaryEntry, WaterLog, WeightLog, WorkoutLog
+from .workout_calories import MAX_WORKOUT_KCAL, burned_kcal, latest_weight_kg  # MG_WORKOUT
 
 
 class AddedByMixin(serializers.ModelSerializer):
@@ -275,3 +276,101 @@ class BodyMeasurementSerializer(AddedByMixin):
 class DiaryCopySerializer(serializers.Serializer):
     entry_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False, max_length=200)
     target_date = serializers.DateField()
+
+
+# ── MG_WORKOUT: физнагрузки ──────────────────────────────────────────────────
+
+
+class ActivityTypeSerializer(serializers.ModelSerializer):
+    """Справочник занятий. Только чтение: правится админкой."""
+
+    group_label = serializers.CharField(source="get_group_display", read_only=True)
+
+    class Meta:
+        model = ActivityType
+        fields = ("id", "code", "name", "group", "group_label", "met")
+
+
+class WorkoutLogSerializer(AddedByMixin):
+    """Одно занятие. На день их может быть несколько — в отличие от веса.
+
+    Расход считается по справочному MET и последнему известному весу. Если
+    человек ввёл калории сам, считанное его не перебивает: он мог смотреть на
+    пульсометр, а тот знает о нагрузке больше формулы.
+    """
+
+    title = serializers.CharField(read_only=True)
+    activity_name = serializers.CharField(source="activity.name", read_only=True, default=None)
+    # Посчитали мы или вписал человек. Клиенту это нужно, чтобы не выдавать
+    # нашу оценку за показание прибора.
+    calories_estimated = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkoutLog
+        fields = (
+            "id",
+            "date",
+            "activity",
+            "activity_name",
+            "custom_name",
+            "title",
+            "duration_min",
+            "calories",
+            "calories_estimated",
+            "note",
+            "added_by",
+            "added_by_name",
+        )
+        read_only_fields = ("id", "title", "activity_name", "calories_estimated", "added_by", "added_by_name")
+
+    def get_calories_estimated(self, obj) -> bool:
+        return bool(getattr(obj, "_calories_estimated", False))
+
+    def validate_duration_min(self, value):
+        # Сутки — предел не придирки ради: больше означает опечатку, а она
+        # испортит сводку дня тысячами калорий.
+        if value <= 0 or value > 1440:
+            raise serializers.ValidationError("Длительность должна быть от 1 до 1440 минут.")
+        return value
+
+    def validate_calories(self, value):
+        if value is not None and value > MAX_WORKOUT_KCAL:
+            raise serializers.ValidationError(f"Больше {MAX_WORKOUT_KCAL} ккал за занятие не бывает.")
+        return value
+
+    def validate(self, attrs):
+        # Безымянное занятие в списке выглядит как сбой загрузки. У базы нет
+        # способа сказать об этом по-русски, поэтому проверка здесь.
+        activity = attrs.get("activity") or getattr(self.instance, "activity", None)
+        custom = (attrs.get("custom_name") or getattr(self.instance, "custom_name", "")).strip()
+        if activity is None and not custom:
+            raise serializers.ValidationError({"activity": "Выберите занятие из списка или впишите своё название."})
+        return attrs
+
+    def _with_calories(self, obj, validated_data, member):
+        """Досчитать расход, если человек его не указал."""
+        if validated_data.get("calories") is not None:
+            obj._calories_estimated = False
+            return obj
+        activity = validated_data.get("activity")
+        if activity is None:
+            # Своё название без калорий — считать не из чего, и выдумывать
+            # нельзя. Пустой расход честнее: в сводке он просто не участвует.
+            obj._calories_estimated = False
+            return obj
+        kcal = burned_kcal(activity.met, latest_weight_kg(member.user), validated_data["duration_min"])
+        if kcal is not None:
+            obj.calories = kcal
+            obj.save(update_fields=["calories"])
+        obj._calories_estimated = kcal is not None
+        return obj
+
+    def create(self, validated_data):
+        member = self.context["member"]
+        obj = WorkoutLog.objects.create(
+            user=member.user,
+            member=member,
+            added_by=self._author(),
+            **validated_data,
+        )
+        return self._with_calories(obj, validated_data, member)

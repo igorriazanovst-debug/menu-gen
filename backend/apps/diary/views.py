@@ -17,10 +17,11 @@ from apps.family.selection import current_membership  # MG_ONEFAMILY
 from apps.menu.models import Menu, MenuItem
 
 from .access import author_for, can_add_for, can_change_row  # MG_HEADKEEPS
-from .models import BodyMeasurement, DiaryEntry, WaterLog, WeightLog
+from .models import ActivityType, BodyMeasurement, DiaryEntry, WaterLog, WeightLog, WorkoutLog
 from .permissions import IsDiaryEntryOwner
 from .serializers import DiaryCopySerializer  # DIARY_COPY_V3
 from .serializers import (
+    ActivityTypeSerializer,
     BodyMeasurementSerializer,
     DiaryEntrySerializer,
     DiaryEntryWriteSerializer,
@@ -28,6 +29,7 @@ from .serializers import (
     DiaryStatsDaySerializer,
     WaterLogSerializer,
     WeightLogSerializer,
+    WorkoutLogSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -797,3 +799,102 @@ class DiaryCopyView(APIView):
             DiaryEntrySerializer(created, many=True).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+# ── MG_WORKOUT: физнагрузки ──────────────────────────────────────────────────
+
+
+class ActivityTypeListView(generics.ListAPIView):
+    """GET /diary/activities/ — справочник занятий для выбора.
+
+    Открыт всем вошедшим: это общий справочник, а не чьи-то данные.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ActivityTypeSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return ActivityType.objects.filter(is_active=True)
+
+
+class WorkoutLogView(APIView):
+    """MG_WORKOUT: GET — занятия за период, POST — записать занятие.
+
+    Устроено как вес, кроме одного: записей на день МНОГО. Пробежка утром и
+    зал вечером — два занятия, поэтому POST всегда создаёт новую строку, а не
+    переписывает дневную.
+
+    Расход в дневную норму не вычитается и вычитаться не должен: норма уже
+    содержит коэффициент активности, и прибавка за тренировку посчитала бы её
+    дважды. В сводке он стоит отдельным числом.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("member_id", int, description="Участник (по умолчанию — свой)"),
+            OpenApiParameter("days", int, description="За сколько последних дней (по умолчанию 30)"),
+            OpenApiParameter("date", str, description="Только за эту дату (YYYY-MM-DD)"),
+        ],
+        responses={200: WorkoutLogSerializer(many=True)},
+    )
+    def get(self, request):
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        rows = _scope(WorkoutLog.objects, member, target).select_related("activity", "added_by")
+        day = request.query_params.get("date")
+        if day:
+            rows = rows.filter(date=day)
+        else:
+            try:
+                days = max(1, min(int(request.query_params.get("days", 30)), 730))
+            except (TypeError, ValueError):
+                days = 30
+            rows = rows.filter(date__gte=date.today() - timedelta(days=days - 1))
+        return Response(WorkoutLogSerializer(rows.order_by("date", "created_at"), many=True).data)
+
+    @extend_schema(request=WorkoutLogSerializer, responses={201: WorkoutLogSerializer})
+    def post(self, request):
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        target = _resolve_target_member(request, member)
+        # Запись за другого — право то же, что у веса и воды: своё всегда,
+        # чужое только главе семьи (и специалисту с правом на нагрузки).
+        if not can_change_row(member, target, None):
+            raise PermissionDenied(_NO_RIGHTS)
+        serializer = WorkoutLogSerializer(
+            data=request.data,
+            context={"member": target, "author": author_for(member, target)},
+        )
+        serializer.is_valid(raise_exception=True)
+        obj = serializer.save()
+        return Response(WorkoutLogSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+
+class WorkoutLogDetailView(APIView):
+    """DELETE /diary/workouts/<id>/ — убрать занятие.
+
+    Отдельной ручкой, а не по дате: занятий на день несколько, и «удалить за
+    день» стёрло бы и то, что человек удалять не просил.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, pk: int):
+        member = _get_member(request.user)
+        if not member:
+            return Response({"detail": "Участник не найден."}, status=status.HTTP_404_NOT_FOUND)
+        row = WorkoutLog.objects.filter(pk=pk).select_related("member").first()
+        if row is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        target = row.member or member
+        if row.user_id != member.user_id and not can_change_row(member, target, row):
+            raise PermissionDenied(_NO_RIGHTS)
+        row.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
