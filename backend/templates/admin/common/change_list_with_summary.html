@@ -1,0 +1,20 @@
+{% extends "admin/change_list.html" %}
+{# MG_SALES: числа над списком. Считаются по текущему отбору — см. apps/common/admin_summary.py #}
+{% block result_list %}
+  {% if sales_summary %}
+    <div class="module" style="margin-bottom:16px;padding:12px 14px">
+      <div style="display:flex;flex-wrap:wrap;gap:22px">
+        {% for label, value in sales_summary %}
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;opacity:.7">{{ label }}</div>
+            <div style="font-size:19px;font-weight:600;margin-top:2px">{{ value }}</div>
+          </div>
+        {% endfor %}
+      </div>
+      <div style="font-size:11px;opacity:.6;margin-top:10px">
+        Числа считаются по текущему отбору: поставьте фильтр по дате или статусу — пересчитаются.
+      </div>
+    </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

@@ -2,9 +2,13 @@ import json
 
 from django import forms
 from django.contrib import admin, messages
+from django.db.models import Count, Q
 from django.shortcuts import render
 from django.urls import path
 from django.utils import timezone
+from django.utils.html import format_html
+
+from apps.common.admin_summary import SalesSummaryMixin, count
 
 from .models import MenuGenerationCounter, PlanOffer, PromoCode, PromoRedemption, Subscription, SubscriptionPlan
 from .promo import generate_unique_codes, revoke_code, revoke_redemption
@@ -217,15 +221,133 @@ class PromoCodeAdmin(admin.ModelAdmin):
         self.message_user(request, f"Отозвано кодов: {n}. Подписки сняты, семьи заблокированы.", messages.SUCCESS)
 
 
+# MG_SALES: активации промокодов — вторая половина продаж.
+#
+# Через кассу продаётся не всё: у промокода есть «владелец ключа
+# (имя/компания)» и аккаунт, который его выдал, то есть кодами торгуют мимо
+# ЮKassa. Считать их вместе с оплатами нельзя — потеряется разница между
+# деньгами и подарками, — поэтому это отдельный раздел с такими же числами
+# над списком.
 @admin.register(PromoRedemption)
-class PromoRedemptionAdmin(admin.ModelAdmin):
-    list_display = ("id", "promo", "family", "user", "subscription", "redeemed_at", "revoke_mode", "revoked_at")
-    list_filter = ("revoke_mode",)
-    search_fields = ("promo__code", "family__name", "user__email")
+class PromoRedemptionAdmin(SalesSummaryMixin, admin.ModelAdmin):
+    list_display = (
+        "redeemed_at",
+        "code",
+        "issued_by",
+        "key_owner",
+        "customer",
+        "phone",
+        "family_size",
+        "term",
+        "state",
+    )
+    list_filter = ("revoke_mode", "promo__campaign", "promo__plan", "redeemed_at")
+    search_fields = (
+        "promo__code",
+        "promo__campaign",
+        "promo__owner",
+        "promo__created_by__email",
+        "promo__created_by__name",
+        "family__name",
+        "user__email",
+        "user__name",
+        "user__phone",
+    )
+    date_hierarchy = "redeemed_at"
     autocomplete_fields = ("family", "user")
     raw_id_fields = ("promo", "subscription")
     readonly_fields = ("redeemed_at", "revoked_at", "revoke_mode")
+    ordering = ("-redeemed_at",)
     actions = ("action_revoke_free", "action_revoke_block")
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        qs = qs.select_related("promo", "promo__plan", "promo__created_by", "user", "family", "subscription")
+        return qs.annotate(members_count=Count("family__members", distinct=True))
+
+    @admin.display(description="Код", ordering="promo__code")
+    def code(self, obj):
+        return obj.promo.code if obj.promo_id else "—"
+
+    @admin.display(description="Кем выдан", ordering="promo__created_by__email")
+    def issued_by(self, obj):
+        """Под каким аккаунтом сгенерирован код.
+
+        Пусто у кодов, заведённых до того, как это стали записывать, и у
+        выданных не через форму генерации. Писать туда «система» нельзя: это
+        было бы утверждением, а мы просто не знаем.
+        """
+        author = getattr(obj.promo, "created_by", None) if obj.promo_id else None
+        if author is None:
+            return "— не записано —"
+        return author.email or author.name or f"id {author.pk}"
+
+    @admin.display(description="Владелец ключа", ordering="promo__owner")
+    def key_owner(self, obj):
+        return (obj.promo.owner if obj.promo_id else "") or "—"
+
+    @admin.display(description="Клиент", ordering="user__email")
+    def customer(self, obj):
+        person = obj.user
+        if person is None:
+            return "— пользователь удалён —"
+        name = person.name or "без имени"
+        contact = person.email or person.phone or f"id {person.pk}"
+        return format_html("{}<br><span style='opacity:.7'>{}</span>", name, contact)
+
+    @admin.display(description="Телефон")
+    def phone(self, obj):
+        return (obj.user.phone if obj.user else None) or "—"
+
+    @admin.display(description="В семье", ordering="members_count")
+    def family_size(self, obj):
+        return obj.members_count if obj.family_id else "—"
+
+    @admin.display(description="Срок")
+    def term(self, obj):
+        """На сколько выдана подписка.
+
+        У кода может стоять свой срок в днях; если нет — срок берётся из
+        периода тарифа. Это та же развилка, что в самой выдаче (см. PromoCode).
+        """
+        promo = obj.promo if obj.promo_id else None
+        if promo and promo.duration_days:
+            return f"{promo.duration_days} дн"
+        sub = obj.subscription
+        if sub and sub.started_at and sub.expires_at:
+            days = (sub.expires_at - sub.started_at).days
+            return f"{days} дн (по подписке)"
+        if promo and promo.plan_id:
+            return f"период тарифа ({promo.plan.get_period_display().lower()})"
+        return "—"
+
+    @admin.display(description="Состояние")
+    def state(self, obj):
+        if obj.revoked_at:
+            return f"отозвана ({obj.get_revoke_mode_display() or obj.revoke_mode})"
+        return "действует"
+
+    def summary_rows(self, queryset):
+        rows_qs = PromoRedemption.objects.filter(pk__in=queryset.values("pk"))
+        agg = rows_qs.aggregate(
+            total=Count("id"),
+            revoked=Count("id", filter=Q(revoked_at__isnull=False)),
+            families=Count("family_id", distinct=True),
+            issuers=Count("promo__created_by_id", distinct=True),
+            codes=Count("promo_id", distinct=True),
+        )
+        total = agg["total"] or 0
+        rows = [
+            ("Активаций", count(total)),
+            ("Действует", count(total - (agg["revoked"] or 0))),
+            ("Семей", count(agg["families"])),
+            ("Кодов задействовано", count(agg["codes"])),
+        ]
+        if agg["revoked"]:
+            rows.append(("Отозвано", count(agg["revoked"])))
+        if (agg["issuers"] or 0) > 1:
+            rows.append(("Выдавали аккаунтов", count(agg["issuers"])))
+        return rows
 
     @admin.action(description="Отозвать активацию → бесплатный тариф")
     def action_revoke_free(self, request, queryset):
