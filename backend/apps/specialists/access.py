@@ -32,6 +32,10 @@ class Section(models.TextChoices):
     MENU = "menu", "Меню"
     FRIDGE = "fridge", "Холодильник"
     SHOPPING = "shopping", "Списки покупок"
+    # MG_WORKOUT: нагрузки — отдельный раздел, а не часть дневника. Тренеру
+    # нужно записывать клиенту занятия, но еда его не касается: сложив их в
+    # один раздел, мы открыли бы ему и дневник питания.
+    WORKOUTS = "workouts", "Физнагрузки"
 
 
 class Level(models.TextChoices):
@@ -48,11 +52,18 @@ MATRIX: dict[str, dict[str, str]] = {
         Section.DIARY: Level.READ,
         Section.MENU: Level.WRITE,
         Section.FRIDGE: Level.READ,
+        # Диетологу нагрузки видны: на одном и том же калораже человек с
+        # тренировками и без них питается по-разному. Писать их не его дело.
+        Section.WORKOUTS: Level.READ,
     },
+    # Нагрузки — то, ради чего тренера и звали: план занятий он составляет сам
+    # и ведёт его в дневнике клиента. Дневник питания при этом остаётся на
+    # чтение: что человек ест, тренер видит, но не переписывает.
     "trainer": {
         Section.PROFILE: Level.WRITE,
         Section.DIARY: Level.READ,
         Section.MENU: Level.READ,
+        Section.WORKOUTS: Level.WRITE,
     },
     # Личный повар ведёт закупку и готовку, поэтому правит холодильник и списки
     # всей семьи. Профиль ему виден только для чтения (аллергии, нелюбимое),

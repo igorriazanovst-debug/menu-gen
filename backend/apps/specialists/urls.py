@@ -13,6 +13,8 @@ from .views import (
     CabinetClientSummaryView,
     CabinetClientTargetsHistoryView,
     CabinetClientWeightView,
+    CabinetClientWorkoutDetailView,
+    CabinetClientWorkoutsView,
     CabinetMenuItemSwapView,
     CabinetPendingAssignmentsView,
     CabinetRecommendationDetailView,
@@ -61,6 +63,17 @@ urlpatterns = [
         "cabinet/clients/<int:family_id>/weight/",
         CabinetClientWeightView.as_view(),
         name="cabinet-client-weight",
+    ),
+    # MG_WORKOUT: нагрузки клиента — отдельный раздел доступа (тренер пишет)
+    path(
+        "cabinet/clients/<int:family_id>/workouts/",
+        CabinetClientWorkoutsView.as_view(),
+        name="cabinet-client-workouts",
+    ),
+    path(
+        "cabinet/clients/<int:family_id>/workouts/<int:workout_id>/",
+        CabinetClientWorkoutDetailView.as_view(),
+        name="cabinet-client-workout-detail",
     ),
     path(
         "cabinet/clients/<int:family_id>/targets-history/",

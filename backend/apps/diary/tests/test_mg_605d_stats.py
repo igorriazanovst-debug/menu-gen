@@ -117,7 +117,9 @@ class TestDiaryStatsNewShape:
         resp = client.get(reverse("diary-stats"), {"from": str(date.today()), "to": str(date.today())})
         assert resp.status_code == 200
         d = resp.data[0]
-        assert set(d.keys()) == {"date", "planned", "actual", "total"}
+        # MG_WORKOUT: `burned` добавлен к форме ответа — расход за день стоит
+        # рядом с едой отдельным числом и ни в один из бюджетов не входит.
+        assert set(d.keys()) == {"date", "planned", "actual", "total", "burned"}
         for bucket in ("planned", "actual", "total"):
             assert set(d[bucket].keys()) == {"calories", "proteins", "fats", "carbs"}
 

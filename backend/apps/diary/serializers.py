@@ -117,19 +117,23 @@ class _NutritionBucketSerializer(serializers.Serializer):
 
 
 class DiaryStatsDaySerializer(serializers.Serializer):
-    """MG-605.D: возвращает {date, planned, actual, total}.
+    """MG-605.D: возвращает {date, planned, actual, total, burned}.
 
     - planned: суммы по записям с planned_menu_item IS NOT NULL
     - actual:  суммы по записям, считающимся «съеденными»:
                is_eaten = True ИЛИ planned_menu_item IS NULL
                (вручную добавленное считаем фактом сразу; плановое — только после галочки)
     - total:   синоним actual (для UI прогресс-бара)
+    - burned:  MG_WORKOUT: потрачено на занятиях. Показывается рядом с
+               съеденным и не входит ни в один из бюджетов — норма уже
+               содержит коэффициент активности.
     """
 
     date = serializers.DateField()
     planned = _NutritionBucketSerializer()
     actual = _NutritionBucketSerializer()
     total = _NutritionBucketSerializer()
+    burned = serializers.IntegerField()
 
 
 # Обратная совместимость на случай внешних импортов.

@@ -502,6 +502,140 @@ class CabinetClientWeightView(APIView):
         return Response({"days": days, "members": out})
 
 
+class CabinetClientWorkoutsView(APIView):
+    """MG_WORKOUT: занятия клиента. Тренер пишет, диетолог читает.
+
+    Раздел — «нагрузки», а не дневник. Разница не формальная: тренеру нужно
+    записывать клиенту занятия, а что тот ест — только видеть. Сложив то и
+    другое в один раздел, мы вместе с правом на тренировки отдали бы и право
+    переписывать еду.
+
+    Расход в норму клиента не вычитается — см. apps/diary/workout_calories.py.
+    Занятие, записанное тренером, помечено им в `added_by`: клиент в своём
+    дневнике видит, что строка не его.
+    """
+
+    permission_classes = CABINET_PERMISSIONS
+    section = Section.WORKOUTS
+
+    def _member(self, family_id, raw):
+        """Участник семьи клиента по id. None — не указан или чужой."""
+        if not raw:
+            return None
+        try:
+            member_id = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return FamilyMember.objects.filter(id=member_id, family_id=family_id).select_related("user").first()
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("member_id", int, description="Участник семьи клиента (по умолчанию — все)"),
+            OpenApiParameter("days", int, description="Период в днях (по умолчанию 30, максимум 365)"),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request, family_id):
+        from datetime import timedelta
+
+        from apps.diary.models import WorkoutLog
+        from apps.diary.serializers import WorkoutLogSerializer
+
+        members = FamilyMember.objects.filter(family_id=family_id).select_related("user")
+        raw = request.query_params.get("member_id")
+        if raw:
+            member = self._member(family_id, raw)
+            if member is None:
+                # Участник чужой семьи — для этого специалиста его не существует.
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            members = [member]
+        try:
+            days = max(1, min(int(request.query_params.get("days", 30)), 365))
+        except (TypeError, ValueError):
+            days = 30
+        start = timezone.localdate() - timedelta(days=days - 1)
+
+        out = []
+        for m in members:
+            # По member, а не по user: специалист приставлен к семье и видит то,
+            # что записано за этим столом (MG_OWNDIARY).
+            rows = (
+                WorkoutLog.objects.filter(member=m, date__gte=start)
+                .select_related("activity", "added_by")
+                .order_by("date", "created_at")
+            )
+            out.append(
+                {
+                    "member_id": m.id,
+                    "member_name": getattr(m.user, "name", "") or "",
+                    "workouts": WorkoutLogSerializer(rows, many=True).data,
+                }
+            )
+        return Response({"days": days, "members": out})
+
+    @extend_schema(responses={201: OpenApiTypes.OBJECT})
+    def post(self, request, family_id):
+        from apps.diary.serializers import WorkoutLogSerializer
+
+        member = self._member(family_id, request.data.get("member_id"))
+        if member is None:
+            return Response(
+                {"member_id": "Укажите участника семьи клиента."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = WorkoutLogSerializer(
+            data=request.data,
+            # Автор — специалист: его занятие в дневнике клиента подписано.
+            context={"member": member, "author": request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        obj = serializer.save()
+        log_action(
+            request.assignment,
+            Section.WORKOUTS,
+            "add_workout",
+            summary=obj.title,
+            member=member,
+            object_id=obj.id,
+        )
+        return Response(WorkoutLogSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+
+class CabinetClientWorkoutDetailView(APIView):
+    """DELETE занятия, которое записал САМ этот специалист.
+
+    Чужую строку он не трогает, даже свою же роль имея: занятие, внесённое
+    клиентом, — его запись о себе, и тренер не вправе её стирать. Своя
+    опечатка при этом не остаётся у клиента навсегда.
+    """
+
+    permission_classes = CABINET_PERMISSIONS
+    section = Section.WORKOUTS
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, family_id, workout_id: int):
+        from apps.diary.models import WorkoutLog
+
+        row = WorkoutLog.objects.filter(
+            pk=workout_id,
+            member__family_id=family_id,
+            added_by=request.user,
+        ).first()
+        if row is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        title = row.title
+        log_action(
+            request.assignment,
+            Section.WORKOUTS,
+            "remove_workout",
+            summary=title,
+            member=row.member,
+            object_id=row.id,
+        )
+        row.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class CabinetClientTargetsHistoryView(APIView):
     """История правок коридора калорий и БЖУ.
 

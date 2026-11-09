@@ -2,7 +2,7 @@ import logging
 from datetime import date, timedelta
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -305,13 +305,30 @@ from .entry_nutrition import empty_bucket as _empty_bucket  # noqa: E402
 from .entry_nutrition import entry_nutrition as _entry_nutrition  # noqa: E402
 
 
+def _empty_day(d: str) -> dict:
+    return {
+        "date": d,
+        "planned": _empty_bucket(),
+        "actual": _empty_bucket(),
+        "total": _empty_bucket(),
+        # MG_WORKOUT: расход за день. Ноль, а не null: «не тренировался» —
+        # это ноль, и отдельное состояние «неизвестно» экрану не нужно.
+        "burned": 0,
+    }
+
+
 class DiaryStatsView(APIView):
-    """MG-605.D: возвращает за каждый день {date, planned, actual, total}.
+    """MG-605.D: возвращает за каждый день {date, planned, actual, total, burned}.
 
     - planned: записи с planned_menu_item IS NOT NULL (что было запланировано)
     - actual:  is_eaten=True (MG_EATFLAG: одно правило на все записи)
                (вручную добавленное всегда учитывается в факте; плановое — только после галочки)
     - total:   синоним actual (для UI прогресс-бара)
+    - burned:  MG_WORKOUT: сумма калорий по занятиям за день — рядом с
+               съеденным, но НИ В ОДНОМ из бюджетов. Норма уже содержит
+               коэффициент активности, и прибавка за тренировку посчитала бы
+               его дважды: человеку на похудении приложение разрешило бы съесть
+               лишнее. Поэтому цифра показывается, а не вычитается.
     """
 
     # freemium: дневник открыт free-юзерам.
@@ -341,12 +358,7 @@ class DiaryStatsView(APIView):
         for entry in entries:
             d = str(entry.date)
             if d not in stats:
-                stats[d] = {
-                    "date": d,
-                    "planned": _empty_bucket(),
-                    "actual": _empty_bucket(),
-                    "total": _empty_bucket(),
-                }
+                stats[d] = _empty_day(d)
             nutr = _entry_nutrition(entry)
 
             # DIARY_COPY_V3: plan flag = explicit field OR legacy menu link.
@@ -367,6 +379,20 @@ class DiaryStatsView(APIView):
             if is_actual:
                 _add_bucket(stats[d]["actual"], nutr)
                 _add_bucket(stats[d]["total"], nutr)
+
+        # MG_WORKOUT: день с тренировкой и без еды тоже должен попасть в выдачу —
+        # иначе «Итоги» за такой день приедут пустыми, хотя занятие записано.
+        workouts = (
+            _scope(WorkoutLog.objects, current, target)
+            .filter(date__gte=date_from, date__lte=date_to, calories__isnull=False)
+            .values("date")
+            .annotate(burned=Sum("calories"))
+        )
+        for row in workouts:
+            d = str(row["date"])
+            if d not in stats:
+                stats[d] = _empty_day(d)
+            stats[d]["burned"] = int(row["burned"] or 0)
 
         return Response(sorted(stats.values(), key=lambda x: x["date"]))
 

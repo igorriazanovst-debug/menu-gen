@@ -241,6 +241,93 @@ class TestЗаписьЗанятия:
 
 
 @pytest.mark.django_db
+class TestРасходВСводкеДня:
+    """Расход стоит в сводке отдельным числом — рядом с едой, но не в ней."""
+
+    def _eat(self, member, day, calories):
+        from apps.diary.models import DiaryEntry
+
+        return DiaryEntry.objects.create(
+            user=member.user,
+            member=member,
+            date=day,
+            meal_type="lunch",
+            custom_name="Обед",
+            is_eaten=True,
+            nutrition={"calories": calories, "proteins": 0, "fats": 0, "carbs": 0},
+        )
+
+    def test_калории_занятий_за_день_суммируются(self):
+        user, member = _person()
+        today = date.today()
+        self._eat(member, today, 600)
+        WorkoutLog.objects.create(
+            user=user, member=member, date=today, custom_name="Бег", duration_min=30, calories=300
+        )
+        WorkoutLog.objects.create(
+            user=user, member=member, date=today, custom_name="Зал", duration_min=60, calories=250
+        )
+
+        rows = _client(user).get(reverse("diary-stats"), {"from": str(today), "to": str(today)}).data
+
+        assert rows[0]["burned"] == 550
+        # Съеденное от тренировки не поехало: это разные числа и разные вопросы.
+        assert rows[0]["actual"]["calories"] == 600
+
+    def test_день_без_занятий_отдаёт_ноль_а_не_пусто(self):
+        # «Не тренировался» — это ноль. Отдельное состояние «неизвестно»
+        # экрану не нужно, а null в арифметике полос ломает подсчёт.
+        user, member = _person()
+        today = date.today()
+        self._eat(member, today, 600)
+
+        rows = _client(user).get(reverse("diary-stats"), {"from": str(today), "to": str(today)}).data
+
+        assert rows[0]["burned"] == 0
+
+    def test_день_с_занятием_и_без_еды_попадает_в_выдачу(self):
+        # Иначе «Итоги» за такой день приехали бы пустыми, хотя занятие записано.
+        user, member = _person()
+        today = date.today()
+        WorkoutLog.objects.create(
+            user=user, member=member, date=today, custom_name="Бег", duration_min=30, calories=300
+        )
+
+        rows = _client(user).get(reverse("diary-stats"), {"from": str(today), "to": str(today)}).data
+
+        assert len(rows) == 1
+        assert rows[0]["burned"] == 300
+        assert rows[0]["actual"]["calories"] == 0
+
+    def test_занятие_без_калорий_в_сумму_не_входит(self):
+        # Без веса расход не считается, и выдумывать его нельзя — такое занятие
+        # в сводке просто не участвует.
+        user, member = _person()
+        today = date.today()
+        WorkoutLog.objects.create(user=user, member=member, date=today, custom_name="Сенокос", duration_min=90)
+        WorkoutLog.objects.create(
+            user=user, member=member, date=today, custom_name="Бег", duration_min=30, calories=300
+        )
+
+        rows = _client(user).get(reverse("diary-stats"), {"from": str(today), "to": str(today)}).data
+
+        assert rows[0]["burned"] == 300
+
+    def test_чужое_занятие_в_свою_сводку_не_попадает(self):
+        mine, my_member = _person()
+        other, other_member = _person("other@example.com", "Чужой")
+        today = date.today()
+        WorkoutLog.objects.create(
+            user=other, member=other_member, date=today, custom_name="Бег", duration_min=30, calories=300
+        )
+        self._eat(my_member, today, 600)
+
+        rows = _client(mine).get(reverse("diary-stats"), {"from": str(today), "to": str(today)}).data
+
+        assert rows[0]["burned"] == 0
+
+
+@pytest.mark.django_db
 class TestНормаНеМеняется:
     def test_цель_по_калориям_не_зависит_от_тренировок(self):
         """Ради этого правила всё и устроено именно так.

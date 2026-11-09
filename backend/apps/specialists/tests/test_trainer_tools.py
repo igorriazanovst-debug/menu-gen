@@ -375,3 +375,183 @@ class TestClientRecommendations:
         r = api(trainer_user).get(reverse("cabinet-recommendations", args=[family.id]))
 
         assert r.data[0]["completed_at"] is not None
+
+
+@pytest.mark.django_db
+class TestНагрузкиКлиента:
+    """MG_WORKOUT: нагрузки — отдельный раздел доступа.
+
+    Тренер их пишет: план занятий он составляет сам и ведёт в дневнике
+    клиента. Диетолог читает — на одном калораже человек с тренировками и без
+    них питается по-разному. Повару закрыто и то и другое.
+
+    Главное, что проверяется, — раздел именно отдельный: право писать занятия
+    не открывает право переписывать еду.
+    """
+
+    def _activity(self):
+        from apps.diary.models import ActivityType
+
+        return ActivityType.objects.get(code="running_moderate")
+
+    def test_тренер_записывает_занятие_клиенту(self, client_family):
+        family, user, member = client_family
+        trainer_user, prof = make_specialist("trainer@example.com", Specialist.Type.TRAINER)
+        assign(prof, family)
+        WeightLog.objects.create(user=user, member=member, date=timezone.localdate(), weight_kg=Decimal("70"))
+
+        r = api(trainer_user).post(
+            reverse("cabinet-client-workouts", args=[family.id]),
+            {
+                "member_id": member.id,
+                "date": str(timezone.localdate()),
+                "activity": self._activity().id,
+                "duration_min": 60,
+            },
+            format="json",
+        )
+
+        assert r.status_code == 201, r.data
+        assert r.data["calories"] == 720
+
+    def test_занятие_тренера_подписано_им(self, client_family):
+        # В своём дневнике клиент должен видеть, что строка не его.
+        from apps.diary.models import WorkoutLog
+
+        family, user, member = client_family
+        trainer_user, prof = make_specialist("trainer@example.com", Specialist.Type.TRAINER)
+        assign(prof, family)
+
+        api(trainer_user).post(
+            reverse("cabinet-client-workouts", args=[family.id]),
+            {"member_id": member.id, "date": str(timezone.localdate()), "custom_name": "Зал", "duration_min": 45},
+            format="json",
+        )
+
+        row = WorkoutLog.objects.get()
+        assert row.user_id == user.id  # владелец — клиент
+        assert row.added_by_id == trainer_user.id
+
+    def test_без_участника_не_принимаем(self, client_family):
+        family, _, _ = client_family
+        trainer_user, prof = make_specialist("trainer@example.com", Specialist.Type.TRAINER)
+        assign(prof, family)
+
+        r = api(trainer_user).post(
+            reverse("cabinet-client-workouts", args=[family.id]),
+            {"date": str(timezone.localdate()), "custom_name": "Зал", "duration_min": 45},
+            format="json",
+        )
+
+        assert r.status_code == 400
+
+    def test_участник_чужой_семьи_не_подставляется(self, client_family):
+        family, _, _ = client_family
+        trainer_user, prof = make_specialist("trainer@example.com", Specialist.Type.TRAINER)
+        assign(prof, family)
+        stranger = User.objects.create_user(email="stranger@example.com", name="Чужой", password="pass12345")
+        other = Family.objects.create(owner=stranger, name="Чужая семья")
+        other_member = FamilyMember.objects.create(family=other, user=stranger, role=FamilyMember.Role.HEAD)
+
+        r = api(trainer_user).post(
+            reverse("cabinet-client-workouts", args=[family.id]),
+            {"member_id": other_member.id, "date": str(timezone.localdate()), "custom_name": "Зал", "duration_min": 45},
+            format="json",
+        )
+
+        assert r.status_code == 400
+
+    def test_тренер_видит_занятия_клиента(self, client_family):
+        from apps.diary.models import WorkoutLog
+
+        family, user, member = client_family
+        trainer_user, prof = make_specialist("trainer@example.com", Specialist.Type.TRAINER)
+        assign(prof, family)
+        WorkoutLog.objects.create(
+            user=user, member=member, date=timezone.localdate(), custom_name="Сам записал", duration_min=30
+        )
+
+        r = api(trainer_user).get(reverse("cabinet-client-workouts", args=[family.id]))
+
+        assert r.status_code == 200
+        assert [w["title"] for w in r.data["members"][0]["workouts"]] == ["Сам записал"]
+
+    def test_диетолог_читает_но_не_пишет(self, client_family):
+        family, _, member = client_family
+        diet_user, prof = make_specialist("diet@example.com", Specialist.Type.DIETITIAN)
+        assign(prof, family)
+
+        assert api(diet_user).get(reverse("cabinet-client-workouts", args=[family.id])).status_code == 200
+        r = api(diet_user).post(
+            reverse("cabinet-client-workouts", args=[family.id]),
+            {"member_id": member.id, "date": str(timezone.localdate()), "custom_name": "Зал", "duration_min": 45},
+            format="json",
+        )
+        assert r.status_code == 403
+
+    def test_повару_нагрузки_закрыты(self, client_family):
+        family, _, _ = client_family
+        cook_user, prof = make_specialist("cook@example.com", Specialist.Type.COOK)
+        assign(prof, family)
+
+        r = api(cook_user).get(reverse("cabinet-client-workouts", args=[family.id]))
+
+        assert r.status_code == 403
+
+    def test_право_на_нагрузки_не_открывает_правку_еды(self, client_family):
+        """Ради этого раздел и разведён с дневником."""
+        from apps.specialists.access import Level, Section, level_for
+
+        assert level_for("trainer", Section.WORKOUTS) == Level.WRITE
+        assert level_for("trainer", Section.DIARY) == Level.READ
+
+    def test_тренер_убирает_своё_занятие(self, client_family):
+        from apps.diary.models import WorkoutLog
+
+        family, _, member = client_family
+        trainer_user, prof = make_specialist("trainer@example.com", Specialist.Type.TRAINER)
+        assign(prof, family)
+        created = (
+            api(trainer_user)
+            .post(
+                reverse("cabinet-client-workouts", args=[family.id]),
+                {
+                    "member_id": member.id,
+                    "date": str(timezone.localdate()),
+                    "custom_name": "Опечатка",
+                    "duration_min": 45,
+                },
+                format="json",
+            )
+            .data
+        )
+
+        r = api(trainer_user).delete(reverse("cabinet-client-workout-detail", args=[family.id, created["id"]]))
+
+        assert r.status_code == 204
+        assert WorkoutLog.objects.count() == 0
+
+    def test_запись_клиента_тренер_не_стирает(self, client_family):
+        """Занятие, внесённое клиентом, — его запись о себе."""
+        from apps.diary.models import WorkoutLog
+
+        family, user, member = client_family
+        trainer_user, prof = make_specialist("trainer@example.com", Specialist.Type.TRAINER)
+        assign(prof, family)
+        row = WorkoutLog.objects.create(
+            user=user, member=member, date=timezone.localdate(), custom_name="Своё", duration_min=30
+        )
+
+        r = api(trainer_user).delete(reverse("cabinet-client-workout-detail", args=[family.id, row.id]))
+
+        assert r.status_code == 404
+        assert WorkoutLog.objects.filter(pk=row.pk).exists()
+
+    def test_завершённое_назначение_доступа_не_даёт(self, client_family):
+        family, _, _ = client_family
+        trainer_user, prof = make_specialist("trainer@example.com", Specialist.Type.TRAINER)
+        assign(prof, family, status=SpecialistAssignment.Status.ENDED)
+
+        r = api(trainer_user).get(reverse("cabinet-client-workouts", args=[family.id]))
+
+        assert r.status_code == 403
