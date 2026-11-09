@@ -245,17 +245,23 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
           ),
         ),
         const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_thousands(eaten.round()),
-                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, height: 1.1)),
-            Text('съедено из ${_thousands(target.round())} ккал',
-                style: TextStyle(fontSize: 12, color: t.textSecondary)),
-          ],
+        // Expanded, а не Column со Spacer: на телефоне в 393 точки кольцо,
+        // «съедено из 2 000 ккал» и остаток в натуральную ширину не влезали —
+        // строка уезжала за край на 115 точек. Проверка это и поймала; на
+        // экране по умолчанию (800 точек) ничего бы не вылезло.
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_thousands(eaten.round()),
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, height: 1.1)),
+              Text('съедено из ${_thousands(target.round())} ккал',
+                  style: TextStyle(fontSize: 12, color: t.textSecondary)),
+            ],
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 8),
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
@@ -291,9 +297,14 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
             Text(_thousands(eaten.round()),
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, height: 1.1)),
             const SizedBox(width: 6),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: Text('ккал съедено', style: TextStyle(fontSize: 12, color: t.textSecondary)),
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text('ккал съедено',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: t.textSecondary)),
+              ),
             ),
           ],
         ),
@@ -345,10 +356,26 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
         children: [
           Row(
             children: [
-              SizedBox(width: 78, child: Text(label, style: const TextStyle(fontSize: 13))),
-              if (share != null)
-                Text('$share% калорий', style: TextStyle(fontSize: 12, color: t.textSecondary)),
-              const Spacer(),
+              SizedBox(
+                width: 72,
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13)),
+              ),
+              // Доля калорий — в Expanded вместо Spacer: «Углеводы», «45%
+              // калорий» и «167 / 225 г» в натуральную ширину на телефон не
+              // влезали (строка уезжала на 6,8 точки). Сжимается именно
+              // середина: обе цифры важнее слова «калорий».
+              Expanded(
+                child: Text(
+                  share == null ? '' : '$share% калорий',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: t.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 6),
               Text(
                 target == null
                     ? '${_g(actual)} г'
@@ -460,7 +487,10 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: TextStyle(fontSize: 11, color: t.textSecondary)),
+            Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: t.textSecondary)),
             const SizedBox(height: 3),
             Text(value,
                 maxLines: 1,
