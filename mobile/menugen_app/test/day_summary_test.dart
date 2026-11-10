@@ -351,23 +351,26 @@ void main() {
   // выравнивание у FractionallySizedBox по умолчанию — по центру.
   //
   // Тексты эту поломку не ловят в принципе, поэтому здесь меряется сама
-  // заливка: её высота и доля от трека.
+  // заливка. Ищется она по ключу, а не по цвету: цвет углеводов и основной
+  // цвет приложения — одно и то же число, и поиск по цвету находил чужую
+  // полосу (на этом первая версия проверки и споткнулась).
   group('Полосы', () {
-    /// Доля заливки данного цвета от своего трека и её высота.
-    (double, double) fill(WidgetTester tester, Color color, {int at = 0}) {
-      final box = find
-          .byWidgetPredicate((w) => w is ColoredBox && w.color == color)
-          .at(at);
+    /// Доля заливки от своего трека и её высота.
+    (double, double) bar(WidgetTester tester, String id) {
+      final box = find.byKey(Key(id));
       final track = find.ancestor(of: box, matching: find.byType(ClipRRect)).first;
       final size = tester.getSize(box);
       return (size.width / tester.getSize(track).width, size.height);
     }
 
+    Color colorOf(WidgetTester tester, String id) =>
+        tester.widget<ColoredBox>(find.byKey(Key(id))).color;
+
     testWidgets('полоса макроса заполнена по норме, а не пуста', (tester) async {
       // Белки 89 из 110 г — это 81 % полосы.
       await _open(tester, api);
 
-      final (ratio, height) = fill(tester, proteinColor);
+      final (ratio, height) = bar(tester, 'macro-bar-proteins');
 
       expect(height, greaterThan(0)); // ноль здесь и был той поломкой
       expect(ratio, closeTo(0.81, 0.02));
@@ -376,9 +379,7 @@ void main() {
     testWidgets('заливка растёт слева, а не от середины', (tester) async {
       await _open(tester, api);
 
-      final box = find
-          .byWidgetPredicate((w) => w is ColoredBox && w.color == proteinColor)
-          .first;
+      final box = find.byKey(const Key('macro-bar-proteins'));
       final track = find.ancestor(of: box, matching: find.byType(ClipRRect)).first;
 
       expect(tester.getTopLeft(box).dx, closeTo(tester.getTopLeft(track).dx, 0.5));
@@ -392,7 +393,7 @@ void main() {
         _entry(id: 2, slot: MealSlot.lunch, kcal: 488),
       ]);
 
-      final (ratio, height) = fill(tester, mealColor, at: 1);
+      final (ratio, height) = bar(tester, 'meal-bar-lunch');
 
       expect(height, greaterThan(0));
       expect(ratio, closeTo(0.244, 0.02));
@@ -405,32 +406,34 @@ void main() {
         _entry(id: 2, slot: MealSlot.lunch, kcal: 488),
       ]);
 
-      final (ratio, _) = fill(tester, mealColor, at: 1);
+      final (ratio, _) = bar(tester, 'meal-bar-lunch');
 
       expect(ratio, closeTo(1.0, 0.02));
     });
 
-    testWidgets('перебор по макросу отмечен цветом', (tester) async {
-      // Тем же, что число «перебор» у кольца: один сигнал на весь экран.
+    testWidgets('перебор по макросу отмечен своим цветом', (tester) async {
+      // Не accent: accent равен цвету жиров, и перебор по жирам оранжевым по
+      // оранжевому был бы невидим.
       await _open(tester, api, stats: _stats(proteins: 130));
 
-      expect(
-        find.byWidgetPredicate((w) => w is ColoredBox && w.color == overColor),
-        findsWidgets,
-      );
-      expect(
-        find.byWidgetPredicate((w) => w is ColoredBox && w.color == proteinColor),
-        findsNothing,
-      );
+      expect(colorOf(tester, 'macro-bar-proteins'), overColor);
     });
 
-    testWidgets('в норме полоса обычного цвета', (tester) async {
+    testWidgets('в норме полоса своего цвета', (tester) async {
       await _open(tester, api);
 
-      expect(
-        find.byWidgetPredicate((w) => w is ColoredBox && w.color == proteinColor),
-        findsOneWidget,
-      );
+      expect(colorOf(tester, 'macro-bar-proteins'), proteinColor);
+      expect(colorOf(tester, 'macro-bar-fats'), fatColor);
+      expect(colorOf(tester, 'macro-bar-carbs'), carbColor);
+    });
+
+    testWidgets('приём, съевший дневную норму, тоже отмечен', (tester) async {
+      await _open(tester, api, entries: [
+        _entry(id: 1, slot: MealSlot.lunch, kcal: 2400),
+      ]);
+
+      expect(colorOf(tester, 'meal-bar-lunch'), overColor);
+      expect(colorOf(tester, 'meal-bar-breakfast'), mealColor);
     });
   });
 }

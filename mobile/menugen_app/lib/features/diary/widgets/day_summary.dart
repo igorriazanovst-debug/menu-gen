@@ -396,6 +396,7 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
           const SizedBox(height: 5),
           _twoLayerBar(
             context,
+            id: key,
             actual: actual,
             planned: planned,
             scale: scale,
@@ -421,6 +422,7 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
   /// стороны, а не слева направо.
   Widget _twoLayerBar(
     BuildContext context, {
+    required String id,
     required double actual,
     required double planned,
     required double scale,
@@ -449,7 +451,10 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
                 widthFactor: part(actual),
-                child: ColoredBox(color: fill),
+                // Ключ — чтобы проверка мерила именно эту полосу. По цвету
+                // искать нельзя: цвет углеводов и основной цвет приложения —
+                // одно и то же число, и поиск находил чужую полосу.
+                child: ColoredBox(key: Key('macro-bar-$id'), color: fill),
               ),
             ),
           ],
@@ -498,6 +503,7 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
                             widthFactor:
                                 scale <= 0 ? 0 : (values[s]! / scale).clamp(0.0, 1.0),
                             child: ColoredBox(
+                              key: Key('meal-bar-${s.value}'),
                               // Один приём съел дневную норму целиком — это
                               // тот же перебор, и цвет тот же, что у кольца.
                               color: (target != null && values[s]! > target)
