@@ -243,7 +243,10 @@ class _DiaryScreenState extends State<DiaryScreen> {
   /// MG_DIARYTABS: дата в шапке — стрелками по дням, нажатием в календарь.
   Widget _dateStrip() {
     final isToday = DateUtils.isSameDay(_selected, DateTime.now());
-    final label = _cap(DateFormat('d MMMM, EEE', 'ru').format(_selected));
+    // Короткий месяц, а не полный: «9 ноября, пн» в остаток шапки после трёх
+    // кнопок не влезало и обрезалось многоточием — «9 нояб…», где от самой
+    // даты оставалось меньше, чем от обрезки.
+    final label = _cap(DateFormat('d MMM, EEE', 'ru').format(_selected));
     return Row(
       children: [
         IconButton(

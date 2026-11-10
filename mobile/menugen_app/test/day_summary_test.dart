@@ -28,6 +28,12 @@ import 'package:menugen_app/features/diary/widgets/day_summary.dart';
 
 class _MockApi extends Mock implements ApiClient {}
 
+// Цвета берём из того же места, что и экран: сверять картинку с выписанными
+// в тесте шестнадцатеричными числами значит проверять свою же копию.
+final _theme = AppTheme.light();
+final Color mealColor = _theme.colorScheme.primary;
+// Перебор — отдельный цвет, не accent: accent равен цвету жиров.
+
 DiaryEntry _entry({
   required int id,
   required MealSlot slot,
@@ -334,6 +340,97 @@ void main() {
 
       expect(e.calories, 500);
       expect(e.proteins, 25);
+    });
+  });
+
+  // ── Полосы ────────────────────────────────────────────────────────────────
+  //
+  // Проверяется то, что увидел человек на телефоне: полосы были пустыми, хотя
+  // числа рядом стояли. Причина — вёрстка: заливка стояла непозиционированным
+  // ребёнком Stack, получала свободную высоту и схлопывалась в ноль, а
+  // выравнивание у FractionallySizedBox по умолчанию — по центру.
+  //
+  // Тексты эту поломку не ловят в принципе, поэтому здесь меряется сама
+  // заливка: её высота и доля от трека.
+  group('Полосы', () {
+    /// Доля заливки данного цвета от своего трека и её высота.
+    (double, double) fill(WidgetTester tester, Color color, {int at = 0}) {
+      final box = find
+          .byWidgetPredicate((w) => w is ColoredBox && w.color == color)
+          .at(at);
+      final track = find.ancestor(of: box, matching: find.byType(ClipRRect)).first;
+      final size = tester.getSize(box);
+      return (size.width / tester.getSize(track).width, size.height);
+    }
+
+    testWidgets('полоса макроса заполнена по норме, а не пуста', (tester) async {
+      // Белки 89 из 110 г — это 81 % полосы.
+      await _open(tester, api);
+
+      final (ratio, height) = fill(tester, proteinColor);
+
+      expect(height, greaterThan(0)); // ноль здесь и был той поломкой
+      expect(ratio, closeTo(0.81, 0.02));
+    });
+
+    testWidgets('заливка растёт слева, а не от середины', (tester) async {
+      await _open(tester, api);
+
+      final box = find
+          .byWidgetPredicate((w) => w is ColoredBox && w.color == proteinColor)
+          .first;
+      final track = find.ancestor(of: box, matching: find.byType(ClipRRect)).first;
+
+      expect(tester.getTopLeft(box).dx, closeTo(tester.getTopLeft(track).dx, 0.5));
+    });
+
+    testWidgets('полоса приёма мерится дневной нормой', (tester) async {
+      // Обед 488 из нормы 2 000 — это 24 %, а не «весь приём целиком» оттого,
+      // что он крупнейший за день.
+      await _open(tester, api, entries: [
+        _entry(id: 1, slot: MealSlot.breakfast, kcal: 272),
+        _entry(id: 2, slot: MealSlot.lunch, kcal: 488),
+      ]);
+
+      final (ratio, height) = fill(tester, mealColor, at: 1);
+
+      expect(height, greaterThan(0));
+      expect(ratio, closeTo(0.244, 0.02));
+    });
+
+    testWidgets('без нормы приёмы мерятся самым крупным', (tester) async {
+      // Иначе мерить нечем, а полосы от выдуманного числа врут.
+      await _open(tester, api, target: null, entries: [
+        _entry(id: 1, slot: MealSlot.breakfast, kcal: 272),
+        _entry(id: 2, slot: MealSlot.lunch, kcal: 488),
+      ]);
+
+      final (ratio, _) = fill(tester, mealColor, at: 1);
+
+      expect(ratio, closeTo(1.0, 0.02));
+    });
+
+    testWidgets('перебор по макросу отмечен цветом', (tester) async {
+      // Тем же, что число «перебор» у кольца: один сигнал на весь экран.
+      await _open(tester, api, stats: _stats(proteins: 130));
+
+      expect(
+        find.byWidgetPredicate((w) => w is ColoredBox && w.color == overColor),
+        findsWidgets,
+      );
+      expect(
+        find.byWidgetPredicate((w) => w is ColoredBox && w.color == proteinColor),
+        findsNothing,
+      );
+    });
+
+    testWidgets('в норме полоса обычного цвета', (tester) async {
+      await _open(tester, api);
+
+      expect(
+        find.byWidgetPredicate((w) => w is ColoredBox && w.color == proteinColor),
+        findsOneWidget,
+      );
     });
   });
 }

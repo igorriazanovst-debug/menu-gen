@@ -35,9 +35,18 @@ import '../models/diary_stats.dart';
 /// общепринятые (коэффициенты Атуотера) — не наши.
 const _kcalPerGram = {'proteins': 4.0, 'fats': 9.0, 'carbs': 4.0};
 
-const _proteinColor = Color(0xFF588157);
-const _fatColor = Color(0xFFF4A261);
-const _carbColor = Color(0xFF7CB342);
+// Цвета макросов публичные: проверка берёт их отсюда, а не держит свою копию
+// шестнадцатеричных чисел — иначе она сверяла бы экран сама с собой.
+const proteinColor = Color(0xFF588157);
+const fatColor = Color(0xFFF4A261);
+const carbColor = Color(0xFF7CB342);
+
+/// Цвет перебора — один на весь экран: и кольцо, и полосы.
+///
+/// Намеренно НЕ `tokens.accent`: он равен цвету жиров, и перебор по жирам
+/// оранжевым по оранжевому был бы невидим ровно там, где его чаще всего и
+/// видят. И намеренно не красный: съесть лишнее — не ошибка приложения.
+const overColor = Color(0xFFE2725B);
 
 class DaySummaryTab extends StatefulWidget {
   final ApiClient api;
@@ -144,11 +153,11 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
           child: Column(
             children: [
               _macroLine(context, 'Белки', 'proteins', widget.stats.actual.proteins,
-                  widget.stats.planned.proteins, widget.proteinTarget, _proteinColor),
+                  widget.stats.planned.proteins, widget.proteinTarget, proteinColor),
               _macroLine(context, 'Жиры', 'fats', widget.stats.actual.fats,
-                  widget.stats.planned.fats, widget.fatTarget, _fatColor),
+                  widget.stats.planned.fats, widget.fatTarget, fatColor),
               _macroLine(context, 'Углеводы', 'carbs', widget.stats.actual.carbs,
-                  widget.stats.planned.carbs, widget.carbTarget, _carbColor),
+                  widget.stats.planned.carbs, widget.carbTarget, carbColor),
             ],
           ),
         ),
@@ -229,7 +238,7 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
               ratio: target <= 0 ? 0 : (eaten / target).clamp(0.0, 1.0),
               // Перебор показываем цветом, а не полосой длиннее круга: круг
               // всё равно замкнётся, и человек решит, что всё ровно.
-              color: eaten > target ? context.tokens.accent : context.cs.primary,
+              color: eaten > target ? overColor : context.cs.primary,
               track: context.tokens.border,
             ),
             child: Center(
@@ -271,7 +280,7 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
               style: TextStyle(
                 fontSize: 21,
                 fontWeight: FontWeight.w700,
-                color: left >= 0 ? context.cs.primary : t.accent,
+                color: left >= 0 ? context.cs.primary : overColor,
               ),
             ),
             Text(left >= 0 ? 'осталось' : 'перебор',
@@ -391,6 +400,9 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
             planned: planned,
             scale: scale,
             color: color,
+            // Перебор считается только от нормы: план меню нормой не является,
+            // и «съел больше, чем планировал» — не повод тревожить человека.
+            over: target != null && target > 0 && actual > target,
           ),
         ],
       ),
@@ -398,14 +410,27 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
   }
 
   /// Полоса в два слоя: бледным — запланированное, плотным — съеденное.
+  ///
+  /// Каждый слой обязан быть `Positioned.fill`, а заливка внутри —
+  /// выровнена влево. Оба правила здесь не украшение, а то, на чём эта полоса
+  /// уже один раз сломалась и доехала до телефона: непозиционированный
+  /// ребёнок `Stack` получает свободную высоту, а `ColoredBox` без содержимого
+  /// в свободных ограничениях схлопывается в ноль — цвет есть, высоты нет, и
+  /// на экране виден один серый трек. Выравнивание же по умолчанию у
+  /// `FractionallySizedBox` — по центру: заливка росла бы от середины в обе
+  /// стороны, а не слева направо.
   Widget _twoLayerBar(
     BuildContext context, {
     required double actual,
     required double planned,
     required double scale,
     required Color color,
+    required bool over,
   }) {
     double part(double v) => scale <= 0 ? 0 : (v / scale).clamp(0.0, 1.0);
+    // Перебор — тем же цветом, что число «перебор» у кольца: один сигнал на
+    // весь экран, а не второй язык для той же мысли.
+    final fill = over ? overColor : color;
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
       child: SizedBox(
@@ -413,13 +438,19 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
         child: Stack(
           children: [
             Positioned.fill(child: ColoredBox(color: context.tokens.border)),
-            FractionallySizedBox(
-              widthFactor: part(math.max(actual, planned)),
-              child: ColoredBox(color: color.withValues(alpha: 0.28)),
+            Positioned.fill(
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: part(math.max(actual, planned)),
+                child: ColoredBox(color: fill.withValues(alpha: 0.28)),
+              ),
             ),
-            FractionallySizedBox(
-              widthFactor: part(actual),
-              child: ColoredBox(color: color),
+            Positioned.fill(
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: part(actual),
+                child: ColoredBox(color: fill),
+              ),
             ),
           ],
         ),
@@ -433,7 +464,15 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
       ..addAll(widget.entries.map((e) => e.mealSlot));
     final ordered = MealSlot.values.where(slots.contains).toList();
     final values = {for (final s in ordered) s: _eatenIn(s)};
-    final top = values.values.fold<double>(0, math.max);
+    // Масштаб — дневная норма: видно не только, какой приём крупнее, но и
+    // сколько от дня он занял, а полосы в сумме дают заполненность кольца.
+    //
+    // Нормы нет — меряем по самому крупному приёму дня: это хуже (непонятно,
+    // много это или мало), но честнее, чем полосы от выдуманного числа.
+    final target = widget.calorieTarget?.toDouble();
+    final scale = (target != null && target > 0)
+        ? target
+        : values.values.fold<double>(0, math.max);
 
     return [
       for (final s in ordered)
@@ -450,11 +489,22 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
                     child: Stack(
                       children: [
                         Positioned.fill(child: ColoredBox(color: t.border)),
-                        FractionallySizedBox(
-                          // Масштаб — самый крупный приём дня: так видно, где
-                          // перебрал, а норма на один приём нам неизвестна.
-                          widthFactor: top <= 0 ? 0 : (values[s]! / top).clamp(0.0, 1.0),
-                          child: ColoredBox(color: context.cs.primary),
+                        // Positioned.fill + выравнивание влево — см. причину в
+                        // шапке _twoLayerBar: без них полоса нулевой высоты и
+                        // растёт от середины.
+                        Positioned.fill(
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor:
+                                scale <= 0 ? 0 : (values[s]! / scale).clamp(0.0, 1.0),
+                            child: ColoredBox(
+                              // Один приём съел дневную норму целиком — это
+                              // тот же перебор, и цвет тот же, что у кольца.
+                              color: (target != null && values[s]! > target)
+                                  ? overColor
+                                  : context.cs.primary,
+                            ),
+                          ),
                         ),
                       ],
                     ),

@@ -180,4 +180,51 @@ describe('Итоги дня', () => {
 
     expect(screen.getByText('24% калорий')).toBeInTheDocument();
   });
+
+  describe('Полосы', () => {
+    // На телефоне полосы оказались пустыми при непустых числах: заливка
+    // схлопывалась в ноль. В вебе вёрстка другая, но проверять надо то же —
+    // саму заливку, а не подписи рядом с ней.
+    const widths = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('div[style*="width"]'))
+        .map((d) => d.style.width)
+        .filter((w) => w && w !== '0%');
+
+    it('полоса макроса заполнена по норме, а не пуста', async () => {
+      // Белки 89 из 110 г — это 80.9 %.
+      await show();
+
+      expect(widths()).toContain(`${(89 / 110) * 100}%`);
+    });
+
+    it('полоса приёма мерится дневной нормой', async () => {
+      // Обед 488 из нормы 2 000 — это 24.4 %, а не «весь приём целиком»
+      // оттого, что он крупнейший за день.
+      await show({
+        entries: [entry(1, 'breakfast', 272), entry(2, 'lunch', 488)],
+      });
+
+      expect(widths()).toContain(`${(488 / 2000) * 100}%`);
+    });
+
+    it('без нормы приёмы мерятся самым крупным', async () => {
+      await show({
+        profile: profile({ calorie_target: undefined }),
+        entries: [entry(1, 'breakfast', 272), entry(2, 'lunch', 488)],
+      });
+
+      expect(widths()).toContain('100%');
+    });
+
+    it('перебор отмечен своим цветом, а не цветом жиров', async () => {
+      // Цвет перебора намеренно не оранжевый акцент: он равен цвету жиров, и
+      // перебор по жирам был бы невидим.
+      await show({ stats: stats({ actual: bucket(1480, 89, 90, 167) }) });
+
+      const colors = Array.from(document.querySelectorAll<HTMLElement>('div[style*="background-color"]'))
+        .map((d) => d.style.backgroundColor);
+
+      expect(colors).toContain('rgb(226, 114, 91)'); // #E2725B
+    });
+  });
 });

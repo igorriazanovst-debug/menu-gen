@@ -35,6 +35,13 @@ const KCAL_PER_GRAM = { proteins: 4, fats: 9, carbs: 4 } as const;
 
 const MACRO_COLORS = { proteins: '#588157', fats: '#F4A261', carbs: '#7CB342' } as const;
 
+/** Цвет перебора — один на весь экран: и кольцо, и полосы.
+ *
+ * Намеренно не оранжевый акцент: он равен цвету жиров, и перебор по жирам
+ * оранжевым по оранжевому был бы невидим ровно там, где его чаще всего и
+ * видят. И намеренно не красный: съесть лишнее — не ошибка приложения. */
+const OVER_COLOR = '#E2725B';
+
 /** Тысячи узким пробелом: «1 480» читается быстрее, чем «1480». */
 const thousands = (v: number): string =>
   Math.round(v).toLocaleString('ru-RU').replace(/ /g, ' ');
@@ -89,9 +96,14 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
         .filter((e) => slotOf(e) === slot && e.is_eaten)
         .reduce((sum, e) => sum + nutriVal(e, 'calories'), 0),
     }));
+    // Масштаб — дневная норма: видно не только, какой приём крупнее, но и
+    // сколько от дня он занял, а полосы в сумме дают заполненность кольца.
+    // Нормы нет — меряем по самому крупному приёму: это хуже (непонятно, много
+    // это или мало), но честнее, чем полосы от выдуманного числа.
     const top = rows.reduce((m, r) => Math.max(m, r.kcal), 0);
-    return { rows, top };
-  }, [entries, profile?.meal_plan_type]);
+    const norm = profile?.calorie_target ?? null;
+    return { rows, scale: norm && norm > 0 ? norm : top, norm };
+  }, [entries, profile?.meal_plan_type, profile?.calorie_target]);
 
   const macroKcal =
     actual.proteins * KCAL_PER_GRAM.proteins +
@@ -112,7 +124,7 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
       <div className="relative shrink-0" style={{ width: 96, height: 96 }}>
         <svg width="96" height="96" viewBox="0 0 96 96" className="-rotate-90">
           <circle cx="48" cy="48" r={r} fill="none" stroke="#E2E6E2" strokeWidth="11" />
-          <circle cx="48" cy="48" r={r} fill="none" stroke={over ? '#F4A261' : '#7CB342'}
+          <circle cx="48" cy="48" r={r} fill="none" stroke={over ? OVER_COLOR : '#7CB342'}
                   strokeWidth="11" strokeLinecap="round" strokeDasharray={`${ratio * c} ${c}`} />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
@@ -131,6 +143,10 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
     // масштаб. Нет ни того, ни другого — полоса просто пустая.
     const scale = targetG && targetG > 0 ? targetG : (p > 0 ? p : 0);
     const part = (v: number) => (scale > 0 ? Math.min(100, (v / scale) * 100) : 0);
+    // Перебор считается только от нормы: план меню нормой не является, и
+    // «съел больше, чем планировал» — не повод тревожить человека.
+    const over = !!targetG && targetG > 0 && a > targetG;
+    const fill = over ? OVER_COLOR : MACRO_COLORS[key];
     return (
       <div key={key} className="mt-3">
         <div className="flex items-baseline gap-2 text-sm">
@@ -143,9 +159,9 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
         <div className="mt-1 h-[7px] rounded-full bg-rice overflow-hidden relative">
           {/* Бледным — запланированное, плотным — съеденное. */}
           <div className="absolute inset-y-0 left-0 rounded-full"
-               style={{ width: `${part(Math.max(a, p))}%`, backgroundColor: MACRO_COLORS[key], opacity: 0.28 }} />
+               style={{ width: `${part(Math.max(a, p))}%`, backgroundColor: fill, opacity: 0.28 }} />
           <div className="absolute inset-y-0 left-0 rounded-full"
-               style={{ width: `${part(a)}%`, backgroundColor: MACRO_COLORS[key] }} />
+               style={{ width: `${part(a)}%`, backgroundColor: fill }} />
         </div>
       </div>
     );
@@ -189,7 +205,8 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
               </div>
             </div>
             <div className="ml-auto text-right">
-              <div className={`text-2xl font-bold ${left! < 0 ? 'text-tomato' : 'text-avocado'}`}>
+              <div className="text-2xl font-bold"
+                   style={{ color: left! < 0 ? OVER_COLOR : '#7CB342' }}>
                 {left! >= 0 ? thousands(left!) : `+${thousands(-left!)}`}
               </div>
               <div className="text-sm text-gray-500">{left! >= 0 ? 'осталось' : 'перебор'}</div>
@@ -216,10 +233,13 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
           <div key={slot} className="mt-3 flex items-center gap-3">
             <span className="w-24 text-sm text-chocolate shrink-0">{MEAL_SLOT_LABELS[slot]}</span>
             <div className="flex-1 h-2 rounded-full bg-rice overflow-hidden">
-              <div className="h-full bg-avocado"
-                   // Масштаб — самый крупный приём дня: так видно, где перебрал,
-                   // а норма на один приём нам неизвестна.
-                   style={{ width: `${meals.top > 0 ? (kcal / meals.top) * 100 : 0}%` }} />
+              <div className="h-full"
+                   style={{
+                     width: `${meals.scale > 0 ? Math.min(100, (kcal / meals.scale) * 100) : 0}%`,
+                     // Один приём съел дневную норму целиком — это тот же
+                     // перебор, и цвет тот же, что у кольца.
+                     backgroundColor: meals.norm && kcal > meals.norm ? OVER_COLOR : '#7CB342',
+                   }} />
             </div>
             <span className="w-24 text-right text-xs text-gray-500 shrink-0">
               {kcal > 0 ? `${thousands(kcal)} ккал` : '—'}
