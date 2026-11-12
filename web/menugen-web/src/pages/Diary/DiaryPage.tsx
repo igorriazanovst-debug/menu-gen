@@ -268,14 +268,16 @@ export const DiaryPage: React.FC = () => {
               заголовке раздела прямо над этой строкой, и повторять его значит
               тратить ту ширину, где должны быть БЖУ. */}
           <div className="min-w-0">
-            <p className="font-medium text-chocolate truncate">
+            {/* MG_NOCUT: переносим, а не обрезаем. В узком окне truncate
+                съедал ровно то, ради чего строку и читают, — название. */}
+            <p className="font-medium text-chocolate break-words">
               {e.recipe_title ?? e.custom_name ?? 'Без названия'}
               {e.quantity !== 1 && <span className="text-gray-400"> ×{e.quantity}</span>}
               {/* MG_HEADKEEPS: запись внёс не сам человек — видно сразу. */}
               <AddedByMark name={e.added_by_name} className="ml-1 align-middle" />
             </p>
             {entryDetails(e) && (
-              <p className="text-xs text-gray-500 truncate">{entryDetails(e)}</p>
+              <p className="text-xs text-gray-500 break-words">{entryDetails(e)}</p>
             )}
           </div>
         </div>

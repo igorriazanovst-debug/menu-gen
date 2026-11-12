@@ -23,6 +23,7 @@ import '../bloc/diary_bloc.dart';
 import '../models/diary_entry.dart';
 import '../models/diary_stats.dart';
 import '../widgets/day_summary.dart'; // MG_DAYSUM
+import '../widgets/diary_entry_tile.dart'; // MG_NOCUT
 import '../widgets/diary_stats_card.dart';
 import '../widgets/measurements_card.dart'; // MG_BODYSIZE
 import '../widgets/weight_chart.dart'; // MG_BODYCHART
@@ -961,7 +962,7 @@ class _LoadedViewState extends State<_LoadedView> {
       for (final e in items) {
         out.add(Padding(
           padding: const EdgeInsets.only(left: 16),
-          child: _EntryTile(
+          child: DiaryEntryTile(
             entry: e,
             accent: color,
             // Отметка «съедено» есть только у планового: добавленное вручную —
@@ -977,148 +978,6 @@ class _LoadedViewState extends State<_LoadedView> {
       }
     }
     return out;
-  }
-}
-
-class _EntryTile extends StatelessWidget {
-  final DiaryEntry entry;
-  final Color? accent; // DIARY_COLOR
-  final void Function(bool)? onToggleEaten;
-  final VoidCallback onDelete;
-  final VoidCallback? onEdit; // DIARY_EDIT
-
-  const _EntryTile({
-    required this.entry,
-    this.accent,
-    required this.onToggleEaten,
-    required this.onDelete,
-    this.onEdit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Множитель показываем, только когда он не единица: «×1» у каждой строки —
-    // шум, за которым теряется то, ради чего в дневник и смотрят.
-    final showQty = entry.quantity != 1;
-    final qty = '×${entry.quantity.toStringAsFixed(entry.quantity == entry.quantity.roundToDouble() ? 0 : 1)}';
-    // MG_DIARYKCAL: калорийность самой записи. Считается тем же способом, что и
-    // итог приёма (nutrition × quantity), поэтому сумма в заголовке приёма
-    // всегда сходится со строками под ним.
-    final totals = _MealTotals.of([entry]);
-    final kcal = totals.calories > 0 ? '${totals.calories.round()} ккал' : '';
-    // MG_NUTRIDETAIL: подробность строки — выбор человека, один на приложение
-    // и веб. Названия приёма здесь больше нет: оно стоит в заголовке раздела,
-    // прямо над этой же строкой, и повторять его значит тратить ту ширину,
-    // где должны быть БЖУ.
-    final detail = context.watch<NutritionDetailCubit>().state;
-    final macros = detail.showMacros
-        ? macrosShort(
-            proteins: entry.proteins,
-            fats: entry.fats,
-            carbs: entry.carbs,
-          )
-        : '';
-    final subtitle = [
-      // Вес порции — только в подробном режиме, как и договаривались:
-      // «кратко» — калории, «обычно» — калории и БЖУ, «подробно» — ещё и вес.
-      if (entry.grams != null && detail.showGrams) '${entry.grams} г',
-      if (macros.isNotEmpty) macros,
-      // MG_HEADKEEPS: кто внёс, если не сам владелец.
-      if (entry.addedByName != null) 'внёс(ла) ${entry.addedByName}',
-    ].join(' · ');
-    return Dismissible(
-      key: ValueKey('diary-${entry.id}'),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        color: Colors.red,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      onDismissed: (_) => onDelete(),
-      child: Card(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        clipBehavior: Clip.antiAlias,
-        child: Container(
-          // DIARY_COLOR: цветная левая полоса по цвету приёма.
-          decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(color: accent ?? Colors.transparent, width: 5),
-            ),
-          ),
-          child: ListTile(
-            leading: Checkbox(
-              value: entry.isEaten,
-              onChanged: onToggleEaten == null
-                  ? null
-                  : (v) => onToggleEaten!(v ?? false),
-            ),
-            title: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    entry.displayTitle.isNotEmpty ? entry.displayTitle : '—',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                // MG_HEADKEEPS: запись внёс не сам человек — корона рядом с
-                // названием. Имя уходит в подзаголовок: в строке для него места
-                // нет, а знать «кто» всё равно нужно.
-                if (entry.addedByName != null) ...[
-                  const SizedBox(width: 4),
-                  const Text('👑', style: TextStyle(fontSize: 13)),
-                ],
-              ],
-            ),
-            subtitle: subtitle.isEmpty
-                ? null
-                : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // MG_NOOVERFLOW: длинные цифры не растягивают строку.
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      if (kcal.isNotEmpty)
-                        Text(kcal,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: accent ?? Colors.grey.shade700)),
-                      if (showQty)
-                        Text(qty,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                    ],
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, size: 20),
-                  tooltip: 'Действия',
-                  onSelected: (v) {
-                    if (v == 'edit') {
-                      onEdit?.call();
-                    } else if (v == 'delete') {
-                      onDelete();
-                    }
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem<String>(value: 'edit', child: Text('Изменить')),
-                    PopupMenuItem<String>(value: 'delete', child: Text('Удалить')),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
