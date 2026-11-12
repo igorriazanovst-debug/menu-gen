@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:menugen_app/core/api/api_client.dart';
 import 'package:menugen_app/core/display/nutrition_detail.dart';
-import 'package:menugen_app/core/display/nutrition_detail_cubit.dart';
+import 'package:menugen_app/core/display/display_prefs_cubit.dart';
 
 class _MockApi extends Mock implements ApiClient {}
 
@@ -78,13 +78,13 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    Future<NutritionDetailCubit> make() async =>
-        NutritionDetailCubit(prefs: await SharedPreferences.getInstance(), apiClient: api);
+    Future<DisplayPrefsCubit> make() async =>
+        DisplayPrefsCubit(prefs: await SharedPreferences.getInstance(), apiClient: api);
 
     test('по умолчанию — обычный режим', () async {
       final cubit = await make();
 
-      expect(cubit.state, NutritionDetail.normal);
+      expect(cubit.state.detail, NutritionDetail.normal);
     });
 
     test('выбор уходит в аккаунт', () async {
@@ -92,9 +92,9 @@ void main() {
       // бы иначе — и настройка превратилась бы в две.
       final cubit = await make();
 
-      await cubit.set(NutritionDetail.short);
+      await cubit.setDetail(NutritionDetail.short);
 
-      expect(cubit.state, NutritionDetail.short);
+      expect(cubit.state.detail, NutritionDetail.short);
       verify(() => api.patch('/users/me/', data: {
             'profile': {'nutrition_detail': 'short'}
           })).called(1);
@@ -106,18 +106,18 @@ void main() {
       when(() => api.patch(any(), data: any(named: 'data'))).thenThrow(Exception('offline'));
       final cubit = await make();
 
-      await cubit.set(NutritionDetail.detailed);
+      await cubit.setDetail(NutritionDetail.detailed);
 
-      expect(cubit.state, NutritionDetail.detailed);
+      expect(cubit.state.detail, NutritionDetail.detailed);
     });
 
     test('выбор переживает перезапуск', () async {
       final first = await make();
-      await first.set(NutritionDetail.detailed);
+      await first.setDetail(NutritionDetail.detailed);
 
       final second = await make();
 
-      expect(second.state, NutritionDetail.detailed);
+      expect(second.state.detail, NutritionDetail.detailed);
     });
 
     test('профиль с настройкой применяется при входе', () async {
@@ -127,17 +127,78 @@ void main() {
         'profile': {'nutrition_detail': 'short'}
       });
 
-      expect(cubit.state, NutritionDetail.short);
+      expect(cubit.state.detail, NutritionDetail.short);
     });
 
     test('профиль без поля не затирает выбор', () async {
       // Сервер старше приложения — не повод молча отменять настройку.
       final cubit = await make();
-      await cubit.set(NutritionDetail.short);
+      await cubit.setDetail(NutritionDetail.short);
 
       cubit.loadFromProfile({'profile': <String, dynamic>{}});
 
-      expect(cubit.state, NutritionDetail.short);
+      expect(cubit.state.detail, NutritionDetail.short);
+    });
+  });
+
+  group('Размер шрифта', () {
+    late _MockApi api;
+
+    setUp(() {
+      api = _MockApi();
+      when(() => api.patch(any(), data: any(named: 'data')))
+          .thenAnswer((_) async => <String, dynamic>{});
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    Future<DisplayPrefsCubit> make() async =>
+        DisplayPrefsCubit(prefs: await SharedPreferences.getInstance(), apiClient: api);
+
+    test('по умолчанию обычный, множитель единица', () async {
+      final cubit = await make();
+
+      expect(cubit.state.scale, FoodTextScale.normal);
+      expect(FoodTextScale.normal.factor, 1.0);
+    });
+
+    test('градации умеренные', () {
+      // «Крупный» умножается на системный размер, а не заменяет его: вдвое
+      // крупнее поверх системного «крупного» дало бы строку в пол-экрана.
+      expect(FoodTextScale.small.factor, 0.9);
+      expect(FoodTextScale.large.factor, 1.15);
+    });
+
+    test('выбор уходит в аккаунт', () async {
+      final cubit = await make();
+
+      await cubit.setScale(FoodTextScale.large);
+
+      expect(cubit.state.scale, FoodTextScale.large);
+      verify(() => api.patch('/users/me/', data: {
+            'profile': {'food_text_scale': 'large'}
+          })).called(1);
+    });
+
+    test('смена размера не сбрасывает подробность', () async {
+      // Настройки соседние, и одна не должна чинить или ломать другую.
+      final cubit = await make();
+      await cubit.setDetail(NutritionDetail.short);
+
+      await cubit.setScale(FoodTextScale.small);
+
+      expect(cubit.state.detail, NutritionDetail.short);
+      expect(cubit.state.scale, FoodTextScale.small);
+    });
+
+    test('профиль без поля размера не затирает выбор', () async {
+      final cubit = await make();
+      await cubit.setScale(FoodTextScale.large);
+
+      cubit.loadFromProfile({
+        'profile': {'nutrition_detail': 'normal'}
+      });
+
+      expect(cubit.state.scale, FoodTextScale.large);
     });
   });
 }

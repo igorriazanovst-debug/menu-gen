@@ -130,6 +130,19 @@ class Profile(models.Model):
         THREE = "3", "3 приёма пищи"
         FIVE = "5", "5 приёмов пищи"
 
+    class FoodTextScale(models.TextChoices):
+        """MG_FOODSCALE: размер шрифта в списках еды.
+
+        Множитель к системному размеру, а не замена ему: системный выбор
+        человека остаётся в силе, наш только уточняет его для дневника. Поэтому
+        градации умеренные — иначе «крупный» поверх системного «крупного» даст
+        строку в пол-экрана.
+        """
+
+        SMALL = "small", "Мелкий"
+        NORMAL = "normal", "Обычный"
+        LARGE = "large", "Крупный"
+
     class NutritionDetail(models.TextChoices):
         """MG_NUTRIDETAIL: сколько чисел показывать в строке еды.
 
@@ -167,6 +180,12 @@ class Profile(models.Model):
         max_length=10,
         choices=NutritionDetail.choices,
         default=NutritionDetail.NORMAL,
+    )
+    # MG_FOODSCALE: размер шрифта в списках еды. Умножается на системный.
+    food_text_scale = models.CharField(
+        max_length=10,
+        choices=FoodTextScale.choices,
+        default=FoodTextScale.NORMAL,
     )
     # MG_504_V_model
     bedtime_hour = models.PositiveSmallIntegerField(

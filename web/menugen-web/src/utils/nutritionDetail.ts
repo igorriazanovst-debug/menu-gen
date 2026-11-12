@@ -42,3 +42,22 @@ export const macrosShort = (proteins: number, fats: number, carbs: number): stri
   };
   return `Б ${n(proteins)} · Ж ${n(fats)} · У ${n(carbs)} г`;
 };
+
+// MG_FOODSCALE: размер шрифта в списках еды.
+export type FoodTextScale = 'small' | 'normal' | 'large';
+
+export const FOOD_SCALE_OPTIONS: { value: FoodTextScale; label: string }[] = [
+  { value: 'small', label: 'Мелкий' },
+  { value: 'normal', label: 'Обычный' },
+  { value: 'large', label: 'Крупный' },
+];
+
+export const scaleOf = (profile?: UserProfile | null): FoodTextScale => {
+  const raw = profile?.food_text_scale;
+  return raw === 'small' || raw === 'large' ? raw : 'normal';
+};
+
+/** Множитель к обычному размеру. Умеренный намеренно: в браузере поверх него
+ *  работает и собственный зум страницы. */
+export const scaleFactor = (s: FoodTextScale): number =>
+  s === 'small' ? 0.9 : s === 'large' ? 1.15 : 1;

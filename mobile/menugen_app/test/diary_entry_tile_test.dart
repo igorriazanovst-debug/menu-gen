@@ -17,7 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:menugen_app/core/api/api_client.dart';
 import 'package:menugen_app/core/display/nutrition_detail.dart';
-import 'package:menugen_app/core/display/nutrition_detail_cubit.dart';
+import 'package:menugen_app/core/display/display_prefs_cubit.dart';
 import 'package:menugen_app/core/theme/app_theme.dart';
 import 'package:menugen_app/features/diary/models/diary_entry.dart';
 import 'package:menugen_app/features/diary/widgets/diary_entry_tile.dart';
@@ -57,11 +57,15 @@ Future<void> _show(
   WidgetTester tester,
   DiaryEntry entry, {
   NutritionDetail detail = NutritionDetail.normal,
+  FoodTextScale scale = FoodTextScale.normal,
   double textScale = 1.0,
 }) async {
-  SharedPreferences.setMockInitialValues({'nutrition_detail': detail.code});
+  SharedPreferences.setMockInitialValues({
+    'nutrition_detail': detail.code,
+    'food_text_scale': scale.code,
+  });
   final api = _MockApi();
-  final cubit = NutritionDetailCubit(
+  final cubit = DisplayPrefsCubit(
     prefs: await SharedPreferences.getInstance(),
     apiClient: api,
   );
@@ -79,7 +83,10 @@ Future<void> _show(
     // MediaQueryData отдал бы поддереву нулевой экран.
     home: Builder(
       builder: (ctx) => MediaQuery(
-        data: MediaQuery.of(ctx).copyWith(textScaler: TextScaler.linear(textScale)),
+        // Системный масштаб × наш: настройка размера умножается на системный,
+        // и проверять надо именно сочетание — оно и есть худший случай.
+        data: MediaQuery.of(ctx)
+            .copyWith(textScaler: TextScaler.linear(textScale * scale.factor)),
         child: BlocProvider.value(
           value: cubit,
           child: Scaffold(
@@ -161,5 +168,21 @@ void main() {
     await _show(tester, _entry());
 
     expect(find.textContaining('Завтрак'), findsNothing);
+  });
+
+  testWidgets('наш крупный поверх системного крупного ничего не режет', (tester) async {
+    // Худшее сочетание: системный ×1,3 и наш «крупный» (×1,15) — вместе ×1,5.
+    await _show(tester, _entry(), scale: FoodTextScale.large, textScale: 1.3);
+
+    expect(_cut(tester, find.text('куриное филе отварное', findRichText: true)), isFalse);
+    expect(find.text('Б 19 · Ж 2.1 · У 0 г'), findsOneWidget);
+    expect(find.text('102 ккал'), findsOneWidget);
+  });
+
+  testWidgets('длинное название при худшем сочетании тоже целиком', (tester) async {
+    const long = 'сыр сливочный творожный лёгкий с зеленью';
+    await _show(tester, _entry(title: long), scale: FoodTextScale.large, textScale: 1.3);
+
+    expect(_cut(tester, find.text(long, findRichText: true)), isFalse);
   });
 }

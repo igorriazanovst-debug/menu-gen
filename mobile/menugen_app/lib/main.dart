@@ -27,7 +27,7 @@ import 'core/cache/shopping_cache.dart'; // MG_CACHE
 import 'core/sync/sync_service.dart';
 import 'core/theme/app_skin.dart'; // MG_SKIN
 import 'core/theme/app_theme.dart';
-import 'core/display/nutrition_detail_cubit.dart'; // MG_NUTRIDETAIL
+import 'core/display/display_prefs_cubit.dart'; // MG_NUTRIDETAIL
 import 'core/theme/theme_cubit.dart'; // MG_SKIN
 import 'features/auth/bloc/auth_bloc.dart';
 import 'features/diary/bloc/diary_bloc.dart';
@@ -91,8 +91,8 @@ void main() async {
   // MG_SKIN: cubit выбранного скина (персист + синк в аккаунт).
   final themeCubit = ThemeCubit(prefs: prefs, apiClient: apiClient);
 
-  // MG_NUTRIDETAIL: подробность чисел в строках еды — так же, как скин.
-  final nutritionDetail = NutritionDetailCubit(prefs: prefs, apiClient: apiClient);
+  // MG_NUTRIDETAIL + MG_FOODSCALE: как показывать еду — так же, как скин.
+  final displayPrefs = DisplayPrefsCubit(prefs: prefs, apiClient: apiClient);
 
   // MG_VERIFYDEEPLINK: возврат из браузера после подтверждения e-mail.
   // Слушаем и «холодный» запуск (приложение подняли ссылкой), и «тёплый»
@@ -116,7 +116,7 @@ void main() async {
     offlineToggleQueue: offlineToggleQueue, // MG_T09
     shoppingCache: shoppingCache, // MG_CACHE
     themeCubit: themeCubit, // MG_SKIN
-    nutritionDetail: nutritionDetail, // MG_NUTRIDETAIL
+    displayPrefs: displayPrefs, // MG_NUTRIDETAIL
     httpCache: httpCache, // MG_ACTIVEFAMILY
     ),
   ));
@@ -139,7 +139,7 @@ class MenuGenApp extends StatelessWidget {
   final OfflineToggleQueue offlineToggleQueue; // MG_T09
   final ShoppingCache shoppingCache; // MG_CACHE
   final ThemeCubit themeCubit; // MG_SKIN
-  final NutritionDetailCubit nutritionDetail; // MG_NUTRIDETAIL
+  final DisplayPrefsCubit displayPrefs; // MG_NUTRIDETAIL
   final VerifiedNoticeCubit verifiedNotice; // MG_VERIFYDEEPLINK
   final HttpCacheStore httpCache; // MG_ACTIVEFAMILY
 
@@ -155,7 +155,7 @@ class MenuGenApp extends StatelessWidget {
     required this.offlineToggleQueue, // MG_T09
     required this.shoppingCache, // MG_CACHE
     required this.themeCubit, // MG_SKIN
-    required this.nutritionDetail, // MG_NUTRIDETAIL
+    required this.displayPrefs, // MG_NUTRIDETAIL
     required this.verifiedNotice, // MG_VERIFYDEEPLINK
     required this.httpCache, // MG_ACTIVEFAMILY
   });
@@ -178,7 +178,7 @@ class MenuGenApp extends StatelessWidget {
         BlocProvider.value(value: pendingSync), // MG_T09
         BlocProvider.value(value: premiumGate),
         BlocProvider.value(value: themeCubit), // MG_SKIN
-        BlocProvider.value(value: nutritionDetail), // MG_NUTRIDETAIL
+        BlocProvider.value(value: displayPrefs), // MG_NUTRIDETAIL
         BlocProvider.value(value: verifiedNotice), // MG_VERIFYDEEPLINK
         BlocProvider(
           create: (_) => AuthBloc(
@@ -199,8 +199,8 @@ class MenuGenApp extends StatelessWidget {
         listener: (context, authState) {
           if (authState is AuthAuthenticated) {
             context.read<ThemeCubit>().loadFromProfile(authState.user);
-            // MG_NUTRIDETAIL: подробность чисел тоже из аккаунта.
-            context.read<NutritionDetailCubit>().loadFromProfile(authState.user);
+            // MG_NUTRIDETAIL + MG_FOODSCALE: настройки показа тоже из аккаунта.
+            context.read<DisplayPrefsCubit>().loadFromProfile(authState.user);
             // MG_ACCDEL: вход отменил удаление — сказать об этом обязательно,
             // иначе человек останется в уверенности, что аккаунта больше нет.
             if (authState.deletionCancelled) {

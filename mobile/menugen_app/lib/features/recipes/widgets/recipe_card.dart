@@ -5,7 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/display/nutrition_detail.dart'; // MG_NUTRIDETAIL
-import '../../../core/display/nutrition_detail_cubit.dart'; // MG_NUTRIDETAIL
+import '../../../core/display/display_prefs_cubit.dart'; // MG_NUTRIDETAIL
 import '../../../core/theme/app_theme.dart';
 
 class RecipeCard extends StatelessWidget {
@@ -112,7 +112,7 @@ class RecipeCard extends StatelessWidget {
                           if (_cookTime != null && _cookTime!.isNotEmpty)
                             _meta(context, Icons.access_time, _cookTime!),
                           if (_kcal != null) _meta(context, Icons.local_fire_department, _kcal!),
-                          if (context.watch<NutritionDetailCubit>().state.showMacros &&
+                          if (context.watch<DisplayPrefsCubit>().state.detail.showMacros &&
                               _macros.isNotEmpty)
                             _meta(context, Icons.pie_chart_outline, _macros),
                           if (_fridgeMatch != null && _fridgeMatch! > 0)

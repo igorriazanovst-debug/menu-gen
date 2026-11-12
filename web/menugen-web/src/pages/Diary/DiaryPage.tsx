@@ -19,7 +19,9 @@ import {
   MEAL_SLOT_LABELS, MEAL_SLOTS_BY_PLAN, MEAL_SLOT_COLORS,
 } from '../../types';
 import { nutriVal, slotOf, visibleSlots } from '../../utils/diaryNutrition'; // MG_DAYSUM
-import { detailOf, macrosShort, showsGrams, showsMacros } from '../../utils/nutritionDetail'; // MG_NUTRIDETAIL
+import { // MG_NUTRIDETAIL + MG_FOODSCALE
+  detailOf, macrosShort, scaleFactor, scaleOf, showsGrams, showsMacros,
+} from '../../utils/nutritionDetail';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { WeightCard } from './WeightCard'; // MG_TRAINER
 import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
@@ -39,7 +41,11 @@ const StatBox: React.FC<{ label: string; planned: number; actual: number; unit: 
   <div className="rounded-xl bg-rice px-3 py-2">
     <div className="text-xs text-gray-500">{label}</div>
     <div className="text-sm font-semibold text-chocolate">
-      {Math.round(actual)}<span className="text-xs font-normal text-gray-500"> / {Math.round(planned)} {unit} по плану</span>
+      {Math.round(actual)}
+      {/* «94 / 0 г по плану» — не число, а след от деления на пустоту. */}
+      {planned > 0
+        ? <span className="text-xs font-normal text-gray-500"> / {Math.round(planned)} {unit} по плану</span>
+        : <span className="text-xs font-normal text-gray-500"> {unit}</span>}
     </div>
   </div>
 );
@@ -48,7 +54,9 @@ const StatBox: React.FC<{ label: string; planned: number; actual: number; unit: 
 const CalorieDonut: React.FC<{ fact: number; plan: number }> = ({ fact, plan }) => {
   const r = 34;
   const c = 2 * Math.PI * r;
-  const ratio = plan > 0 ? Math.min(1, Math.max(0, fact / plan)) : (fact > 0 ? 1 : 0);
+  // MG_NOFAKEBAR: без плана кольцо пустое, а не полное. Замкнутое кольцо
+  // читается как выполненная норма, а нормы тут нет вовсе.
+  const ratio = plan > 0 ? Math.min(1, Math.max(0, fact / plan)) : 0;
   const pct = plan > 0 ? Math.round((fact / plan) * 100) : null;
   return (
     <div className="relative shrink-0" style={{ width: 88, height: 88 }}>
@@ -93,6 +101,8 @@ export const DiaryPage: React.FC = () => {
   // MG_NUTRIDETAIL: подробность чисел — своя у вошедшего, а не у того, чей
   // дневник открыт: это настройка того, КТО смотрит.
   const detail = detailOf(useAppSelector((s) => s.auth.user?.profile));
+  // MG_FOODSCALE: размер шрифта в списке еды — множителем к обычному.
+  const foodScale = scaleFactor(scaleOf(useAppSelector((s) => s.auth.user?.profile)));
   // MG_DIARYTABS: в один момент времени на экране что-то одно.
   //
   // Раньше страница была одной простынёй: сводка, вода, вес, обхваты и только
@@ -270,20 +280,20 @@ export const DiaryPage: React.FC = () => {
           <div className="min-w-0">
             {/* MG_NOCUT: переносим, а не обрезаем. В узком окне truncate
                 съедал ровно то, ради чего строку и читают, — название. */}
-            <p className="font-medium text-chocolate break-words">
+            <p className="font-medium text-chocolate break-words text-[1em]">
               {e.recipe_title ?? e.custom_name ?? 'Без названия'}
               {e.quantity !== 1 && <span className="text-gray-400"> ×{e.quantity}</span>}
               {/* MG_HEADKEEPS: запись внёс не сам человек — видно сразу. */}
               <AddedByMark name={e.added_by_name} className="ml-1 align-middle" />
             </p>
             {entryDetails(e) && (
-              <p className="text-xs text-gray-500 break-words">{entryDetails(e)}</p>
+              <p className="text-[0.78em] text-gray-500 break-words">{entryDetails(e)}</p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {nutriVal(e, 'calories') > 0 && (
-            <span className="text-sm text-gray-500 whitespace-nowrap">
+            <span className="text-[0.85em] text-gray-500 whitespace-nowrap">
               {Math.round(nutriVal(e, 'calories'))} ккал
             </span>
           )}
@@ -466,14 +476,17 @@ export const DiaryPage: React.FC = () => {
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
 
-      {/* DIARY: только выбранный день — приёмы пищи списком. */}
+      {/* DIARY: только выбранный день — приёмы пищи списком.
+          MG_FOODSCALE: размер шрифта применяется ко всему списку разом —
+          заголовки приёмов и строки еды об одном и том же, и разный размер у
+          них читался бы как разная важность. */}
       {tab === 'meals' && (loading ? <PageSpinner /> : (entries.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <div className="text-5xl mb-4">📔</div>
           <p>Нет записей за этот день</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" style={{ fontSize: `${foodScale}em` }}>
           {mealGroups.map((g) => (
             <details key={g.slot} open={openMeals.has(g.slot)}
               // Цвет приёма — полосой слева, как в приложении.
@@ -510,7 +523,7 @@ export const DiaryPage: React.FC = () => {
                           ev.preventDefault(); ev.stopPropagation(); markAll(g.items);
                         }
                       }}
-                      className="text-xs text-avocado hover:underline cursor-pointer"
+                      className="text-[0.78em] text-avocado hover:underline cursor-pointer"
                     >
                       {allEaten(g.items) ? 'снять' : 'съедено всё'}
                     </span>
@@ -519,9 +532,9 @@ export const DiaryPage: React.FC = () => {
                       показанных записей, поэтому после добавления пересчитывается
                       вместе со списком. */}
                   <span className="text-right leading-tight">
-                    <span className="block text-sm text-gray-600">{mealKcal(g.items)} ккал</span>
+                    <span className="block text-[0.9em] text-gray-600">{mealKcal(g.items)} ккал</span>
                     {g.items.length > 0 && (
-                      <span className="block text-[11px] text-gray-500">
+                      <span className="block text-[0.72em] text-gray-500">
                         Белки {mealMacros(g.items).proteins} г
                         {' '}· Жиры {mealMacros(g.items).fats} г
                         {' '}· Углеводы {mealMacros(g.items).carbs} г
@@ -532,7 +545,7 @@ export const DiaryPage: React.FC = () => {
               </summary>
               <div className="px-3 pb-3 space-y-2">
                 {g.items.length === 0 ? (
-                  <p className="text-sm text-gray-400 px-1 py-2">Пока ничего не записано.</p>
+                  <p className="text-[0.9em] text-gray-400 px-1 py-2">Пока ничего не записано.</p>
                 ) : (
                   g.items.map((e) => <Entry key={e.id} e={e} canCheck={isPlan(e)} />)
                 )}

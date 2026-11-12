@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/display/nutrition_detail.dart'; // MG_NUTRIDETAIL
-import '../../../core/display/nutrition_detail_cubit.dart'; // MG_NUTRIDETAIL
+import '../../../core/display/display_prefs_cubit.dart'; // MG_NUTRIDETAIL
 import '../models/diary_entry.dart';
 
 class DiaryEntryTile extends StatelessWidget {
@@ -41,7 +41,7 @@ class DiaryEntryTile extends StatelessWidget {
     // и веб. Названия приёма здесь больше нет: оно стоит в заголовке раздела,
     // прямо над этой же строкой, и повторять его значит тратить ту ширину,
     // где должны быть БЖУ.
-    final detail = context.watch<NutritionDetailCubit>().state;
+    final detail = context.watch<DisplayPrefsCubit>().state.detail;
     final macros = detail.showMacros
         ? macrosShort(
             proteins: entry.proteins,

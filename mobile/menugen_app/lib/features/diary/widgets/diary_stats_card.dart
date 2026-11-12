@@ -47,7 +47,13 @@ class DiaryStatsCard extends StatelessWidget {
   }
 
   Widget _macroBar(String label, double fact, double plan, Color color) {
-    final ratio = plan > 0 ? (fact / plan).clamp(0.0, 1.0) : (fact > 0 ? 1.0 : 0.0);
+    // MG_NOFAKEBAR: без плана полоса пустая, а не полная.
+    //
+    // Раньше при нулевом плане полоса заливалась во всю ширину — «съел всё из
+    // ничего». Рядом при этом стояло «94 / 0 г», и две части одной строки
+    // говорили разное. Полная полоса читается как выполненная норма, а норма
+    // тут не задана вовсе: сравнивать не с чем, и показывать нечего.
+    final ratio = plan > 0 ? (fact / plan).clamp(0.0, 1.0) : 0.0;
     return Row(
       children: [
         SizedBox(
@@ -70,7 +76,9 @@ class DiaryStatsCard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text('${_n(fact)} / ${_n(plan)} г',
+        // «94 / 0 г» — не число, а след от деления на пустоту: плана нет,
+        // значит и второй половины у подписи быть не должно.
+        Text(plan > 0 ? '${_n(fact)} / ${_n(plan)} г' : '${_n(fact)} г',
             style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
       ],
     );
@@ -86,7 +94,9 @@ class _CalorieDonut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ratio = plan > 0 ? (fact / plan).clamp(0.0, 1.0) : (fact > 0 ? 1.0 : 0.0);
+    // MG_NOFAKEBAR: без плана кольцо пустое — замкнутое означало бы
+    // выполненную норму, которой нет.
+    final ratio = plan > 0 ? (fact / plan).clamp(0.0, 1.0) : 0.0;
     final pct = plan > 0 ? (fact / plan * 100).round() : null;
     return SizedBox(
       width: 78,

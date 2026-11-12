@@ -3,7 +3,7 @@
 // Числа у записи те же — меняется только то, что из них видно. Проверяется
 // то, на чём такие вещи ломаются молча: округление, пустота и незнакомое
 // значение с сервера.
-import { detailOf, macrosShort, showsGrams, showsMacros } from './nutritionDetail';
+import { detailOf, macrosShort, scaleFactor, scaleOf, showsGrams, showsMacros } from './nutritionDetail';
 
 describe('macrosShort', () => {
   test('буквами, граммы один раз в конце', () => {
@@ -57,5 +57,23 @@ describe('что показывает режим', () => {
   test('подробно — ещё и вес порции', () => {
     expect(showsMacros('detailed')).toBe(true);
     expect(showsGrams('detailed')).toBe(true);
+  });
+});
+
+describe('размер шрифта', () => {
+  test('по умолчанию обычный', () => {
+    expect(scaleOf(null)).toBe('normal');
+    expect(scaleFactor('normal')).toBe(1);
+  });
+
+  test('градации умеренные', () => {
+    // Множитель к обычному размеру, а не замена: в браузере поверх него
+    // работает ещё и собственный зум страницы.
+    expect(scaleFactor('small')).toBe(0.9);
+    expect(scaleFactor('large')).toBe(1.15);
+  });
+
+  test('незнакомое значение — обычный', () => {
+    expect(scaleOf({ activity_level: 'm', goal: 'g', food_text_scale: 'огромный' as never })).toBe('normal');
   });
 });

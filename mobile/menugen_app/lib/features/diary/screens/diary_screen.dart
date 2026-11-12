@@ -10,8 +10,9 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
 import '../../../core/api/api_exception.dart'; // MG_WEIGHT2
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
+import '../../../core/display/food_text_scale.dart'; // MG_FOODSCALE
 import '../../../core/display/nutrition_detail.dart'; // MG_NUTRIDETAIL
-import '../../../core/display/nutrition_detail_cubit.dart'; // MG_NUTRIDETAIL
+import '../../../core/display/display_prefs_cubit.dart'; // MG_NUTRIDETAIL
 import '../../../core/premium/premium_gate_cubit.dart';
 import '../../../core/theme/app_theme.dart'; // MG_DIARYTABS: context.tokens
 import '../../../core/utils/package_size.dart'; // MG_DIARYSCAN
@@ -821,7 +822,17 @@ class _LoadedViewState extends State<_LoadedView> {
     // тому же правилу — иначе оно отстаёт от того, что человек видит.
     final planned = entries;
 
-    return Column(
+    // MG_FOODSCALE: размер шрифта в списке еды — выбор человека, множителем
+    // к системному. Применяется ко всей вкладке «Приёмы» разом: заголовки
+    // приёмов и строки еды — об одном и том же, и разный размер у них читался
+    // бы как разная важность.
+    final media = MediaQuery.of(context);
+    final scale = context.watch<DisplayPrefsCubit>().state.scale;
+    return MediaQuery(
+      data: media.copyWith(
+        textScaler: TextScaler.linear(media.textScaler.scale(1) * scale.factor),
+      ),
+      child: Column(
       children: [
         // MG_SKIN: «прилеплённая» сводка КБЖУ за выбранный день.
         Padding(
@@ -841,6 +852,7 @@ class _LoadedViewState extends State<_LoadedView> {
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -2276,7 +2288,7 @@ class _AddManualDialogState extends State<_AddManualDialog>
   }) {
     // MG_NUTRIDETAIL: БЖУ видно ещё до того, как запись создана, — и по той
     // же настройке, что в самом дневнике.
-    final detail = context.watch<NutritionDetailCubit>().state;
+    final detail = context.watch<DisplayPrefsCubit>().state.detail;
     return SuggestionList(
       query: query,
       maxHeight: fill ? double.infinity : 220,

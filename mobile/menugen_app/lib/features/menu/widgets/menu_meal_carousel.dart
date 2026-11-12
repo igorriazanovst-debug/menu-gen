@@ -7,7 +7,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/food_groups.dart'; // MG_SWAPFREE
 import '../../../core/display/nutrition_detail.dart'; // MG_NUTRIDETAIL
-import '../../../core/display/nutrition_detail_cubit.dart'; // MG_NUTRIDETAIL
+import '../../../core/display/display_prefs_cubit.dart'; // MG_NUTRIDETAIL
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
 import 'cooked_sheet.dart'; // MG_WRITEOFF
@@ -404,7 +404,7 @@ class _RecipeBigCard extends StatelessWidget {
                         _MetaChip(icon: Icons.access_time, text: _cookTime!),
                       if (_calories != null)
                         _MetaChip(icon: Icons.local_fire_department, text: _calories!),
-                      if (context.watch<NutritionDetailCubit>().state.showMacros &&
+                      if (context.watch<DisplayPrefsCubit>().state.detail.showMacros &&
                           _macros.isNotEmpty)
                         _MetaChip(icon: Icons.pie_chart_outline, text: _macros),
                       if (memberName != null && memberName!.isNotEmpty)

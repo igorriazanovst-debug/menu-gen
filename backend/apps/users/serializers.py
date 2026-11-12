@@ -166,6 +166,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "fiber_target_g",
             "meal_plan_type",
             "nutrition_detail",  # MG_NUTRIDETAIL
+            "food_text_scale",  # MG_FOODSCALE
             "head_may_edit_diary",  # MG_HEADKEEPS
             "targets_calculated",
             "targets_meta",

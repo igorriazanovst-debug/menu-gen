@@ -96,3 +96,45 @@ def test_смена_настройки_не_трогает_остальной_п
     user.profile.refresh_from_db()
     assert user.profile.calorie_target == 2000
     assert user.profile.meal_plan_type == "5"
+
+
+def test_размер_шрифта_по_умолчанию_обычный():
+    """MG_FOODSCALE: множитель к системному размеру, а не замена ему."""
+    user = _person()
+
+    assert user.profile.food_text_scale == Profile.FoodTextScale.NORMAL
+
+
+def test_размер_шрифта_виден_и_меняется():
+    user = _person()
+
+    r = _client(user).patch(reverse("users-me"), {"profile": {"food_text_scale": "large"}}, format="json")
+
+    assert r.status_code == 200, r.data
+    assert r.data["profile"]["food_text_scale"] == "large"
+    user.profile.refresh_from_db()
+    assert user.profile.food_text_scale == "large"
+
+
+def test_неизвестный_размер_не_сохраняется():
+    # Клиент знает три градации; четвёртая означала бы шрифт, которого он не
+    # умеет показывать.
+    user = _person()
+
+    r = _client(user).patch(reverse("users-me"), {"profile": {"food_text_scale": "огромный"}}, format="json")
+
+    assert r.status_code == 400
+    user.profile.refresh_from_db()
+    assert user.profile.food_text_scale == "normal"
+
+
+def test_две_настройки_отображения_не_мешают_друг_другу():
+    # Их правят по отдельности, и частичный PATCH не должен сбрасывать соседа.
+    user = _person()
+    _client(user).patch(reverse("users-me"), {"profile": {"nutrition_detail": "short"}}, format="json")
+
+    _client(user).patch(reverse("users-me"), {"profile": {"food_text_scale": "small"}}, format="json")
+
+    user.profile.refresh_from_db()
+    assert user.profile.nutrition_detail == "short"
+    assert user.profile.food_text_scale == "small"

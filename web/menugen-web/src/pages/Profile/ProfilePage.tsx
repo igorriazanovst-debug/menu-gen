@@ -13,9 +13,10 @@ import { SkinSwitcher } from '../../components/ui/SkinSwitcher'; // MG_SKIN
 import { TargetField, type TargetLoader } from '../../components/profile/TargetField';
 import { AllergenEditor } from '../../components/profile/AllergenEditor'; // MG_ALLERGEN
 import { getErrorMessage } from '../../utils/api';
-import { // MG_NUTRIDETAIL
-  NUTRITION_DETAIL_OPTIONS, detailOf, macrosShort, showsGrams, showsMacros,
-  type NutritionDetail,
+import { // MG_NUTRIDETAIL + MG_FOODSCALE
+  FOOD_SCALE_OPTIONS, NUTRITION_DETAIL_OPTIONS, detailOf, macrosShort, scaleFactor,
+  scaleOf, showsGrams, showsMacros,
+  type FoodTextScale, type NutritionDetail,
 } from '../../utils/nutritionDetail';
 import type {
   MealPlan,
@@ -66,6 +67,8 @@ export const ProfilePage: React.FC = () => {
   const [detail, setDetail] = useState<NutritionDetail>(detailOf(user?.profile));
   const [detailSaving, setDetailSaving] = useState(false);
   const [detailMsg, setDetailMsg] = useState('');
+  // MG_FOODSCALE: размер шрифта в списках еды.
+  const [foodScale, setFoodScale] = useState<FoodTextScale>(scaleOf(user?.profile));
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError]     = useState('');
@@ -76,8 +79,10 @@ export const ProfilePage: React.FC = () => {
     setAllergies(user?.allergies ?? []);
     setHeadMayEdit(!!user?.profile?.head_may_edit_diary); // MG_HEADKEEPS
     setDetail(detailOf(user?.profile)); // MG_NUTRIDETAIL
+    setFoodScale(scaleOf(user?.profile)); // MG_FOODSCALE
   }, [user?.id, user?.name, user?.profile?.meal_plan_type, user?.allergies,
-      user?.profile?.head_may_edit_diary, user?.profile?.nutrition_detail]);
+      user?.profile?.head_may_edit_diary, user?.profile?.nutrition_detail,
+      user?.profile?.food_text_scale]);
 
   // MG_RUBRIC007_load: fetch family to read/set its currency.
   useEffect(() => {
@@ -183,6 +188,24 @@ export const ProfilePage: React.FC = () => {
       setDetailSaving(false);
     }
   }, [detail, dispatch]);
+
+  // MG_FOODSCALE: размер шрифта сохраняется сразу, как и подробность.
+  const saveFoodScale = useCallback(async (next: FoodTextScale) => {
+    const prev = foodScale;
+    setFoodScale(next);
+    setDetailSaving(true);
+    setDetailMsg('');
+    try {
+      const { data } = await authApi.updateMe({ profile: { food_text_scale: next } });
+      dispatch(setUser(data));
+      setDetailMsg('Сохранено');
+    } catch (e) {
+      setFoodScale(prev);
+      setDetailMsg(getErrorMessage(e));
+    } finally {
+      setDetailSaving(false);
+    }
+  }, [foodScale, dispatch]);
 
   // MG_ALLERGEN: сохранить список аллергенов сразу при изменении (оптимистично).
   const saveAllergies = useCallback(async (next: string[]) => {
@@ -372,21 +395,40 @@ export const ProfilePage: React.FC = () => {
           <p className="text-xs text-gray-500 mt-2">
             {NUTRITION_DETAIL_OPTIONS.find((o) => o.value === detail)?.hint}
           </p>
+          <p className="text-sm font-semibold text-chocolate mt-4">Размер шрифта</p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {FOOD_SCALE_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                disabled={detailSaving}
+                onClick={() => saveFoodScale(o.value)}
+                className={`px-3 py-1.5 rounded-xl text-sm border transition-colors ${
+                  foodScale === o.value
+                    ? 'border-avocado bg-avocado/10 text-avocado font-semibold'
+                    : 'border-gray-300 text-gray-600 hover:border-avocado'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
           {/* Строка-образец: ровно так запись выглядит в дневнике при этом
               выборе. Проверять настройку, уходя в дневник и обратно, — лишний
               путь. */}
-          <div className="mt-2 rounded-xl bg-rice px-3 py-2 flex items-center justify-between gap-3">
+          <div className="mt-2 rounded-xl bg-rice px-3 py-2 flex items-center justify-between gap-3"
+               style={{ fontSize: `${scaleFactor(foodScale)}em` }}>
             <span className="min-w-0">
-              <span className="block text-sm text-chocolate truncate">Овсянка на молоке</span>
+              <span className="block text-[1em] text-chocolate truncate">Овсянка на молоке</span>
               {(showsGrams(detail) || showsMacros(detail)) && (
-                <span className="block text-xs text-gray-500 truncate">
+                <span className="block text-[0.78em] text-gray-500 truncate">
                   {[showsGrams(detail) ? '250 г' : '', showsMacros(detail) ? macrosShort(12, 8, 30) : '']
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
               )}
             </span>
-            <span className="text-sm font-semibold text-avocado shrink-0">412 ккал</span>
+            <span className="text-[0.85em] font-semibold text-avocado shrink-0">412 ккал</span>
           </div>
           {detailMsg && <p className="text-xs text-gray-500 mt-1">{detailMsg}</p>}
         </div>

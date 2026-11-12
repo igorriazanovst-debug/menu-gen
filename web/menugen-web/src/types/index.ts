@@ -20,6 +20,9 @@ export interface UserProfile {
   // MG_NUTRIDETAIL: сколько чисел показывать в строках еды. Поле может не
   // прийти со старого сервера — читается через detailOf() с умолчанием.
   nutrition_detail?: 'short' | 'normal' | 'detailed';
+  // MG_FOODSCALE: размер шрифта в списках еды. Множитель к обычному, а не
+  // замена: «крупный» — это 1,15, а не вдвое.
+  food_text_scale?: 'small' | 'normal' | 'large';
   targets_calculated?: NutritionTargets | null;
   targets_meta?: TargetsMeta;
   // MG_504_V_types
