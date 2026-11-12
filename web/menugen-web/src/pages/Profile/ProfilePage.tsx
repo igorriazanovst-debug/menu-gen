@@ -13,6 +13,10 @@ import { SkinSwitcher } from '../../components/ui/SkinSwitcher'; // MG_SKIN
 import { TargetField, type TargetLoader } from '../../components/profile/TargetField';
 import { AllergenEditor } from '../../components/profile/AllergenEditor'; // MG_ALLERGEN
 import { getErrorMessage } from '../../utils/api';
+import { // MG_NUTRIDETAIL
+  NUTRITION_DETAIL_OPTIONS, detailOf, macrosShort, showsGrams, showsMacros,
+  type NutritionDetail,
+} from '../../utils/nutritionDetail';
 import type {
   MealPlan,
   NutritionTargets,
@@ -57,6 +61,11 @@ export const ProfilePage: React.FC = () => {
   const [headMayEdit, setHeadMayEdit] = useState(!!user?.profile?.head_may_edit_diary);
   const [headMsg, setHeadMsg] = useState('');
   const [headSaving, setHeadSaving] = useState(false);
+  // MG_NUTRIDETAIL: подробность чисел в списках еды. Сохраняется сразу, как
+  // аллергены: настройка отображения — не та вещь, ради которой жмут «Сохранить».
+  const [detail, setDetail] = useState<NutritionDetail>(detailOf(user?.profile));
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [detailMsg, setDetailMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError]     = useState('');
@@ -66,8 +75,9 @@ export const ProfilePage: React.FC = () => {
     setMealPlan(user?.profile?.meal_plan_type ?? '3');
     setAllergies(user?.allergies ?? []);
     setHeadMayEdit(!!user?.profile?.head_may_edit_diary); // MG_HEADKEEPS
+    setDetail(detailOf(user?.profile)); // MG_NUTRIDETAIL
   }, [user?.id, user?.name, user?.profile?.meal_plan_type, user?.allergies,
-      user?.profile?.head_may_edit_diary]);
+      user?.profile?.head_may_edit_diary, user?.profile?.nutrition_detail]);
 
   // MG_RUBRIC007_load: fetch family to read/set its currency.
   useEffect(() => {
@@ -153,6 +163,26 @@ export const ProfilePage: React.FC = () => {
     } catch (e) { setError(getErrorMessage(e)); }
     finally { setSaving(false); }
   };
+
+  // MG_NUTRIDETAIL: сохранить подробность чисел сразу при выборе.
+  const saveDetail = useCallback(async (next: NutritionDetail) => {
+    const prev = detail;
+    setDetail(next);
+    setDetailSaving(true);
+    setDetailMsg('');
+    try {
+      const { data } = await authApi.updateMe({ profile: { nutrition_detail: next } });
+      dispatch(setUser(data));
+      setDetailMsg('Сохранено');
+    } catch (e) {
+      // Вернуть показ назад обязательно: настройка отображения, которая не
+      // сохранилась, не должна выглядеть применённой.
+      setDetail(prev);
+      setDetailMsg(getErrorMessage(e));
+    } finally {
+      setDetailSaving(false);
+    }
+  }, [detail, dispatch]);
 
   // MG_ALLERGEN: сохранить список аллергенов сразу при изменении (оптимистично).
   const saveAllergies = useCallback(async (next: string[]) => {
@@ -312,6 +342,53 @@ export const ProfilePage: React.FC = () => {
             <p className="text-xs text-gray-400 mt-1">Менять настройку может только глава семьи.</p>
           )}
           {expMsg && <p className="text-xs text-gray-500 mt-1">{expMsg}</p>}
+        </div>
+
+        {/* MG_NUTRIDETAIL: сколько чисел показывать в списках еды. Настройка
+            общая для веба и приложения — она в аккаунте. */}
+        <div className="mt-6 pt-6 border-t border-border">
+          <p className="text-sm font-semibold text-chocolate">Числа в списках еды</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Дневник, меню, рецепты и подсказки при добавлении. Настройка
+            синхронизируется с приложением через ваш аккаунт.
+          </p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {NUTRITION_DETAIL_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                disabled={detailSaving}
+                onClick={() => saveDetail(o.value)}
+                className={`px-3 py-1.5 rounded-xl text-sm border transition-colors ${
+                  detail === o.value
+                    ? 'border-avocado bg-avocado/10 text-avocado font-semibold'
+                    : 'border-gray-300 text-gray-600 hover:border-avocado'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {NUTRITION_DETAIL_OPTIONS.find((o) => o.value === detail)?.hint}
+          </p>
+          {/* Строка-образец: ровно так запись выглядит в дневнике при этом
+              выборе. Проверять настройку, уходя в дневник и обратно, — лишний
+              путь. */}
+          <div className="mt-2 rounded-xl bg-rice px-3 py-2 flex items-center justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block text-sm text-chocolate truncate">Овсянка на молоке</span>
+              {(showsGrams(detail) || showsMacros(detail)) && (
+                <span className="block text-xs text-gray-500 truncate">
+                  {[showsGrams(detail) ? '250 г' : '', showsMacros(detail) ? macrosShort(12, 8, 30) : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              )}
+            </span>
+            <span className="text-sm font-semibold text-avocado shrink-0">412 ккал</span>
+          </div>
+          {detailMsg && <p className="text-xs text-gray-500 mt-1">{detailMsg}</p>}
         </div>
 
         {/* MG_HEADKEEPS: кто ведёт мой дневник. Добавлять записи глава семьи

@@ -1,10 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/cache/recipe_image_cache.dart';
 import '../../../core/constants/food_groups.dart'; // MG_SWAPFREE
+import '../../../core/display/nutrition_detail.dart'; // MG_NUTRIDETAIL
+import '../../../core/display/nutrition_detail_cubit.dart'; // MG_NUTRIDETAIL
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
 import 'cooked_sheet.dart'; // MG_WRITEOFF
@@ -327,6 +330,15 @@ class _RecipeBigCard extends StatelessWidget {
     return '${_fmtNum(v)} ккал';
   }
 
+  /// MG_NUTRIDETAIL: «Б 12 · Ж 8 · У 30 г» — та же строка, что в дневнике, и
+  /// по той же настройке. Одно блюдо не должно выглядеть в меню и в дневнике
+  /// по-разному.
+  String get _macros => macrosShort(
+        proteins: nutritionValue(recipe['nutrition'], 'proteins') ?? 0,
+        fats: nutritionValue(recipe['nutrition'], 'fats') ?? 0,
+        carbs: nutritionValue(recipe['nutrition'], 'carbs') ?? 0,
+      );
+
   @override
   Widget build(BuildContext context) {
     final cs = context.cs;
@@ -392,6 +404,9 @@ class _RecipeBigCard extends StatelessWidget {
                         _MetaChip(icon: Icons.access_time, text: _cookTime!),
                       if (_calories != null)
                         _MetaChip(icon: Icons.local_fire_department, text: _calories!),
+                      if (context.watch<NutritionDetailCubit>().state.showMacros &&
+                          _macros.isNotEmpty)
+                        _MetaChip(icon: Icons.pie_chart_outline, text: _macros),
                       if (memberName != null && memberName!.isNotEmpty)
                         _MetaChip(icon: Icons.person_outline, text: memberName!),
                     ],

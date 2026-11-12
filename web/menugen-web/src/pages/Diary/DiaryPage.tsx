@@ -19,6 +19,7 @@ import {
   MEAL_SLOT_LABELS, MEAL_SLOTS_BY_PLAN, MEAL_SLOT_COLORS,
 } from '../../types';
 import { nutriVal, slotOf, visibleSlots } from '../../utils/diaryNutrition'; // MG_DAYSUM
+import { detailOf, macrosShort, showsGrams, showsMacros } from '../../utils/nutritionDetail'; // MG_NUTRIDETAIL
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { WeightCard } from './WeightCard'; // MG_TRAINER
 import { todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
@@ -89,6 +90,9 @@ export const DiaryPage: React.FC = () => {
   const [openMeals, setOpenMeals] = useState<Set<string>>(new Set());
   const [customWater, setCustomWater] = useState('');
   const authUserId = useAppSelector((s) => s.auth.user?.id);
+  // MG_NUTRIDETAIL: подробность чисел — своя у вошедшего, а не у того, чей
+  // дневник открыт: это настройка того, КТО смотрит.
+  const detail = detailOf(useAppSelector((s) => s.auth.user?.profile));
   // MG_DIARYTABS: в один момент времени на экране что-то одно.
   //
   // Раньше страница была одной простынёй: сводка, вода, вес, обхваты и только
@@ -237,6 +241,18 @@ export const DiaryPage: React.FC = () => {
     carbs: Math.round(items.reduce((s, e) => s + nutriVal(e, 'carbs'), 0)),
   });
 
+  // MG_NUTRIDETAIL: вторая строка записи — по выбору человека. «Кратко» —
+  // пусто, «обычно» — БЖУ, «подробно» — ещё и вес порции.
+  const entryDetails = (e: DiaryEntry): string =>
+    [
+      showsGrams(detail) && e.grams ? `${e.grams} г` : '',
+      showsMacros(detail)
+        ? macrosShort(nutriVal(e, 'proteins'), nutriVal(e, 'fats'), nutriVal(e, 'carbs'))
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
   const Entry: React.FC<{ e: DiaryEntry; canCheck: boolean }> = ({ e, canCheck }) => (
     <Card className="p-4">
       <div className="flex items-center justify-between gap-3">
@@ -248,17 +264,19 @@ export const DiaryPage: React.FC = () => {
           <input type="checkbox" checked={e.is_eaten} onChange={() => toggleEaten(e)}
                  title={canCheck ? 'Съедено по плану' : 'Съедено'}
                  className="w-5 h-5 accent-tomato cursor-pointer" />
+          {/* MG_NUTRIDETAIL: названия приёма здесь больше нет — оно стоит в
+              заголовке раздела прямо над этой строкой, и повторять его значит
+              тратить ту ширину, где должны быть БЖУ. */}
           <div className="min-w-0">
-            <span className="text-xs uppercase tracking-wide"
-                  style={{ color: MEAL_SLOT_COLORS[slotOf(e)] }}>
-              {MEAL_SLOT_LABELS[slotOf(e)] ?? e.meal_type}
-            </span>
-            <p className="font-medium text-chocolate mt-0.5 truncate">
+            <p className="font-medium text-chocolate truncate">
               {e.recipe_title ?? e.custom_name ?? 'Без названия'}
               {e.quantity !== 1 && <span className="text-gray-400"> ×{e.quantity}</span>}
               {/* MG_HEADKEEPS: запись внёс не сам человек — видно сразу. */}
               <AddedByMark name={e.added_by_name} className="ml-1 align-middle" />
             </p>
+            {entryDetails(e) && (
+              <p className="text-xs text-gray-500 truncate">{entryDetails(e)}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">

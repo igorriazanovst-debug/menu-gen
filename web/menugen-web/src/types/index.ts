@@ -17,6 +17,9 @@ export interface UserProfile {
   carb_target_g?:    string | null;
   fiber_target_g?:   string | null;
   meal_plan_type?: MealPlan;
+  // MG_NUTRIDETAIL: сколько чисел показывать в строках еды. Поле может не
+  // прийти со старого сервера — читается через detailOf() с умолчанием.
+  nutrition_detail?: 'short' | 'normal' | 'detailed';
   targets_calculated?: NutritionTargets | null;
   targets_meta?: TargetsMeta;
   // MG_504_V_types

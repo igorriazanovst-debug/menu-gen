@@ -1,8 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/widgets/icon_label.dart'; // MG_NOOVERFLOW
 import '../../../core/cache/recipe_image_cache.dart';
+import '../../../core/display/nutrition_detail.dart'; // MG_NUTRIDETAIL
+import '../../../core/display/nutrition_detail_cubit.dart'; // MG_NUTRIDETAIL
 import '../../../core/theme/app_theme.dart';
 
 class RecipeCard extends StatelessWidget {
@@ -28,17 +31,35 @@ class RecipeCard extends StatelessWidget {
     return null;
   }
 
-  String? get _kcal {
+  /// KBJU_DISPLAY: nutrition может хранить число или {value, unit}.
+  double? _nutri(String key) {
     final n = recipe['nutrition'];
-    if (n is Map) {
-      final c = n['calories'];
-      if (c is Map) {
-        final v = c['value'];
-        if (v != null) return '${v} ккал';
-      }
+    if (n is! Map) return null;
+    final raw = n[key];
+    if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw.replaceAll(',', '.'));
+    if (raw is Map) {
+      final v = raw['value'];
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v.replaceAll(',', '.'));
     }
     return null;
   }
+
+  String? get _kcal {
+    final v = _nutri('calories');
+    // Раньше читалась только форма {value, unit}: у рецепта с числом
+    // калорийность молча пропадала из карточки.
+    if (v == null) return null;
+    return '${v == v.roundToDouble() ? v.round() : v.toStringAsFixed(1)} ккал';
+  }
+
+  /// MG_NUTRIDETAIL: та же строка БЖУ, что в дневнике и в меню.
+  String get _macros => macrosShort(
+        proteins: _nutri('proteins') ?? 0,
+        fats: _nutri('fats') ?? 0,
+        carbs: _nutri('carbs') ?? 0,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +112,9 @@ class RecipeCard extends StatelessWidget {
                           if (_cookTime != null && _cookTime!.isNotEmpty)
                             _meta(context, Icons.access_time, _cookTime!),
                           if (_kcal != null) _meta(context, Icons.local_fire_department, _kcal!),
+                          if (context.watch<NutritionDetailCubit>().state.showMacros &&
+                              _macros.isNotEmpty)
+                            _meta(context, Icons.pie_chart_outline, _macros),
                           if (_fridgeMatch != null && _fridgeMatch! > 0)
                             _badge('🧺 $_fridgeMatch'),
                         ],

@@ -16,6 +16,8 @@ import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { categoryLabel } from '../../constants/categories'; // MG_CATRU
 import type { Recipe } from '../../types';
 
+import { detailOf, macrosShort, showsMacros } from '../../utils/nutritionDetail'; // MG_NUTRIDETAIL
+
 const MEAL_TYPES = [
   { value: 'breakfast', label: 'Завтрак' },
   { value: 'lunch',     label: 'Обед'    },
@@ -88,6 +90,8 @@ export const RecipesPage: React.FC = () => {
   const [countries, setCountries] = useState<string[]>([]);
 
   const user    = useAppSelector((s) => s.auth.user);
+  // MG_NUTRIDETAIL: подробность чисел — выбор вошедшего, одна на всё приложение.
+  const detail  = detailOf(user?.profile);
   const isAdmin = (user as any)?.user_type === 'admin';
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -271,6 +275,7 @@ export const RecipesPage: React.FC = () => {
               key={r.id}
               recipe={r}
               isAdmin={isAdmin}
+              detail={detail}
               onClick={() => setSelected(r)}
               onEdit={() => setEditing(r)}
             />
@@ -352,12 +357,23 @@ export const RecipesPage: React.FC = () => {
 
 // ── RecipeCard ───────────────────────────────────────────────────────────────
 
+/** MG_NUTRIDETAIL: «Б 12 · Ж 8 · У 30 г» из nutrition рецепта. */
+const recipeMacros = (recipe: Recipe): string => {
+  const v = (k: 'proteins' | 'fats' | 'carbs'): number => {
+    const raw = recipe.nutrition?.[k]?.value;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+  return macrosShort(v('proteins'), v('fats'), v('carbs'));
+};
+
 const RecipeCard: React.FC<{
   recipe: Recipe;
   isAdmin: boolean;
+  detail: ReturnType<typeof detailOf>;
   onClick: () => void;
   onEdit: () => void;
-}> = ({ recipe, isAdmin, onClick, onEdit }) => (
+}> = ({ recipe, isAdmin, detail, onClick, onEdit }) => (
   <Card className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden relative group">
     <div onClick={onClick}>
       {recipe.image_url ? (
@@ -377,6 +393,10 @@ const RecipeCard: React.FC<{
             <span className="text-xs text-gray-400">
               🔥 {recipe.nutrition.calories.value} {recipe.nutrition.calories.unit}
             </span>
+          )}
+          {/* MG_NUTRIDETAIL: та же строка БЖУ, что в дневнике и в меню. */}
+          {showsMacros(detail) && recipeMacros(recipe) && (
+            <span className="text-xs text-gray-400">{recipeMacros(recipe)}</span>
           )}
         </div>
         {/* MG_CATRU: чипы категорий по-русски (незнакомые токены — как есть) */}

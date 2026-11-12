@@ -10,6 +10,8 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../../core/api/api_client.dart'; // DIARY_COPY_V3
 import '../../../core/api/api_exception.dart'; // MG_WEIGHT2
 import '../../../core/connectivity/connectivity_cubit.dart'; // MG_T10
+import '../../../core/display/nutrition_detail.dart'; // MG_NUTRIDETAIL
+import '../../../core/display/nutrition_detail_cubit.dart'; // MG_NUTRIDETAIL
 import '../../../core/premium/premium_gate_cubit.dart';
 import '../../../core/theme/app_theme.dart'; // MG_DIARYTABS: context.tokens
 import '../../../core/utils/package_size.dart'; // MG_DIARYSCAN
@@ -1004,9 +1006,23 @@ class _EntryTile extends StatelessWidget {
     // всегда сходится со строками под ним.
     final totals = _MealTotals.of([entry]);
     final kcal = totals.calories > 0 ? '${totals.calories.round()} ккал' : '';
+    // MG_NUTRIDETAIL: подробность строки — выбор человека, один на приложение
+    // и веб. Названия приёма здесь больше нет: оно стоит в заголовке раздела,
+    // прямо над этой же строкой, и повторять его значит тратить ту ширину,
+    // где должны быть БЖУ.
+    final detail = context.watch<NutritionDetailCubit>().state;
+    final macros = detail.showMacros
+        ? macrosShort(
+            proteins: entry.proteins,
+            fats: entry.fats,
+            carbs: entry.carbs,
+          )
+        : '';
     final subtitle = [
-      entry.mealSlot.label,
-      if (entry.grams != null) '${entry.grams} г',
+      // Вес порции — только в подробном режиме, как и договаривались:
+      // «кратко» — калории, «обычно» — калории и БЖУ, «подробно» — ещё и вес.
+      if (entry.grams != null && detail.showGrams) '${entry.grams} г',
+      if (macros.isNotEmpty) macros,
       // MG_HEADKEEPS: кто внёс, если не сам владелец.
       if (entry.addedByName != null) 'внёс(ла) ${entry.addedByName}',
     ].join(' · ');
@@ -1054,7 +1070,9 @@ class _EntryTile extends StatelessWidget {
                 ],
               ],
             ),
-            subtitle: Text(subtitle),
+            subtitle: subtitle.isEmpty
+                ? null
+                : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2397,17 +2415,46 @@ class _AddManualDialogState extends State<_AddManualDialog>
     // деться — то есть на вкладках поиска.
     bool fill = false,
   }) {
+    // MG_NUTRIDETAIL: БЖУ видно ещё до того, как запись создана, — и по той
+    // же настройке, что в самом дневнике.
+    final detail = context.watch<NutritionDetailCubit>().state;
     return SuggestionList(
       query: query,
       maxHeight: fill ? double.infinity : 220,
       items: items
           .map((it) => SuggestionItem(
                 title: label(it),
+                subtitle: detail.showMacros ? _macrosOf(it) : null,
                 trailing: trailing?.call(it),
                 onTap: () => onTap(it),
               ))
           .toList(),
     );
+  }
+
+  /// БЖУ находки для второй строки подсказки. Пусто — чисел нет, и «Б 0 · Ж 0»
+  /// здесь было бы утверждением, а не «не знаем».
+  static String? _macrosOf(Map<String, dynamic> m) {
+    final n = m['nutrition'];
+    if (n is! Map) return null;
+    double pick(String key) {
+      final raw = n[key];
+      if (raw is num) return raw.toDouble();
+      if (raw is String) return double.tryParse(raw.replaceAll(',', '.')) ?? 0;
+      if (raw is Map) {
+        final v = raw['value'];
+        if (v is num) return v.toDouble();
+        if (v is String) return double.tryParse(v.replaceAll(',', '.')) ?? 0;
+      }
+      return 0;
+    }
+
+    final line = macrosShort(
+      proteins: pick('proteins'),
+      fats: pick('fats'),
+      carbs: pick('carbs'),
+    );
+    return line.isEmpty ? null : line;
   }
 
   /// Калорийность на 100 г для правой колонки подсказки.

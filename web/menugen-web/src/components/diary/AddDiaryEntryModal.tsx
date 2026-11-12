@@ -11,6 +11,8 @@ import { getErrorMessage } from '../../utils/api';
 import { packageGrams } from '../../utils/packageSize'; // MG_DIARYSCAN
 import { MEAL_SLOT_LABELS, MEAL_SLOT_ORDER } from '../../types';
 import type { MealSlot, Recipe, Product, ProductCategory, BarcodeLookupResult } from '../../types';
+import { detailOf, macrosShort, showsMacros } from '../../utils/nutritionDetail'; // MG_NUTRIDETAIL
+import { useAppSelector } from '../../hooks/useAppDispatch'; // MG_NUTRIDETAIL
 
 interface Props {
   date: string;
@@ -52,7 +54,15 @@ const totalsToNutrition = (t: Totals) => {
   return n;
 };
 
+/** MG_NUTRIDETAIL: БЖУ продукта на 100 г — для второй строки подсказки. */
+const productMacros = (p: { nutrition?: Record<string, unknown> | null }): string => {
+  const v = (k: string): number => toNum((p.nutrition as Record<string, unknown> | null)?.[k]);
+  return macrosShort(v('proteins'), v('fats'), v('carbs'));
+};
+
 export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, onAdded }) => {
+  // MG_NUTRIDETAIL: подробность чисел — выбор вошедшего.
+  const nutriDetail = detailOf(useAppSelector((st) => st.auth.user?.profile));
   const [mode, setMode] = useState<Mode>('recipe');
   const [mealSlot, setMealSlot] = useState<MealSlot>('breakfast');
   const [saving, setSaving] = useState(false);
@@ -456,6 +466,11 @@ export const AddDiaryEntryModal: React.FC<Props> = ({ date, memberId, onClose, o
                         {p.name}
                         {toNum(p.calories_per_100g) > 0 && (
                           <span className="text-gray-400"> · {round0(toNum(p.calories_per_100g))} ккал/100г</span>
+                        )}
+                        {/* MG_NUTRIDETAIL: БЖУ видно ещё до того, как запись
+                            создана, — и по той же настройке, что в дневнике. */}
+                        {showsMacros(nutriDetail) && productMacros(p) && (
+                          <span className="block text-xs text-gray-400">{productMacros(p)}</span>
                         )}
                       </button>
                     ))}

@@ -11,7 +11,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { ImageLightbox } from '../../components/ui/ImageLightbox'; // MG_PHOTOZOOM
-import type { CookedResult, Menu, MenuItem, MealType, ComponentRole, Recipe } from '../../types';
+import type { CookedResult, Menu, MenuItem, MealType, ComponentRole, Nutrition, Recipe } from '../../types';
 import { MEAL_LABELS, COMPONENT_ROLE_LABELS, COMPONENT_ROLE_ICONS } from '../../types';
 import { categoryLabel } from '../../constants/categories'; // MG_SWAPFREE: подпись пищевой группы
 import type { NutritionTargets } from '../../types'; // MG_204_V_menu = 1
@@ -23,6 +23,8 @@ import { useEscapeKey } from '../../hooks/useEscapeKey'; // MG_ESC
 // MG_607_V_menupage
 import { GenerateMenuForm } from '../../components/menu/GenerateMenuForm';
 import { addDaysIso, todayIso } from '../../utils/isoDate'; // ISO_DATE_V1
+
+import { detailOf, macrosShort, showsMacros } from '../../utils/nutritionDetail'; // MG_NUTRIDETAIL
 
 const MEAL_ICONS: Record<string, string> = {
   breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎',
@@ -487,7 +489,19 @@ interface MealDetailModalProps {
   onCookedChanged: () => void;
 }
 
+/** MG_NUTRIDETAIL: «Б 12 · Ж 8 · У 30 г» из nutrition блюда. */
+const dishMacros = (recipe: { nutrition?: Nutrition | null }): string => {
+  const v = (k: 'proteins' | 'fats' | 'carbs'): number => {
+    const raw = recipe.nutrition?.[k]?.value;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+  return macrosShort(v('proteins'), v('fats'), v('carbs'));
+};
+
 const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, dayLabel, onClose, menuId, onSwapped, onCookedChanged }) => {
+  // MG_NUTRIDETAIL: подробность чисел — выбор вошедшего, одна на всё приложение.
+  const nutriDetail = detailOf(useAppSelector((st) => st.auth.user?.profile));
   const sorted = useMemo(() => sortByRole(items), [items]);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -600,6 +614,9 @@ const MealDetailModal: React.FC<MealDetailModalProps> = ({ items, mealLabel, day
                       {item.recipe.cook_time && <span>⏱ {item.recipe.cook_time}</span>}
                       {item.recipe.nutrition?.calories &&
                         <span>🔥 {item.recipe.nutrition.calories.value} {item.recipe.nutrition.calories.unit}</span>}
+                      {/* MG_NUTRIDETAIL: та же строка БЖУ, что в дневнике. */}
+                      {showsMacros(nutriDetail) && dishMacros(item.recipe) &&
+                        <span>{dishMacros(item.recipe)}</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-1">
                       <button type="button" onClick={() => setDetailId(item.recipe.id)}

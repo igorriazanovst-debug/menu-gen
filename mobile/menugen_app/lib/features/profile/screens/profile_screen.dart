@@ -8,6 +8,7 @@ import '../../../features/auth/bloc/auth_bloc.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/display/nutrition_detail_card.dart'; // MG_NUTRIDETAIL
 import '../../../core/theme/skin_selector.dart'; // MG_SKIN
 import '../../../core/widgets/macro_pill.dart';
 import '../../../core/widgets/target_field.dart';
@@ -401,6 +402,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 // ── Оформление (скин) ───────────────────────────────
                 const SkinSelectorCard(), // MG_SKIN
+                const SizedBox(height: 12),
+
+                // ── Числа в списках еды ─────────────────────────────
+                const NutritionDetailCard(), // MG_NUTRIDETAIL
                 const SizedBox(height: 12),
 
                 // ── План приёмов пищи ───────────────────────────────

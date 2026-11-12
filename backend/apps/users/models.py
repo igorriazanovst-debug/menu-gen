@@ -130,6 +130,19 @@ class Profile(models.Model):
         THREE = "3", "3 приёма пищи"
         FIVE = "5", "5 приёмов пищи"
 
+    class NutritionDetail(models.TextChoices):
+        """MG_NUTRIDETAIL: сколько чисел показывать в строке еды.
+
+        Настройка отображения, а не данных: сами числа у записи те же, меняется
+        только то, что из них видно. Одна на человека и общая для приложения и
+        веба — иначе один и тот же дневник выглядел бы на телефоне и в браузере
+        по-разному, и настройка превратилась бы в две.
+        """
+
+        SHORT = "short", "Кратко: калории"
+        NORMAL = "normal", "Обычно: калории и БЖУ"
+        DETAILED = "detailed", "Подробно: калории, БЖУ и вес порции"
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     birth_year = models.PositiveSmallIntegerField(null=True, blank=True)
     gender = models.CharField(max_length=10, choices=Gender.choices, null=True, blank=True)
@@ -145,6 +158,16 @@ class Profile(models.Model):
     carb_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
     fiber_target_g = models.DecimalField(max_digits=6, decimal_places=1, null=True, blank=True)
     meal_plan_type = models.CharField(max_length=2, choices=MealPlan.choices, default=MealPlan.THREE)
+    # MG_NUTRIDETAIL: по умолчанию «обычно» — калории и БЖУ.
+    #
+    # Не «кратко»: дневник заводят ради того, чтобы видеть состав еды, и
+    # прятать БЖУ по умолчанию значит прятать ответ на главный вопрос. Кому
+    # цифр много — выключит, и выбор переживёт переустановку: он в аккаунте.
+    nutrition_detail = models.CharField(
+        max_length=10,
+        choices=NutritionDetail.choices,
+        default=NutritionDetail.NORMAL,
+    )
     # MG_504_V_model
     bedtime_hour = models.PositiveSmallIntegerField(
         null=True,
