@@ -122,11 +122,11 @@ class DiaryEntryTile extends StatelessWidget {
                           if (entry.addedByName != null)
                             const TextSpan(text: ' 👑', style: TextStyle(fontSize: 13)),
                         ]),
-                        // Три строки, а не обрезка: длинное название читается
-                        // целиком даже при крупном системном шрифте, и только
-                        // совсем безразмерное уходит в многоточие.
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
+                        // Предела по числу строк нет вовсе: название блюда
+                        // обрезать нельзя. Любой предел — это многоточие на
+                        // чьём-то длинном названии при крупном шрифте, и
+                        // проверка это каждый раз и показывала: сперва на
+                        // двух строках, потом на трёх.
                         style: const TextStyle(fontSize: 15),
                       ),
                       if (subtitle.isNotEmpty || kcal.isNotEmpty)

@@ -49,6 +49,9 @@ DiaryEntry _entry({
     );
 
 /// Переполнен ли абзац с этим текстом (многоточие вместо части строки).
+///
+/// У названия и у строки БЖУ предела по числу строк нет вовсе, поэтому
+/// переполниться они не могут — проверка сторожит, чтобы предел не вернули.
 bool _cut(WidgetTester tester, Finder finder) {
   final paragraph = tester.renderObject<RenderParagraph>(finder);
   return paragraph.didExceedMaxLines;
