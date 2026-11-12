@@ -112,6 +112,13 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
 
   const left = target === null ? null : target - actual.calories;
 
+  // Ни одной нормы по БЖУ не задано — мерить полосы нечем.
+  const noMacroTargets =
+    !num(profile?.protein_target_g) &&
+    !num(profile?.fat_target_g) &&
+    !num(profile?.carb_target_g) &&
+    planned.calories <= 0;
+
   const ring = () => {
     const r = 38;
     const c = 2 * Math.PI * r;
@@ -141,8 +148,16 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
     const share = macroKcal > 0 ? Math.round((a * KCAL_PER_GRAM[key] / macroKcal) * 100) : null;
     // Полоса мерится нормой, если она есть; иначе планом — хоть какой-то
     // масштаб. Нет ни того, ни другого — полоса просто пустая.
+    // Чем мерить полосу — три случая, и пустого среди них больше нет.
+    //
+    // Есть норма — меряем нормой: это главный вопрос, «сколько мне ещё
+    // можно». Нормы нет, но есть план меню — меряем планом. Нет ни того, ни
+    // другого — полоса показывает ДОЛЮ КАЛОРИЙ, ровно то число, что подписано
+    // рядом. Раньше в этом случае полоса оставалась пустой, и человек видел
+    // числа при пустых полосах — то есть поломку, а не «мерить нечем».
     const scale = targetG && targetG > 0 ? targetG : (p > 0 ? p : 0);
-    const part = (v: number) => (scale > 0 ? Math.min(100, (v / scale) * 100) : 0);
+    const part = (v: number) =>
+      scale > 0 ? Math.min(100, (v / scale) * 100) : (share ?? 0);
     // Перебор считается только от нормы: план меню нормой не является, и
     // «съел больше, чем планировал» — не повод тревожить человека.
     const over = !!targetG && targetG > 0 && a > targetG;
@@ -223,6 +238,14 @@ export const DaySummary: React.FC<Props> = ({ date, memberId, stats, entries, wa
         {planned.calories > actual.calories && (
           <p className="text-xs text-gray-500 mt-3">
             Бледным — запланированное, но ещё не отмеченное съеденным.
+          </p>
+        )}
+        {/* Без норм полоса означает другое — долю калорий, а не «сколько от
+            нормы». Молча менять смысл полосы нельзя: человек прочтёт её
+            по-старому и решит, что почти всё съел. */}
+        {noMacroTargets && (
+          <p className="text-xs text-gray-500 mt-3">
+            Нормы БЖУ не заданы — полосы показывают доли калорий.
           </p>
         )}
       </Card>

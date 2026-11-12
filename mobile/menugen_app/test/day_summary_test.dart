@@ -76,6 +76,7 @@ Future<void> _open(
   DiaryDayStats? stats,
   List<DiaryEntry> entries = const [],
   int? target = 2000,
+  bool targets = true,
   int waterMl = 1600,
   VoidCallback? onCalc,
 }) async {
@@ -97,9 +98,9 @@ Future<void> _open(
         waterMl: waterMl,
         mealPlanType: '3',
         calorieTarget: target,
-        proteinTarget: 110,
-        fatTarget: 67,
-        carbTarget: 225,
+        proteinTarget: targets ? 110 : null,
+        fatTarget: targets ? 67 : null,
+        carbTarget: targets ? 225 : null,
         onCalcTarget: onCalc ?? () {},
       ),
     ),
@@ -409,6 +410,31 @@ void main() {
       final (ratio, _) = bar(tester, 'meal-bar-lunch');
 
       expect(ratio, closeTo(1.0, 0.02));
+    });
+
+    testWidgets('без норм полоса показывает долю калорий, а не пустоту', (tester) async {
+      // Случай с телефона: цель не задана, числа есть (13 / 12 / 0,7 г), а
+      // полосы пустые. Человек видит поломку, а не «мерить нечем».
+      await _open(
+        tester,
+        api,
+        target: null,
+        targets: false,
+        stats: _stats(eaten: 157, proteins: 13, fats: 12, carbs: 0.7),
+      );
+
+      // Белки 13 г → 52 ккал из 162,8 — это 32 %.
+      final (ratio, height) = bar(tester, 'macro-bar-proteins');
+
+      expect(height, greaterThan(0));
+      expect(ratio, closeTo(0.32, 0.02));
+      expect(find.textContaining('полосы показывают доли калорий'), findsOneWidget);
+    });
+
+    testWidgets('с нормой подписи про доли калорий нет', (tester) async {
+      await _open(tester, api);
+
+      expect(find.textContaining('полосы показывают доли калорий'), findsNothing);
     });
 
     testWidgets('перебор по макросу отмечен своим цветом', (tester) async {

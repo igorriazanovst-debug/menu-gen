@@ -73,8 +73,26 @@ class _DiaryScreenState extends State<DiaryScreen> {
   /// предзаполнения.
   Map<String, dynamic>? _profile;
 
+  /// Профиль того, чей дневник открыт.
+  ///
+  /// Свой берём из `/users/me/`, чужой — из списка семьи: нормы у главы семьи
+  /// и у участника свои, и считать «Итоги» участника по своей норме значит
+  /// показывать человеку чужую цифру как его собственную.
+  Map<String, dynamic>? get _viewedProfile {
+    for (final m in _members) {
+      final viewed = _memberId == null ? m['user_id'] == _meUserId : m['id'] == _memberId;
+      if (viewed && m['profile'] is Map) {
+        return Map<String, dynamic>.from(m['profile'] as Map);
+      }
+    }
+    // Список семьи ещё не загрузился (или своей строки в нём нет) — остаётся
+    // свой профиль. Для чужого участника это было бы неверно, поэтому там
+    // лучше пусто: «цель не задана» честнее подставленной чужой нормы.
+    return _memberId == null ? _profile : null;
+  }
+
   double? _target(String key) {
-    final raw = _profile?[key];
+    final raw = _viewedProfile?[key];
     if (raw is num) return raw.toDouble();
     if (raw is String) return double.tryParse(raw.replaceAll(',', '.'));
     return null;
@@ -325,10 +343,17 @@ class _DiaryScreenState extends State<DiaryScreen> {
           for (var i = 0; i < titles.length; i++)
             Expanded(
               child: InkWell(
-                onTap: () => setState(() {
-                  _tab = i;
-                  _visited.add(i);
-                }),
+                onTap: () {
+                  setState(() {
+                    _tab = i;
+                    _visited.add(i);
+                  });
+                  // Профиль мог не загрузиться при открытии экрана (сеть
+                  // моргнула) — тогда «Итоги» молча остались бы без цели.
+                  // Повторяем ровно там, где цель нужна.
+                  if (i == 1 && _profile == null) _loadMealPlan();
+                  if (i == 1 && _members.isEmpty) _loadFamily();
+                },
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(2, 11, 2, 8),
                   decoration: BoxDecoration(
@@ -388,17 +413,21 @@ class _DiaryScreenState extends State<DiaryScreen> {
           stats: state.stats,
           entries: state.entries,
           waterMl: state.waterMl,
-          mealPlanType: _mealPlanType,
+          mealPlanType: (_viewedProfile?['meal_plan_type'] as String?) ?? _mealPlanType,
           calorieTarget: _target('calorie_target')?.round(),
           proteinTarget: _target('protein_target_g'),
           fatTarget: _target('fat_target_g'),
           carbTarget: _target('carb_target_g'),
-          onCalcTarget: () async {
-            await context.push('/profile/kbju-calculator', extra: _profile);
-            // Норма могла поменяться — перечитываем профиль, иначе кольцо
-            // осталось бы без цели до перезапуска приложения.
-            if (mounted) _loadMealPlan();
-          },
+          // Калькулятор правит профиль вошедшего, поэтому чужому участнику
+          // кнопку не показываем: она поменяла бы норму не тому человеку.
+          onCalcTarget: _memberId != null
+              ? null
+              : () async {
+                  await context.push('/profile/kbju-calculator', extra: _profile);
+                  // Норма могла поменяться — перечитываем профиль, иначе
+                  // кольцо осталось бы без цели до перезапуска приложения.
+                  if (mounted) _loadMealPlan();
+                },
         );
       },
     );

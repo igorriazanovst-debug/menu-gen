@@ -67,8 +67,10 @@ class DaySummaryTab extends StatefulWidget {
   final double? fatTarget;
   final double? carbTarget;
 
-  /// Открыть калькулятор КБЖУ — когда норма не задана.
-  final VoidCallback onCalcTarget;
+  /// Открыть калькулятор КБЖУ — когда норма не задана. null — смотрим чужой
+  /// дневник: калькулятор правит профиль вошедшего, и кнопка поменяла бы
+  /// норму не тому человеку.
+  final VoidCallback? onCalcTarget;
 
   const DaySummaryTab({
     super.key,
@@ -83,7 +85,7 @@ class DaySummaryTab extends StatefulWidget {
     required this.proteinTarget,
     required this.fatTarget,
     required this.carbTarget,
-    required this.onCalcTarget,
+    this.onCalcTarget,
   });
 
   @override
@@ -123,6 +125,13 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
     }
   }
 
+  /// Ни одной нормы по БЖУ не задано — мерить полосы нечем.
+  bool get _noMacroTargets =>
+      (widget.proteinTarget ?? 0) <= 0 &&
+      (widget.fatTarget ?? 0) <= 0 &&
+      (widget.carbTarget ?? 0) <= 0 &&
+      widget.stats.planned.calories <= 0;
+
   /// Съеденное за приём. Считается из тех же записей, что показаны на вкладке
   /// «Приёмы»: отдельный запрос за суммой означал бы, что она может разойтись
   /// с тем, что видно.
@@ -151,6 +160,7 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
           context,
           title: 'Белки, жиры, углеводы',
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _macroLine(context, 'Белки', 'proteins', widget.stats.actual.proteins,
                   widget.stats.planned.proteins, widget.proteinTarget, proteinColor),
@@ -158,6 +168,17 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
                   widget.stats.planned.fats, widget.fatTarget, fatColor),
               _macroLine(context, 'Углеводы', 'carbs', widget.stats.actual.carbs,
                   widget.stats.planned.carbs, widget.carbTarget, carbColor),
+              // Без норм полоса означает другое — долю калорий, а не «сколько
+              // от нормы». Молча менять смысл полосы нельзя: человек прочтёт
+              // её по-старому и решит, что почти всё съел.
+              if (_noMacroTargets)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    'Нормы БЖУ не заданы — полосы показывают доли калорий.',
+                    style: TextStyle(fontSize: 11, color: t.textSecondary),
+                  ),
+                ),
             ],
           ),
         ),
@@ -320,18 +341,19 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
         const SizedBox(height: 2),
         Text('Цель по калориям не задана — не с чем сравнивать.',
             style: TextStyle(fontSize: 12, color: t.textSecondary)),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: widget.onCalcTarget,
-            icon: const Icon(Icons.calculate_outlined, size: 18),
-            label: const Text('Посчитать'),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              visualDensity: VisualDensity.compact,
+        if (widget.onCalcTarget != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: widget.onCalcTarget,
+              icon: const Icon(Icons.calculate_outlined, size: 18),
+              label: const Text('Посчитать'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -354,9 +376,18 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
         a.fats * _kcalPerGram['fats']! +
         a.carbs * _kcalPerGram['carbs']!;
     final share = totalKcal <= 0 ? null : (actual * _kcalPerGram[key]! / totalKcal * 100).round();
-    // Полоса мерится нормой, если она есть; иначе планом — хоть какой-то
-    // масштаб. Нет ни того, ни другого — полоса просто пустая.
+    // Чем мерить полосу — три случая, и пустой среди них больше нет.
+    //
+    // Есть норма — меряем нормой: это главный вопрос, «сколько мне ещё
+    // можно». Нормы нет, но есть план меню — меряем планом. Нет ни того, ни
+    // другого — полоса показывает ДОЛЮ КАЛОРИЙ, ровно то число, что подписано
+    // рядом. Раньше в этом случае полоса оставалась пустой, и человек видел
+    // числа при пустых полосах — то есть поломку, а не «мерить нечем».
     final scale = (target != null && target > 0) ? target : (planned > 0 ? planned : 0.0);
+    final byShare = scale <= 0;
+    double part(double v) => scale <= 0 ? 0 : (v / scale).clamp(0.0, 1.0);
+    final actualPart = byShare ? (share ?? 0) / 100 : part(actual);
+    final plannedPart = byShare ? (share ?? 0) / 100 : part(math.max(actual, planned));
 
     return Padding(
       padding: const EdgeInsets.only(top: 9),
@@ -397,9 +428,8 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
           _twoLayerBar(
             context,
             id: key,
-            actual: actual,
-            planned: planned,
-            scale: scale,
+            actualPart: actualPart,
+            plannedPart: plannedPart,
             color: color,
             // Перебор считается только от нормы: план меню нормой не является,
             // и «съел больше, чем планировал» — не повод тревожить человека.
@@ -423,13 +453,11 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
   Widget _twoLayerBar(
     BuildContext context, {
     required String id,
-    required double actual,
-    required double planned,
-    required double scale,
+    required double actualPart,
+    required double plannedPart,
     required Color color,
     required bool over,
   }) {
-    double part(double v) => scale <= 0 ? 0 : (v / scale).clamp(0.0, 1.0);
     // Перебор — тем же цветом, что число «перебор» у кольца: один сигнал на
     // весь экран, а не второй язык для той же мысли.
     final fill = over ? overColor : color;
@@ -443,14 +471,14 @@ class _DaySummaryTabState extends State<DaySummaryTab> {
             Positioned.fill(
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
-                widthFactor: part(math.max(actual, planned)),
+                widthFactor: plannedPart.clamp(0.0, 1.0),
                 child: ColoredBox(color: fill.withValues(alpha: 0.28)),
               ),
             ),
             Positioned.fill(
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
-                widthFactor: part(actual),
+                widthFactor: actualPart.clamp(0.0, 1.0),
                 // Ключ — чтобы проверка мерила именно эту полосу. По цвету
                 // искать нельзя: цвет углеводов и основной цвет приложения —
                 // одно и то же число, и поиск находил чужую полосу.

@@ -216,6 +216,32 @@ describe('Итоги дня', () => {
       expect(widths()).toContain('100%');
     });
 
+    it('без норм полоса показывает долю калорий, а не пустоту', async () => {
+      // Случай с телефона: цель не задана, числа есть (13 / 12 / 0.7 г), а
+      // полосы пустые. Человек видит поломку, а не «мерить нечем».
+      await show({
+        profile: profile({
+          calorie_target: undefined,
+          protein_target_g: null,
+          fat_target_g: null,
+          carb_target_g: null,
+        }),
+        stats: stats({ actual: bucket(157, 13, 12, 0.7), total: bucket(157, 13, 12, 0.7) }),
+      });
+
+      // Белки 13 г → 52 ккал из 162.8 — это 32 %. Полоса берёт ровно то
+      // число, что подписано рядом, поэтому и округление то же.
+      expect(widths()).toContain('32%'); // белки
+      expect(widths()).toContain('66%'); // жиры
+      expect(screen.getByText(/полосы показывают доли калорий/)).toBeInTheDocument();
+    });
+
+    it('с нормой подписи про доли калорий нет', async () => {
+      await show();
+
+      expect(screen.queryByText(/полосы показывают доли калорий/)).not.toBeInTheDocument();
+    });
+
     it('перебор отмечен своим цветом, а не цветом жиров', async () => {
       // Цвет перебора намеренно не оранжевый акцент: он равен цвету жиров, и
       // перебор по жирам был бы невидим.
