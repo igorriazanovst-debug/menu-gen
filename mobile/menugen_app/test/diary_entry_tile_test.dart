@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:menugen_app/core/api/api_client.dart';
 import 'package:menugen_app/core/display/nutrition_detail.dart';
 import 'package:menugen_app/core/display/display_prefs_cubit.dart';
+import 'package:menugen_app/core/display/food_text_scale.dart';
 import 'package:menugen_app/core/theme/app_theme.dart';
 import 'package:menugen_app/features/diary/models/diary_entry.dart';
 import 'package:menugen_app/features/diary/widgets/diary_entry_tile.dart';

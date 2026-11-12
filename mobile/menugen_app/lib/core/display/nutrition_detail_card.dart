@@ -9,7 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../theme/app_theme.dart';
 import 'food_text_scale.dart';
 import 'nutrition_detail.dart';
-import 'nutrition_detail_cubit.dart';
+import 'display_prefs_cubit.dart';
 
 class NutritionDetailCard extends StatelessWidget {
   const NutritionDetailCard({super.key});

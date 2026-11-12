@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:menugen_app/core/api/api_client.dart';
 import 'package:menugen_app/core/display/nutrition_detail.dart';
 import 'package:menugen_app/core/display/display_prefs_cubit.dart';
+import 'package:menugen_app/core/display/food_text_scale.dart';
 
 class _MockApi extends Mock implements ApiClient {}
 
