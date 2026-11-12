@@ -122,42 +122,41 @@ class DiaryEntryTile extends StatelessWidget {
                           if (entry.addedByName != null)
                             const TextSpan(text: ' 👑', style: TextStyle(fontSize: 13)),
                         ]),
-                        // Две строки, а не обрезка: длинное название читается
-                        // целиком, и только совсем безразмерное уходит в
-                        // многоточие.
-                        maxLines: 2,
+                        // Три строки, а не обрезка: длинное название читается
+                        // целиком даже при крупном системном шрифте, и только
+                        // совсем безразмерное уходит в многоточие.
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 15),
                       ),
                       if (subtitle.isNotEmpty || kcal.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          // Wrap, а не Row: когда БЖУ и калорийность рядом не
+                          // помещаются (крупный шрифт, длинные числа),
+                          // калорийность уезжает на свою строку, а не режет
+                          // соседа. Ни у строки БЖУ, ни у калорийности предела
+                          // по числу строк нет вовсе — обрезать тут нечего.
+                          child: Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.end,
+                            spacing: 8,
+                            runSpacing: 2,
                             children: [
                               if (subtitle.isNotEmpty)
-                                Expanded(
-                                  child: Text(
-                                    subtitle,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                                  ),
-                                )
-                              else
-                                const Spacer(),
-                              if (kcal.isNotEmpty) ...[
-                                const SizedBox(width: 8),
+                                Text(
+                                  subtitle,
+                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                ),
+                              if (kcal.isNotEmpty)
                                 Text(
                                   kcal,
-                                  maxLines: 1,
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                     color: accent ?? Colors.grey.shade700,
                                   ),
                                 ),
-                              ],
                             ],
                           ),
                         ),
